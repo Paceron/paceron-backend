@@ -148,3 +148,6 @@ go test ./...
 ---
 
 *Arquitectura basada en **simple-arq-golang** diseñada por [sintex-dev](https://github.com/sintex-dev/simple-arq-golang) © 2026 — [sintex.dev@gmail.com](mailto:sintex.dev@gmail.com)*
+
+**© 2026 Paceron. Todos los derechos reservados.**  
+Todo el contenido, código y documentación de este repositorio son propiedad exclusiva de **Paceron** y sus miembros. Queda prohibida su reproducción, distribución o uso sin autorización expresa.
