@@ -10,11 +10,6 @@ Base scaffolding for Go APIs with Gin framework.
 ```mermaid
 graph TB
     Client[Client] --> |HTTP| Router[Gin Router]
-    Router --> |/ping| PingController
-    Router --> |/user/*| UserController
-    Router --> |/example/weather| WeatherController
-    Router --> |/user/*/weather| UserWeatherController
-    Router --> |/swagger/*| SwaggerUI
 
     subgraph Controllers
         PingController[pingController]
@@ -45,6 +40,12 @@ graph TB
         Logger[customlogger]
         DB[postgresdb]
     end
+
+    Router --> |/ping| PingController
+    Router --> |/user/*| UserController
+    Router --> |/example/weather| WeatherController
+    Router --> |/user/*/weather| UserWeatherController
+    Router --> |/swagger/*| SwaggerUI
 
     UserWeatherController --> UserWeatherDelegate
     UserWeatherDelegate --> UserService

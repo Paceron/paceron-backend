@@ -26,3 +26,6 @@ _cgo_export.*
 # Temp files
 tmp/
 .DS_Store
+
+# CI/CD generated artifacts
+ci/test_coverage/
