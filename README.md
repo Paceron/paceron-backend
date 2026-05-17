@@ -2,9 +2,17 @@
 
 API backend con arquitectura en capas (Controllers → Services → DAOs/RestClients → Infrastructure) usando Go + Gin.
 
-Para entender la arquitectura en detalle, ver:
-- [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) — descripción completa de cada carpeta y sus responsabilidades
-- [`.agentics/`](.agentics/) — documentación para contribuir con asistentes de IA
+## Documentación
+
+| Archivo | Descripción |
+|---------|-------------|
+| [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) | Estructura de carpetas con descripciones |
+| [`STRUCTURE_FOLDERS.md`](STRUCTURE_FOLDERS.md) | Mapa arquitectónico solo con carpetas |
+| [`cmd/api/docs/documentationdetail/STRUCTURE.md`](cmd/api/docs/documentationdetail/STRUCTURE.md) | Árbol del proyecto en español |
+| [`cmd/api/docs/documentationdetail/CONVENTIONS.md`](cmd/api/docs/documentationdetail/CONVENTIONS.md) | Convenciones de código en español |
+| [`cmd/api/docs/documentationdetail/WORKFLOW.md`](cmd/api/docs/documentationdetail/WORKFLOW.md) | Flujo de trabajo en español |
+| [`cmd/api/docs/documentationdetail/GLOSSARY.md`](cmd/api/docs/documentationdetail/GLOSSARY.md) | Glosario detallado en español |
+| [`.agentics/`](.agentics/) | Documentación técnica para asistentes de IA (inglés) |
 
 ## Project root
 
