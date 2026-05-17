@@ -5,6 +5,18 @@
 
 Base scaffolding for Go APIs with Gin framework.
 
+Para entender la arquitectura en detalle, ver:
+- [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) — descripción completa de cada carpeta y sus responsabilidades
+- [`.agentics/`](.agentics/) — documentación para contribuir con asistentes de IA
+
+## Project root
+
+```
+ci/               Artefactos de CI/CD (cobertura, scripts)
+.agentics/        Documentación para asistentes de IA
+cmd/api/          Código fuente de la API
+```
+
 ## Architecture
 
 ```mermaid
