@@ -1,8 +1,5 @@
 # paceron-backend
 
-> Basado en la arquitectura **simple-arq-golang** diseñada por [sintex-dev](https://github.com/sintex-dev/simple-arq-golang) © 2026
-> Contacto: [sintex.dev@gmail.com](mailto:sintex.dev@gmail.com)
-
 API backend con arquitectura en capas (Controllers → Services → DAOs/RestClients → Infrastructure) usando Go + Gin.
 
 Para entender la arquitectura en detalle, ver:
@@ -139,3 +136,7 @@ After running, open http://localhost:8080/swagger/index.html
 ```bash
 go test ./...
 ```
+
+---
+
+*Arquitectura basada en **simple-arq-golang** diseñada por [sintex-dev](https://github.com/sintex-dev/simple-arq-golang) © 2026 — [sintex.dev@gmail.com](mailto:sintex.dev@gmail.com)*
