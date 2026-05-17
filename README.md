@@ -1,9 +1,9 @@
-# simple-arq-golang
+# paceron-backend
 
-> Desarrollado por **sintex-dev** © 2026
+> Basado en la arquitectura **simple-arq-golang** diseñada por [sintex-dev](https://github.com/sintex-dev/simple-arq-golang) © 2026
 > Contacto: [sintex.dev@gmail.com](mailto:sintex.dev@gmail.com)
 
-Base scaffolding for Go APIs with Gin framework.
+API backend con arquitectura en capas (Controllers → Services → DAOs/RestClients → Infrastructure) usando Go + Gin.
 
 Para entender la arquitectura en detalle, ver:
 - [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) — descripción completa de cada carpeta y sus responsabilidades
