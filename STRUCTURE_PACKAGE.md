@@ -2,6 +2,8 @@
 
 Este documento describe la estructura de carpetas y la responsabilidad de cada una, sin incluir archivos de negocio específicos. Es la plantilla base del scaffolding.
 
+> También disponible: [`STRUCTURE_FOLDERS.md`](STRUCTURE_FOLDERS.md) — versión solo con carpetas (sin archivos) y descripciones extendidas.
+
 ```
 simple-arq-golang/
 │
