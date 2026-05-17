@@ -1,0 +1,225 @@
+basePath: /
+definitions:
+  simple-arq-golang_cmd_api_delegates.UserWithWeatherResponse:
+    properties:
+      user:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
+      weather:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse'
+    type: object
+  simple-arq-golang_cmd_api_domains_apierror.APIError:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      status_code:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_exampleweather.CurrentWeather:
+    properties:
+      interval:
+        type: integer
+      is_day:
+        type: integer
+      temperature:
+        type: number
+      time:
+        type: string
+      weathercode:
+        type: integer
+      winddirection:
+        type: integer
+      windspeed:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse:
+    properties:
+      current_weather:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.CurrentWeather'
+      elevation:
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_user.CreateUserRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+    required:
+    - name
+    - password
+    type: object
+  simple-arq-golang_cmd_api_domains_user.User:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: dev@example.com
+    name: API Support
+  description: Base scaffolding for Go APIs with Gin framework
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Simple Arq Golang API
+  version: 1.0.0
+paths:
+  /example/weather:
+    get:
+      consumes:
+      - application/json
+      description: Get current weather data from Open-Meteo for given coordinates
+      parameters:
+      - description: Latitude (-90 to 90)
+        in: query
+        name: latitude
+        required: true
+        type: number
+      - description: Longitude (-180 to 180)
+        in: query
+        name: longitude
+        required: true
+        type: number
+      - description: 'Include current weather (default: true)'
+        in: query
+        name: current_weather
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get current weather
+      tags:
+      - weather
+  /ping:
+    get:
+      description: Returns pong if the server is running
+      responses:
+        "200":
+          description: pong
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - health
+  /user:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with name and password
+      parameters:
+      - description: User data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Create a new user
+      tags:
+      - users
+  /user/{user_id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a user by their unique ID
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get user by ID
+      tags:
+      - users
+  /user/{user_id}/weather:
+    get:
+      consumes:
+      - application/json
+      description: Get a user by ID and combine with current weather at given coordinates
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: Latitude (-90 to 90)
+        in: query
+        name: latitude
+        required: true
+        type: number
+      - description: Longitude (-180 to 180)
+        in: query
+        name: longitude
+        required: true
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_delegates.UserWithWeatherResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get user with weather data
+      tags:
+      - users
+      - weather
+swagger: "2.0"

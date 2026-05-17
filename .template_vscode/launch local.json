@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run API",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/api",
+            "env": {
+                "db_host": "host",
+                "db_port": "port",
+                "db_user": "user",
+                "db_password": "pass",
+                "db_name": "dbname"
+            }
+        }
+    ]
+}

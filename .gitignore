@@ -1,0 +1,28 @@
+### Go ###
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof
+*.out
+*.o
+*.a
+_obj
+_test
+vendor
+*.[568vq]
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+# IDE
+.idea
+.vscode
+
+# Temp files
+tmp/
+.DS_Store
