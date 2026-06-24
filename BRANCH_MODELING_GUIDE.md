@@ -94,7 +94,91 @@ EOF
 
 ---
 
-## 5. Actualizar repo local
+## 5. Crear rulesets por patrón de rama
+
+Protege los patrones de ramas de soporte contra force push y eliminación:
+
+```bash
+for branch in "feature/*" "release/*" "hotfix/*" "fix/*" "backport/*"; do
+  name="${branch%%/*}"
+  gh api repos/:owner/:repo/rulesets -X POST --input - <<EOF
+  {
+    "name": "${name}-rules",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "include": ["refs/heads/${branch}"],
+        "exclude": []
+      }
+    },
+    "rules": [
+      { "type": "deletion" },
+      { "type": "non_fast_forward" }
+    ]
+  }
+EOF
+done
+```
+
+> Opcional: para mayor rigor, agregar el rule type `"pull_request"` con `required_approving_review_count`.
+
+---
+
+## 6. Agregar PR Template
+
+Crear `.github/PULL_REQUEST_TEMPLATE.md`:
+
+```markdown
+## Título
+
+[Tipo] Ticket: Descripción corta
+
+---
+
+## Descripción
+
+<!-- Qué hace, por qué se hace, impacto -->
+
+---
+
+## Contexto / Background
+
+<!-- Enlace a ticket, decisiones técnicas, alternativas descartadas -->
+
+---
+
+## Cómo probarlo
+
+<!-- Pasos claros, credenciales o links, URLs, mocks -->
+1.
+2.
+3.
+
+---
+
+## Screenshots / GIFs
+
+<!-- Obligatorio si hay UI, logs o flujos visuales -->
+
+---
+
+## Checklist de Auto-Verificación
+
+- [ ] Tests pasan localmente
+- [ ] CI verde
+- [ ] Sin console.log de debug
+
+---
+
+## Tickets / Issues
+
+<!-- Closes #N, Relates to JIRA-XXX -->
+```
+
+---
+
+## 7. Actualizar repo local
 
 ```bash
 git fetch origin
