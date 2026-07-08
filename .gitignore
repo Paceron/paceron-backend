@@ -21,11 +21,15 @@ _cgo_export.*
 
 # IDE
 .idea
-.vscode
+.vscode/*
+!.vscode/launch.json
 
 # Temp files
 tmp/
 .DS_Store
+
+# Environment variables (credentials)
+.env
 
 # CI/CD generated artifacts
 ci/test_coverage/
