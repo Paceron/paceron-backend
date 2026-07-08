@@ -1,0 +1,48 @@
+@startuml
+actor Client
+participant "AuthController" as Controller
+participant "AuthService" as Service
+participant "AuthMiddleware" as Middleware
+participant "AuthDAO (GORM)" as DAO
+database "PostgreSQL" as DB
+
+Client -> Middleware: GET /api/v1/auth/user\nAuthorization: Bearer <token>
+activate Middleware
+
+Middleware -> Middleware: Extract token from header
+
+alt Token ausente
+    Middleware --> Client: HTTP 401\n{code: "Unauthorized"}
+end
+
+Middleware -> Middleware: Validate JWT (parse + verify signature)
+note right: Check exp, alg HS256
+
+alt Token inválido/expirado
+    Middleware --> Client: HTTP 401\n{code: "Unauthorized"}
+end
+
+Middleware -> Middleware: Extract userID from "sub" claim
+Middleware --> Controller: context.Set("userId", userID)
+deactivate Middleware
+
+Controller -> Service: GetUser(ctx, userID)
+activate Service
+
+Service -> DAO: FindByID(ctx, userID)
+activate DAO
+DAO -> DB: SELECT * FROM users WHERE id = ?
+DB --> DAO: user or nil
+deactivate DAO
+
+alt User no encontrado
+    Service --> Controller: error
+    Controller --> Client: HTTP 500\n{code: "Internal Server Error"}
+end
+
+Service --> Controller: user.User
+deactivate Service
+
+Controller --> Client: HTTP 200\n{user_id, name, email, ...}
+deactivate Controller
+@enduml

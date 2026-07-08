@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro — Paceron API</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/api/v1/docs/guide/" class="back-link">&larr; Volver al inicio</a>
+
+    <section class="card">
+      <h2><span class="method method-post">POST</span> /api/v1/auth/register</h2>
+      <p>Registra un nuevo usuario en el sistema. La contraseña se valida con los siguientes requisitos:</p>
+      <ul>
+        <li>Mínimo 8 caracteres</li>
+        <li>Al menos 1 letra mayúscula</li>
+        <li>Al menos 1 letra minúscula</li>
+        <li>Al menos 1 dígito</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h3>Request</h3>
+      <table>
+        <tr><th>Header</th><th>Valor</th><th>Obligatorio</th></tr>
+        <tr><td>Content-Type</td><td>application/json</td><td>Sí</td></tr>
+      </table>
+      <pre>{
+  <span class="key">"name"</span>:         <span class="string">"John"</span>,
+  <span class="key">"surname"</span>:      <span class="string">"Doe"</span>,
+  <span class="key">"email"</span>:        <span class="string">"john@example.com"</span>,
+  <span class="key">"dni"</span>:          <span class="string">"12345678"</span>,
+  <span class="key">"birth_date"</span>:   <span class="string">"15/04/1990"</span>,
+  <span class="key">"password"</span>:     <span class="string">"SecurePass1"</span>,
+  <span class="key">"phone"</span>:        <span class="string">"123456789"</span>,
+  <span class="key">"phone_contact"</span>:<span class="string">"987654321"</span>,
+  <span class="key">"country"</span>:      <span class="string">"Argentina"</span>,
+  <span class="key">"province"</span>:     <span class="string">"Buenos Aires"</span>,
+  <span class="key">"city"</span>:         <span class="string">"La Plata"</span>,
+  <span class="key">"street"</span>:       <span class="string">"Calle Falsa"</span>,
+  <span class="key">"number"</span>:       <span class="string">"123"</span>
+}</pre>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Obligatorio</th><th>Descripción</th></tr>
+        <tr><td>name</td><td>string</td><td>Sí</td><td>Nombre del usuario</td></tr>
+        <tr><td>surname</td><td>string</td><td>Sí</td><td>Apellido</td></tr>
+        <tr><td>email</td><td>string</td><td>Sí</td><td>Email único</td></tr>
+        <tr><td>dni</td><td>string</td><td>Sí</td><td>DNI</td></tr>
+        <tr><td>birth_date</td><td>string</td><td>Sí</td><td>DD/MM/YYYY</td></tr>
+        <tr><td>password</td><td>string</td><td>Sí</td><td>Min 8 chars, 1 mayúscula, 1 minúscula, 1 dígito</td></tr>
+        <tr><td>phone</td><td>string</td><td>No</td><td>Teléfono</td></tr>
+        <tr><td>phone_contact</td><td>string</td><td>No</td><td>Teléfono de contacto alternativo</td></tr>
+        <tr><td>country</td><td>string</td><td>No</td><td>País</td></tr>
+        <tr><td>province</td><td>string</td><td>No</td><td>Provincia</td></tr>
+        <tr><td>city</td><td>string</td><td>No</td><td>Ciudad</td></tr>
+        <tr><td>street</td><td>string</td><td>No</td><td>Calle</td></tr>
+        <tr><td>number</td><td>string</td><td>No</td><td>Número</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <p><strong>201 Created</strong></p>
+      <pre>{
+  <span class="key">"user_id"</span>:   <span class="number">1</span>,
+  <span class="key">"name"</span>:      <span class="string">"John"</span>,
+  <span class="key">"surname"</span>:   <span class="string">"Doe"</span>,
+  <span class="key">"email"</span>:     <span class="string">"john@example.com"</span>,
+  <span class="key">"dni"</span>:       <span class="string">"12345678"</span>,
+  <span class="key">"birth_date"</span>:<span class="string">"15/04/1990"</span>,
+  <span class="key">"status"</span>:    <span class="string">"active"</span>,
+  <span class="key">"phone"</span>:     <span class="string">"123456789"</span>,
+  <span class="key">"province"</span>:  <span class="string">"Buenos Aires"</span>,
+  <span class="key">"city"</span>:      <span class="string">"La Plata"</span>
+}</pre>
+    </section>
+
+    <section class="card">
+      <h3>Errores posibles</h3>
+      <table class="error-table">
+        <tr><th>Código</th><th>Status</th><th>Causa</th></tr>
+        <tr><td class="code-col http-400">Bad request</td><td>400</td><td>Body inválido o campos requeridos faltantes</td></tr>
+        <tr><td class="code-col http-400">Password invalid</td><td>400</td><td>No cumple los requisitos de contraseña</td></tr>
+        <tr><td class="code-col http-500">Internal Server Error</td><td>500</td><td>Error al crear en base de datos</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Diagrama de secuencia</h3>
+      <img class="diagram-img" src="/api/v1/docs/guide/plantuml/auth-register.puml" alt="Diagrama de secuencia Registro">
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>

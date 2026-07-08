@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Paceron API</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/api/v1/docs/guide/" class="back-link">&larr; Volver al inicio</a>
+
+    <section class="card">
+      <h2><span class="method method-post">POST</span> /api/v1/auth/login</h2>
+      <p>Autentica un usuario con email y contraseña. Devuelve tokens JWT para acceder a endpoints protegidos.</p>
+    </section>
+
+    <section class="card">
+      <h3>Request</h3>
+      <table>
+        <tr><th>Header</th><th>Valor</th><th>Obligatorio</th></tr>
+        <tr><td>Content-Type</td><td>application/json</td><td>Sí</td></tr>
+      </table>
+      <pre>{
+  <span class="key">"email"</span>:    <span class="string">"john@example.com"</span>,
+  <span class="key">"password"</span>: <span class="string">"SecurePass1"</span>
+}</pre>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Obligatorio</th><th>Descripción</th></tr>
+        <tr><td>email</td><td>string</td><td>Sí</td><td>Email del usuario</td></tr>
+        <tr><td>password</td><td>string</td><td>Sí</td><td>Contraseña</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <p><strong>200 OK</strong></p>
+      <pre>{
+  <span class="key">"authorization"</span>: {
+    <span class="key">"access_token"</span>:  <span class="string">"eyJhbGciOi..."</span>,
+    <span class="key">"refresh_token"</span>: <span class="string">"eyJhbGciOi..."</span>,
+    <span class="key">"expires_in"</span>:    <span class="number">3600</span>
+  },
+  <span class="key">"user"</span>: {
+    <span class="key">"user_id"</span>:  <span class="number">1</span>,
+    <span class="key">"name"</span>:     <span class="string">"John"</span>,
+    <span class="key">"email"</span>:    <span class="string">"john@example.com"</span>,
+    <span class="key">"status"</span>:   <span class="string">"active"</span>
+  }
+}</pre>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td>authorization.access_token</td><td>string</td><td>JWT de acceso (expira en 1h)</td></tr>
+        <tr><td>authorization.refresh_token</td><td>string</td><td>JWT de refresco (expira en 7d)</td></tr>
+        <tr><td>authorization.expires_in</td><td>int</td><td>Tiempo de expiración en segundos</td></tr>
+        <tr><td>user</td><td>object</td><td>Datos completos del usuario</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Errores posibles</h3>
+      <table class="error-table">
+        <tr><th>Código</th><th>Status</th><th>Causa</th></tr>
+        <tr><td class="code-col http-400">Bad request</td><td>400</td><td>Body inválido</td></tr>
+        <tr><td class="code-col http-401">Unauthorized</td><td>401</td><td>Email no encontrado, usuario inactivo, o contraseña incorrecta</td></tr>
+        <tr><td class="code-col http-500">Internal Server Error</td><td>500</td><td>Error al generar tokens o consultar BD</td></tr>
+      </table>
+      <p style="margin-top:0.5rem;color:#586069;font-size:0.9rem">Por seguridad, todos los errores de autenticación devuelven el mismo mensaje: <code>"No se pudo autenticar"</code></p>
+    </section>
+
+    <section class="card">
+      <h3>Diagrama de secuencia</h3>
+      <img class="diagram-img" src="/api/v1/docs/guide/plantuml/auth-login.puml" alt="Diagrama de secuencia Login">
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>

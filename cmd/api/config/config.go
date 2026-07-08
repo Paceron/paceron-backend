@@ -2,11 +2,13 @@ package config
 
 import (
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 type Environment int
@@ -35,7 +37,10 @@ type DB struct {
 	ConnMaxLifetime    time.Duration
 }
 
-var MyDB DB
+var (
+	MyDB      DB
+	JWTSecret string
+)
 
 func (d Environment) String() string {
 	return [...]string{"dev", "stage", "prod"}[d]
@@ -75,6 +80,8 @@ func init() {
 }
 
 func LoadValues() {
+	godotenv.Load()
+
 	if IsProduction() {
 		initProd()
 		return
@@ -89,30 +96,53 @@ func LoadValues() {
 }
 
 func initLocal() {
-	MyDB.Name = os.Getenv("db_name")
-	MyDB.Host = os.Getenv("db_host")
-	MyDB.Port = os.Getenv("db_port")
-	MyDB.Username = os.Getenv("db_user")
-	MyDB.Password = os.Getenv("db_password")
-	MyDB = LoadDBConfigDB(MyDB)
+	loadDBConfig()
 }
 
 func initProd() {
-	MyDB.Name = os.Getenv("db_name")
-	MyDB.Host = os.Getenv("db_host")
-	MyDB.Port = os.Getenv("db_port")
-	MyDB.Username = os.Getenv("db_user")
-	MyDB.Password = os.Getenv("db_password")
-	MyDB = LoadDBConfigDB(MyDB)
+	loadDBConfig()
 }
 
 func initTest() {
-	MyDB.Name = os.Getenv("db_name")
-	MyDB.Host = os.Getenv("db_host")
-	MyDB.Port = os.Getenv("db_port")
-	MyDB.Username = os.Getenv("db_user")
-	MyDB.Password = os.Getenv("db_password")
+	loadDBConfig()
+}
+
+func loadDBConfig() {
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL != "" {
+		MyDB = parseDatabaseURL(dbURL)
+	} else {
+		MyDB.Name = os.Getenv("db_name")
+		MyDB.Host = os.Getenv("db_host")
+		MyDB.Port = os.Getenv("db_port")
+		MyDB.Username = os.Getenv("db_user")
+		MyDB.Password = os.Getenv("db_password")
+	}
 	MyDB = LoadDBConfigDB(MyDB)
+	JWTSecret = os.Getenv("JWT_SECRET")
+}
+
+func parseDatabaseURL(dbURL string) DB {
+	u, err := url.Parse(dbURL)
+	if err != nil {
+		return DB{}
+	}
+
+	host := u.Hostname()
+	port := u.Port()
+	if port == "" {
+		port = "5432"
+	}
+
+	password, _ := u.User.Password()
+
+	return DB{
+		Username: u.User.Username(),
+		Password: password,
+		Host:     host,
+		Port:     port,
+		Name:     strings.TrimPrefix(u.Path, "/"),
+	}
 }
 
 func LoadDBConfigDB(myDB DB) DB {

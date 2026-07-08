@@ -24,5 +24,6 @@ func TestPingRouteExists(t *testing.T) {
 	assert.True(t, routes[http.MethodPost+":"+"/user"], "POST /user route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/example/weather"], "GET /example/weather route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/user/:user_id/weather"], "GET /user/:user_id/weather route should exist")
-	assert.True(t, routes[http.MethodGet+":"+"/swagger/*any"], "GET /swagger/*any route should exist")
+	assert.True(t, routes[http.MethodGet+":"+"/swagger/index.html"], "GET /swagger/index.html route should exist")
+	assert.True(t, routes[http.MethodGet+":"+"/swagger/doc.json"], "GET /swagger/doc.json route should exist")
 }

@@ -1,0 +1,56 @@
+@startuml
+actor Client
+participant "UserController" as Controller
+participant "UserService" as Service
+participant "UserDAO (GORM)" as DAO
+database "PostgreSQL" as DB
+
+Client -> Controller: PATCH /api/v1/users/{id}/status\nAuthorization: Bearer <token>\n{status: "active" | "inactive"}
+activate Controller
+
+Controller -> Controller: Extract userID from URL param
+Controller -> Controller: BindJSON → StatusChangeRequest
+
+alt Invalid body
+    Controller --> Client: HTTP 400\n{code: "Bad request"}
+end
+
+Controller -> Service: ChangeStatus(ctx, id, status)
+activate Service
+
+Service -> DAO: FindByID(ctx, id)
+activate DAO
+DAO -> DB: SELECT * FROM users WHERE id = ?
+DB --> DAO: user or nil
+deactivate DAO
+
+alt User no encontrado
+    Service --> Controller: error
+    Controller --> Client: HTTP 500\n{code: "Internal Server Error"}
+end
+
+Service -> Service: Validate status value
+
+alt Status inválido (not active/inactive)
+    Service --> Controller: error
+    Controller --> Client: HTTP 400\n{code: "Bad request", message: "Invalid status"}
+end
+
+Service -> Service: Update user.Status
+Service -> DAO: Update(ctx, userDB)
+activate DAO
+DAO -> DB: UPDATE users SET status = ? WHERE id = ?
+DB --> DAO: updated rows
+deactivate DAO
+
+alt DB error
+    Service --> Controller: error
+    Controller --> Client: HTTP 500\n{code: "Internal Server Error"}
+end
+
+Service --> Controller: nil
+deactivate Service
+
+Controller --> Client: HTTP 200\n{status_code: 200, code: "Success", message: "ok"}
+deactivate Controller
+@enduml

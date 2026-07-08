@@ -17,6 +17,7 @@ import (
 type Application struct {
 	pingController          controllers.PingController
 	userController          controllers.UserController
+	authController          controllers.AuthController
 	exampleWeatherController controllers.ExampleWeatherController
 	userWeatherController    controllers.UserWeatherController
 }
@@ -32,6 +33,11 @@ func NewApplication() *Application {
 	userDao := daos.NewUserDao(db)
 	userService := services.NewUserService(userDao)
 	userController := controllers.NewUserController(userService)
+
+	// Auth flow
+	authDao := daos.NewAuthDao(db)
+	authService := services.NewAuthService(authDao)
+	authController := controllers.NewAuthController(authService)
 
 	// Example Weather flow
 	restClientConfig := config.LoadRestClientConfig()
@@ -61,6 +67,7 @@ func NewApplication() *Application {
 	return &Application{
 		pingController:           controllers.NewPingController(),
 		userController:           userController,
+		authController:           authController,
 		exampleWeatherController: exampleWeatherController,
 		userWeatherController:    userWeatherController,
 	}

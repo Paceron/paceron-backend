@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuario actual — Paceron API</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/api/v1/docs/guide/" class="back-link">&larr; Volver al inicio</a>
+
+    <section class="card">
+      <h2><span class="method method-get">GET</span> /api/v1/auth/user</h2>
+      <p>Devuelve los datos del usuario autenticado según el token JWT.</p>
+    </section>
+
+    <section class="card">
+      <h3>Request</h3>
+      <table>
+        <tr><th>Header</th><th>Valor</th><th>Obligatorio</th></tr>
+        <tr><td>Authorization</td><td>Bearer &lt;access_token&gt;</td><td>Sí</td></tr>
+      </table>
+      <p>No requiere body.</p>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <p><strong>200 OK</strong></p>
+      <pre>{
+  <span class="key">"user_id"</span>:     <span class="number">1</span>,
+  <span class="key">"name"</span>:        <span class="string">"John"</span>,
+  <span class="key">"surname"</span>:     <span class="string">"Doe"</span>,
+  <span class="key">"email"</span>:       <span class="string">"john@example.com"</span>,
+  <span class="key">"dni"</span>:         <span class="string">"12345678"</span>,
+  <span class="key">"birth_date"</span>:  <span class="string">"15/04/1990"</span>,
+  <span class="key">"status"</span>:      <span class="string">"active"</span>
+}</pre>
+      <p>Los campos opcionales se omiten si no tienen valor.</p>
+    </section>
+
+    <section class="card">
+      <h3>Errores posibles</h3>
+      <table class="error-table">
+        <tr><th>Código</th><th>Status</th><th>Causa</th></tr>
+        <tr><td class="code-col http-401">Unauthorized</td><td>401</td><td>Token ausente, inválido o expirado</td></tr>
+        <tr><td class="code-col http-500">Internal Server Error</td><td>500</td><td>Usuario no encontrado en BD</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Diagrama de secuencia</h3>
+      <img class="diagram-img" src="/api/v1/docs/guide/plantuml/auth-user.puml" alt="Diagrama de secuencia Usuario actual">
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>

@@ -1,0 +1,238 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1a1a2e;
+  background: #f8f9fa;
+  line-height: 1.6;
+}
+
+header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  color: #fff;
+  padding: 2rem 0;
+  border-bottom: 4px solid #e94560;
+}
+
+header .container {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+header h1 span {
+  color: #e94560;
+}
+
+header .version {
+  font-size: 0.85rem;
+  color: #a8b2d1;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+nav {
+  background: #fff;
+  border-bottom: 1px solid #e1e4e8;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+nav .container {
+  display: flex;
+  gap: 1.5rem;
+  overflow-x: auto;
+  padding: 0.75rem 1.5rem;
+}
+
+nav a {
+  color: #586069;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+nav a:hover {
+  color: #e94560;
+  border-bottom-color: #e94560;
+}
+
+main {
+  padding: 2rem 0;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e1e4e8;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1.3rem;
+  margin-bottom: 0.75rem;
+  color: #1a1a2e;
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+  color: #0f3460;
+}
+
+.endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.endpoint-card {
+  background: #fff;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 1.25rem;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.endpoint-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+.endpoint-card .method {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.method-get { background: #2ea44f; }
+.method-post { background: #e94560; }
+.method-put { background: #f59e0b; }
+.method-patch { background: #8b5cf6; }
+
+.endpoint-card .path {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85rem;
+  color: #586069;
+  word-break: break-all;
+}
+
+.endpoint-card .summary {
+  font-size: 0.9rem;
+  color: #586069;
+  margin-top: 0.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+th {
+  background: #f6f8fa;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #586069;
+}
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  background: #f6f8fa;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #e94560;
+}
+
+pre {
+  background: #1a1a2e;
+  color: #e1e4e8;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0.75rem 0;
+}
+
+pre .key { color: #79c0ff; }
+pre .string { color: #a5d6ff; }
+pre .number { color: #79c0ff; }
+pre .null { color: #d2a8ff; }
+pre .comment { color: #8b949e; }
+
+.error-table .code-col { font-weight: 600; }
+.error-table .http-400 { color: #f59e0b; }
+.error-table .http-401 { color: #e94560; }
+.error-table .http-500 { color: #e94560; }
+
+.diagram-img {
+  max-width: 100%;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: #586069;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.back-link:hover {
+  color: #e94560;
+}
+
+footer {
+  text-align: center;
+  padding: 2rem;
+  color: #586069;
+  font-size: 0.85rem;
+  border-top: 1px solid #e1e4e8;
+  margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+  header .container {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .endpoint-grid {
+    grid-template-columns: 1fr;
+  }
+}

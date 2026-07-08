@@ -14,8 +14,10 @@ import (
 )
 
 type mockUserService struct {
-	mockGetUser    func(ctx *gin.Context, userID int64) (user.User, error)
-	mockCreateUser func(ctx *gin.Context, name, password string) (user.User, error)
+	mockGetUser      func(ctx *gin.Context, userID int64) (user.User, error)
+	mockCreateUser   func(ctx *gin.Context, name, password string) (user.User, error)
+	mockUpdate       func(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
+	mockChangeStatus func(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
 }
 
 func (m mockUserService) GetUser(ctx *gin.Context, userID int64) (user.User, error) {
@@ -24,6 +26,14 @@ func (m mockUserService) GetUser(ctx *gin.Context, userID int64) (user.User, err
 
 func (m mockUserService) CreateUser(ctx *gin.Context, name, password string) (user.User, error) {
 	return m.mockCreateUser(ctx, name, password)
+}
+
+func (m mockUserService) Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error) {
+	return m.mockUpdate(ctx, id, req, currentPassword)
+}
+
+func (m mockUserService) ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error) {
+	return m.mockChangeStatus(ctx, id, status)
 }
 
 func TestGetUser_Success(t *testing.T) {

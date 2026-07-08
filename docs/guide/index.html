@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paceron API — Guía de endpoints</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="card">
+      <h2>API Reference</h2>
+      <p>Guía completa de todos los endpoints disponibles en la API REST de Paceron.</p>
+      <p>Base URL: <code>https://paceron-backend.onrender.com</code></p>
+    </section>
+
+    <section class="card">
+      <h2>Endpoints</h2>
+      <div class="endpoint-grid">
+        <a href="/api/v1/docs/guide/endpoints/ping.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-get">GET</span>
+          <div class="path">/ping</div>
+          <div class="summary">Health check del servidor</div>
+        </a>
+        <a href="/api/v1/docs/guide/endpoints/auth-register.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-post">POST</span>
+          <div class="path">/api/v1/auth/register</div>
+          <div class="summary">Registro de nuevo usuario</div>
+        </a>
+        <a href="/api/v1/docs/guide/endpoints/auth-login.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-post">POST</span>
+          <div class="path">/api/v1/auth/login</div>
+          <div class="summary">Autenticación de usuario</div>
+        </a>
+        <a href="/api/v1/docs/guide/endpoints/auth-user.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-get">GET</span>
+          <div class="path">/api/v1/auth/user</div>
+          <div class="summary">Obtener usuario autenticado</div>
+        </a>
+        <a href="/api/v1/docs/guide/endpoints/users-update.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-put">PUT</span>
+          <div class="path">/api/v1/users/{id}</div>
+          <div class="summary">Actualizar datos de usuario</div>
+        </a>
+        <a href="/api/v1/docs/guide/endpoints/users-status.html" class="endpoint-card" style="text-decoration:none;color:inherit">
+          <span class="method method-patch">PATCH</span>
+          <div class="path">/api/v1/users/{id}/status</div>
+          <div class="summary">Cambiar estado (active/inactive)</div>
+        </a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Autenticación</h2>
+      <p>Los endpoints protegidos requieren un token JWT en el header:</p>
+      <pre>Authorization: Bearer &lt;access_token&gt;</pre>
+      <h3>Flujo</h3>
+      <ol>
+        <li>Registrarse en <code>POST /api/v1/auth/register</code> o usar credenciales existentes</li>
+        <li>Autenticarse en <code>POST /api/v1/auth/login</code> → obtienes <code>access_token</code> y <code>refresh_token</code></li>
+        <li>Usar <code>access_token</code> en el header <code>Authorization: Bearer</code> para endpoints protegidos</li>
+        <li>El <code>access_token</code> expira en 1 hora. Usar <code>refresh_token</code> para obtener uno nuevo (próximamente)</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Errores estándar</h2>
+      <p>Todos los endpoints devuelven errores con esta estructura:</p>
+      <pre>{
+  <span class="key">"status_code"</span>: <span class="number">400</span>,
+  <span class="key">"code"</span>: <span class="string">"Bad request"</span>,
+  <span class="key">"message"</span>: <span class="string">"descripción del error"</span>
+}</pre>
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>
