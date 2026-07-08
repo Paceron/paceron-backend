@@ -131,35 +131,16 @@
       production: 'https://paceron-backend.onrender.com',
     };
 
-    let currentEnv = 'local';
+    const env = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'local' : 'production';
+    let currentEnv = env;
 
     SwaggerUIBundle({
-      urls: [
-        {url: '/swagger/doc.json?env=local', name: 'Localhost'},
-        {url: '/swagger/doc.json?env=production', name: 'Production'},
-      ],
+      url: '/swagger/doc.json?env=' + env,
       dom_id: '#swagger-ui',
-      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-      layout: "BaseLayout",
+      presets: [SwaggerUIBundle.presets.apis],
       deepLinking: true,
       showExtensions: true,
       showCommonExtensions: true,
-      onComplete: function() {
-        const sel = document.querySelector('.servers select, select[data-selector-url]');
-        if (sel) {
-          sel.addEventListener('change', function() {
-            const opt = sel.options[sel.selectedIndex];
-            currentEnv = opt.textContent.toLowerCase().includes('production') ? 'production' : 'local';
-          });
-        }
-        const urlsSelect = document.querySelector('select[data-selector-url]');
-        if (urlsSelect) {
-          urlsSelect.addEventListener('change', function() {
-            const opt = urlsSelect.options[urlsSelect.selectedIndex];
-            currentEnv = opt.textContent.toLowerCase().includes('production') ? 'production' : 'local';
-          });
-        }
-      },
     });
 
     const bodylessMethods = ['get', 'delete', 'options', 'head'];
