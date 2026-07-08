@@ -1,0 +1,56 @@
+@startuml
+actor Client
+participant "AuthController" as Controller
+participant "AuthService" as Service
+participant "AuthDAO (GORM)" as DAO
+database "PostgreSQL" as DB
+
+Client -> Controller: POST /api/v1/auth/login\n{email, password}
+activate Controller
+
+Controller -> Controller: BindJSON → LoginRequest
+
+alt Request body inválido
+    Controller --> Client: HTTP 400\n{code: "Bad request"}
+end
+
+Controller -> Service: Login(ctx, email, password)
+activate Service
+
+Service -> DAO: FindByEmail(ctx, email)
+activate DAO
+DAO -> DB: SELECT * FROM users WHERE email = ?
+DB --> DAO: user or nil
+deactivate DAO
+
+alt Email no encontrado
+    Service --> Controller: error
+    Controller --> Client: HTTP 401\n{code: "Unauthorized", message: "No se pudo autenticar"}
+end
+
+Service -> Service: Check user.Status == "active"
+
+alt Usuario inactivo
+    Service --> Controller: error
+    Controller --> Client: HTTP 401\n{code: "Unauthorized", message: "No se pudo autenticar"}
+end
+
+Service -> Service: bcrypt.CompareHashAndPassword(password, hash)
+
+alt Password incorrecta
+    Service --> Controller: error
+    Controller --> Client: HTTP 401\n{code: "Unauthorized", message: "No se pudo autenticar"}
+end
+
+Service -> Service: GenerateAccessToken(userID, email)
+note right: JWT HS256\nexp: 1 hour
+
+Service -> Service: GenerateRefreshToken(userID)
+note right: JWT HS256\ntype: refresh\nexp: 7 days
+
+Service --> Controller: *LoginResponse
+deactivate Service
+
+Controller --> Client: HTTP 200\n{authorization: {access_token, refresh_token, expires_in: 3600}, user: {...}}
+deactivate Controller
+@enduml

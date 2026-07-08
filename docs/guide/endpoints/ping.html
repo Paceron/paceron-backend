@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ping — Paceron API</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/api/v1/docs/guide/" class="back-link">&larr; Volver al inicio</a>
+
+    <section class="card">
+      <h2><span class="method method-get">GET</span> /ping</h2>
+      <p>Health check del servidor. Verifica que la API esté corriendo correctamente.</p>
+    </section>
+
+    <section class="card">
+      <h3>Request</h3>
+      <table>
+        <tr><th>Header</th><th>Valor</th><th>Obligatorio</th></tr>
+        <tr><td>Content-Type</td><td>application/json</td><td>No</td></tr>
+      </table>
+      <p>No requiere body ni autenticación.</p>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <p><strong>200 OK</strong></p>
+      <pre>{
+  <span class="key">"message"</span>: <span class="string">"pong"</span>
+}</pre>
+    </section>
+
+    <section class="card">
+      <h3>Diagrama de secuencia</h3>
+      <img class="diagram-img" src="/api/v1/docs/guide/plantuml/ping.puml" alt="Diagrama de secuencia Ping">
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>

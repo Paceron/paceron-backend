@@ -19,4 +19,5 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
 
 	mapSwagger(r)
+	mapGuide(r)
 }

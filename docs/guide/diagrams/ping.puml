@@ -1,0 +1,15 @@
+@startuml
+actor Client
+participant "Paceron API" as API
+participant "Gin Router" as Router
+database "Server" as Server
+
+Client -> API: GET /ping
+API -> Router: route match
+Router -> Server: health check
+Server --> Router: 200 OK (pong)
+Router --> API: response
+API --> Client: HTTP 200\n{"message": "pong"}
+
+note right of Client: No auth required
+@enduml

@@ -1,0 +1,47 @@
+@startuml
+actor Client
+participant "AuthController" as Controller
+participant "AuthService" as Service
+participant "AuthDAO (GORM)" as DAO
+database "PostgreSQL" as DB
+
+Client -> Controller: POST /api/v1/auth/register\n{name, surname, email, dni, birth_date, password, ...}
+activate Controller
+
+Controller -> Controller: BindJSON → RegisterRequest
+note right: Validate required fields\n(name, surname, email, dni, birth_date, password)
+
+alt Request body inválido
+    Controller --> Client: HTTP 400\n{code: "Bad request"}
+end
+
+Controller -> Service: Register(ctx, request)
+activate Service
+
+Service -> Service: ValidatePassword(password)
+note right: Min 8 chars\n1 uppercase, 1 lowercase, 1 digit
+
+alt Password inválida
+    Service --> Controller: error
+    Controller --> Client: HTTP 400\n{code: "Password invalid"}
+end
+
+Service -> Service: Hash password (bcrypt)
+Service -> Service: Parse birth_date (DD/MM/YYYY)
+Service -> DAO: Create(ctx, userDB)
+activate DAO
+DAO -> DB: INSERT INTO users
+DB --> DAO: user with ID
+deactivate DAO
+
+alt Error en DB
+    Service --> Controller: error
+    Controller --> Client: HTTP 500\n{code: "Internal Server Error"}
+end
+
+Service --> Controller: *RegisterResponse
+deactivate Service
+
+Controller --> Client: HTTP 201\n{user_id, name, email, ...}
+deactivate Controller
+@enduml

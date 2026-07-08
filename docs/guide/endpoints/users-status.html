@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cambiar estado — Paceron API</title>
+  <link rel="stylesheet" href="/api/v1/docs/guide/assets/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>Paceron <span>API</span></h1>
+      <span class="version">v1.0.0</span>
+    </div>
+  </header>
+
+  <nav>
+    <div class="container">
+      <a href="/api/v1/docs/guide/">Inicio</a>
+      <a href="/api/v1/docs/guide/endpoints/ping.html">Ping</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-register.html">Registro</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-login.html">Login</a>
+      <a href="/api/v1/docs/guide/endpoints/auth-user.html">Usuario actual</a>
+      <a href="/api/v1/docs/guide/endpoints/users-update.html">Actualizar usuario</a>
+      <a href="/api/v1/docs/guide/endpoints/users-status.html">Cambiar estado</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    <a href="/api/v1/docs/guide/" class="back-link">&larr; Volver al inicio</a>
+
+    <section class="card">
+      <h2><span class="method method-patch">PATCH</span> /api/v1/users/{id}/status</h2>
+      <p>Cambia el estado de un usuario a <code>active</code> o <code>inactive</code>.</p>
+    </section>
+
+    <section class="card">
+      <h3>Request</h3>
+      <table>
+        <tr><th>Header</th><th>Valor</th><th>Obligatorio</th></tr>
+        <tr><td>Content-Type</td><td>application/json</td><td>Sí</td></tr>
+        <tr><td>Authorization</td><td>Bearer &lt;access_token&gt;</td><td>Sí</td></tr>
+      </table>
+      <table>
+        <tr><th>Parámetro</th><th>Tipo</th><th>Ubicación</th><th>Descripción</th></tr>
+        <tr><td>id</td><td>int</td><td>path</td><td>ID del usuario</td></tr>
+      </table>
+      <pre>{
+  <span class="key">"status"</span>: <span class="string">"active"</span>
+}</pre>
+      <table>
+        <tr><th>Campo</th><th>Tipo</th><th>Obligatorio</th><th>Descripción</th></tr>
+        <tr><td>status</td><td>string</td><td>Sí</td><td><code>"active"</code> o <code>"inactive"</code></td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Response</h3>
+      <p><strong>200 OK</strong></p>
+      <pre>{
+  <span class="key">"status_code"</span>: <span class="number">200</span>,
+  <span class="key">"code"</span>:       <span class="string">"Success"</span>,
+  <span class="key">"message"</span>:    <span class="string">"ok"</span>
+}</pre>
+    </section>
+
+    <section class="card">
+      <h3>Errores posibles</h3>
+      <table class="error-table">
+        <tr><th>Código</th><th>Status</th><th>Causa</th></tr>
+        <tr><td class="code-col http-400">Bad request</td><td>400</td><td>Body inválido</td></tr>
+        <tr><td class="code-col http-400">Bad request</td><td>400</td><td>Status inválido (no es active/inactive)</td></tr>
+        <tr><td class="code-col http-401">Unauthorized</td><td>401</td><td>Token ausente o inválido</td></tr>
+        <tr><td class="code-col http-500">Internal Server Error</td><td>500</td><td>Usuario no encontrado o error de BD</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Diagrama de secuencia</h3>
+      <img class="diagram-img" src="/api/v1/docs/guide/plantuml/users-status.puml" alt="Diagrama de secuencia Cambiar estado">
+    </section>
+  </main>
+
+  <footer>
+    Paceron API &copy; 2026 &mdash; Documentación técnica
+  </footer>
+</body>
+</html>

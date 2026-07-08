@@ -1,0 +1,21 @@
+info:
+  name: Change Status user
+  type: http
+  seq: 14
+
+http:
+  method: PATCH
+  url: https://paceron-backend.onrender.com/api/v1/users/1/status
+  body:
+    type: json
+    data: |-
+      {
+        "status": "active"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
