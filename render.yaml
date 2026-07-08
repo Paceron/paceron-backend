@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: paceron-backend
+    runtime: go
+    repo: https://github.com/Paceron/paceron-backend
+    branch: main
+    plan: free
+    buildCommand: go build -o main ./cmd/api
+    startCommand: ./main
+    healthCheckPath: /ping
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: GIN_MODE
+        value: release

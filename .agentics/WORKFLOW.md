@@ -40,16 +40,46 @@ swag init --parseDependency -g cmd/api/docs.go --output cmd/api/docs
 
 ## Adding a new feature
 
+### 1. Spec-driven development (OpenSpec)
+
+Before writing code, define intent using OpenSpec:
+
+```bash
+/opsx:propose "descripción del cambio"
+```
+
+This creates:
+- `openspec/changes/<name>/proposal.md` — qué y por qué
+- `openspec/changes/<name>/specs/` — especificaciones detalladas
+- `openspec/changes/<name>/design.md` — diseño técnico
+- `openspec/changes/<name>/tasks.md` — tareas de implementación
+
+When ready, implement with:
+
+```bash
+/opsx:apply
+```
+
+### 2. Implementation steps
+
 1. **Domain model** → `domains/<name>/` (DTOs)
-2. **RestClient or DAO** → `restclients/<name>/` or `daos/` (interface + impl)
-3. **Service** → `services/` (interface + impl, inject DAO/Client)
-4. **Delegate** (optional) → `delegates/` if multiple services needed
-5. **Controller** → `controllers/` (validate + delegate to service)
-6. **Wire** → `app/app.go` (construct + inject)
-7. **Route** → `app/url_mappings.go` (add endpoint)
-8. **Swagger** → Add annotations, regenerate docs
-9. **Properties** → `config/properties/` if restclient config needed
-10. **Tests** → Write tests with mocked interfaces
+3. **RestClient or DAO** → `restclients/<name>/` or `daos/` (interface + impl)
+4. **Service** → `services/` (interface + impl, inject DAO/Client)
+5. **Delegate** (optional) → `delegates/` if multiple services needed
+6. **Controller** → `controllers/` (validate + delegate to service)
+7. **Wire** → `app/app.go` (construct + inject)
+8. **Route** → `app/url_mappings.go` (add endpoint)
+9. **Swagger** → Add annotations, regenerate docs
+10. **Properties** → `config/properties/` if restclient config needed
+11. **Tests** → Write tests with mocked interfaces
+
+> **Importante:** No saltar pasos. Cada paso debe completarse y verificarse antes de pasar al siguiente. Prohibido el "live coding".
+
+Archive when done:
+
+```bash
+/opsx:archive
+```
 
 ## Environment variables
 

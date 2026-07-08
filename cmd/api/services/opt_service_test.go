@@ -10,8 +10,12 @@ import (
 )
 
 type mockUserDao struct {
-	mockGetByID func(ctx *gin.Context, userID int64) (*dbs.User, error)
-	mockCreate  func(ctx *gin.Context, name, password string) (*dbs.User, error)
+	mockGetByID      func(ctx *gin.Context, userID int64) (*dbs.User, error)
+	mockCreate       func(ctx *gin.Context, name, password string) (*dbs.User, error)
+	mockFindByID     func(ctx *gin.Context, userID int64) (*dbs.User, error)
+	mockFindByEmail  func(ctx *gin.Context, email string) (*dbs.User, error)
+	mockUpdate       func(ctx *gin.Context, user *dbs.User) error
+	mockUpdateStatus func(ctx *gin.Context, userID int64, status string) error
 }
 
 func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -20,6 +24,22 @@ func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) 
 
 func (m mockUserDao) Create(ctx *gin.Context, name, password string) (*dbs.User, error) {
 	return m.mockCreate(ctx, name, password)
+}
+
+func (m mockUserDao) FindByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
+	return m.mockFindByID(ctx, userID)
+}
+
+func (m mockUserDao) FindByEmail(ctx *gin.Context, email string) (*dbs.User, error) {
+	return m.mockFindByEmail(ctx, email)
+}
+
+func (m mockUserDao) Update(ctx *gin.Context, user *dbs.User) error {
+	return m.mockUpdate(ctx, user)
+}
+
+func (m mockUserDao) UpdateStatus(ctx *gin.Context, userID int64, status string) error {
+	return m.mockUpdateStatus(ctx, userID, status)
 }
 
 func TestGetUser_Success(t *testing.T) {

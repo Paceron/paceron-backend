@@ -6,6 +6,7 @@ API backend con arquitectura en capas (Controllers → Services → DAOs/RestCli
 
 | Archivo | Descripción |
 |---------|-------------|
+| [`SETUP.md`](SETUP.md) | Setup local para nuevos desarrolladores |
 | [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) | Estructura de carpetas con descripciones |
 | [`STRUCTURE_FOLDERS.md`](STRUCTURE_FOLDERS.md) | Mapa arquitectónico solo con carpetas |
 | [`cmd/api/docs/documentationdetail/STRUCTURE.md`](cmd/api/docs/documentationdetail/STRUCTURE.md) | Árbol del proyecto en español |
@@ -13,6 +14,9 @@ API backend con arquitectura en capas (Controllers → Services → DAOs/RestCli
 | [`cmd/api/docs/documentationdetail/WORKFLOW.md`](cmd/api/docs/documentationdetail/WORKFLOW.md) | Flujo de trabajo en español |
 | [`cmd/api/docs/documentationdetail/GLOSSARY.md`](cmd/api/docs/documentationdetail/GLOSSARY.md) | Glosario detallado en español |
 | [`.agentics/`](.agentics/) | Documentación técnica para asistentes de IA (inglés) |
+| [`openspec/`](openspec/) | Configuración y cambios de OpenSpec (spec-driven development) |
+| [`.opencode/`](.opencode/) | Skills y comandos para OpenCode |
+| [`.qwen/`](.qwen/) | Skills y comandos para Qwen Code |
 
 ## Project root
 
@@ -30,6 +34,7 @@ graph TB
 
     subgraph Controllers
         PingController[pingController]
+        AuthController[authController]
         UserController[userController]
         WeatherController[exampleWeatherController]
         UserWeatherController[userWeatherController]
@@ -40,6 +45,7 @@ graph TB
     end
 
     subgraph Services
+        AuthService[authService]
         UserService[userService]
         WeatherService[exampleWeatherService]
     end
@@ -59,7 +65,9 @@ graph TB
     end
 
     Router --> |/ping| PingController
+    Router --> |/api/v1/auth/*| AuthController
     Router --> |/user/*| UserController
+    Router --> |/api/v1/users/*| UserController
     Router --> |/example/weather| WeatherController
     Router --> |/user/*/weather| UserWeatherController
     Router --> |/swagger/*| SwaggerUI
@@ -67,8 +75,10 @@ graph TB
     UserWeatherController --> UserWeatherDelegate
     UserWeatherDelegate --> UserService
     UserWeatherDelegate --> WeatherService
+    AuthController --> AuthService
     UserController --> UserService
     WeatherController --> WeatherService
+    AuthService --> UserDAO
     UserService --> UserDAO
     UserDAO --> DB
     WeatherService --> WeatherClient
@@ -123,17 +133,24 @@ sequenceDiagram
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/ping` | Health check |
-| GET | `/user/:user_id` | Get user by ID |
-| POST | `/user` | Create user |
+| POST | `/api/v1/auth/register` | Register new user (name, surname, email, dni, birth_date, password + optional fields) |
+| POST | `/api/v1/auth/login` | Login with email/password, returns JWT access + refresh tokens |
+| GET | `/api/v1/auth/user?id=&email=` | Get user by ID or email |
+| GET | `/user/:user_id` | Get user by ID (legacy) |
+| POST | `/user` | Create user (legacy) |
+| PUT | `/api/v1/users/:id` | Update user attributes (email change requires X-Current-Password header) |
+| PATCH | `/api/v1/users/:id/status` | Change user status (active/inactive/pause/blocked/suspended) |
 | GET | `/example/weather` | Get weather from Open-Meteo |
 | GET | `/user/:user_id/weather` | Get user with weather data |
-| GET | `/swagger/*any` | Swagger UI |
+| GET | `/swagger` | Swagger UI |
 
 ## Run
 
 ```bash
 go run cmd/api/main.go
 ```
+
+> Para setup completo ver [`SETUP.md`](SETUP.md).
 
 ## Swagger
 

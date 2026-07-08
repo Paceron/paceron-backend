@@ -1,13 +1,6 @@
 basePath: /
 definitions:
-  simple-arq-golang_cmd_api_delegates.UserWithWeatherResponse:
-    properties:
-      user:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
-      weather:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse'
-    type: object
-  simple-arq-golang_cmd_api_domains_apierror.APIError:
+  apierror.APIError:
     properties:
       code:
         type: string
@@ -16,102 +9,375 @@ definitions:
       status_code:
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_exampleweather.CurrentWeather:
+  auth.AuthorizationData:
     properties:
-      interval:
-        type: integer
-      is_day:
-        type: integer
-      temperature:
-        type: number
-      time:
+      access_token:
         type: string
-      weathercode:
+      expires_in:
         type: integer
-      winddirection:
-        type: integer
-      windspeed:
-        type: number
+      refresh_token:
+        type: string
     type: object
-  simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse:
+  auth.LoginRequest:
     properties:
-      current_weather:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.CurrentWeather'
-      elevation:
-        type: number
-      latitude:
-        type: number
-      longitude:
-        type: number
-    type: object
-  simple-arq-golang_cmd_api_domains_user.CreateUserRequest:
-    properties:
-      name:
+      email:
         type: string
       password:
         type: string
     required:
-    - name
+    - email
     - password
     type: object
-  simple-arq-golang_cmd_api_domains_user.User:
+  auth.LoginResponse:
     properties:
-      id:
-        type: integer
+      authorization:
+        $ref: '#/definitions/auth.AuthorizationData'
+      user:
+        $ref: '#/definitions/auth.RegisterResponse'
+    type: object
+  auth.RegisterRequest:
+    properties:
+      birth_date:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      dni:
+        type: string
+      email:
+        type: string
       name:
         type: string
+      number:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+      phone_contact:
+        type: string
+      province:
+        type: string
+      street:
+        type: string
+      surname:
+        type: string
+    required:
+    - birth_date
+    - dni
+    - email
+    - name
+    - password
+    - surname
+    type: object
+  auth.RegisterResponse:
+    properties:
+      birth_date:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      dni:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+      number:
+        type: string
+      phone:
+        type: string
+      phone_contact:
+        type: string
+      province:
+        type: string
+      status:
+        type: string
+      street:
+        type: string
+      surname:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  user.StatusChangeRequest:
+    properties:
+      status:
+        type: string
+    required:
+    - status
+    type: object
+  user.UserUpdateRequest:
+    properties:
+      birth_date:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      dni:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+      number:
+        type: string
+      phone:
+        type: string
+      phone_contact:
+        type: string
+      province:
+        type: string
+      street:
+        type: string
+      surname:
+        type: string
+    type: object
+  user.UserUpdateResponse:
+    properties:
+      birth_date:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      dni:
+        type: string
+      email:
+        type: string
+      name:
+        type: string
+      number:
+        type: string
+      phone:
+        type: string
+      phone_contact:
+        type: string
+      province:
+        type: string
+      status:
+        type: string
+      street:
+        type: string
+      surname:
+        type: string
+      user_id:
+        type: integer
     type: object
 host: localhost:8080
 info:
   contact:
-    email: dev@example.com
+    email: dev@paceron.com
     name: API Support
-  description: Base scaffolding for Go APIs with Gin framework
+  description: API para el registro y gestión de usuarios de Paceron
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Simple Arq Golang API
-  version: 1.0.0
+  title: Paceron Backend API
+  version: "1.0"
 paths:
-  /example/weather:
-    get:
+  /api/v1/auth/login:
+    post:
       consumes:
       - application/json
-      description: Get current weather data from Open-Meteo for given coordinates
+      description: Login with email and password. Returns access and refresh JWT tokens.
       parameters:
-      - description: Latitude (-90 to 90)
-        in: query
-        name: latitude
+      - description: User credentials
+        in: body
+        name: body
         required: true
-        type: number
-      - description: Longitude (-180 to 180)
-        in: query
-        name: longitude
-        required: true
-        type: number
-      - description: 'Include current weather (default: true)'
-        in: query
-        name: current_weather
-        type: boolean
+        schema:
+          $ref: '#/definitions/auth.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exampleweather.WeatherResponse'
+            $ref: '#/definitions/auth.LoginResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Get current weather
+            $ref: '#/definitions/apierror.APIError'
+      summary: Authenticate user and get tokens
       tags:
-      - weather
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account. Password is sent in the request body
+        (min 8 chars).
+      parameters:
+      - description: User registration data (password required)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/auth.RegisterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Register a new user
+      tags:
+      - auth
+  /api/v1/auth/user:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a user by providing either id or email as query parameter
+        (not both).
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        type: integer
+      - description: User email
+        in: query
+        name: email
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RegisterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Get user by ID or email
+      tags:
+      - auth
+  /api/v1/users/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update user attributes (all fields except id, status). Email change
+        requires X-Current-Password header.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Current password (required for email change)
+        in: header
+        name: X-Current-Password
+        type: string
+      - description: User data to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserUpdateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Update user attributes
+      tags:
+      - users
+  /api/v1/users/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: 'Change the status of a user. Valid statuses: active, inactive,
+        pause, blocked, suspended.'
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.StatusChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserUpdateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Change user status
+      tags:
+      - users
   /ping:
     get:
       description: Returns pong if the server is running
@@ -123,103 +389,4 @@ paths:
       summary: Health check
       tags:
       - health
-  /user:
-    post:
-      consumes:
-      - application/json
-      description: Create a new user with name and password
-      parameters:
-      - description: User data
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.CreateUserRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Create a new user
-      tags:
-      - users
-  /user/{user_id}:
-    get:
-      consumes:
-      - application/json
-      description: Retrieve a user by their unique ID
-      parameters:
-      - description: User ID
-        in: path
-        name: user_id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.User'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Get user by ID
-      tags:
-      - users
-  /user/{user_id}/weather:
-    get:
-      consumes:
-      - application/json
-      description: Get a user by ID and combine with current weather at given coordinates
-      parameters:
-      - description: User ID
-        in: path
-        name: user_id
-        required: true
-        type: integer
-      - description: Latitude (-90 to 90)
-        in: query
-        name: latitude
-        required: true
-        type: number
-      - description: Longitude (-180 to 180)
-        in: query
-        name: longitude
-        required: true
-        type: number
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_delegates.UserWithWeatherResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Get user with weather data
-      tags:
-      - users
-      - weather
 swagger: "2.0"

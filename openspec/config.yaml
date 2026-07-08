@@ -1,0 +1,24 @@
+schema: spec-driven
+
+language: es
+
+context: |
+  Language: Spanish (es). All communication, documentation, proposals, specs, designs, and task descriptions MUST be written in Spanish unless explicitly stated otherwise.
+  Tech stack: Go 1.26, Gin framework, GORM (PostgreSQL), logrus, testify, swaggo/swag
+  Architecture: Capas (Controllers → Delegates → Services → DAOs / RestClients → Infrastructure)
+  Project: Paceron backend API. API REST con arquitectura en capas.
+  Conventions: snake_case para archivos, camelCase para no exportados, PascalCase para exportados.
+  DI: Manual en app.go (sin frameworks).
+  Tests: testify para aserciones.
+  Development: Prohibido "live coding". Todo desarrollo sigue el flujo OpenSpec paso a paso (propose → specs → design → tasks → implement → archive). Cada tarea se completa y verifica antes de avanzar a la siguiente.
+
+rules:
+  proposal:
+    - Escribir en español
+    - Incluir sección "Objetivo", "Alcance", "No alcance", "Métrica de éxito"
+    - Leer README.md, STRUCTURE_FOLDERS.md y STRUCTURE_PACKAGE.md antes de proponer
+  tasks:
+    - Dividir tareas en chunks de máximo 4 horas
+    - Usar checklist con - [ ] / - [x]
+    - Prohibido "live coding": cada tarea se completa y verifica antes de pasar a la siguiente
+    - Una tarea = una unidad atómica verificable (commit lógico)

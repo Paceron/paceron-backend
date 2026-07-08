@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"simple-arq-golang/cmd/api/config"
+	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -29,13 +31,15 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 	})
 
 	if err != nil {
-		fmt.Printf("Cannot open postgres DB [%s]: %v\n", configDB.Name, err)
+		customlogger.Error(nil, "cannot open postgres DB", err,
+			customlogger.Tag("db_name", configDB.Name))
 		return nil, err
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		fmt.Printf("Cannot get sql.DB instance [%s]: %v\n", configDB.Name, err)
+		customlogger.Error(nil, "cannot get sql.DB instance", err,
+			customlogger.Tag("db_name", configDB.Name))
 		return nil, err
 	}
 
@@ -45,9 +49,15 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 
 	err = sqlDB.Ping()
 	if err != nil {
-		fmt.Printf("Error connecting to DB [%s]: %v\n", configDB.Name, err)
+		customlogger.Error(nil, "error connecting to DB", err,
+			customlogger.Tag("db_name", configDB.Name))
 		return nil, err
 	}
+
+	customlogger.Info(nil, "DB connected successfully",
+		customlogger.Tag("db_name", configDB.Name),
+		customlogger.Tag("host", configDB.Host),
+		customlogger.Tag("port", configDB.Port))
 
 	stats := sqlDB.Stats()
 	if stats.OpenConnections >= configDB.MaxOpenConnections {
@@ -58,7 +68,14 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		)
 	}
 
-	fmt.Printf("INIT DB SUCCESS [%s]\n", configDB.Name)
+	err = db.AutoMigrate(&dbs.User{})
+	if err != nil {
+		customlogger.Error(nil, "auto-migrate failed", err)
+		return nil, err
+	}
+
+	customlogger.Info(nil, "DB initialized successfully",
+		customlogger.Tag("db_name", configDB.Name))
 
 	return db, nil
 }

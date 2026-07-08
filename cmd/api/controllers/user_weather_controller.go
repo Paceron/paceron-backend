@@ -25,19 +25,6 @@ func NewUserWeatherController(delegate delegates.UserWeatherDelegate) UserWeathe
 	}
 }
 
-// GetUserWithWeather godoc
-// @Summary      Get user with weather data
-// @Description  Get a user by ID and combine with current weather at given coordinates
-// @Tags         users,weather
-// @Accept       json
-// @Produce      json
-// @Param        user_id    path  int     true  "User ID"
-// @Param        latitude   query  number  true  "Latitude (-90 to 90)"
-// @Param        longitude  query  number  true  "Longitude (-180 to 180)"
-// @Success      200  {object}  delegates.UserWithWeatherResponse
-// @Failure      400  {object}  apierror.APIError
-// @Failure      500  {object}  apierror.APIError
-// @Router       /user/{user_id}/weather [get]
 func (ctrl *userWeatherController) GetUserWithWeather(c *gin.Context) {
 	customlogger.Info(c, "incoming request to get user with weather", customlogger.TagMethod("GetUserWithWeather"))
 

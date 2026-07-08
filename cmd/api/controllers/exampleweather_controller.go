@@ -26,19 +26,6 @@ func NewExampleWeatherController(service services.ExampleWeatherServiceInterface
 	}
 }
 
-// GetWeather godoc
-// @Summary      Get current weather
-// @Description  Get current weather data from Open-Meteo for given coordinates
-// @Tags         weather
-// @Accept       json
-// @Produce      json
-// @Param        latitude         query  number  true   "Latitude (-90 to 90)"
-// @Param        longitude        query  number  true   "Longitude (-180 to 180)"
-// @Param        current_weather  query  boolean false  "Include current weather (default: true)"
-// @Success      200  {object}  exampleweather.WeatherResponse
-// @Failure      400  {object}  apierror.APIError
-// @Failure      500  {object}  apierror.APIError
-// @Router       /example/weather [get]
 func (ctrl *exampleWeatherController) GetWeather(c *gin.Context) {
 	customlogger.Info(c, "incoming request to get weather", customlogger.TagMethod("GetWeather"))
 

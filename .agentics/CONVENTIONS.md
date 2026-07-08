@@ -2,6 +2,9 @@
 
 ## General
 
+- **Communication language**: Spanish (es). All conversation, proposals, specs, designs, and documentation MUST be in Spanish unless explicitly stated otherwise.
+- **Spec-driven development**: Use OpenSpec for all new features. Start with `/opsx:propose`, implement with `/opsx:apply`, archive with `/opsx:archive`.
+
 - **Language**: Go 1.26
 - **Framework**: Gin (github.com/gin-gonic/gin)
 - **ORM**: GORM (gorm.io/gorm) with PostgreSQL driver
@@ -100,3 +103,16 @@ Then regenerate:
 ```bash
 swag init --parseDependency -g cmd/api/docs.go --output cmd/api/docs
 ```
+
+## Development constraints
+
+### Arquitectura obligatoria
+- Leer y entender la arquitectura definida en `README.md`, `STRUCTURE_FOLDERS.md` y `STRUCTURE_PACKAGE.md` antes de escribir código
+- Respetar AL 100% la arquitectura en capas: Controllers → Delegates/Services → DAOs/RestClients → Infrastructure
+- No desviarse de la estructura de carpetas definida
+
+### Desarrollo paso a paso estructurado
+- Prohibido el "live coding" — cada cambio debe seguir el flujo definido
+- Usar OpenSpec obligatoriamente: `/opsx:propose` → especificar → `/opsx:apply` → tareas → implementar → `/opsx:archive`
+- Cada tarea implementada debe ser una unidad atómica y verificable
+- No avanzar a la siguiente tarea sin validar la anterior
