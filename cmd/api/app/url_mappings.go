@@ -5,6 +5,7 @@ import (
 )
 
 func mapUrls(r *gin.Engine, app *Application) {
+	r.Use(CORSMiddleware())
 	r.Use(SetRequestID())
 
 	r.GET("/ping", app.pingController.Ping)
