@@ -126,21 +126,49 @@
   </div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
+    const hosts = {
+      local: 'http://localhost:8080',
+      production: 'https://paceron-backend.onrender.com',
+    };
+
+    let currentEnv = 'local';
+
     SwaggerUIBundle({
-      url: '/swagger/doc.json',
+      urls: [
+        {url: '/swagger/doc.json?env=local', name: 'Localhost'},
+        {url: '/swagger/doc.json?env=production', name: 'Production'},
+      ],
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
       layout: "BaseLayout",
       deepLinking: true,
       showExtensions: true,
       showCommonExtensions: true,
+      onComplete: function() {
+        const sel = document.querySelector('.servers select, select[data-selector-url]');
+        if (sel) {
+          sel.addEventListener('change', function() {
+            const opt = sel.options[sel.selectedIndex];
+            currentEnv = opt.textContent.toLowerCase().includes('production') ? 'production' : 'local';
+          });
+        }
+        const urlsSelect = document.querySelector('select[data-selector-url]');
+        if (urlsSelect) {
+          urlsSelect.addEventListener('change', function() {
+            const opt = urlsSelect.options[urlsSelect.selectedIndex];
+            currentEnv = opt.textContent.toLowerCase().includes('production') ? 'production' : 'local';
+          });
+        }
+      },
     });
 
     const bodylessMethods = ['get', 'delete', 'options', 'head'];
 
     async function openCurlModal() {
-      const resp = await fetch('/swagger/doc.json');
+      const env = currentEnv;
+      const resp = await fetch('/swagger/doc.json?env=' + env);
       const spec = await resp.json();
+      const baseUrl = hosts[env] || 'http://localhost:8080';
       const container = document.getElementById('curl-modal-body');
       container.innerHTML = '';
       container._allCurl = '';
@@ -151,7 +179,7 @@
           if (method === 'parameters') continue;
           const op = spec.paths[path][method];
           let curl = 'curl -X ' + method.toUpperCase() + ' \\\n';
-          curl += '  http://localhost:8080' + path.replace(/\{([^}]+)\}/g, '{$1}') + ' \\\n';
+          curl += '  ' + baseUrl + path.replace(/\{([^}]+)\}/g, '{$1}') + ' \\\n';
           curl += '  -H "Content-Type: application/json"';
           if (op && op.parameters) {
             op.parameters.forEach(p => {
