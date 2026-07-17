@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,9 +38,17 @@ type DB struct {
 	ConnMaxLifetime    time.Duration
 }
 
+type SMTP struct {
+	Host        string
+	Port        int
+	User        string
+	AppPassword string
+}
+
 var (
 	MyDB      DB
 	JWTSecret string
+	MySMTP    SMTP
 )
 
 func (d Environment) String() string {
@@ -97,14 +106,17 @@ func LoadValues() {
 
 func initLocal() {
 	loadDBConfig()
+	loadSMTPConfig()
 }
 
 func initProd() {
 	loadDBConfig()
+	loadSMTPConfig()
 }
 
 func initTest() {
 	loadDBConfig()
+	loadSMTPConfig()
 }
 
 func loadDBConfig() {
@@ -120,6 +132,18 @@ func loadDBConfig() {
 	}
 	MyDB = LoadDBConfigDB(MyDB)
 	JWTSecret = os.Getenv("JWT_SECRET")
+}
+
+func loadSMTPConfig() {
+	MySMTP.Host = os.Getenv("SMTP_HOST")
+	MySMTP.User = os.Getenv("GMAIL_USER")
+	MySMTP.AppPassword = os.Getenv("GMAIL_APP_PASSWORD")
+
+	port, err := strconv.Atoi(os.Getenv("SMTP_PORT"))
+	if err != nil || port == 0 {
+		port = 587
+	}
+	MySMTP.Port = port
 }
 
 func parseDatabaseURL(dbURL string) DB {

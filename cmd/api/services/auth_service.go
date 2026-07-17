@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/utils"
 )
 
@@ -25,11 +26,13 @@ type AuthServiceInterface interface {
 
 type authService struct {
 	authDao daos.AuthDaoInterface
+	mailer  mailer.MailerInterface
 }
 
-func NewAuthService(authDao daos.AuthDaoInterface) AuthServiceInterface {
+func NewAuthService(authDao daos.AuthDaoInterface, mailerClient mailer.MailerInterface) AuthServiceInterface {
 	return &authService{
 		authDao: authDao,
+		mailer:  mailerClient,
 	}
 }
 
@@ -81,6 +84,14 @@ func (s *authService) Register(ctx *gin.Context, req *auth.RegisterRequest, pass
 	customlogger.Info(ctx, "user registered successfully",
 		customlogger.Tag("email", createdUser.Email),
 		customlogger.TagMethod("Register"))
+
+	if s.mailer != nil {
+		if err := s.mailer.SendWelcomeEmail(ctx, createdUser.Email, createdUser.Name); err != nil {
+			customlogger.Error(ctx, "error sending welcome email", err,
+				customlogger.Tag("email", createdUser.Email),
+				customlogger.Tag("step", "send_welcome_email"))
+		}
+	}
 
 	return toResponse(createdUser), nil
 }
