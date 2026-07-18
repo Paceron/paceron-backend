@@ -8,5 +8,5 @@ type AuthorizationData struct {
 
 type LoginResponse struct {
 	Authorization AuthorizationData `json:"authorization"`
-	User          RegisterResponse  `json:"user"`
+	User          UserResponse      `json:"user"`
 }

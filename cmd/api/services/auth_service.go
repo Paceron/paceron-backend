@@ -18,9 +18,9 @@ import (
 )
 
 type AuthServiceInterface interface {
-	Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error)
+	Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error)
 	Login(ctx *gin.Context, email, password string) (*auth.LoginResponse, error)
-	GetUser(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error)
+	GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error)
 }
 
 type authService struct {
@@ -33,7 +33,7 @@ func NewAuthService(authDao daos.AuthDaoInterface) AuthServiceInterface {
 	}
 }
 
-func (s *authService) Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
+func (s *authService) Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
 	existingEmail, err := s.authDao.FindByEmail(ctx, req.Email)
 	if err != nil {
 		customlogger.Error(ctx, "error checking existing email", err,
@@ -149,7 +149,7 @@ func (s *authService) Login(ctx *gin.Context, email, password string) (*auth.Log
 	}, nil
 }
 
-func (s *authService) GetUser(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
+func (s *authService) GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
 	var user *dbs.User
 	var err error
 
@@ -204,8 +204,8 @@ func toDBModel(req *auth.RegisterRequest, hashedPassword string) *dbs.User {
 	}
 }
 
-func toResponse(userDB *dbs.User) *auth.RegisterResponse {
-	return &auth.RegisterResponse{
+func toResponse(userDB *dbs.User) *auth.UserResponse {
+	return &auth.UserResponse{
 		UserID:       userDB.ID,
 		Name:         userDB.Name,
 		Surname:      userDB.Surname,
@@ -213,6 +213,7 @@ func toResponse(userDB *dbs.User) *auth.RegisterResponse {
 		Phone:        userDB.Phone,
 		PhoneContact: userDB.PhoneContact,
 		Country:      userDB.Country,
+		BankAlias:    ptrStringDeref(userDB.BankAlias),
 		Province:     userDB.Province,
 		City:         userDB.City,
 		Street:       userDB.Street,
@@ -311,4 +312,11 @@ func ValidatePassword(password string) string {
 		return "la contraseña contiene caracteres no permitidos"
 	}
 	return ""
+}
+
+func ptrStringDeref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
