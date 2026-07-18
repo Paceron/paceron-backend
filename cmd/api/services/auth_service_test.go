@@ -274,6 +274,8 @@ func TestRegister_Success(t *testing.T) {
 		},
 		mockCreate: func(ctx *gin.Context, user *dbs.User) (*dbs.User, error) {
 			user.ID = 1
+			bankAlias := ""
+			user.BankAlias = &bankAlias
 			return user, nil
 		},
 	}
@@ -515,25 +517,45 @@ func TestToDBModel(t *testing.T) {
 
 func TestToResponse(t *testing.T) {
 	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	bankAlias := "mi-banco-123"
 	userDB := &dbs.User{
-		ID:       1,
-		Name:     "John",
-		Surname:  "Doe",
-		Email:    "john@test.com",
-		DNI:      "12345678",
+		ID:        1,
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		DNI:       "12345678",
 		BirthDate: birthDate,
+		BankAlias: &bankAlias,
 	}
 
 	resp := toResponse(userDB)
 	assert.Equal(t, int64(1), resp.UserID)
 	assert.Equal(t, "John", resp.Name)
 	assert.Equal(t, "15/04/1990", resp.BirthDate)
+	assert.Equal(t, "mi-banco-123", resp.BankAlias)
+}
+
+func TestToResponse_BankAliasNil(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	userDB := &dbs.User{
+		ID:        1,
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		DNI:       "12345678",
+		BirthDate: birthDate,
+		BankAlias: nil,
+	}
+
+	resp := toResponse(userDB)
+	assert.Equal(t, "", resp.BankAlias)
 }
 
 func TestLogin_Success(t *testing.T) {
 	config.JWTSecret = "test-secret-key-for-testing"
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("securePass123"), bcrypt.DefaultCost)
 	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	bankAlias := "mi-banco"
 
 	mockDao := mockAuthDao{
 		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
@@ -545,6 +567,7 @@ func TestLogin_Success(t *testing.T) {
 				Password:  string(hashedPassword),
 				Status:    "active",
 				BirthDate: birthDate,
+				BankAlias: &bankAlias,
 			}, nil
 		},
 	}

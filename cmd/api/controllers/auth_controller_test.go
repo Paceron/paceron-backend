@@ -23,12 +23,12 @@ func setupGetUserTest() (*httptest.ResponseRecorder, *gin.Context) {
 }
 
 type mockAuthService struct {
-	mockRegister func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error)
+	mockRegister func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error)
 	mockLogin    func(ctx *gin.Context, email, password string) (*auth.LoginResponse, error)
-	mockGetUser  func(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error)
+	mockGetUser  func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error)
 }
 
-func (m mockAuthService) Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
+func (m mockAuthService) Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
 	return m.mockRegister(ctx, req, password)
 }
 
@@ -36,14 +36,14 @@ func (m mockAuthService) Login(ctx *gin.Context, email, password string) (*auth.
 	return m.mockLogin(ctx, email, password)
 }
 
-func (m mockAuthService) GetUser(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
+func (m mockAuthService) GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
 	return m.mockGetUser(ctx, id, email)
 }
 
 func TestRegister_Success(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
-			return &auth.RegisterResponse{
+		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
+			return &auth.UserResponse{
 				UserID:    1,
 				Name:      "John",
 				Surname:   "Doe",
@@ -65,7 +65,7 @@ func TestRegister_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	var result auth.RegisterResponse
+	var result auth.UserResponse
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equal(t, int64(1), result.UserID)
 	assert.Equal(t, "John", result.Name)
@@ -130,7 +130,7 @@ func TestRegister_ValidationError(t *testing.T) {
 
 func TestRegister_ConflictEmail(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
+		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
 			return nil, errors.New("el email ya está registrado")
 		},
 	}
@@ -149,7 +149,7 @@ func TestRegister_ConflictEmail(t *testing.T) {
 
 func TestRegister_ConflictDNI(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
+		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
 			return nil, errors.New("el DNI ya está registrado")
 		},
 	}
@@ -168,8 +168,8 @@ func TestRegister_ConflictDNI(t *testing.T) {
 
 func TestGetUser_ByID_Success(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
-			return &auth.RegisterResponse{
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
+			return &auth.UserResponse{
 				UserID:    1,
 				Name:      "John",
 				Surname:   "Doe",
@@ -187,7 +187,7 @@ func TestGetUser_ByID_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	var result auth.RegisterResponse
+	var result auth.UserResponse
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equal(t, int64(1), result.UserID)
 	assert.Equal(t, "John", result.Name)
@@ -195,8 +195,8 @@ func TestGetUser_ByID_Success(t *testing.T) {
 
 func TestGetUser_ByEmail_Success(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
-			return &auth.RegisterResponse{
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
+			return &auth.UserResponse{
 				UserID:    2,
 				Name:      "Jane",
 				Surname:   "Smith",
@@ -214,7 +214,7 @@ func TestGetUser_ByEmail_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	var result auth.RegisterResponse
+	var result auth.UserResponse
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equal(t, int64(2), result.UserID)
 	assert.Equal(t, "jane@test.com", result.Email)
@@ -245,7 +245,7 @@ func TestAuthGetUser_InvalidID(t *testing.T) {
 
 func TestAuthGetUser_NotFound(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
 			return nil, errors.New("usuario no encontrado")
 		},
 	}
@@ -264,7 +264,7 @@ func TestAuthGetUser_NotFound(t *testing.T) {
 
 func TestAuthGetUser_InternalError(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.RegisterResponse, error) {
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
 			return nil, errors.New("internal error")
 		},
 	}
@@ -279,7 +279,7 @@ func TestAuthGetUser_InternalError(t *testing.T) {
 
 func TestRegister_InternalError(t *testing.T) {
 	mockSvc := mockAuthService{
-		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.RegisterResponse, error) {
+		mockRegister: func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
 			return nil, errors.New("internal error")
 		},
 	}
@@ -305,7 +305,7 @@ func TestLogin_Success(t *testing.T) {
 					RefreshToken: "refresh-token",
 					ExpiresIn:    3600,
 				},
-				User: auth.RegisterResponse{
+				User: auth.UserResponse{
 					UserID: 1, Name: "John", Email: "john@test.com",
 				},
 			}, nil

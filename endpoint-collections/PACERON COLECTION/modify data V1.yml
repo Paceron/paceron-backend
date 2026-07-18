@@ -10,9 +10,7 @@ http:
     type: json
     data: |-
       {
-        "country": "ARG",
-        "province": "Cordoba",
-        "city": "Cordoba"
+        "bank_alias": "MI.ALIAS.TEST"
       }
   auth: inherit
 
