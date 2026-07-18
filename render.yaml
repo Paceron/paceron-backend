@@ -16,4 +16,4 @@ services:
       - key: GIN_MODE
         value: release
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://paceron-frontend.onrender.com,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,https://paceron-frontend-git-develop-paceron.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"

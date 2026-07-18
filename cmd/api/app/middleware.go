@@ -53,6 +53,8 @@ func CORSMiddleware() gin.HandlerFunc {
 			"http://localhost:8081",
 			"http://localhost:5173",
 			"http://localhost:3000",
+			"https://paceron-frontend.vercel.app",
+			"https://paceron-frontend-git-develop-paceron.vercel.app",
 		}
 	}
 
