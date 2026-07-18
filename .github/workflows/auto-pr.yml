@@ -1,0 +1,65 @@
+name: Auto PR to develop
+
+on:
+  push:
+    branches:
+      - feature/**
+      - fix/**
+      - backport/**
+      - chore/**
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  create-pr:
+    name: Create draft PR if not exists
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create draft PR to develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+
+          EXISTING=$(gh pr list --head "$BRANCH" --base develop --state open --json number -q '.[0].number')
+
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING already exists for $BRANCH → develop"
+            exit 0
+          fi
+
+          BRANCH_TYPE="${BRANCH%%/*}"
+
+          case "$BRANCH_TYPE" in
+            feature)  LABEL="feature" ;;
+            fix)      LABEL="fix" ;;
+            backport) LABEL="backport" ;;
+            chore)    LABEL="chore" ;;
+            *)        LABEL="other" ;;
+          esac
+
+          gh pr create \
+            --base develop \
+            --head "$BRANCH" \
+            --title "[$LABEL] $BRANCH" \
+            --body "$(cat <<EOF
+          ## Descripcion
+
+          > Completar con el detalle del cambio.
+
+          ## Como probarlo
+
+          > Completar con los pasos para verificar.
+
+          ---
+          PR creado automaticamente en el primer push a \`$BRANCH\`.
+          Actualizar titulo y descripcion antes de solicitar review.
+          EOF
+          )" \
+            --draft
