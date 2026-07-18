@@ -280,7 +280,7 @@ func TestRegister_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -303,7 +303,7 @@ func TestRegister_EmailDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -327,7 +327,7 @@ func TestRegister_DNIDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -351,7 +351,7 @@ func TestRegister_FindByDNIError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -371,7 +371,7 @@ func TestRegister_FindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -397,7 +397,7 @@ func TestRegister_CreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -424,7 +424,7 @@ func TestGetUser_ByID(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	resp, err := svc.GetUser(nil, 1, "")
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), resp.UserID)
@@ -445,7 +445,7 @@ func TestGetUser_ByEmail(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	resp, err := svc.GetUser(nil, 0, "jane@test.com")
 	assert.NoError(t, err)
 	assert.Equal(t, int64(2), resp.UserID)
@@ -459,7 +459,7 @@ func TestAuthGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.GetUser(nil, 999, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -472,7 +472,7 @@ func TestGetUser_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.GetUser(nil, 1, "")
 	assert.Error(t, err)
 }
@@ -480,7 +480,7 @@ func TestGetUser_FindByIDError(t *testing.T) {
 func TestGetUser_NoParams(t *testing.T) {
 	mockDao := mockAuthDao{}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.GetUser(nil, 0, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "debe proporcionar id o email")
@@ -489,7 +489,7 @@ func TestGetUser_NoParams(t *testing.T) {
 func TestGetUser_BothParams(t *testing.T) {
 	mockDao := mockAuthDao{}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.GetUser(nil, 1, "john@test.com")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no ambos")
@@ -572,7 +572,7 @@ func TestLogin_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	resp, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp.Authorization.AccessToken)
@@ -592,7 +592,7 @@ func TestLogin_EmailNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.Login(nil, "nonexistent@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -614,7 +614,7 @@ func TestLogin_InactiveUser(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -636,7 +636,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.Login(nil, "john@test.com", "wrongPassword")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -651,7 +651,7 @@ func TestLogin_FindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao)
+	svc := NewAuthService(mockDao, nil)
 	_, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")

@@ -10,6 +10,7 @@ import (
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
 	"simple-arq-golang/cmd/api/services"
 )
@@ -34,9 +35,21 @@ func NewApplication() *Application {
 	userService := services.NewUserService(userDao)
 	userController := controllers.NewUserController(userService)
 
+	// Mailer
+	mailerLogger := customlogger.NewHTTPClientLogger()
+	mailerClient, err := mailer.New(
+		mailer.WithHost(config.MySMTP.Host),
+		mailer.WithPort(config.MySMTP.Port),
+		mailer.WithCredentials(config.MySMTP.User, config.MySMTP.AppPassword),
+		mailer.WithLogger(mailerLogger),
+	)
+	if err != nil {
+		customlogger.Error(nil, "error initializing mailer", err)
+	}
+
 	// Auth flow
 	authDao := daos.NewAuthDao(db)
-	authService := services.NewAuthService(authDao)
+	authService := services.NewAuthService(authDao, mailerClient)
 	authController := controllers.NewAuthController(authService)
 
 	// Example Weather flow
