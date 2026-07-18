@@ -140,6 +140,9 @@ func (s *userService) Update(ctx *gin.Context, id int64, req *user.UserUpdateReq
 		}
 		userDB.BirthDate = parsed
 	}
+	if req.BankAlias != nil {
+		userDB.BankAlias = ptrString(strings.TrimSpace(*req.BankAlias))
+	}
 
 	err = s.userDao.Update(ctx, userDB)
 	if err != nil {
@@ -209,6 +212,7 @@ func toUserUpdateResponse(userDB *dbs.User) *user.UserUpdateResponse {
 		Dni:          userDB.DNI,
 		BirthDate:    userDB.BirthDate.Format("02/01/2006"),
 		Status:       userDB.Status,
+		BankAlias:    userDB.BankAlias,
 	}
 }
 
@@ -279,5 +283,15 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 			return "birth_date debe tener formato dd/mm/aaaa"
 		}
 	}
+	if req.BankAlias != nil && *req.BankAlias != "" {
+		bankAliasRegex := regexp.MustCompile(`^[a-zA-Z0-9.\-]{6,20}$`)
+		if !bankAliasRegex.MatchString(*req.BankAlias) {
+			return "bank_alias debe tener entre 6 y 20 caracteres (letras, números, puntos o guiones)"
+		}
+	}
 	return ""
+}
+
+func ptrString(s string) *string {
+	return &s
 }

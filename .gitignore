@@ -33,3 +33,4 @@ tmp/
 
 # CI/CD generated artifacts
 ci/test_coverage/
+cmd/api/__debug*

@@ -14,5 +14,6 @@ type UserUpdateResponse struct {
 	Number       string `json:"number,omitempty"`
 	Dni          string `json:"dni"`
 	BirthDate    string `json:"birth_date"`
-	Status       string `json:"status"`
+	Status       string  `json:"status"`
+	BankAlias    *string `json:"bank_alias,omitempty"`
 }

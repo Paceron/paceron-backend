@@ -13,4 +13,5 @@ type UserUpdateRequest struct {
 	Number       *string `json:"number,omitempty"`
 	Dni          *string `json:"dni,omitempty"`
 	BirthDate    *string `json:"birth_date,omitempty"`
+	BankAlias    *string `json:"bank_alias,omitempty"`
 }

@@ -45,6 +45,42 @@ func TestUserUpdate_Success(t *testing.T) {
 	assert.Equal(t, "John Updated", resp.Name)
 }
 
+func TestUserUpdate_BankAliasSuccess(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	var savedUser *dbs.User
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Surname:   "Doe",
+				Email:     "john@test.com",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return nil, nil
+		},
+		mockUpdate: func(ctx *gin.Context, user *dbs.User) error {
+			savedUser = user
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao)
+	bankAlias := "mi-banco-123"
+	req := &user.UserUpdateRequest{
+		BankAlias: &bankAlias,
+	}
+
+	resp, err := svc.Update(nil, 1, req, "")
+	assert.NoError(t, err)
+	assert.NotNil(t, savedUser)
+	assert.NotNil(t, resp.BankAlias)
+	assert.Equal(t, "mi-banco-123", *resp.BankAlias)
+}
+
 func TestUserUpdate_UserNotFound(t *testing.T) {
 	mockDao := mockUserDao{
 		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -277,4 +313,48 @@ func TestToUserUpdateResponse(t *testing.T) {
 	assert.Equal(t, "John", resp.Name)
 	assert.Equal(t, "active", resp.Status)
 	assert.Equal(t, "15/04/1990", resp.BirthDate)
+}
+
+func TestValidateUserUpdateRequest_BankAliasValid(t *testing.T) {
+	bankAlias := "mi-alias.banco"
+	req := &user.UserUpdateRequest{
+		BankAlias: &bankAlias,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "", msg)
+}
+
+func TestValidateUserUpdateRequest_BankAliasTooShort(t *testing.T) {
+	bankAlias := "abc"
+	req := &user.UserUpdateRequest{
+		BankAlias: &bankAlias,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Contains(t, msg, "bank_alias")
+}
+
+func TestValidateUserUpdateRequest_BankAliasTooLong(t *testing.T) {
+	bankAlias := "este-alias-es-demasiado-largo-para-validar"
+	req := &user.UserUpdateRequest{
+		BankAlias: &bankAlias,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Contains(t, msg, "bank_alias")
+}
+
+func TestValidateUserUpdateRequest_BankAliasInvalidChars(t *testing.T) {
+	bankAlias := "alias@invalido!"
+	req := &user.UserUpdateRequest{
+		BankAlias: &bankAlias,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Contains(t, msg, "bank_alias")
+}
+
+func TestValidateUserUpdateRequest_BankAliasNull(t *testing.T) {
+	req := &user.UserUpdateRequest{
+		BankAlias: nil,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "", msg)
 }
