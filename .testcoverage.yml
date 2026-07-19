@@ -1,0 +1,10 @@
+# Config de vladopajic/go-test-coverage.
+#
+# Fase actual: solo medir, no bloquear. threshold en 0 a proposito.
+# Cuando el coverage real del proyecto sea solido, subir threshold.total
+# (y opcionalmente file/package) a 80 y recien ahi empezar a bloquear PRs.
+# No bajar el numero real del proyecto para cumplir el gate, subir el numero real.
+threshold:
+  file: 0
+  package: 0
+  total: 0

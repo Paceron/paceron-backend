@@ -82,6 +82,12 @@ Sea cual sea el tamaño: **siempre crear la rama dedicada antes de tocar código
 
 `go test ./...` corre sobre archivos `*_test.go` co-ubicados con el código que testean (convención `testify`). No hay base de datos real en CI — los tests que tocan capas con DB usan structs vacíos/mocks (ver `cmd/api/daos/user_dao_test.go`), no una conexión Postgres viva. Antes de mergear, la suite completa debe estar en verde (`ci.yml` la corre automáticamente en cada push/PR).
 
+### Coverage
+
+`make coverage` corre la suite con `-coverprofile` y muestra el resumen por paquete (`go tool cover -func`); `make coverage-html` además genera `ci/test_coverage/coverage.html` navegable. Mismo comando en local y en CI, para que el número sea comparable.
+
+`ci.yml` mide coverage en cada push/PR vía la action `vladopajic/go-test-coverage`, configurada en `.testcoverage.yml` — **hoy no bloquea el merge** (`threshold.total: 0` a propósito): la cobertura real del proyecto todavía es baja (muchos paquetes de infraestructura/DAOs sin tests). Cuando el número real sea sólido, subir `threshold.total` en `.testcoverage.yml` a 80% (o el valor que se acuerde) y recién ahí empieza a bloquear. No bajar el número real del proyecto para pasar el gate — subir el número real.
+
 ## CORS
 
 `CORSMiddleware()` en [`cmd/api/app/middleware.go`](cmd/api/app/middleware.go) lee `CORS_ALLOWED_ORIGINS` (env var, orígenes separados por coma). Si no está seteada, cae a una lista default hardcodeada en el código (hoy incluye localhost de desarrollo + los dominios de Vercel del frontend). En producción (Render, ver [`render.yaml`](render.yaml)) se configura explícitamente vía esa env var — al agregar un nuevo dominio de frontend, actualizar **ambos** lugares (el fallback en código y `render.yaml`) para que quede documentado en el repo, no solo en el dashboard de Render.
@@ -96,3 +102,4 @@ Sea cual sea el tamaño: **siempre crear la rama dedicada antes de tocar código
 
 - `render.yaml` tiene `branch: main`, pero el repo no tiene rama `main` (usa `master`/`develop`) — revisar si esto es intencional o un desalineamiento antes de tocar el deploy config.
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es un error real si el backend "no responde" al toque.
+- El toolchain de Go 1.26 descargado automáticamente por `GOTOOLCHAIN=auto` (módulo `golang.org/toolchain@...go1.26.0...` en el mod cache) no trae el binario `covdata` — falla con `go: no such tool "covdata"` al correr `go test -coverprofile` sobre paquetes sin ningún `_test.go`. Confirmado que no es caché corrupto (persiste tras redescarga limpia). Por eso `make coverage`/`ci.yml` corren coverage solo sobre paquetes con `TestGoFiles` (`go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test ...`), no sobre `./...` directo — no tocar ese patrón sin motivo, evita el bug.

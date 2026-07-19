@@ -45,3 +45,14 @@ jobs:
 
       - name: Run tests
         run: go test ./... -v
+
+      - name: Measure test coverage
+        run: |
+          mkdir -p ci/test_coverage
+          go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test -coverprofile=ci/test_coverage/coverage.out -covermode=atomic
+
+      - name: Check test coverage
+        uses: vladopajic/go-test-coverage@v2
+        with:
+          profile: ci/test_coverage/coverage.out
+          config: ./.testcoverage.yml
