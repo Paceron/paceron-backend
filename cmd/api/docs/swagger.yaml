@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  apierror.APIError:
+  simple-arq-golang_cmd_api_domains_apierror.APIError:
     properties:
       code:
         type: string
@@ -9,7 +9,7 @@ definitions:
       status_code:
         type: integer
     type: object
-  auth.AuthorizationData:
+  simple-arq-golang_cmd_api_domains_auth.AuthorizationData:
     properties:
       access_token:
         type: string
@@ -18,7 +18,7 @@ definitions:
       refresh_token:
         type: string
     type: object
-  auth.LoginRequest:
+  simple-arq-golang_cmd_api_domains_auth.LoginRequest:
     properties:
       email:
         type: string
@@ -28,14 +28,14 @@ definitions:
     - email
     - password
     type: object
-  auth.LoginResponse:
+  simple-arq-golang_cmd_api_domains_auth.LoginResponse:
     properties:
       authorization:
-        $ref: '#/definitions/auth.AuthorizationData'
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.AuthorizationData'
       user:
-        $ref: '#/definitions/auth.RegisterResponse'
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
     type: object
-  auth.RegisterRequest:
+  simple-arq-golang_cmd_api_domains_auth.RegisterRequest:
     properties:
       birth_date:
         type: string
@@ -71,8 +71,10 @@ definitions:
     - password
     - surname
     type: object
-  auth.RegisterResponse:
+  simple-arq-golang_cmd_api_domains_auth.UserResponse:
     properties:
+      bank_alias:
+        type: string
       birth_date:
         type: string
       city:
@@ -102,15 +104,188 @@ definitions:
       user_id:
         type: integer
     type: object
-  user.StatusChangeRequest:
+  simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest:
+    properties:
+      description:
+        description: Descripción opcional del permiso
+        type: string
+      name:
+        description: Nombre único del permiso (requerido)
+        type: string
+    required:
+    - name
+    type: object
+  simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_permission.PermissionResponse:
+    properties:
+      created_at:
+        description: Fecha de creación
+        type: string
+      description:
+        description: Descripción del permiso
+        type: string
+      id:
+        description: ID del permiso
+        type: integer
+      name:
+        description: Nombre del permiso
+        type: string
+      updated_at:
+        description: Fecha de última actualización
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest:
+    properties:
+      description:
+        description: Nueva descripción (opcional)
+        type: string
+      name:
+        description: Nuevo nombre del permiso (opcional)
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_role.CreateRoleRequest:
+    properties:
+      description:
+        description: Descripción opcional del rol
+        type: string
+      name:
+        description: Nombre único del rol (requerido)
+        type: string
+    required:
+    - name
+    type: object
+  simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_role.RoleResponse:
+    properties:
+      created_at:
+        description: Fecha de creación
+        type: string
+      description:
+        description: Descripción del rol
+        type: string
+      id:
+        description: ID del rol
+        type: integer
+      name:
+        description: Nombre del rol
+        type: string
+      updated_at:
+        description: Fecha de última actualización
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest:
+    properties:
+      description:
+        description: Nueva descripción (opcional)
+        type: string
+      name:
+        description: Nuevo nombre del rol (opcional)
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tier.CreateTierRequest:
+    properties:
+      description:
+        description: Descripción opcional del tier
+        type: string
+      name:
+        description: Nombre del tier (requerido)
+        type: string
+      role_id:
+        description: ID del rol al que pertenece (requerido)
+        type: integer
+    required:
+    - name
+    - role_id
+    type: object
+  simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tier.TierResponse:
+    properties:
+      created_at:
+        description: Fecha de creación
+        type: string
+      description:
+        description: Descripción del tier
+        type: string
+      id:
+        description: ID del tier
+        type: integer
+      name:
+        description: Nombre del tier
+        type: string
+      role_id:
+        description: ID del rol asociado
+        type: integer
+      role_name:
+        description: Nombre del rol asociado
+        type: string
+      updated_at:
+        description: Fecha de última actualización
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest:
+    properties:
+      description:
+        description: Nueva descripción (opcional)
+        type: string
+      name:
+        description: Nuevo nombre del tier (opcional)
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest:
+    properties:
+      permission_id:
+        description: ID del permiso a asignar (requerido)
+        type: integer
+    required:
+    - permission_id
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse:
+    properties:
+      asignation_date:
+        description: Fecha de asignación
+        type: string
+      id:
+        description: ID de la asignación
+        type: integer
+      permission_id:
+        description: ID del permiso
+        type: integer
+      tier_id:
+        description: ID del tier
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_user.StatusChangeRequest:
     properties:
       status:
         type: string
     required:
     - status
     type: object
-  user.UserUpdateRequest:
+  simple-arq-golang_cmd_api_domains_user.UserUpdateRequest:
     properties:
+      bank_alias:
+        type: string
       birth_date:
         type: string
       city:
@@ -136,8 +311,10 @@ definitions:
       surname:
         type: string
     type: object
-  user.UserUpdateResponse:
+  simple-arq-golang_cmd_api_domains_user.UserUpdateResponse:
     properties:
+      bank_alias:
+        type: string
       birth_date:
         type: string
       city:
@@ -167,18 +344,72 @@ definitions:
       user_id:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest:
+    properties:
+      role_id:
+        description: ID del rol a asignar (requerido)
+        type: integer
+      tier_id:
+        description: 'ID del tier (opcional, default: "base" del rol)'
+        type: integer
+    required:
+    - role_id
+    type: object
+  simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse:
+    properties:
+      assignment_date:
+        description: Fecha de asignación
+        type: string
+      id:
+        description: ID de la asignación
+        type: integer
+      role_id:
+        description: ID del rol asignado
+        type: integer
+      status:
+        description: Estado de la asignación
+        type: string
+      tier_id:
+        description: ID del tier asignado
+        type: integer
+      user_id:
+        description: ID del usuario
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_services.PermissionsQueryResponse:
+    properties:
+      roles:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_services.RolePermission'
+        type: array
+      user_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_services.RolePermission:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+      tier:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
-    email: dev@paceron.com
+    email: dev@example.com
     name: API Support
-  description: API para el registro y gestión de usuarios de Paceron
+  description: Base scaffolding for Go APIs with Gin framework
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Paceron Backend API
-  version: "1.0"
+  title: Simple Arq Golang API
+  version: 1.0.0
 paths:
   /api/v1/auth/login:
     post:
@@ -191,29 +422,60 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.LoginRequest'
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.LoginResponse'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Authenticate user and get tokens
       tags:
       - auth
+  /api/v1/auth/permissions:
+    get:
+      description: Returns all permissions for a user grouped by role and tier
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_services.PermissionsQueryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get user permissions
+      tags:
+      - permissions
   /api/v1/auth/register:
     post:
       consumes:
@@ -226,26 +488,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/auth.RegisterRequest'
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RegisterRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/auth.RegisterResponse'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Register a new user
       tags:
       - auth
@@ -270,22 +532,623 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/auth.RegisterResponse'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Get user by ID or email
       tags:
       - auth
+  /api/v1/permissions:
+    get:
+      description: Get all active permissions
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get all permissions
+      tags:
+      - permissions
+    post:
+      consumes:
+      - application/json
+      description: Creates a new permission with name and optional description
+      parameters:
+      - description: Permission data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Create a new permission
+      tags:
+      - permissions
+  /api/v1/permissions/{id}:
+    delete:
+      description: Soft deletes a permission by ID
+      parameters:
+      - description: Permission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Delete a permission
+      tags:
+      - permissions
+    get:
+      description: Get a permission by its ID
+      parameters:
+      - description: Permission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get permission by ID
+      tags:
+      - permissions
+    put:
+      consumes:
+      - application/json
+      description: Updates a permission by ID with optional fields
+      parameters:
+      - description: Permission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Update a permission
+      tags:
+      - permissions
+  /api/v1/permissions/by-name:
+    get:
+      description: Get a permission by its unique name
+      parameters:
+      - description: Permission name
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get permission by name
+      tags:
+      - permissions
+  /api/v1/roles:
+    get:
+      description: Get all active roles
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get all roles
+      tags:
+      - roles
+    post:
+      consumes:
+      - application/json
+      description: Creates a new role with name and optional description
+      parameters:
+      - description: Role data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.CreateRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Create a new role
+      tags:
+      - roles
+  /api/v1/roles/{id}:
+    delete:
+      description: Soft deletes a role by ID
+      parameters:
+      - description: Role ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Delete a role
+      tags:
+      - roles
+    get:
+      description: Get a role by its ID
+      parameters:
+      - description: Role ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get role by ID
+      tags:
+      - roles
+    put:
+      consumes:
+      - application/json
+      description: Updates a role by ID with optional fields
+      parameters:
+      - description: Role ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Update a role
+      tags:
+      - roles
+  /api/v1/roles/by-name:
+    get:
+      description: Get a role by its unique name
+      parameters:
+      - description: Role name
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get role by name
+      tags:
+      - roles
+  /api/v1/tiers:
+    get:
+      description: Get all active tiers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get all tiers
+      tags:
+      - tiers
+    post:
+      consumes:
+      - application/json
+      description: Creates a new tier associated with a role
+      parameters:
+      - description: Tier data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.CreateTierRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Create a new tier
+      tags:
+      - tiers
+  /api/v1/tiers/{id}:
+    delete:
+      description: Soft deletes a tier by ID
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Delete a tier
+      tags:
+      - tiers
+    get:
+      description: Get a tier by its ID
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get tier by ID
+      tags:
+      - tiers
+    put:
+      consumes:
+      - application/json
+      description: Updates a tier by ID with optional fields
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Update a tier
+      tags:
+      - tiers
+  /api/v1/tiers/{id}/permissions:
+    post:
+      consumes:
+      - application/json
+      description: Assigns a permission to a tier
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Permission to assign
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Assign permission to tier
+      tags:
+      - tier-permissions
+  /api/v1/tiers/{id}/permissions/{permission_id}:
+    delete:
+      description: Soft deletes a permission assignment from a tier
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Permission ID
+        in: path
+        name: permission_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Unassign permission from tier
+      tags:
+      - tier-permissions
+  /api/v1/tiers/by-name:
+    get:
+      description: Get a tier by its name
+      parameters:
+      - description: Tier name
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get tier by name
+      tags:
+      - tiers
   /api/v1/users/{id}:
     put:
       consumes:
@@ -307,37 +1170,80 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/user.UserUpdateRequest'
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/user.UserUpdateResponse'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/roles:
+    post:
+      consumes:
+      - application/json
+      description: 'Assigns a role to a user with optional tier (default: "base")'
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role to assign
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Assign role to user
+      tags:
+      - user-roles
   /api/v1/users/{id}/status:
     patch:
       consumes:
@@ -355,26 +1261,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/user.StatusChangeRequest'
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.StatusChangeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/user.UserUpdateResponse'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/apierror.APIError'
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Change user status
       tags:
       - users

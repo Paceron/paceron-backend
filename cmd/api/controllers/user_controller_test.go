@@ -257,3 +257,98 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
+
+func TestCreateUser_ServiceError(t *testing.T) {
+	mockService := mockUserService{
+		mockCreateUser: func(ctx *gin.Context, name, password string) (user.User, error) {
+			return user.User{}, errors.New("error al crear usuario")
+		},
+	}
+
+	controller := NewUserController(mockService)
+	response := httptest.NewRecorder()
+	body := `{"name":"test","password":"secret123"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/user", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.CreateUser(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestUserUpdate_ValidationError_EmptyName(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"name":""}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+}
+
+func TestUserUpdate_ValidationError_InvalidEmail(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"email":"invalid-email"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserUpdate_BirthDateFormatError(t *testing.T) {
+	mockSvc := mockUserService{
+		mockUpdate: func(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error) {
+			return nil, errors.New("birth_date debe tener formato dd/mm/aaaa")
+		},
+	}
+
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"birth_date":"15/04/1990"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+}
+
+func TestUserUpdate_InternalError(t *testing.T) {
+	mockSvc := mockUserService{
+		mockUpdate: func(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error) {
+			return nil, errors.New("error interno")
+		},
+	}
+
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"test"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}

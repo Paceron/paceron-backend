@@ -35,7 +35,7 @@ func NewAuthController(authService services.AuthServiceInterface) AuthController
 // @Accept       json
 // @Produce      json
 // @Param        body  body      auth.RegisterRequest  true  "User registration data (password required)"
-// @Success      201   {object}  auth.RegisterResponse
+// @Success      201   {object}  auth.UserResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      409   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
@@ -157,7 +157,7 @@ func (ac *authController) Login(c *gin.Context) {
 // @Produce      json
 // @Param        id     query     int     false  "User ID"
 // @Param        email  query     string  false  "User email"
-// @Success      200    {object}  auth.RegisterResponse
+// @Success      200    {object}  auth.UserResponse
 // @Failure      400    {object}  apierror.APIError
 // @Failure      404    {object}  apierror.APIError
 // @Failure      500    {object}  apierror.APIError

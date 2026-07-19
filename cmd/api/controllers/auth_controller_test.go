@@ -405,3 +405,89 @@ func TestLogin_InternalError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
+
+func TestRegister_ValidationError_InvalidEmail(t *testing.T) {
+	mockSvc := mockAuthService{}
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"John","surname":"Doe","email":"not-an-email","dni":"12345678","birth_date":"15/04/1990","password":"securePass123"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Register(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+}
+
+func TestRegister_ValidationError_EmptyName(t *testing.T) {
+	mockSvc := mockAuthService{}
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"","surname":"Doe","email":"john@test.com","dni":"12345678","birth_date":"15/04/1990","password":"securePass123"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Register(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestRegister_ValidationError_EmptyDNI(t *testing.T) {
+	mockSvc := mockAuthService{}
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"John","surname":"Doe","email":"john@test.com","dni":"","birth_date":"15/04/1990","password":"securePass123"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Register(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestGetUser_BothParams(t *testing.T) {
+	mockSvc := mockAuthService{
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
+			return nil, errors.New("debe proporcionar solo id o email, no ambos")
+		},
+	}
+
+	response, c := setupGetUserTest()
+	c.Request.URL.RawQuery = "id=1&email=john@test.com"
+	controller := NewAuthController(mockSvc)
+	controller.GetUser(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestGetUser_InvalidIDFormat(t *testing.T) {
+	mockSvc := mockAuthService{}
+	response, c := setupGetUserTest()
+	c.Request.URL.RawQuery = "id=abc"
+	controller := NewAuthController(mockSvc)
+	controller.GetUser(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestGetUser_ByID_Success_WithServiceError(t *testing.T) {
+	mockSvc := mockAuthService{
+		mockGetUser: func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
+			return nil, errors.New("internal error")
+		},
+	}
+
+	response, c := setupGetUserTest()
+	c.Request.URL.RawQuery = "id=1"
+	controller := NewAuthController(mockSvc)
+	controller.GetUser(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}

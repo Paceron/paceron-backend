@@ -1,0 +1,15 @@
+info:
+  name: eliminar permiso gestionar_usuarios
+  type: http
+  seq: 21
+
+http:
+  method: DELETE
+  url: http://localhost:8080/api/v1/permissions/3
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
