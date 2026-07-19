@@ -1,0 +1,21 @@
+info:
+  name: asignar rol corredor a usuario 1
+  type: http
+  seq: 15
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/users/11/roles
+  body:
+    type: json
+    data: |-
+      {
+        "role_id": 1
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

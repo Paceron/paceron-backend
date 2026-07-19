@@ -1,0 +1,22 @@
+info:
+  name: actualizar rol corredor
+  type: http
+  seq: 18
+
+http:
+  method: PUT
+  url: http://localhost:8080/api/v1/roles/1
+  body:
+    type: json
+    data: |-
+      {
+        "name": "corredor",
+        "description": "Rol de corredor actualizado"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,21 @@
+info:
+  name: asignar ver_reportes a tier premium corredor
+  type: http
+  seq: 12
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/tiers/2/permissions
+  body:
+    type: json
+    data: |-
+      {
+        "permission_id": 2
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

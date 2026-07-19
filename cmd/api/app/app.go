@@ -16,11 +16,17 @@ import (
 )
 
 type Application struct {
-	pingController          controllers.PingController
-	userController          controllers.UserController
-	authController          controllers.AuthController
-	exampleWeatherController controllers.ExampleWeatherController
-	userWeatherController    controllers.UserWeatherController
+	pingController               controllers.PingController
+	userController               controllers.UserController
+	authController               controllers.AuthController
+	exampleWeatherController     controllers.ExampleWeatherController
+	userWeatherController        controllers.UserWeatherController
+	permissionController         controllers.PermissionController
+	tierController               controllers.TierController
+	roleController               controllers.RoleController
+	tierPermissionController     controllers.TierPermissionController
+	userRoleController           controllers.UserRoleController
+	permissionsQueryController   controllers.PermissionsQueryController
 }
 
 func NewApplication() *Application {
@@ -77,11 +83,46 @@ func NewApplication() *Application {
 	userWeatherDelegate := delegates.NewUserWeatherDelegate(userService, exampleWeatherService)
 	userWeatherController := controllers.NewUserWeatherController(userWeatherDelegate)
 
+	// Permission flow
+	permissionDao := daos.NewPermissionDao(db)
+	permissionService := services.NewPermissionService(permissionDao)
+	permissionController := controllers.NewPermissionController(permissionService)
+
+	// Role flow
+	roleDao := daos.NewRoleDao(db)
+	roleService := services.NewRoleService(roleDao)
+	roleController := controllers.NewRoleController(roleService)
+
+	// Tier flow
+	tierDao := daos.NewTierDao(db)
+	tierService := services.NewTierService(tierDao, roleDao)
+	tierController := controllers.NewTierController(tierService)
+
+	// Tier Permission flow
+	tierPermissionDao := daos.NewTierPermissionDao(db)
+	tierPermissionService := services.NewTierPermissionService(tierPermissionDao, tierDao, permissionDao)
+	tierPermissionController := controllers.NewTierPermissionController(tierPermissionService)
+
+	// User Role flow
+	userRoleDao := daos.NewUserRoleDao(db)
+	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao)
+	userRoleController := controllers.NewUserRoleController(userRoleService)
+
+	// Permissions Query flow
+	permissionsQueryService := services.NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermissionDao, permissionDao)
+	permissionsQueryController := controllers.NewPermissionsQueryController(permissionsQueryService)
+
 	return &Application{
-		pingController:           controllers.NewPingController(),
-		userController:           userController,
-		authController:           authController,
-		exampleWeatherController: exampleWeatherController,
-		userWeatherController:    userWeatherController,
+		pingController:            controllers.NewPingController(),
+		userController:            userController,
+		authController:            authController,
+		exampleWeatherController:  exampleWeatherController,
+		userWeatherController:     userWeatherController,
+		permissionController:      permissionController,
+		tierController:            tierController,
+		roleController:            roleController,
+		tierPermissionController:  tierPermissionController,
+		userRoleController:        userRoleController,
+		permissionsQueryController: permissionsQueryController,
 	}
 }

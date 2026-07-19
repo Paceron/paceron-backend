@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@paceron.com"
+            "email": "dev@example.com"
         },
         "license": {
             "name": "MIT",
@@ -43,7 +43,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginRequest"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginRequest"
                         }
                     }
                 ],
@@ -51,25 +51,72 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.LoginResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/permissions": {
+            "get": {
+                "description": "Returns all permissions for a user grouped by role and tier",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Get user permissions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_services.PermissionsQueryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     }
                 }
@@ -95,7 +142,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/auth.RegisterRequest"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.RegisterRequest"
                         }
                     }
                 ],
@@ -103,25 +150,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/auth.RegisterResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     }
                 }
@@ -158,25 +205,933 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/auth.RegisterResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/permissions": {
+            "get": {
+                "description": "Get all active permissions",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Get all permissions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new permission with name and optional description",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Create a new permission",
+                "parameters": [
+                    {
+                        "description": "Permission data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/permissions/by-name": {
+            "get": {
+                "description": "Get a permission by its unique name",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Get permission by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Permission name",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/permissions/{id}": {
+            "get": {
+                "description": "Get a permission by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Get permission by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Permission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates a permission by ID with optional fields",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Update a permission",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Permission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Soft deletes a permission by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "permissions"
+                ],
+                "summary": "Delete a permission",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Permission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/roles": {
+            "get": {
+                "description": "Get all active roles",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Get all roles",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new role with name and optional description",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Create a new role",
+                "parameters": [
+                    {
+                        "description": "Role data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.CreateRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/roles/by-name": {
+            "get": {
+                "description": "Get a role by its unique name",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Get role by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Role name",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/roles/{id}": {
+            "get": {
+                "description": "Get a role by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Get role by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates a role by ID with optional fields",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Update a role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Soft deletes a role by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "roles"
+                ],
+                "summary": "Delete a role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tiers": {
+            "get": {
+                "description": "Get all active tiers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Get all tiers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new tier associated with a role",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Create a new tier",
+                "parameters": [
+                    {
+                        "description": "Tier data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.CreateTierRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tiers/by-name": {
+            "get": {
+                "description": "Get a tier by its name",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Get tier by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tier name",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tiers/{id}": {
+            "get": {
+                "description": "Get a tier by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Get tier by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates a tier by ID with optional fields",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Update a tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Soft deletes a tier by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tiers"
+                ],
+                "summary": "Delete a tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tiers/{id}/permissions": {
+            "post": {
+                "description": "Assigns a permission to a tier",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tier-permissions"
+                ],
+                "summary": "Assign permission to tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Permission to assign",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/tiers/{id}/permissions/{permission_id}": {
+            "delete": {
+                "description": "Soft deletes a permission assignment from a tier",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tier-permissions"
+                ],
+                "summary": "Unassign permission from tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Permission ID",
+                        "name": "permission_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     }
                 }
@@ -215,7 +1170,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/user.UserUpdateRequest"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateRequest"
                         }
                     }
                 ],
@@ -223,37 +1178,102 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/user.UserUpdateResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/roles": {
+            "post": {
+                "description": "Assigns a role to a user with optional tier (default: \"base\")",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Assign role to user",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role to assign",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     }
                 }
@@ -286,7 +1306,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/user.StatusChangeRequest"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.StatusChangeRequest"
                         }
                     }
                 ],
@@ -294,25 +1314,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/user.UserUpdateResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/apierror.APIError"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     }
                 }
@@ -337,7 +1357,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "apierror.APIError": {
+        "simple-arq-golang_cmd_api_domains_apierror.APIError": {
             "type": "object",
             "properties": {
                 "code": {
@@ -351,7 +1371,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.AuthorizationData": {
+        "simple-arq-golang_cmd_api_domains_auth.AuthorizationData": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -365,7 +1385,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.LoginRequest": {
+        "simple-arq-golang_cmd_api_domains_auth.LoginRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -380,18 +1400,18 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.LoginResponse": {
+        "simple-arq-golang_cmd_api_domains_auth.LoginResponse": {
             "type": "object",
             "properties": {
                 "authorization": {
-                    "$ref": "#/definitions/auth.AuthorizationData"
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.AuthorizationData"
                 },
                 "user": {
-                    "$ref": "#/definitions/auth.RegisterResponse"
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
                 }
             }
         },
-        "auth.RegisterRequest": {
+        "simple-arq-golang_cmd_api_domains_auth.RegisterRequest": {
             "type": "object",
             "required": [
                 "birth_date",
@@ -443,9 +1463,12 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.RegisterResponse": {
+        "simple-arq-golang_cmd_api_domains_auth.UserResponse": {
             "type": "object",
             "properties": {
+                "bank_alias": {
+                    "type": "string"
+                },
                 "birth_date": {
                     "type": "string"
                 },
@@ -490,7 +1513,251 @@ const docTemplate = `{
                 }
             }
         },
-        "user.StatusChangeRequest": {
+        "simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "description": "Descripción opcional del permiso",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nombre único del permiso (requerido)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_permission.PermissionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Fecha de creación",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Descripción del permiso",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID del permiso",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Nombre del permiso",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "Fecha de última actualización",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Nueva descripción (opcional)",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nuevo nombre del permiso (opcional)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_role.CreateRoleRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "description": "Descripción opcional del rol",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nombre único del rol (requerido)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_role.RoleResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Fecha de creación",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Descripción del rol",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID del rol",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Nombre del rol",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "Fecha de última actualización",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Nueva descripción (opcional)",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nuevo nombre del rol (opcional)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tier.CreateTierRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "role_id"
+            ],
+            "properties": {
+                "description": {
+                    "description": "Descripción opcional del tier",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nombre del tier (requerido)",
+                    "type": "string"
+                },
+                "role_id": {
+                    "description": "ID del rol al que pertenece (requerido)",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tier.TierResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Fecha de creación",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Descripción del tier",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID del tier",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Nombre del tier",
+                    "type": "string"
+                },
+                "role_id": {
+                    "description": "ID del rol asociado",
+                    "type": "integer"
+                },
+                "role_name": {
+                    "description": "Nombre del rol asociado",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "Fecha de última actualización",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Nueva descripción (opcional)",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Nuevo nombre del tier (opcional)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest": {
+            "type": "object",
+            "required": [
+                "permission_id"
+            ],
+            "properties": {
+                "permission_id": {
+                    "description": "ID del permiso a asignar (requerido)",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse": {
+            "type": "object",
+            "properties": {
+                "asignation_date": {
+                    "description": "Fecha de asignación",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID de la asignación",
+                    "type": "integer"
+                },
+                "permission_id": {
+                    "description": "ID del permiso",
+                    "type": "integer"
+                },
+                "tier_id": {
+                    "description": "ID del tier",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_user.StatusChangeRequest": {
             "type": "object",
             "required": [
                 "status"
@@ -501,9 +1768,12 @@ const docTemplate = `{
                 }
             }
         },
-        "user.UserUpdateRequest": {
+        "simple-arq-golang_cmd_api_domains_user.UserUpdateRequest": {
             "type": "object",
             "properties": {
+                "bank_alias": {
+                    "type": "string"
+                },
                 "birth_date": {
                     "type": "string"
                 },
@@ -542,9 +1812,12 @@ const docTemplate = `{
                 }
             }
         },
-        "user.UserUpdateResponse": {
+        "simple-arq-golang_cmd_api_domains_user.UserUpdateResponse": {
             "type": "object",
             "properties": {
+                "bank_alias": {
+                    "type": "string"
+                },
                 "birth_date": {
                     "type": "string"
                 },
@@ -588,18 +1861,97 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest": {
+            "type": "object",
+            "required": [
+                "role_id"
+            ],
+            "properties": {
+                "role_id": {
+                    "description": "ID del rol a asignar (requerido)",
+                    "type": "integer"
+                },
+                "tier_id": {
+                    "description": "ID del tier (opcional, default: \"base\" del rol)",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse": {
+            "type": "object",
+            "properties": {
+                "assignment_date": {
+                    "description": "Fecha de asignación",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID de la asignación",
+                    "type": "integer"
+                },
+                "role_id": {
+                    "description": "ID del rol asignado",
+                    "type": "integer"
+                },
+                "status": {
+                    "description": "Estado de la asignación",
+                    "type": "string"
+                },
+                "tier_id": {
+                    "description": "ID del tier asignado",
+                    "type": "integer"
+                },
+                "user_id": {
+                    "description": "ID del usuario",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_services.PermissionsQueryResponse": {
+            "type": "object",
+            "properties": {
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_services.RolePermission"
+                    }
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_services.RolePermission": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tier": {
+                    "type": "string"
+                }
+            }
         }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
+	Version:          "1.0.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Paceron Backend API",
-	Description:      "API para el registro y gestión de usuarios de Paceron",
+	Title:            "Simple Arq Golang API",
+	Description:      "Base scaffolding for Go APIs with Gin framework",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
