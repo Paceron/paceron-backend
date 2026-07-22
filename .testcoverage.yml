@@ -8,3 +8,19 @@ threshold:
   file: 0
   package: 0
   total: 0
+
+# Paquetes sin logica real (structs/DTOs puros, constantes, codigo autogenerado,
+# wiring de arranque, helpers de test) - se excluyen del calculo por completo,
+# no cuentan ni para bien ni para mal. Un paquete CON logica real y 0% de tests
+# nunca va aca, se deja contar como deuda visible a proposito (ver CLAUDE.md).
+exclude:
+  paths:
+    - ^cmd/api/main\.go$
+    - ^cmd/api/docs/
+    - ^cmd/api/testutils/
+    - ^cmd/api/constants/
+    - ^cmd/api/domains/apierror/
+    - ^cmd/api/domains/dbs/
+    - ^cmd/api/domains/user/
+    - ^cmd/api/domains/auth/
+    - ^cmd/api/domains/exampleweather/

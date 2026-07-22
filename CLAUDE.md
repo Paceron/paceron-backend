@@ -86,7 +86,11 @@ Sea cual sea el tamaño: **siempre crear la rama dedicada antes de tocar código
 
 `make coverage` corre la suite con `-coverprofile` y muestra el resumen por paquete (`go tool cover -func`); `make coverage-html` además genera `ci/test_coverage/coverage.html` navegable. Mismo comando en local y en CI, para que el número sea comparable.
 
-`ci.yml` mide coverage en cada push/PR vía la action `vladopajic/go-test-coverage`, configurada en `.testcoverage.yml` — **hoy no bloquea el merge** (`threshold.total: 0` a propósito): la cobertura real del proyecto todavía es baja (muchos paquetes de infraestructura/DAOs sin tests). Cuando el número real sea sólido, subir `threshold.total` en `.testcoverage.yml` a 80% (o el valor que se acuerde) y recién ahí empieza a bloquear. No bajar el número real del proyecto para pasar el gate — subir el número real.
+El comando usa `-coverpkg=./...` (no solo `-coverprofile` sobre los paquetes testeados) para que el % refleje código ejercitado indirectamente por otros tests (ej. `customlogger`/`httpclient` se llaman desde controllers/services aunque no tengan su propio `_test.go`) — sin esto, el total queda inflado porque ignora por completo cualquier paquete sin tests propios, ocultando deuda real.
+
+`ci.yml` mide coverage en cada push/PR y además escribe un resumen (`go tool cover -func`) al Job Summary del run — visible directo en la pestaña de checks de GitHub, sin abrir logs. El gate lo hace la action `vladopajic/go-test-coverage`, configurada en `.testcoverage.yml` — **hoy no bloquea el merge** (`threshold.total: 0` a propósito): la cobertura real del proyecto todavía es baja. Cuando el número real sea sólido, subir `threshold.total` en `.testcoverage.yml` a 80% (o el valor que se acuerde) y recién ahí empieza a bloquear. No bajar el número real del proyecto para pasar el gate — subir el número real.
+
+**Qué cuenta y qué no:** `.testcoverage.yml` tiene una sección `exclude.paths` para paquetes sin lógica real (structs/DTOs puros como `domains/{dbs,user,auth,apierror,exampleweather}`, constantes, swagger autogenerado en `cmd/api/docs`, helpers de test en `testutils`, el `main.go` de arranque) — se sacan del cálculo porque no tiene sentido exigirles tests. **Un paquete con lógica real y 0% de cobertura nunca entra ahí** — paquetes como `infrastructure/postgresdb`, `infrastructure/httpclient` (donde no se ejercita indirectamente), `restclients/exampleweatherclient`, `delegates` o `metrics` cuentan en el total tal cual están, a propósito, para que la deuda sea visible y no quede maquillada.
 
 ## CORS
 
