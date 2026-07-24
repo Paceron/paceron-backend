@@ -4,9 +4,9 @@
 
 ## What Changes
 
-- Nuevo endpoint `GET /api/v1/users/:id/roles`: lista los roles activos de un usuario.
 - Nuevo endpoint `DELETE /api/v1/users/:id/roles/:role_id`: da de baja (soft-delete) la asignación de un rol a un usuario, identificando por `role_id` (simétrico al POST existente).
-- Se agregan 2 métodos a `UserRoleServiceInterface`/`UserRoleController` ya existentes — no se crean capas nuevas de DAO.
+- Se agrega 1 método a `UserRoleServiceInterface`/`UserRoleController` ya existentes — no se crean capas nuevas de DAO.
+- **`GET /api/v1/users/:id/roles` se evaluó y se descartó** (revisión del encargado del backend, 2026-07-24) — ver "Decisión: por qué no hay GET" más abajo.
 
 ## Capabilities
 
@@ -21,16 +21,18 @@
 - **Modificado**: `services/user_role_service.go` (+ test), `controllers/user_role_controller.go` (+ test)
 - **Rutas nuevas**: `app/url_mappings.go`
 - **Sin cambios**: `daos/user_role_dao.go` (ya tenía los métodos necesarios), modelos GORM, `app/app.go` (el servicio/controller ya estaban wireados)
-- **Swagger**: 2 endpoints nuevos, regenerar docs
+- **Swagger**: 1 endpoint nuevo, regenerar docs
 
-### Objetivo
+### Decisión: por qué no hay GET
 
-Permitir consultar y revertir asignaciones de rol de un usuario, completando el ciclo CRUD que `seccion-permisos` dejó parcial a propósito.
+El plan original incluía `GET /api/v1/users/:id/roles`. El encargado del backend marcó en review que es redundante con `GET /api/v1/auth/permissions?user_id=` (de `seccion-permisos`), que ya usa el mismo `userRoleDao.FindByUserID` internamente y devuelve, por cada rol, su `id` (el `role_id`, justo lo que necesita el `DELETE` de este mismo cambio), nombre de rol, nombre de tier y permisos — un superset más útil de lo que este `GET` iba a exponer.
+
+Lo único que este `GET` tenía de más eran campos crudos sin consumidor real: `assignment_id` interno (`UserRole.ID`), `tier_id` sin resolver (vs. nombre de tier), `assignment_date` y `status`. Ningún cliente/feature de hoy necesita esos campos — no había backing real para justificarlo, así que se sacó. Queda solo el `DELETE`, que sí es capacidad nueva genuina (no existía en ningún lado). Si en el futuro aparece un consumidor real que necesite esos campos crudos, se reevalúa entonces.
 
 ### Alcance
 
-- `GET /api/v1/users/:id/roles`
 - `DELETE /api/v1/users/:id/roles/:role_id`
+- Listar roles de un usuario se hace vía el endpoint ya existente `GET /api/v1/auth/permissions?user_id=`, no se duplica acá.
 
 ### No alcance
 
@@ -40,6 +42,6 @@ Permitir consultar y revertir asignaciones de rol de un usuario, completando el 
 
 ### Métrica de éxito
 
-- Se puede consultar la lista de roles activos de cualquier usuario.
 - Se puede dar de baja un rol asignado por error sin acceso directo a la base de datos.
 - El rol "corredor" nunca puede darse de baja vía la API, sin importar el usuario.
+- No queda un endpoint nuevo duplicando lo que `GET /api/v1/auth/permissions?user_id=` ya resuelve.

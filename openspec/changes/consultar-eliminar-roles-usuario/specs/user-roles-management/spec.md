@@ -1,15 +1,11 @@
 ## ADDED Requirements
 
-### Requirement: Consultar los roles asignados a un usuario
-El sistema SHALL aceptar solicitudes GET a `/api/v1/users/:id/roles` y SHALL responder con la lista de asignaciones de rol activas (no eliminadas lógicamente) del usuario indicado.
-
-#### Scenario: Usuario con roles asignados
-- **WHEN** se envía una solicitud GET a `/api/v1/users/:id/roles` para un usuario con una o más asignaciones activas
-- **THEN** el sistema responde HTTP 200 con la lista de asignaciones (id, role_id, tier_id, assignment_date, status)
-
-#### Scenario: Usuario sin roles asignados
-- **WHEN** se envía una solicitud GET a `/api/v1/users/:id/roles` para un usuario sin ninguna asignación activa
-- **THEN** el sistema responde HTTP 200 con una lista vacía (no HTTP 404)
+<!--
+No hay requirement de "consultar roles" (GET) — evaluado y descartado en review
+(2026-07-24): redundante con GET /api/v1/auth/permissions?user_id=, que ya
+expone role_id (lo necesario para el DELETE de abajo) con más contexto
+(nombre de rol/tier/permisos). Ver design.md, Decisión 3.
+-->
 
 ### Requirement: Dar de baja un rol asignado a un usuario
 El sistema SHALL aceptar solicitudes DELETE a `/api/v1/users/:id/roles/:role_id` y SHALL invalidar (soft-delete) la asignación activa de ese rol para ese usuario, identificando por `role_id`.
