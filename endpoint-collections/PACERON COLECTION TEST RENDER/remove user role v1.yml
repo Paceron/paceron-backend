@@ -1,0 +1,15 @@
+info:
+  name: remove user role v1
+  type: http
+  seq: 19
+
+http:
+  method: DELETE
+  url: https://paceron-backend.onrender.com/api/v1/users/1/roles/1
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
