@@ -20,7 +20,6 @@ const protectedRoleName = "corredor"
 
 type UserRoleServiceInterface interface {
 	AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
-	GetUserRoles(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error)
 	RemoveRole(ctx *gin.Context, userID, roleID int64) error
 }
 
@@ -140,30 +139,6 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 		AssignmentDate: ur.AssignmentDate,
 		Status:         ur.Status,
 	}, nil
-}
-
-func (s *userRoleService) GetUserRoles(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error) {
-	userRoles, err := s.userRoleDao.FindByUserID(ctx, userID)
-	if err != nil {
-		customlogger.Error(ctx, "error finding roles for user", err,
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-			customlogger.TagMethod("GetUserRoles"))
-		return nil, fmt.Errorf("error al obtener roles del usuario")
-	}
-
-	responses := make([]userrole.UserRoleResponse, 0, len(userRoles))
-	for _, ur := range userRoles {
-		responses = append(responses, userrole.UserRoleResponse{
-			ID:             ur.ID,
-			UserID:         ur.UserID,
-			RoleID:         ur.RoleID,
-			TierID:         ur.TierID,
-			AssignmentDate: ur.AssignmentDate,
-			Status:         ur.Status,
-		})
-	}
-
-	return responses, nil
 }
 
 func (s *userRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) error {

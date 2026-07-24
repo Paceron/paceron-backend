@@ -447,51 +447,6 @@ func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing
 	assert.Contains(t, err.Error(), "error al asignar rol")
 }
 
-func TestUserRoleService_GetUserRoles_Success(t *testing.T) {
-	now := time.Now()
-	mockUserRoleDao := &mockUserRoleDao{
-		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
-			return []dbs.UserRole{
-				{ID: 1, UserID: userID, RoleID: 2, TierID: 3, AssignmentDate: now, Status: "active"},
-			}, nil
-		},
-	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
-
-	result, err := svc.GetUserRoles(nil, 1)
-
-	assert.NoError(t, err)
-	assert.Len(t, result, 1)
-	assert.Equal(t, int64(2), result[0].RoleID)
-}
-
-func TestUserRoleService_GetUserRoles_Empty(t *testing.T) {
-	mockUserRoleDao := &mockUserRoleDao{
-		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
-			return []dbs.UserRole{}, nil
-		},
-	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
-
-	result, err := svc.GetUserRoles(nil, 1)
-
-	assert.NoError(t, err)
-	assert.Len(t, result, 0)
-}
-
-func TestUserRoleService_GetUserRoles_DAOError(t *testing.T) {
-	mockUserRoleDao := &mockUserRoleDao{
-		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
-			return nil, errors.New("db error")
-		},
-	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
-
-	_, err := svc.GetUserRoles(nil, 1)
-
-	assert.Error(t, err)
-}
-
 func TestUserRoleService_RemoveRole_ProtectedRole(t *testing.T) {
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {

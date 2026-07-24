@@ -16,21 +16,13 @@ import (
 )
 
 type mockUserRoleService struct {
-	assignRoleFn   func(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
-	getUserRolesFn func(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error)
-	removeRoleFn   func(ctx *gin.Context, userID, roleID int64) error
+	assignRoleFn func(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
+	removeRoleFn func(ctx *gin.Context, userID, roleID int64) error
 }
 
 func (m *mockUserRoleService) AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error) {
 	if m.assignRoleFn != nil {
 		return m.assignRoleFn(ctx, userID, req)
-	}
-	return nil, nil
-}
-
-func (m *mockUserRoleService) GetUserRoles(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error) {
-	if m.getUserRolesFn != nil {
-		return m.getUserRolesFn(ctx, userID)
 	}
 	return nil, nil
 }
@@ -299,73 +291,6 @@ func TestUserRoleController_AssignRole_InvalidBodyMalformed(t *testing.T) {
 	controller.AssignRole(c)
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestUserRoleController_GetRoles_Success(t *testing.T) {
-	mockSvc := &mockUserRoleService{
-		getUserRolesFn: func(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error) {
-			return []userrole.UserRoleResponse{{ID: 1, UserID: userID, RoleID: 2, Status: "active"}}, nil
-		},
-	}
-	controller := NewUserRoleController(mockSvc)
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/1/roles", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.GetRoles(c)
-
-	assert.Equal(t, http.StatusOK, response.Code)
-
-	var result []userrole.UserRoleResponse
-	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Len(t, result, 1)
-}
-
-func TestUserRoleController_GetRoles_Empty(t *testing.T) {
-	mockSvc := &mockUserRoleService{
-		getUserRolesFn: func(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error) {
-			return []userrole.UserRoleResponse{}, nil
-		},
-	}
-	controller := NewUserRoleController(mockSvc)
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/1/roles", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.GetRoles(c)
-
-	assert.Equal(t, http.StatusOK, response.Code)
-}
-
-func TestUserRoleController_GetRoles_InvalidUserID(t *testing.T) {
-	controller := NewUserRoleController(&mockUserRoleService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/abc/roles", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
-
-	controller.GetRoles(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestUserRoleController_GetRoles_ServiceError(t *testing.T) {
-	mockSvc := &mockUserRoleService{
-		getUserRolesFn: func(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error) {
-			return nil, errors.New("error al obtener roles del usuario")
-		},
-	}
-	controller := NewUserRoleController(mockSvc)
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/1/roles", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.GetRoles(c)
-
-	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
 
 func TestUserRoleController_RemoveRole_Success(t *testing.T) {
