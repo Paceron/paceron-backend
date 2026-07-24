@@ -1215,51 +1215,6 @@ const docTemplate = `{
             }
         },
         "/api/v1/users/{id}/roles": {
-            "get": {
-                "description": "Returns the list of active role assignments for a user (empty list if none)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "user-roles"
-                ],
-                "summary": "Get roles assigned to a user",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "User ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
-                        }
-                    }
-                }
-            },
             "post": {
                 "description": "Assigns a role to a user with optional tier (default: \"base\")",
                 "consumes": [
