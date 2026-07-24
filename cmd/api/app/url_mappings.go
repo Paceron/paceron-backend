@@ -18,6 +18,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PUT("/api/v1/users/:id", app.userController.Update)
 	r.PATCH("/api/v1/users/:id/status", app.userController.ChangeStatus)
 	r.POST("/api/v1/users/:id/roles", app.userRoleController.AssignRole)
+	r.GET("/api/v1/users/:id/roles", app.userRoleController.GetRoles)
+	r.DELETE("/api/v1/users/:id/roles/:role_id", app.userRoleController.RemoveRole)
 	r.GET("/api/v1/permissions", app.permissionController.GetAll)
 	r.GET("/api/v1/permissions/by-name", app.permissionController.GetByName)
 	r.GET("/api/v1/permissions/:id", app.permissionController.GetByID)
