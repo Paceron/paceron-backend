@@ -36,8 +36,10 @@ Permitir consultar y revertir asignaciones de rol de un usuario, completando el 
 
 - Modificar el endpoint de asignación (`POST`) — queda igual.
 - Hard-delete de asignaciones — se mantiene soft-delete, mismo criterio que el resto de las entidades de `seccion-permisos`.
+- Auto-asignación de "corredor" en el registro — no existe hoy, queda fuera de este cambio (el rol solo se protege de ser removido, no se asigna automáticamente).
 
 ### Métrica de éxito
 
 - Se puede consultar la lista de roles activos de cualquier usuario.
 - Se puede dar de baja un rol asignado por error sin acceso directo a la base de datos.
+- El rol "corredor" nunca puede darse de baja vía la API, sin importar el usuario.

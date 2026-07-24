@@ -3,12 +3,14 @@
 - [x] 1.1 Agregar `GetUserRoles(ctx, userID int64) ([]userrole.UserRoleResponse, error)` a `UserRoleServiceInterface` y su implementación en `services/user_role_service.go`, usando `userRoleDao.FindByUserID`
 - [x] 1.2 Agregar `RemoveRole(ctx, userID, roleID int64) error` a `UserRoleServiceInterface` y su implementación: `FindByUserAndRole` (nil → "el usuario no tiene asignado este rol"), luego `SoftDelete(assignment.ID)`
 - [x] 1.3 Tests en `services/user_role_service_test.go`: `GetUserRoles` éxito/vacío/error de DAO; `RemoveRole` éxito, rol no asignado, error de DAO
+- [x] 1.4 Bloquear la baja del rol "corredor" (rol base de todo usuario, decisión del usuario 2026-07-24): constante `protectedRoleName = "corredor"`, chequeo en `RemoveRole` vía `roleDao.FindByID` antes de buscar la asignación. Tests: rol protegido rechazado, error de `roleDao.FindByID`
 
 ## 2. Controller
 
 - [x] 2.1 Agregar `GetRoles(c *gin.Context)` a `UserRoleController`/`userRoleController`: parsea `:id`, llama `GetUserRoles`, 200 con la lista (o lista vacía, no 404)
 - [x] 2.2 Agregar `RemoveRole(c *gin.Context)`: parsea `:id` y `:role_id`, llama `RemoveRole`, 200 con `RemoveRoleResponse{Message}` en éxito (mismo patrón que `DeleteRoleResponse`, no 204), 404 si no estaba asignado
 - [x] 2.3 Tests en `controllers/user_role_controller_test.go` para ambos métodos
+- [x] 2.4 Mapear el error de rol protegido a HTTP 403 (Forbidden), distinto del 404 de "no asignado". Test dedicado
 
 ## 3. Rutas y documentación
 

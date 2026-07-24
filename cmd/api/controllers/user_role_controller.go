@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -169,6 +170,9 @@ func (urc *userRoleController) RemoveRole(c *gin.Context) {
 		if errMsg == "el usuario no tiene asignado este rol" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if strings.Contains(errMsg, "no se puede eliminar") {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

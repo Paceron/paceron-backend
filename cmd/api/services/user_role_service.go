@@ -14,6 +14,10 @@ import (
 
 const defaultTierName = "base"
 
+// protectedRoleName es el rol base que todo usuario de la app tiene por defecto —
+// no se puede dar de baja vía RemoveRole, sea cual sea el usuario.
+const protectedRoleName = "corredor"
+
 type UserRoleServiceInterface interface {
 	AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
 	GetUserRoles(ctx *gin.Context, userID int64) ([]userrole.UserRoleResponse, error)
@@ -163,6 +167,21 @@ func (s *userRoleService) GetUserRoles(ctx *gin.Context, userID int64) ([]userro
 }
 
 func (s *userRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) error {
+	role, err := s.roleDao.FindByID(ctx, roleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for removal check", err,
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("error al eliminar rol")
+	}
+	if role != nil && role.Name == protectedRoleName {
+		customlogger.Warn(ctx, "attempt to remove protected role",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("el rol '%s' no se puede eliminar, es el rol base de todo usuario", protectedRoleName)
+	}
+
 	existing, err := s.userRoleDao.FindByUserAndRole(ctx, userID, roleID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding role assignment to remove", err,

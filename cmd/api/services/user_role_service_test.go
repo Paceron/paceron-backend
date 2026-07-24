@@ -492,6 +492,34 @@ func TestUserRoleService_GetUserRoles_DAOError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestUserRoleService_RemoveRole_ProtectedRole(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "corredor"}, nil
+		},
+	}
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no se puede eliminar")
+}
+
+func TestUserRoleService_RemoveRole_RoleFindByIDError(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al eliminar rol")
+}
+
 func TestUserRoleService_RemoveRole_Success(t *testing.T) {
 	softDeleteCalled := false
 	mockUserRoleDao := &mockUserRoleDao{

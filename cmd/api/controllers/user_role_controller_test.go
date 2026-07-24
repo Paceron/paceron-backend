@@ -406,6 +406,27 @@ func TestUserRoleController_RemoveRole_NotAssigned(t *testing.T) {
 	assert.Equal(t, "Not Found", result.Code)
 }
 
+func TestUserRoleController_RemoveRole_ProtectedRole(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		removeRoleFn: func(ctx *gin.Context, userID, roleID int64) error {
+			return errors.New("el rol 'corredor' no se puede eliminar, es el rol base de todo usuario")
+		},
+	}
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Forbidden", result.Code)
+}
+
 func TestUserRoleController_RemoveRole_InvalidUserID(t *testing.T) {
 	controller := NewUserRoleController(&mockUserRoleService{})
 	response := httptest.NewRecorder()

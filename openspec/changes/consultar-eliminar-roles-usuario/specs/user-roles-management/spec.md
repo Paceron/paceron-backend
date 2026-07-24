@@ -21,3 +21,14 @@ El sistema SHALL aceptar solicitudes DELETE a `/api/v1/users/:id/roles/:role_id`
 #### Scenario: Rol no asignado al usuario
 - **WHEN** se envía una solicitud DELETE a `/api/v1/users/:id/roles/:role_id` para un rol que el usuario no tiene asignado activamente
 - **THEN** el sistema responde HTTP 404 con un mensaje indicando que el usuario no tiene asignado ese rol
+
+### Requirement: El rol "corredor" no se puede dar de baja
+El sistema SHALL rechazar cualquier solicitud DELETE a `/api/v1/users/:id/roles/:role_id` donde `role_id` corresponda al rol "corredor", sin importar el usuario ni si el rol está efectivamente asignado.
+
+#### Scenario: Intento de dar de baja el rol corredor
+- **WHEN** se envía una solicitud DELETE a `/api/v1/users/:id/roles/:role_id` donde `role_id` corresponde al rol "corredor"
+- **THEN** el sistema responde HTTP 403 sin realizar ninguna baja, con un mensaje indicando que es el rol base de todo usuario
+
+#### Scenario: Baja de otro rol no afecta a corredor
+- **WHEN** un usuario tiene asignados tanto "corredor" como otro rol (ej. "entrenador"), y se da de baja el otro rol
+- **THEN** la asignación de "corredor" permanece activa y sin cambios, y el usuario en sí (`dbs.User`) tampoco se modifica
