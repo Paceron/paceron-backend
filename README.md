@@ -187,6 +187,8 @@ sequenceDiagram
 | POST | `/api/v1/auth/register` | Register new user (name, surname, email, dni, birth_date, password + optional fields) |
 | POST | `/api/v1/auth/login` | Login with email/password, returns JWT access + refresh tokens |
 | GET | `/api/v1/auth/user?id=&email=` | Get user by ID or email |
+| POST | `/api/v1/auth/forgot-password` | Request a password reset OTP code by email |
+| POST | `/api/v1/auth/reset-password` | Reset password using the OTP code sent by email |
 | GET | `/api/v1/auth/permissions?user_id=` | Get user permissions with roles and tiers |
 | GET | `/user/:user_id` | Get user by ID (legacy) |
 | POST | `/user` | Create user (legacy) |

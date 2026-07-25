@@ -34,6 +34,7 @@ type Logger interface {
 type MailerInterface interface {
 	Send(ctx context.Context, to, subject, htmlBody string) error
 	SendWelcomeEmail(ctx context.Context, to, name string) error
+	SendPasswordResetEmail(ctx context.Context, to, name, code string) error
 }
 
 // Client envía correos electrónicos vía SMTP.
@@ -102,6 +103,15 @@ func (c *Client) SendWelcomeEmail(ctx context.Context, to, name string) error {
 		return fmt.Errorf("mailer: error renderizando template: %w", err)
 	}
 	return c.Send(ctx, to, "Bienvenido a Paceron", html)
+}
+
+// SendPasswordResetEmail renderiza el template de recuperación de contraseña y lo envía a un destinatario.
+func (c *Client) SendPasswordResetEmail(ctx context.Context, to, name, code string) error {
+	html, err := RenderPasswordResetEmail(PasswordResetEmailData{Name: name, Code: code})
+	if err != nil {
+		return fmt.Errorf("mailer: error renderizando template: %w", err)
+	}
+	return c.Send(ctx, to, "Recuperación de contraseña - Paceron", html)
 }
 
 func (c *Client) logInfo(ctx context.Context, message, to string) {

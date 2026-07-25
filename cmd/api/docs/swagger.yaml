@@ -18,6 +18,18 @@ definitions:
       refresh_token:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse:
+    properties:
+      message:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_auth.LoginRequest:
     properties:
       email:
@@ -70,6 +82,27 @@ definitions:
     - name
     - password
     - surname
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest:
+    properties:
+      code:
+        type: string
+      confirm_password:
+        type: string
+      email:
+        type: string
+      new_password:
+        type: string
+    required:
+    - code
+    - confirm_password
+    - email
+    - new_password
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse:
+    properties:
+      message:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_auth.UserResponse:
     properties:
@@ -411,6 +444,34 @@ info:
   title: Simple Arq Golang API
   version: 1.0.0
 paths:
+  /api/v1/auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a 6-digit OTP code by email if it belongs to an active user.
+        Always responds with the same generic message, to avoid leaking whether an
+        email is registered.
+      parameters:
+      - description: Email to send the reset code to
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Request a password reset code
+      tags:
+      - auth
   /api/v1/auth/login:
     post:
       consumes:
@@ -509,6 +570,37 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Register a new user
+      tags:
+      - auth
+  /api/v1/auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Validates the OTP code sent via forgot-password and updates the
+        user's password.
+      parameters:
+      - description: Email, code, new password and confirmation
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Reset password using an OTP code
       tags:
       - auth
   /api/v1/auth/user:
