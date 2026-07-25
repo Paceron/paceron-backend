@@ -36,11 +36,6 @@ func NewApplication() *Application {
 		fmt.Println("error initializing DB:", err)
 	}
 
-	// User flow
-	userDao := daos.NewUserDao(db)
-	userService := services.NewUserService(userDao)
-	userController := controllers.NewUserController(userService)
-
 	// Mailer
 	mailerLogger := customlogger.NewHTTPClientLogger()
 	mailerClient, err := mailer.New(
@@ -52,6 +47,11 @@ func NewApplication() *Application {
 	if err != nil {
 		customlogger.Error(nil, "error initializing mailer", err)
 	}
+
+	// User flow
+	userDao := daos.NewUserDao(db)
+	userService := services.NewUserService(userDao, mailerClient)
+	userController := controllers.NewUserController(userService)
 
 	// Auth flow
 	authDao := daos.NewAuthDao(db)

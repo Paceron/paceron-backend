@@ -34,6 +34,7 @@ type Logger interface {
 type MailerInterface interface {
 	Send(ctx context.Context, to, subject, htmlBody string) error
 	SendWelcomeEmail(ctx context.Context, to, name string) error
+	SendFarewellEmail(ctx context.Context, to, name string) error
 }
 
 // Client envía correos electrónicos vía SMTP.
@@ -102,6 +103,15 @@ func (c *Client) SendWelcomeEmail(ctx context.Context, to, name string) error {
 		return fmt.Errorf("mailer: error renderizando template: %w", err)
 	}
 	return c.Send(ctx, to, "Bienvenido a Paceron", html)
+}
+
+// SendFarewellEmail renderiza el template de despedida y lo envía a un destinatario.
+func (c *Client) SendFarewellEmail(ctx context.Context, to, name string) error {
+	html, err := RenderFarewellEmail(FarewellEmailData{Name: name})
+	if err != nil {
+		return fmt.Errorf("mailer: error renderizando template: %w", err)
+	}
+	return c.Send(ctx, to, "Tu cuenta fue desactivada", html)
 }
 
 func (c *Client) logInfo(ctx context.Context, message, to string) {

@@ -13,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/user"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,11 +27,13 @@ type UserServiceInterface interface {
 
 type userService struct {
 	userDao daos.UserDaoInterface
+	mailer  mailer.MailerInterface
 }
 
-func NewUserService(userDao daos.UserDaoInterface) UserServiceInterface {
+func NewUserService(userDao daos.UserDaoInterface, mailerClient mailer.MailerInterface) UserServiceInterface {
 	return &userService{
 		userDao: userDao,
+		mailer:  mailerClient,
 	}
 }
 
@@ -176,6 +179,8 @@ func (s *userService) ChangeStatus(ctx *gin.Context, id int64, status string) (*
 		return nil, fmt.Errorf("estado inválido: %s. Estados permitidos: %v", status, constants.GetValidUserStatuses())
 	}
 
+	previousStatus := userDB.Status
+
 	err = s.userDao.UpdateStatus(ctx, id, status)
 	if err != nil {
 		customlogger.Error(ctx, "error updating user status", err,
@@ -192,6 +197,17 @@ func (s *userService) ChangeStatus(ctx *gin.Context, id int64, status string) (*
 		customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
 		customlogger.Tag("status", status),
 		customlogger.TagMethod("ChangeStatus"))
+
+	if previousStatus != string(constants.UserStatusInactive) && status == string(constants.UserStatusInactive) {
+		if s.mailer != nil {
+			if err := s.mailer.SendFarewellEmail(ctx, userDB.Email, userDB.Name); err != nil {
+				customlogger.Error(ctx, "error sending farewell email", err,
+					customlogger.Tag("email", userDB.Email),
+					customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+					customlogger.Tag("step", "send_farewell_email"))
+			}
+		}
+	}
 
 	return toUserUpdateResponse(userDB), nil
 }

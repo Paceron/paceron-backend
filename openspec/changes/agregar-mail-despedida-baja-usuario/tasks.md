@@ -1,0 +1,34 @@
+## 1. Template HTML de despedida
+
+- [x] 1.1 Crear `infrastructure/mailer/templates/farewell.html` con el mismo layout de tabla, CSS inline y colores de marca que `welcome.html`, variable `{{.Name}}`
+- [x] 1.2 Verificar visualmente el HTML antes de continuar
+
+## 2. Renderizado de templates
+
+- [x] 2.1 Modificar `infrastructure/mailer/render.go`: agregar `//go:embed templates/farewell.html`, struct `FarewellEmailData { Name string }` y función `RenderFarewellEmail(data FarewellEmailData) (string, error)`
+
+## 3. Extender el mailer
+
+- [x] 3.1 Agregar `SendFarewellEmail(ctx, to, name string) error` a `MailerInterface` en `mailer.go`
+- [x] 3.2 Implementar `(*Client).SendFarewellEmail` en `mailer.go`, renderizando `farewell.html` y llamando a `Send` con asunto "Tu cuenta fue desactivada"
+
+## 4. Conectar al flujo de baja de usuario
+
+- [x] 4.1 Modificar `services/user_service.go`: agregar campo `mailer mailer.MailerInterface` a `userService`, actualizar `NewUserService` para recibirlo
+- [x] 4.2 Modificar `ChangeStatus`: capturar `previousStatus` antes de `UpdateStatus`, invocar `SendFarewellEmail` solo si `previousStatus != "inactive" && status == "inactive"` (nil-checked, error solo logueado, nunca bloquea la respuesta)
+- [x] 4.3 Actualizar los 10 call-sites de `NewUserService(mockDao)` en `user_service_test.go` a `NewUserService(mockDao, nil)`
+- [x] 4.4 Actualizar los 5 call-sites de `NewUserService(mockDao)` en `opt_service_test.go` a `NewUserService(mockDao, nil)`
+- [x] 4.5 Wire en `app.go`: mover el bloque "Mailer" antes del bloque "User flow", pasar `mailerClient` a `services.NewUserService(userDao, mailerClient)`
+- [x] 4.6 Ejecutar `go build ./...`, `go vet ./...`, `go test ./...` — todo verde
+
+## 5. Tests dedicados
+
+- [ ] 5.1 (Diferido, decisión explícita del usuario) Mock de `MailerInterface` + tests de `ChangeStatus` (envío en baja, error no bloquea, no dispara en otros estados, no reenvía si ya estaba inactivo, mailer nil no rompe) — queda para una iteración posterior, mismo criterio que `agregar-envio-mails-smtp`
+
+## 6. Verificación end-to-end
+
+- [x] 6.1 Con el backend corriendo y credenciales SMTP reales, registrar un usuario de prueba descartable vía `POST /api/v1/auth/register` (user_id 13)
+- [x] 6.2 Invocar `PATCH /api/v1/users/:id/status` con `{"status": "inactive"}` sobre ese usuario
+- [x] 6.3 Confirmar en logs la línea `user status changed successfully` seguida de `email enviado exitosamente` para ese `user_id`
+- [x] 6.4 Verificar manualmente en la bandeja de entrada del usuario de prueba que el correo llegó, con asunto "Tu cuenta fue desactivada", nombre interpolado y colores de marca visibles
+- [x] 6.5 Invocar `PATCH /api/v1/users/:id/status` con `{"status": "inactive"}` una segunda vez sobre el mismo usuario y confirmar en logs que NO se repite la línea de envío de correo (guarda de reenvío funcionando — segunda respuesta en 170ms vs 3.25s de la primera, sin línea de envío de mail)

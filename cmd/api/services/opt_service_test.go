@@ -51,7 +51,7 @@ func TestGetUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	result, err := service.GetUser(nil, 1)
 
 	assert.NoError(t, err)
@@ -66,7 +66,7 @@ func TestGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.GetUser(nil, 999)
 
 	assert.Error(t, err)
@@ -80,7 +80,7 @@ func TestGetUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.GetUser(nil, 1)
 
 	assert.Error(t, err)
@@ -95,7 +95,7 @@ func TestCreateUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	result, err := service.CreateUser(nil, "test", "secret")
 
 	assert.NoError(t, err)
@@ -110,7 +110,7 @@ func TestCreateUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.CreateUser(nil, "test", "secret")
 
 	assert.Error(t, err)

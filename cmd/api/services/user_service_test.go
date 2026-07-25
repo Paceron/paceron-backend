@@ -33,7 +33,7 @@ func TestUserUpdate_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newName := "John Updated"
 	req := &user.UserUpdateRequest{
 		Name: &newName,
@@ -68,7 +68,7 @@ func TestUserUpdate_BankAliasSuccess(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	bankAlias := "mi-banco-123"
 	req := &user.UserUpdateRequest{
 		BankAlias: &bankAlias,
@@ -88,7 +88,7 @@ func TestUserUpdate_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	name := "John"
 	req := &user.UserUpdateRequest{
 		Name: &name,
@@ -113,7 +113,7 @@ func TestUserUpdate_EmailChangeRequiresPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -139,7 +139,7 @@ func TestUserUpdate_EmailChangeWrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -168,7 +168,7 @@ func TestUserUpdate_EmailChangeDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "existing@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -193,7 +193,7 @@ func TestUserUpdate_InvalidBirthDate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	invalidDate := "2024/01/01"
 	req := &user.UserUpdateRequest{
 		BirthDate: &invalidDate,
@@ -223,7 +223,7 @@ func TestChangeStatus_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 	assert.NoError(t, err)
 	assert.Equal(t, "pause", resp.Status)
@@ -236,7 +236,7 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	_, err := svc.ChangeStatus(nil, 999, "pause")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -257,7 +257,7 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	_, err := svc.ChangeStatus(nil, 1, "invalid-status")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "estado inválido")
