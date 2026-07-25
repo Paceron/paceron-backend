@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -262,6 +264,172 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "estado inválido")
 	assert.Contains(t, err.Error(), "Estados permitidos")
+}
+
+func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	var calledTo, calledName string
+	farewellCalled := false
+	mailer := mockMailer{
+		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+			farewellCalled = true
+			calledTo = to
+			calledName = name
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, mailer)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "inactive", resp.Status)
+	assert.True(t, farewellCalled)
+	assert.Equal(t, "john@test.com", calledTo)
+	assert.Equal(t, "John", calledName)
+}
+
+func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	mailer := mockMailer{
+		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+			return errors.New("smtp down")
+		},
+	}
+
+	svc := NewUserService(mockDao, mailer)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, "inactive", resp.Status)
+}
+
+func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	farewellCalled := false
+	mailer := mockMailer{
+		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+			farewellCalled = true
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, mailer)
+	resp, err := svc.ChangeStatus(nil, 1, "pause")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "pause", resp.Status)
+	assert.False(t, farewellCalled)
+}
+
+func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "inactive",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	farewellCalled := false
+	mailer := mockMailer{
+		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+			farewellCalled = true
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, mailer)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "inactive", resp.Status)
+	assert.False(t, farewellCalled)
+}
+
+func TestChangeStatus_NilMailerDoesNotPanic(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+
+	assert.NotPanics(t, func() {
+		resp, err := svc.ChangeStatus(nil, 1, "inactive")
+		assert.NoError(t, err)
+		assert.Equal(t, "inactive", resp.Status)
+	})
 }
 
 func TestValidateUserUpdateRequest_InvalidEmail(t *testing.T) {

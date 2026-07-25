@@ -23,7 +23,14 @@
 
 ## 5. Tests dedicados
 
-- [ ] 5.1 (Diferido, decisión explícita del usuario) Mock de `MailerInterface` + tests de `ChangeStatus` (envío en baja, error no bloquea, no dispara en otros estados, no reenvía si ya estaba inactivo, mailer nil no rompe) — queda para una iteración posterior, mismo criterio que `agregar-envio-mails-smtp`
+- [x] 5.1 Agregar `mockMailer` en `opt_service_test.go` (patrón func-field, mismo criterio que `mockUserDao`), implementando `mailer.MailerInterface`
+- [x] 5.2 `TestChangeStatus_InactiveSendsFarewellEmail`: active → inactive, asserta que `SendFarewellEmail` fue invocado con email/nombre correctos
+- [x] 5.3 `TestChangeStatus_InactiveMailerErrorDoesNotBlock`: mailer retorna error, asserta que `ChangeStatus` igual retorna éxito
+- [x] 5.4 `TestChangeStatus_NonInactiveStatusDoesNotSendEmail`: active → pause, asserta que el mailer nunca fue invocado
+- [x] 5.5 `TestChangeStatus_RedundantInactiveDoesNotResend`: inactive → inactive, asserta que el mailer nunca fue invocado
+- [x] 5.6 `TestChangeStatus_NilMailerDoesNotPanic`: `NewUserService(mockDao, nil)`, active → inactive, asserta que no hay panic y la respuesta es exitosa
+- [x] 5.7 `TestRenderFarewellEmail_NoSMTPRequired` en `mailer_test.go`: verifica el renderizado del template sin credenciales SMTP
+- [x] 5.8 Ejecutar `go test ./cmd/api/services/... -v -run TestChangeStatus` y `go test ./cmd/api/infrastructure/mailer/... -v -run TestRenderFarewellEmail` — todo verde
 
 ## 6. Verificación end-to-end
 

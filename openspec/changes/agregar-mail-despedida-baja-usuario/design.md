@@ -13,7 +13,6 @@ La infraestructura de mailer (`infrastructure/mailer/`) fue construida en `agreg
 - Notificaciones para otras transiciones de estado (`pause`, `blocked`, `suspended`, reactivación a `active`)
 - Corregir la falta de autenticación/autorización de `PATCH /api/v1/users/:id/status` (issue conocido, separado)
 - Nuevo cliente SMTP o configuración (se reutiliza `config.MySMTP` y `mailer.Client` tal cual existen)
-- Tests unitarios dedicados con mock de `MailerInterface` (se difieren, mismo criterio que `agregar-envio-mails-smtp`)
 
 ## Decisions
 
@@ -33,11 +32,10 @@ La infraestructura de mailer (`infrastructure/mailer/`) fue construida en `agreg
 ### 5. Envío best-effort, nunca bloquea la respuesta (mismo criterio que Decisión 6 de `agregar-envio-mails-smtp`)
 - **Por qué**: el correo de despedida es una notificación, no un requisito para que la baja se efectivice. Un fallo de SMTP no debe impedir que el usuario quede desactivado.
 
-### 6. Mailer nil-safe en el service, tests diferidos (mismo criterio que Decisión 7 de `agregar-envio-mails-smtp`)
-- **Por qué**: `userService.mailer` puede ser `nil`, chequeado antes de usarse, para no romper los 15 call-sites existentes de `NewUserService`. Se decidió con el usuario diferir los tests dedicados nuevamente (mismo patrón ya aplicado dos veces), priorizando que la suite existente compile y pase.
+### 6. Mailer nil-safe en el service, con tests dedicados esta vez (a diferencia de `agregar-envio-mails-smtp`)
+- **Por qué**: `userService.mailer` puede ser `nil`, chequeado antes de usarse, para no romper los 15 call-sites existentes de `NewUserService`. A diferencia de los dos cambios anteriores (que difirieron los tests del flujo conectado), acá sí se agregó un `mockMailer` y cobertura dedicada de `ChangeStatus`, porque la guarda anti-reenvío es lógica nueva real que amerita protección contra regresiones.
 
 ## Risks / Trade-offs
 
 - **Endpoint sin autenticación** (conocido, fuera de alcance): el correo se disparará para cualquier caller de `PATCH /api/v1/users/:id/status`, no solo para el propio usuario. No se agrava el riesgo existente, pero tampoco se mitiga.
 - **Reordenamiento de `app.go`**: bajo riesgo, cambio mecánico de orden de construcción sin cambiar comportamiento de los demás flujos.
-- **Sin cobertura de tests para la guarda anti-reenvío**: si se rompe en un cambio futuro, no hay test que lo detecte automáticamente — mitigado por la verificación manual end-to-end incluida en `tasks.md`.

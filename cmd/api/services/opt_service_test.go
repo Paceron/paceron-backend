@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -8,6 +9,24 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"github.com/stretchr/testify/assert"
 )
+
+type mockMailer struct {
+	mockSend              func(ctx context.Context, to, subject, htmlBody string) error
+	mockSendWelcomeEmail  func(ctx context.Context, to, name string) error
+	mockSendFarewellEmail func(ctx context.Context, to, name string) error
+}
+
+func (m mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
+	return m.mockSend(ctx, to, subject, htmlBody)
+}
+
+func (m mockMailer) SendWelcomeEmail(ctx context.Context, to, name string) error {
+	return m.mockSendWelcomeEmail(ctx, to, name)
+}
+
+func (m mockMailer) SendFarewellEmail(ctx context.Context, to, name string) error {
+	return m.mockSendFarewellEmail(ctx, to, name)
+}
 
 type mockUserDao struct {
 	mockGetByID      func(ctx *gin.Context, userID int64) (*dbs.User, error)

@@ -20,6 +20,16 @@ func TestRenderWelcomeEmail_NoSMTPRequired(t *testing.T) {
 	assert.Contains(t, html, "#8cc63e")
 }
 
+// TestRenderFarewellEmail_NoSMTPRequired verifica el renderizado del template
+// de despedida sin necesitar credenciales SMTP — corre siempre, en cualquier entorno.
+func TestRenderFarewellEmail_NoSMTPRequired(t *testing.T) {
+	html, err := RenderFarewellEmail(FarewellEmailData{Name: "Maria"})
+	require.NoError(t, err)
+	assert.Contains(t, html, "Maria")
+	assert.Contains(t, html, "Paceron")
+	assert.Contains(t, html, "#8cc63e")
+}
+
 // TestSend_RealEmail_Integration envía un correo de bienvenida real usando las
 // credenciales SMTP configuradas en el entorno. Se skipea automáticamente si
 // las variables de entorno SMTP no están seteadas, para que `go test ./...`

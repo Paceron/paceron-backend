@@ -22,6 +22,6 @@ Cuando un usuario da de baja su cuenta (`PATCH /api/v1/users/:id/status` con `st
 
 - **Modificado**: `infrastructure/mailer/mailer.go`, `infrastructure/mailer/render.go`, `services/user_service.go`, `app/app.go`
 - **Nuevo**: `infrastructure/mailer/templates/farewell.html`
-- **Tests**: `user_service_test.go` y `opt_service_test.go` (15 call-sites de `NewUserService` actualizados a `NewUserService(mockDao, nil)`); tests dedicados con mock de `MailerInterface` quedan diferidos, mismo criterio que `agregar-envio-mails-smtp`
+- **Tests**: `user_service_test.go` y `opt_service_test.go` (15 call-sites de `NewUserService` actualizados a `NewUserService(mockDao, nil)`, más `mockMailer` y 5 tests dedicados de `ChangeStatus`); `mailer_test.go` gana `TestRenderFarewellEmail_NoSMTPRequired`
 - **Swagger**: no aplica (no cambia el contrato de `PATCH /api/v1/users/:id/status`)
 - **Nota de seguridad conocida, fuera de alcance**: este endpoint no tiene autenticación/autorización propia; el mail de despedida se disparará para cualquier caller que lo invoque, exactamente igual que el resto del comportamiento actual del endpoint. No se corrige acá.
