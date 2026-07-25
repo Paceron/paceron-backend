@@ -447,6 +447,99 @@ func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing
 	assert.Contains(t, err.Error(), "error al asignar rol")
 }
 
+func TestUserRoleService_RemoveRole_ProtectedRole(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "corredor"}, nil
+		},
+	}
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no se puede eliminar")
+}
+
+func TestUserRoleService_RemoveRole_RoleFindByIDError(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al eliminar rol")
+}
+
+func TestUserRoleService_RemoveRole_Success(t *testing.T) {
+	softDeleteCalled := false
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{ID: 7, UserID: userID, RoleID: roleID}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			softDeleteCalled = true
+			assert.Equal(t, int64(7), id)
+			return nil
+		},
+	}
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.True(t, softDeleteCalled)
+}
+
+func TestUserRoleService_RemoveRole_NotAssigned(t *testing.T) {
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+	}
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Equal(t, "el usuario no tiene asignado este rol", err.Error())
+}
+
+func TestUserRoleService_RemoveRole_FindError(t *testing.T) {
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al eliminar rol")
+}
+
+func TestUserRoleService_RemoveRole_SoftDeleteError(t *testing.T) {
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{ID: 7}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			return errors.New("db error")
+		},
+	}
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+
+	err := svc.RemoveRole(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al eliminar rol")
+}
+
 func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 	mockUserRoleDao := &mockUserRoleDao{
 		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {

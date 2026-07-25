@@ -17,6 +17,7 @@ import (
 
 type mockUserRoleService struct {
 	assignRoleFn func(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
+	removeRoleFn func(ctx *gin.Context, userID, roleID int64) error
 }
 
 func (m *mockUserRoleService) AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error) {
@@ -24,6 +25,13 @@ func (m *mockUserRoleService) AssignRole(ctx *gin.Context, userID int64, req *us
 		return m.assignRoleFn(ctx, userID, req)
 	}
 	return nil, nil
+}
+
+func (m *mockUserRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) error {
+	if m.removeRoleFn != nil {
+		return m.removeRoleFn(ctx, userID, roleID)
+	}
+	return nil
 }
 
 func TestUserRoleController_AssignRole_Success(t *testing.T) {
@@ -283,4 +291,104 @@ func TestUserRoleController_AssignRole_InvalidBodyMalformed(t *testing.T) {
 	controller.AssignRole(c)
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserRoleController_RemoveRole_Success(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		removeRoleFn: func(ctx *gin.Context, userID, roleID int64) error {
+			return nil
+		},
+	}
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestUserRoleController_RemoveRole_NotAssigned(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		removeRoleFn: func(ctx *gin.Context, userID, roleID int64) error {
+			return errors.New("el usuario no tiene asignado este rol")
+		},
+	}
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Not Found", result.Code)
+}
+
+func TestUserRoleController_RemoveRole_ProtectedRole(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		removeRoleFn: func(ctx *gin.Context, userID, roleID int64) error {
+			return errors.New("el rol 'corredor' no se puede eliminar, es el rol base de todo usuario")
+		},
+	}
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Forbidden", result.Code)
+}
+
+func TestUserRoleController_RemoveRole_InvalidUserID(t *testing.T) {
+	controller := NewUserRoleController(&mockUserRoleService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/abc/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "abc"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserRoleController_RemoveRole_InvalidRoleID(t *testing.T) {
+	controller := NewUserRoleController(&mockUserRoleService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/abc", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "abc"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserRoleController_RemoveRole_ServiceError(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		removeRoleFn: func(ctx *gin.Context, userID, roleID int64) error {
+			return errors.New("error al eliminar rol")
+		},
+	}
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/roles/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "2"}}
+
+	controller.RemoveRole(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }

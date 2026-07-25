@@ -388,6 +388,12 @@ definitions:
     required:
     - role_id
     type: object
+  simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse:
     properties:
       assignment_date:
@@ -1334,6 +1340,45 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Assign role to user
+      tags:
+      - user-roles
+  /api/v1/users/{id}/roles/{role_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Soft-deletes the active role assignment for a user, identified
+        by role_id
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: path
+        name: role_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Remove a role from a user
       tags:
       - user-roles
   /api/v1/users/{id}/status:

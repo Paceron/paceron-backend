@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,6 +14,7 @@ import (
 
 type UserRoleController interface {
 	AssignRole(c *gin.Context)
+	RemoveRole(c *gin.Context)
 }
 
 type userRoleController struct {
@@ -87,4 +89,62 @@ func (urc *userRoleController) AssignRole(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, response)
+}
+
+// RemoveRole godoc
+// @Summary      Remove a role from a user
+// @Description  Soft-deletes the active role assignment for a user, identified by role_id
+// @Tags         user-roles
+// @Accept       json
+// @Produce      json
+// @Param        id       path  int  true  "User ID"
+// @Param        role_id  path  int  true  "Role ID"
+// @Success      200 {object}  userrole.RemoveRoleResponse
+// @Failure      400 {object}  apierror.APIError
+// @Failure      404 {object}  apierror.APIError
+// @Failure      500 {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/roles/{role_id} [delete]
+func (urc *userRoleController) RemoveRole(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "user id debe ser un número válido",
+		})
+		return
+	}
+
+	roleID, err := strconv.ParseInt(c.Param("role_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "role id debe ser un número válido",
+		})
+		return
+	}
+
+	if err := urc.userRoleService.RemoveRole(c, userID, roleID); err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errMsg == "el usuario no tiene asignado este rol" {
+			statusCode = http.StatusNotFound
+			code = "Not Found"
+		} else if strings.Contains(errMsg, "no se puede eliminar") {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, userrole.RemoveRoleResponse{Message: "Rol eliminado correctamente"})
 }

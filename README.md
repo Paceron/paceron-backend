@@ -195,6 +195,7 @@ sequenceDiagram
 | PUT | `/api/v1/users/:id` | Update user attributes (email change requires X-Current-Password header) |
 | PATCH | `/api/v1/users/:id/status` | Change user status (active/inactive/pause/blocked/suspended) |
 | POST | `/api/v1/users/:id/roles` | Assign role to user (with optional tier, default "base") |
+| DELETE | `/api/v1/users/:id/roles/:role_id` | Remove a role from a user (list roles via `GET /api/v1/auth/permissions?user_id=`) |
 | GET | `/api/v1/permissions` | List all permissions |
 | GET | `/api/v1/permissions/:id` | Get permission by ID |
 | GET | `/api/v1/permissions/by-name?name=` | Get permission by unique name |
