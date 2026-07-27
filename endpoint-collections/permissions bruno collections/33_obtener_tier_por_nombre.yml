@@ -1,0 +1,19 @@
+info:
+  name: obtener tier por nombre
+  type: http
+  seq: 33
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/tiers/by-name?name=base
+  params:
+    - name: name
+      value: "base"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

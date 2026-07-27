@@ -1,0 +1,15 @@
+info:
+  name: quitar usuario de equipo
+  type: http
+  seq: 8
+
+http:
+  method: DELETE
+  url: http://localhost:8080/api/v1/teams/1/users/2
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

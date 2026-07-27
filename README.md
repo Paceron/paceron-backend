@@ -44,6 +44,11 @@ graph TB
         TierPermissionController[tierPermissionController]
         UserRoleController[userRoleController]
         PermissionsQueryController[permissionsQueryController]
+        TeamController[teamController]
+        GroupController[groupController]
+        TeamUserController[teamUserController]
+        GroupUserController[groupUserController]
+        InvitationController[invitationController]
     end
 
     subgraph Delegates
@@ -60,15 +65,25 @@ graph TB
         TierPermissionService[tierPermissionService]
         UserRoleService[userRoleService]
         PermissionsQueryService[permissionsQueryService]
+        TeamService[teamService]
+        GroupService[groupService]
+        TeamUserService[teamUserService]
+        GroupUserService[groupUserService]
+        InvitationService[invitationService]
     end
 
     subgraph DAOs
         UserDAO[userDao]
+        AuthDAO[authDao]
         PermissionDAO[permissionDao]
         TierDAO[tierDao]
         RoleDAO[roleDao]
         TierPermissionDAO[tierPermissionDao]
         UserRoleDAO[userRoleDao]
+        TeamDAO[teamDao]
+        GroupDAO[groupDao]
+        TeamUserDAO[teamUserDao]
+        GroupUserDAO[groupUserDao]
     end
 
     subgraph RestClients
@@ -79,6 +94,7 @@ graph TB
         HTTPClient[httpclient.Client]
         Logger[customlogger]
         DB[postgresdb]
+        Mailer[mailer]
     end
 
     Router --> |/ping| PingController
@@ -93,6 +109,11 @@ graph TB
     Router --> |/api/v1/tiers/*/permissions| TierPermissionController
     Router --> |/api/v1/users/*/roles| UserRoleController
     Router --> |/api/v1/auth/permissions| PermissionsQueryController
+    Router --> |/api/v1/teams| TeamController
+    Router --> |/api/v1/groups| GroupController
+    Router --> |/api/v1/teams/*/users| TeamUserController
+    Router --> |/api/v1/groups/*/users| GroupUserController
+    Router --> |/api/v1/teams/*/invite| InvitationController
     Router --> |/swagger/*| SwaggerUI
 
     UserWeatherController --> UserWeatherDelegate
@@ -107,7 +128,14 @@ graph TB
     TierPermissionController --> TierPermissionService
     UserRoleController --> UserRoleService
     PermissionsQueryController --> PermissionsQueryService
+    TeamController --> TeamService
+    GroupController --> GroupService
+    TeamUserController --> TeamUserService
+    GroupUserController --> GroupUserService
+    InvitationController --> InvitationService
+    AuthService --> AuthDAO
     AuthService --> UserDAO
+    AuthService --> Mailer
     UserService --> UserDAO
     PermissionService --> PermissionDAO
     TierService --> TierDAO
@@ -126,12 +154,32 @@ graph TB
     PermissionsQueryService --> TierDAO
     PermissionsQueryService --> TierPermissionDAO
     PermissionsQueryService --> PermissionDAO
+    TeamService --> TeamDAO
+    TeamService --> UserDAO
+    TeamService --> UserRoleDAO
+    TeamService --> RoleDAO
+    GroupService --> GroupDAO
+    GroupService --> TeamDAO
+    TeamUserService --> TeamUserDAO
+    TeamUserService --> TeamDAO
+    TeamUserService --> UserDAO
+    GroupUserService --> GroupUserDAO
+    GroupUserService --> GroupDAO
+    GroupUserService --> UserDAO
+    InvitationService --> UserDAO
+    InvitationService --> TeamDAO
+    InvitationService --> Mailer
     UserDAO --> DB
+    AuthDAO --> DB
     PermissionDAO --> DB
     TierDAO --> DB
     RoleDAO --> DB
     TierPermissionDAO --> DB
     UserRoleDAO --> DB
+    TeamDAO --> DB
+    GroupDAO --> DB
+    TeamUserDAO --> DB
+    GroupUserDAO --> DB
     WeatherService --> WeatherClient
     WeatherClient --> HTTPClient
     HTTPClient --> |Open-Meteo API| ExternalAPI[api.open-meteo.com]
@@ -216,6 +264,22 @@ sequenceDiagram
 | POST | `/api/v1/roles` | Create role |
 | PUT | `/api/v1/roles/:id` | Update role |
 | DELETE | `/api/v1/roles/:id` | Soft delete role |
+| POST | `/api/v1/teams` | Create team (owner must have "entrenador" role) |
+| GET | `/api/v1/teams` | List all teams |
+| GET | `/api/v1/teams/:id` | Get team by ID |
+| PUT | `/api/v1/teams/:id` | Update team |
+| DELETE | `/api/v1/teams/:id` | Soft delete team |
+| PUT | `/api/v1/teams/:id/address` | Update team address (country, province, city, street, number) |
+| POST | `/api/v1/teams/:id/users` | Add user to team with role (owner/coach/member) |
+| DELETE | `/api/v1/teams/:id/users/:user_id` | Remove user from team |
+| POST | `/api/v1/groups` | Create group within a team |
+| GET | `/api/v1/groups` | List all groups |
+| GET | `/api/v1/groups/:id` | Get group by ID |
+| PUT | `/api/v1/groups/:id` | Update group |
+| DELETE | `/api/v1/groups/:id` | Soft delete group |
+| POST | `/api/v1/groups/:id/users` | Add user to group |
+| DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group |
+| POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email |
 | GET | `/example/weather` | Get weather from Open-Meteo |
 | GET | `/user/:user_id/weather` | Get user with weather data |
 | GET | `/swagger` | Swagger UI |

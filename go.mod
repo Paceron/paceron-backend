@@ -10,6 +10,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.16.6
+	github.com/wneessen/go-mail v0.8.1
 	golang.org/x/crypto v0.54.0
 	gorm.io/driver/postgres v1.4.5
 	gorm.io/gorm v1.24.3
@@ -59,7 +60,6 @@ require (
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
-	github.com/wneessen/go-mail v0.8.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	golang.org/x/arch v0.23.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect

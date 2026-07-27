@@ -1,0 +1,17 @@
+ /endpoint-collectionss# Bruno collections (YAML API test files)
+bruno_coleccion_permisos/
+endpoint-collections/
+
+# Documentation
+*.md
+cmd/api/docs/documentationdetail/
+
+# CI/CD artifacts
+ci/
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# OpenSpec changes
+openspec/

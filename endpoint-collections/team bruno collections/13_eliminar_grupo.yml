@@ -1,0 +1,15 @@
+info:
+  name: eliminar grupo
+  type: http
+  seq: 13
+
+http:
+  method: DELETE
+  url: http://localhost:8080/api/v1/groups/1
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

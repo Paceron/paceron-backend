@@ -63,6 +63,10 @@ func (m *mockMailer) SendPasswordResetEmail(ctx context.Context, to, name, code 
 	return nil
 }
 
+func (m *mockMailer) SendInvitationEmail(ctx context.Context, to, name, teamName string) error {
+	return nil
+}
+
 func TestRequestPasswordReset_UserNotFound_NoErrorNoMail(t *testing.T) {
 	authDao := mockAuthDao{
 		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
