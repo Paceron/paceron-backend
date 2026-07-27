@@ -1,0 +1,24 @@
+info:
+  name: actualizar equipo
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: http://localhost:8080/api/v1/teams/1
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Equipo Alpha Actualizado",
+        "description": "Descripción actualizada",
+        "level": "elite",
+        "max_members": 30
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

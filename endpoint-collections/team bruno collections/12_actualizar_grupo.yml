@@ -1,0 +1,23 @@
+info:
+  name: actualizar grupo
+  type: http
+  seq: 12
+
+http:
+  method: PUT
+  url: http://localhost:8080/api/v1/groups/1
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Grupo Velocidad Actualizado",
+        "description": "Entrenamiento intensivo de velocidad",
+        "is_main": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,22 @@
+info:
+  name: obtener todos los grupos (requiere team_id + user_id)
+  type: http
+  seq: 10
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/groups?team_id=1&user_id=2
+  params:
+    - name: team_id
+      value: "1"
+      type: query
+    - name: user_id
+      value: "2"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

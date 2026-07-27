@@ -1,0 +1,23 @@
+info:
+  name: crear permiso crear venta
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/permissions
+  body:
+    type: json
+    data: |-
+      {
+        "name": "crear_venta",
+        "description": "Permiso para crear ventas"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+​

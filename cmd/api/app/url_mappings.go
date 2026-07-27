@@ -44,6 +44,34 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/example/weather", app.exampleWeatherController.GetWeather)
 	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
 
+	// Teams
+	r.POST("/api/v1/teams", app.teamController.Create)
+	r.GET("/api/v1/teams", app.teamController.GetAll)
+	r.GET("/api/v1/teams/:id", app.teamController.GetByID)
+	r.PUT("/api/v1/teams/:id", app.teamController.Update)
+	r.DELETE("/api/v1/teams/:id", app.teamController.Delete)
+	r.PUT("/api/v1/teams/:id/address", app.teamController.UpdateAddress)
+
+	// Team Users
+	r.POST("/api/v1/teams/:id/users", app.teamUserController.AddUser)
+	r.GET("/api/v1/teams/:id/users", app.teamUserController.GetUsersByTeam)
+	r.DELETE("/api/v1/teams/:id/users/:user_id", app.teamUserController.RemoveUser)
+
+	// Groups
+	r.POST("/api/v1/groups", app.groupController.Create)
+	r.GET("/api/v1/groups", app.groupController.GetAll)
+	r.GET("/api/v1/groups/:id", app.groupController.GetByID)
+	r.PUT("/api/v1/groups/:id", app.groupController.Update)
+	r.DELETE("/api/v1/groups/:id", app.groupController.Delete)
+
+	// Group Users
+	r.POST("/api/v1/teams/:id/groups/:group_id/users", app.groupUserController.AddUser)
+	r.GET("/api/v1/groups/:id/users", app.groupUserController.GetUsersByGroup)
+	r.DELETE("/api/v1/groups/:id/users/:user_id", app.groupUserController.RemoveUser)
+
+	// Invitations
+	r.POST("/api/v1/teams/:id/invite", app.invitationController.InviteRunner)
+
 	mapSwagger(r)
 	mapGuide(r)
 }

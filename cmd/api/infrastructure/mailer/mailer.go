@@ -35,6 +35,7 @@ type MailerInterface interface {
 	Send(ctx context.Context, to, subject, htmlBody string) error
 	SendWelcomeEmail(ctx context.Context, to, name string) error
 	SendPasswordResetEmail(ctx context.Context, to, name, code string) error
+	SendInvitationEmail(ctx context.Context, to, name, teamName string) error
 }
 
 // Client envía correos electrónicos vía SMTP.
@@ -112,6 +113,16 @@ func (c *Client) SendPasswordResetEmail(ctx context.Context, to, name, code stri
 		return fmt.Errorf("mailer: error renderizando template: %w", err)
 	}
 	return c.Send(ctx, to, "Recuperación de contraseña - Paceron", html)
+}
+
+// SendInvitationEmail renderiza el template de invitación y lo envía a un destinatario.
+func (c *Client) SendInvitationEmail(ctx context.Context, to, name, teamName string) error {
+	html, err := RenderInvitationEmail(InvitationEmailData{Name: name, TeamName: teamName})
+	if err != nil {
+		return fmt.Errorf("mailer: error renderizando template: %w", err)
+	}
+	subject := fmt.Sprintf("Invitación a equipo %s - Paceron", teamName)
+	return c.Send(ctx, to, subject, html)
 }
 
 func (c *Client) logInfo(ctx context.Context, message, to string) {
