@@ -14,8 +14,13 @@ import (
 
 const defaultTierName = "base"
 
+// protectedRoleName es el rol base que todo usuario de la app tiene por defecto —
+// no se puede dar de baja vía RemoveRole, sea cual sea el usuario.
+const protectedRoleName = "corredor"
+
 type UserRoleServiceInterface interface {
 	AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
+	RemoveRole(ctx *gin.Context, userID, roleID int64) error
 }
 
 type userRoleService struct {
@@ -134,4 +139,48 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 		AssignmentDate: ur.AssignmentDate,
 		Status:         ur.Status,
 	}, nil
+}
+
+func (s *userRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) error {
+	role, err := s.roleDao.FindByID(ctx, roleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for removal check", err,
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("error al eliminar rol")
+	}
+	if role != nil && role.Name == protectedRoleName {
+		customlogger.Warn(ctx, "attempt to remove protected role",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("el rol '%s' no se puede eliminar, es el rol base de todo usuario", protectedRoleName)
+	}
+
+	existing, err := s.userRoleDao.FindByUserAndRole(ctx, userID, roleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role assignment to remove", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("error al eliminar rol")
+	}
+	if existing == nil {
+		return fmt.Errorf("el usuario no tiene asignado este rol")
+	}
+
+	if err := s.userRoleDao.SoftDelete(ctx, existing.ID); err != nil {
+		customlogger.Error(ctx, "error removing role from user", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.TagMethod("RemoveRole"))
+		return fmt.Errorf("error al eliminar rol")
+	}
+
+	customlogger.Info(ctx, "role removed from user successfully",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+		customlogger.TagMethod("RemoveRole"))
+
+	return nil
 }

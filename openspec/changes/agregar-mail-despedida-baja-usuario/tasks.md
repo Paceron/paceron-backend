@@ -42,6 +42,16 @@
 - [x] 7.6 Ampliar cobertura de `Register` + mailer en `auth_service_test.go` (cobertura que había quedado diferida en `agregar-envio-mails-smtp`): envía el correo, error no bloquea, mailer nil no rompe, alta fallida no envía correo
 - [x] 7.7 Verificar `go build ./...`, `go vet ./...`, `go test ./...` y el test de integración real con ambos tipos de correo — todo verde
 
+## 8. Integración con develop
+
+- [x] 8.1 Mergear `develop` (que mientras tanto sumó recuperación de contraseña e invitación a equipo, ambos con el patrón viejo de un método por correo)
+- [x] 8.2 Migrar `SendPasswordResetEmail` y `SendInvitationEmail` al registro unificado: nuevos `EmailTypePasswordReset` y `EmailTypeInvitation`, campos `Code` y `TeamName` en `EmailData`
+- [x] 8.3 Soportar asuntos parametrizados (`text/template`) para el correo de invitación, que incluye el nombre del equipo en el asunto
+- [x] 8.4 Actualizar `password_reset_service.go` e `invitation_service.go` a `SendEmail`
+- [x] 8.5 Unificar los tres `mockMailer` duplicados (el de esta rama, el de password reset y el de invitación) en un único doble compartido en `opt_service_test.go`, con registro de la última invocación
+- [x] 8.6 Ampliar cobertura a los cuatro tipos: render de cada uno, asunto dinámico de invitación, asunto sin escapar HTML, auto-escaping del cuerpo, datos vacíos
+- [x] 8.7 Verificar `go build ./...`, `go vet ./...`, `go test ./...` y envío real de los cuatro tipos — todo verde
+
 ## 6. Verificación end-to-end
 
 - [x] 6.1 Con el backend corriendo y credenciales SMTP reales, registrar un usuario de prueba descartable vía `POST /api/v1/auth/register` (user_id 13)

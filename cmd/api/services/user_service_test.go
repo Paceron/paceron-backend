@@ -285,29 +285,17 @@ func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
 		},
 	}
 
-	var calledTo string
-	var calledType mailer.EmailType
-	var calledData mailer.EmailData
-	farewellCalled := false
-	mailerMock := mockMailer{
-		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-			farewellCalled = true
-			calledTo = to
-			calledType = emailType
-			calledData = data
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "inactive", resp.Status)
-	assert.True(t, farewellCalled)
-	assert.Equal(t, "john@test.com", calledTo)
-	assert.Equal(t, mailer.EmailTypeFarewell, calledType)
-	assert.Equal(t, "John", calledData.Name)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "john@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeFarewell, mailerMock.lastEmailType)
+	assert.Equal(t, "John", mailerMock.lastData.Name)
 }
 
 func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
@@ -328,7 +316,7 @@ func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
 		},
 	}
 
-	mailerMock := mockMailer{
+	mailerMock := &mockMailer{
 		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			return errors.New("smtp down")
 		},
@@ -360,20 +348,14 @@ func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
 		},
 	}
 
-	farewellCalled := false
-	mailerMock := mockMailer{
-		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-			farewellCalled = true
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "pause", resp.Status)
-	assert.False(t, farewellCalled)
+	assert.False(t, mailerMock.sendEmailCalled)
 }
 
 func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
@@ -394,20 +376,14 @@ func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
 		},
 	}
 
-	farewellCalled := false
-	mailerMock := mockMailer{
-		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-			farewellCalled = true
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "inactive", resp.Status)
-	assert.False(t, farewellCalled)
+	assert.False(t, mailerMock.sendEmailCalled)
 }
 
 func TestChangeStatus_NilMailerDoesNotPanic(t *testing.T) {

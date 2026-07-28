@@ -36,6 +36,11 @@ La infraestructura de mailer (`infrastructure/mailer/`) fue construida en `agreg
 ### 4.c Un único `SendEmail` parametrizado por tipo, en vez de un método por template (feedback de code review)
 - **Por qué**: `SendWelcomeEmail` y `SendFarewellEmail` eran el mismo código con distinto template y asunto. Se reemplazan por `SendEmail(ctx, to, emailType, data)` más un registro `emailTemplates` (tipo → asunto + template parseado) en `render.go`. Agregar un tipo de correo nuevo ahora es sumar una entrada al registro, sin tocar `mailer.go` ni la interfaz.
 - **Beneficio adicional**: los templates se parsean una sola vez al cargar el package (`template.Must`) en lugar de en cada envío.
+- **Validado al mergear `develop`**: mientras esta rama estaba abierta, `develop` sumó dos tipos de correo más (recuperación de contraseña e invitación a equipo) repitiendo el patrón viejo — exactamente la duplicación que este refactor elimina. Al integrar, los cuatro tipos quedaron unificados bajo `SendEmail`.
+
+### 4.d El asunto también es un template (`text/template`)
+- **Por qué**: el correo de invitación necesita un asunto parametrizado (`Invitación a equipo {{.TeamName}} - Paceron`), así que el registro guarda el asunto como template además del cuerpo. Se usa `text/template` (no `html/template`) porque escapar entidades en una línea de asunto las mostraría literales en el cliente de correo (ej. `&` se vería como `&amp;`).
+- **`EmailData` unificado**: un solo struct con `Name`, `Code` y `TeamName`; cada template usa los campos que necesita y el resto renderiza vacío. Evita un tipo de datos por cada tipo de correo.
 
 ### 5. Envío best-effort, nunca bloquea la respuesta (mismo criterio que Decisión 6 de `agregar-envio-mails-smtp`)
 - **Por qué**: el correo de despedida es una notificación, no un requisito para que la baja se efectivice. Un fallo de SMTP no debe impedir que el usuario quede desactivado.

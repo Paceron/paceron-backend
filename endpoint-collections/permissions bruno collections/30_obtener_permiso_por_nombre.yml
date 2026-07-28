@@ -1,0 +1,19 @@
+info:
+  name: obtener permiso por nombre
+  type: http
+  seq: 30
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/permissions/by-name?name=crear_venta
+  params:
+    - name: name
+      value: "crear_venta"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

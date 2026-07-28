@@ -11,17 +11,36 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// mockMailer es el doble de prueba compartido por todos los tests de services
+// que dependen de mailer.MailerInterface. Registra la última invocación para
+// poder assertar sin tener que definir un closure en cada test.
 type mockMailer struct {
+	sendEmailCalled bool
+	lastTo          string
+	lastEmailType   mailer.EmailType
+	lastData        mailer.EmailData
+
 	mockSend      func(ctx context.Context, to, subject, htmlBody string) error
 	mockSendEmail func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error
 }
 
-func (m mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
-	return m.mockSend(ctx, to, subject, htmlBody)
+func (m *mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
+	if m.mockSend != nil {
+		return m.mockSend(ctx, to, subject, htmlBody)
+	}
+	return nil
 }
 
-func (m mockMailer) SendEmail(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-	return m.mockSendEmail(ctx, to, emailType, data)
+func (m *mockMailer) SendEmail(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+	m.sendEmailCalled = true
+	m.lastTo = to
+	m.lastEmailType = emailType
+	m.lastData = data
+
+	if m.mockSendEmail != nil {
+		return m.mockSendEmail(ctx, to, emailType, data)
+	}
+	return nil
 }
 
 type mockUserDao struct {

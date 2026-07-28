@@ -10,6 +10,14 @@ import (
 	"simple-arq-golang/cmd/api/config"
 )
 
+// allEmailTypes lista los tipos soportados, para recorrerlos en tests genéricos.
+var allEmailTypes = []EmailType{
+	EmailTypeWelcome,
+	EmailTypeFarewell,
+	EmailTypePasswordReset,
+	EmailTypeInvitation,
+}
+
 // --- Renderizado de templates (no requieren SMTP, corren en cualquier entorno) ---
 
 func TestRenderEmail_Welcome(t *testing.T) {
@@ -32,6 +40,45 @@ func TestRenderEmail_Farewell(t *testing.T) {
 	assert.Contains(t, html, "#8cc63e")
 }
 
+func TestRenderEmail_PasswordReset(t *testing.T) {
+	subject, html, err := RenderEmail(EmailTypePasswordReset, EmailData{Name: "Maria", Code: "123456"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Recuperación de contraseña - Paceron", subject)
+	assert.Contains(t, html, "Maria")
+	assert.Contains(t, html, "123456")
+	assert.Contains(t, html, "Paceron")
+}
+
+func TestRenderEmail_Invitation(t *testing.T) {
+	_, html, err := RenderEmail(EmailTypeInvitation, EmailData{Name: "Maria", TeamName: "Los Pumas"})
+
+	require.NoError(t, err)
+	assert.Contains(t, html, "Maria")
+	assert.Contains(t, html, "Los Pumas")
+	assert.Contains(t, html, "Paceron")
+}
+
+// TestRenderEmail_InvitationSubjectIsDynamic cubre el único asunto parametrizado:
+// se renderiza como template, no es un string fijo.
+func TestRenderEmail_InvitationSubjectIsDynamic(t *testing.T) {
+	subject, _, err := RenderEmail(EmailTypeInvitation, EmailData{Name: "Maria", TeamName: "Los Pumas"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Invitación a equipo Los Pumas - Paceron", subject)
+}
+
+// TestRenderEmail_SubjectIsNotHTMLEscaped protege la decisión de renderizar el
+// asunto con text/template: escapar entidades ahí las mostraría literales en el
+// cliente de correo (ej. "Ñandú & Cía" no debe volverse "&amp;").
+func TestRenderEmail_SubjectIsNotHTMLEscaped(t *testing.T) {
+	subject, _, err := RenderEmail(EmailTypeInvitation, EmailData{TeamName: "Ñandú & Cía"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Invitación a equipo Ñandú & Cía - Paceron", subject)
+	assert.NotContains(t, subject, "&amp;")
+}
+
 func TestRenderEmail_UnknownTypeReturnsError(t *testing.T) {
 	subject, html, err := RenderEmail(EmailType("no-existe"), EmailData{Name: "Maria"})
 
@@ -41,12 +88,16 @@ func TestRenderEmail_UnknownTypeReturnsError(t *testing.T) {
 	assert.Empty(t, html)
 }
 
-// TestRenderEmail_AutoEscaping verifica el requisito de la spec: el nombre se
-// escapa, sin permitir inyección de HTML/JS en el cuerpo del correo.
+// TestRenderEmail_AutoEscaping verifica el requisito de la spec: los datos del
+// usuario se escapan, sin permitir inyección de HTML/JS en el cuerpo del correo.
 func TestRenderEmail_AutoEscaping(t *testing.T) {
-	for _, emailType := range []EmailType{EmailTypeWelcome, EmailTypeFarewell} {
+	for _, emailType := range allEmailTypes {
 		t.Run(string(emailType), func(t *testing.T) {
-			_, html, err := RenderEmail(emailType, EmailData{Name: "<script>alert('xss')</script>"})
+			_, html, err := RenderEmail(emailType, EmailData{
+				Name:     "<script>alert('xss')</script>",
+				Code:     "<script>alert('xss')</script>",
+				TeamName: "<script>alert('xss')</script>",
+			})
 
 			require.NoError(t, err)
 			assert.NotContains(t, html, "<script>")
@@ -55,23 +106,27 @@ func TestRenderEmail_AutoEscaping(t *testing.T) {
 	}
 }
 
-func TestRenderEmail_EmptyNameStillRenders(t *testing.T) {
-	subject, html, err := RenderEmail(EmailTypeWelcome, EmailData{})
+func TestRenderEmail_EmptyDataStillRenders(t *testing.T) {
+	for _, emailType := range allEmailTypes {
+		t.Run(string(emailType), func(t *testing.T) {
+			subject, html, err := RenderEmail(emailType, EmailData{})
 
-	require.NoError(t, err)
-	assert.NotEmpty(t, subject)
-	assert.Contains(t, html, "Paceron")
+			require.NoError(t, err)
+			assert.NotEmpty(t, subject)
+			assert.Contains(t, html, "Paceron")
+		})
+	}
 }
 
 // TestEmailTemplates_AllTypesRegistered protege el registro: cada tipo declarado
 // debe tener asunto y template válidos, para que agregar un tipo nuevo sin
 // registrarlo falle en tests y no en producción.
 func TestEmailTemplates_AllTypesRegistered(t *testing.T) {
-	for _, emailType := range []EmailType{EmailTypeWelcome, EmailTypeFarewell} {
+	for _, emailType := range allEmailTypes {
 		tmpl, ok := emailTemplates[emailType]
 		require.True(t, ok, "tipo %s no registrado en emailTemplates", emailType)
-		assert.NotEmpty(t, tmpl.subject, "tipo %s sin asunto", emailType)
-		assert.NotNil(t, tmpl.template, "tipo %s sin template parseado", emailType)
+		assert.NotNil(t, tmpl.subject, "tipo %s sin asunto parseado", emailType)
+		assert.NotNil(t, tmpl.body, "tipo %s sin template parseado", emailType)
 	}
 }
 
@@ -162,9 +217,10 @@ func TestSendEmail_RealEmail_Integration(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	for _, emailType := range []EmailType{EmailTypeWelcome, EmailTypeFarewell} {
+	data := EmailData{Name: "Juan", Code: "123456", TeamName: "Los Pumas"}
+	for _, emailType := range allEmailTypes {
 		t.Run(string(emailType), func(t *testing.T) {
-			err := client.SendEmail(context.Background(), config.MySMTP.User, emailType, EmailData{Name: "Juan"})
+			err := client.SendEmail(context.Background(), config.MySMTP.User, emailType, data)
 			assert.NoError(t, err)
 		})
 	}

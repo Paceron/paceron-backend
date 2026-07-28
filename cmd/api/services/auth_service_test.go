@@ -326,33 +326,21 @@ func registerRequest() *auth.RegisterRequest {
 }
 
 func TestRegister_SendsWelcomeEmail(t *testing.T) {
-	var calledTo string
-	var calledType mailer.EmailType
-	var calledData mailer.EmailData
-	welcomeCalled := false
-	mailerMock := mockMailer{
-		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-			welcomeCalled = true
-			calledTo = to
-			calledType = emailType
-			calledData = data
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewAuthService(registerMockDao(), mailerMock)
 	resp, err := svc.Register(nil, registerRequest(), "securePass123")
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), resp.UserID)
-	assert.True(t, welcomeCalled)
-	assert.Equal(t, "john@test.com", calledTo)
-	assert.Equal(t, mailer.EmailTypeWelcome, calledType)
-	assert.Equal(t, "John", calledData.Name)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "john@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeWelcome, mailerMock.lastEmailType)
+	assert.Equal(t, "John", mailerMock.lastData.Name)
 }
 
 func TestRegister_MailerErrorDoesNotBlock(t *testing.T) {
-	mailerMock := mockMailer{
+	mailerMock := &mockMailer{
 		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			return errors.New("smtp down")
 		},
@@ -382,19 +370,13 @@ func TestRegister_DuplicateEmailDoesNotSendWelcomeEmail(t *testing.T) {
 		return &dbs.User{ID: 99, Email: email}, nil
 	}
 
-	welcomeCalled := false
-	mailerMock := mockMailer{
-		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
-			welcomeCalled = true
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewAuthService(mockDao, mailerMock)
 	_, err := svc.Register(nil, registerRequest(), "securePass123")
 
 	assert.Error(t, err)
-	assert.False(t, welcomeCalled, "no debe enviarse el correo si el alta falló")
+	assert.False(t, mailerMock.sendEmailCalled, "no debe enviarse el correo si el alta falló")
 }
 
 func TestRegister_EmailDuplicate(t *testing.T) {

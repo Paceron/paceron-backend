@@ -75,6 +75,11 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.Tier{},
 		&dbs.TierPermission{},
 		&dbs.UserRole{},
+		&dbs.PasswordResetToken{},
+		&dbs.Team{},
+		&dbs.Group{},
+		&dbs.TeamUser{},
+		&dbs.GroupUser{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)

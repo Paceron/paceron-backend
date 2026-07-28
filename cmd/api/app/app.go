@@ -7,26 +7,32 @@ import (
 	"simple-arq-golang/cmd/api/controllers"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/delegates"
-	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
+	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/services"
 )
 
 type Application struct {
-	pingController               controllers.PingController
-	userController               controllers.UserController
-	authController               controllers.AuthController
-	exampleWeatherController     controllers.ExampleWeatherController
-	userWeatherController        controllers.UserWeatherController
-	permissionController         controllers.PermissionController
-	tierController               controllers.TierController
-	roleController               controllers.RoleController
-	tierPermissionController     controllers.TierPermissionController
-	userRoleController           controllers.UserRoleController
-	permissionsQueryController   controllers.PermissionsQueryController
+	pingController             controllers.PingController
+	userController             controllers.UserController
+	authController             controllers.AuthController
+	exampleWeatherController   controllers.ExampleWeatherController
+	userWeatherController      controllers.UserWeatherController
+	permissionController       controllers.PermissionController
+	tierController             controllers.TierController
+	roleController             controllers.RoleController
+	tierPermissionController   controllers.TierPermissionController
+	userRoleController         controllers.UserRoleController
+	permissionsQueryController controllers.PermissionsQueryController
+	passwordResetController    controllers.PasswordResetController
+	teamController             controllers.TeamController
+	groupController            controllers.GroupController
+	teamUserController         controllers.TeamUserController
+	groupUserController        controllers.GroupUserController
+	invitationController       controllers.InvitationController
 }
 
 func NewApplication() *Application {
@@ -62,6 +68,11 @@ func NewApplication() *Application {
 	authDao := daos.NewAuthDao(db)
 	authService := services.NewAuthService(authDao, mailerClient)
 	authController := controllers.NewAuthController(authService)
+
+	// Password reset flow
+	passwordResetDao := daos.NewPasswordResetDao(db)
+	passwordResetService := services.NewPasswordResetService(authDao, userDao, passwordResetDao, mailerClient)
+	passwordResetController := controllers.NewPasswordResetController(passwordResetService)
 
 	// Example Weather flow
 	restClientConfig := config.LoadRestClientConfig()
@@ -117,17 +128,51 @@ func NewApplication() *Application {
 	permissionsQueryService := services.NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermissionDao, permissionDao)
 	permissionsQueryController := controllers.NewPermissionsQueryController(permissionsQueryService)
 
+	// Team User flow (needed by teamService and groupService)
+	teamUserDao := daos.NewTeamUserDao(db)
+
+	// Team flow
+	teamDao := daos.NewTeamDao(db)
+	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao)
+
+	// Group flow
+	groupDao := daos.NewGroupDao(db)
+	groupService := services.NewGroupService(groupDao, teamDao, teamUserDao)
+
+	// Team Delegate (coordina team + group)
+	teamDelegate := delegates.NewTeamDelegate(teamService, groupService)
+	teamController := controllers.NewTeamController(teamService, teamDelegate)
+	groupController := controllers.NewGroupController(groupService)
+
+	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao)
+	teamUserController := controllers.NewTeamUserController(teamUserService)
+
+	// Group User flow
+	groupUserDao := daos.NewGroupUserDao(db)
+	groupUserService := services.NewGroupUserService(groupUserDao, groupDao, userDao)
+	groupUserController := controllers.NewGroupUserController(groupUserService)
+
+	// Invitation flow
+	invitationService := services.NewInvitationService(userDao, teamDao, mailerClient)
+	invitationController := controllers.NewInvitationController(invitationService)
+
 	return &Application{
-		pingController:            controllers.NewPingController(),
-		userController:            userController,
-		authController:            authController,
-		exampleWeatherController:  exampleWeatherController,
-		userWeatherController:     userWeatherController,
-		permissionController:      permissionController,
-		tierController:            tierController,
-		roleController:            roleController,
-		tierPermissionController:  tierPermissionController,
-		userRoleController:        userRoleController,
+		pingController:             controllers.NewPingController(),
+		userController:             userController,
+		authController:             authController,
+		exampleWeatherController:   exampleWeatherController,
+		userWeatherController:      userWeatherController,
+		permissionController:       permissionController,
+		tierController:             tierController,
+		roleController:             roleController,
+		tierPermissionController:   tierPermissionController,
+		userRoleController:         userRoleController,
 		permissionsQueryController: permissionsQueryController,
+		passwordResetController:    passwordResetController,
+		teamController:             teamController,
+		groupController:            groupController,
+		teamUserController:         teamUserController,
+		groupUserController:        groupUserController,
+		invitationController:       invitationController,
 	}
 }

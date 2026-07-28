@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recuperación de contraseña - Paceron</title>
+</head>
+<body style="margin:0; padding:0; background-color:#ffffff; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;">
+    <tr>
+      <td align="center" style="padding: 24px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px; background-color:#f0f0f0; border-radius:8px; overflow:hidden;">
+
+          <!-- Header / branding -->
+          <tr>
+            <td align="center" style="background-color:#8cc63e; padding: 32px 24px;">
+              <span style="font-size:24px; font-weight:bold; color:#111518; letter-spacing:0.5px;">Paceron</span>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding-bottom:16px;">
+                    <span style="font-size:20px; font-weight:bold; color:#111518;">&#161;Hola, {{.Name}}!</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom:24px; font-size:15px; line-height:22px; color:#40484c;">
+                    Recibimos una solicitud para restablecer tu contraseña. Usá el siguiente código para continuar:
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-bottom:24px;">
+                    <span style="display:inline-block; font-size:36px; font-weight:bold; letter-spacing:8px; color:#111518; background-color:#ffffff; border:2px solid #8cc63e; border-radius:8px; padding:12px 20px;">{{.Code}}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-bottom:8px; font-size:15px; line-height:22px; color:#40484c;">
+                    Este código vence en 10 minutos. Si vos no solicitaste este cambio, podés ignorar este mensaje.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding: 20px 24px; background-color:#ffffff; border-top:1px solid #e0e0e0;">
+              <span style="font-size:12px; color:#40484c;">&copy; 2026 Paceron. Todos los derechos reservados.</span>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
