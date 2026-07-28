@@ -352,3 +352,158 @@ func TestUserUpdate_InternalError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
+
+func TestChangePassword_Success(t *testing.T) {
+	mockSvc := mockUserService{
+		mockChangePassword: func(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+			return nil
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestChangePassword_InvalidUserID(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/abc/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestChangePassword_InvalidBody(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{invalid json`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestChangePassword_PasswordMismatch(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"Different789"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Contains(t, result.Message, "no coinciden")
+}
+
+func TestChangePassword_WeakPassword(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"weak","confirm_password":"weak"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestChangePassword_WrongCurrentPassword(t *testing.T) {
+	mockSvc := mockUserService{
+		mockChangePassword: func(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+			return errors.New("contraseña actual incorrecta")
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"current_password":"WrongPass","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestChangePassword_UserNotFound(t *testing.T) {
+	mockSvc := mockUserService{
+		mockChangePassword: func(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+			return errors.New("usuario no encontrado")
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/999/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestChangePassword_SameAsCurrent(t *testing.T) {
+	mockSvc := mockUserService{
+		mockChangePassword: func(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+			return errors.New("la nueva contraseña debe ser distinta a la actual")
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"OldPass123","confirm_password":"OldPass123"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestChangePassword_InternalError(t *testing.T) {
+	mockSvc := mockUserService{
+		mockChangePassword: func(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+			return errors.New("error al cambiar la contraseña")
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
