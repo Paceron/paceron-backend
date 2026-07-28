@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/user"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
 func TestUserUpdate_Success(t *testing.T) {
@@ -33,7 +36,7 @@ func TestUserUpdate_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newName := "John Updated"
 	req := &user.UserUpdateRequest{
 		Name: &newName,
@@ -68,7 +71,7 @@ func TestUserUpdate_BankAliasSuccess(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	bankAlias := "mi-banco-123"
 	req := &user.UserUpdateRequest{
 		BankAlias: &bankAlias,
@@ -88,7 +91,7 @@ func TestUserUpdate_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	name := "John"
 	req := &user.UserUpdateRequest{
 		Name: &name,
@@ -113,7 +116,7 @@ func TestUserUpdate_EmailChangeRequiresPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -139,7 +142,7 @@ func TestUserUpdate_EmailChangeWrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -168,7 +171,7 @@ func TestUserUpdate_EmailChangeDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	newEmail := "existing@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -193,7 +196,7 @@ func TestUserUpdate_InvalidBirthDate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	invalidDate := "2024/01/01"
 	req := &user.UserUpdateRequest{
 		BirthDate: &invalidDate,
@@ -223,7 +226,7 @@ func TestChangeStatus_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 	assert.NoError(t, err)
 	assert.Equal(t, "pause", resp.Status)
@@ -236,7 +239,7 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	_, err := svc.ChangeStatus(nil, 999, "pause")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -257,11 +260,157 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao)
+	svc := NewUserService(mockDao, nil)
 	_, err := svc.ChangeStatus(nil, 1, "invalid-status")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "estado inválido")
 	assert.Contains(t, err.Error(), "Estados permitidos")
+}
+
+func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	mailerMock := &mockMailer{}
+
+	svc := NewUserService(mockDao, mailerMock)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "inactive", resp.Status)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "john@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeFarewell, mailerMock.lastEmailType)
+	assert.Equal(t, "John", mailerMock.lastData.Name)
+}
+
+func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	mailerMock := &mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+			return errors.New("smtp down")
+		},
+	}
+
+	svc := NewUserService(mockDao, mailerMock)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, "inactive", resp.Status)
+}
+
+func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	mailerMock := &mockMailer{}
+
+	svc := NewUserService(mockDao, mailerMock)
+	resp, err := svc.ChangeStatus(nil, 1, "pause")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "pause", resp.Status)
+	assert.False(t, mailerMock.sendEmailCalled)
+}
+
+func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "inactive",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	mailerMock := &mockMailer{}
+
+	svc := NewUserService(mockDao, mailerMock)
+	resp, err := svc.ChangeStatus(nil, 1, "inactive")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "inactive", resp.Status)
+	assert.False(t, mailerMock.sendEmailCalled)
+}
+
+func TestChangeStatus_NilMailerDoesNotPanic(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Status:    "active",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockUpdateStatus: func(ctx *gin.Context, userID int64, status string) error {
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+
+	assert.NotPanics(t, func() {
+		resp, err := svc.ChangeStatus(nil, 1, "inactive")
+		assert.NoError(t, err)
+		assert.Equal(t, "inactive", resp.Status)
+	})
 }
 
 func TestValidateUserUpdateRequest_InvalidEmail(t *testing.T) {

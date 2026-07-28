@@ -1,13 +1,47 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"github.com/stretchr/testify/assert"
 )
+
+// mockMailer es el doble de prueba compartido por todos los tests de services
+// que dependen de mailer.MailerInterface. Registra la última invocación para
+// poder assertar sin tener que definir un closure en cada test.
+type mockMailer struct {
+	sendEmailCalled bool
+	lastTo          string
+	lastEmailType   mailer.EmailType
+	lastData        mailer.EmailData
+
+	mockSend      func(ctx context.Context, to, subject, htmlBody string) error
+	mockSendEmail func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error
+}
+
+func (m *mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
+	if m.mockSend != nil {
+		return m.mockSend(ctx, to, subject, htmlBody)
+	}
+	return nil
+}
+
+func (m *mockMailer) SendEmail(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+	m.sendEmailCalled = true
+	m.lastTo = to
+	m.lastEmailType = emailType
+	m.lastData = data
+
+	if m.mockSendEmail != nil {
+		return m.mockSendEmail(ctx, to, emailType, data)
+	}
+	return nil
+}
 
 type mockUserDao struct {
 	mockGetByID      func(ctx *gin.Context, userID int64) (*dbs.User, error)
@@ -51,7 +85,7 @@ func TestGetUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	result, err := service.GetUser(nil, 1)
 
 	assert.NoError(t, err)
@@ -66,7 +100,7 @@ func TestGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.GetUser(nil, 999)
 
 	assert.Error(t, err)
@@ -80,7 +114,7 @@ func TestGetUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.GetUser(nil, 1)
 
 	assert.Error(t, err)
@@ -95,7 +129,7 @@ func TestCreateUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	result, err := service.CreateUser(nil, "test", "secret")
 
 	assert.NoError(t, err)
@@ -110,7 +144,7 @@ func TestCreateUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao)
+	service := NewUserService(mockDao, nil)
 	_, err := service.CreateUser(nil, "test", "secret")
 
 	assert.Error(t, err)

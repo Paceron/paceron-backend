@@ -10,34 +10,10 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/invitation"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
-type mockMailerForInvitation struct {
-	sendFn              func(ctx context.Context, to, subject, htmlBody string) error
-	sendInvitationFn    func(ctx context.Context, to, name, teamName string) error
-}
-
-func (m *mockMailerForInvitation) Send(ctx context.Context, to, subject, htmlBody string) error {
-	if m.sendFn != nil {
-		return m.sendFn(ctx, to, subject, htmlBody)
-	}
-	return nil
-}
-
-func (m *mockMailerForInvitation) SendWelcomeEmail(ctx context.Context, to, name string) error {
-	return nil
-}
-
-func (m *mockMailerForInvitation) SendPasswordResetEmail(ctx context.Context, to, name, code string) error {
-	return nil
-}
-
-func (m *mockMailerForInvitation) SendInvitationEmail(ctx context.Context, to, name, teamName string) error {
-	if m.sendInvitationFn != nil {
-		return m.sendInvitationFn(ctx, to, name, teamName)
-	}
-	return nil
-}
+// El doble de prueba del mailer es compartido: ver mockMailer en opt_service_test.go.
 
 type mockUserDaoForInvitation struct {
 	findByEmailFn func(ctx *gin.Context, email string) (*dbs.User, error)
@@ -82,24 +58,19 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 		},
 	}
 
-	sent := false
-	mailer := &mockMailerForInvitation{
-		sendInvitationFn: func(ctx context.Context, to, name, teamName string) error {
-			sent = true
-			assert.Equal(t, "juan@test.com", to)
-			assert.Equal(t, "Equipo Alpha", teamName)
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, mailer)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, mailerMock)
 	resp, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.True(t, sent)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "juan@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeInvitation, mailerMock.lastEmailType)
+	assert.Equal(t, "Equipo Alpha", mailerMock.lastData.TeamName)
 	assert.Contains(t, resp.Message, "juan@test.com")
 }
 
@@ -110,7 +81,7 @@ func TestInvitationService_InviteRunner_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockMailerForInvitation{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 999, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -131,7 +102,7 @@ func TestInvitationService_InviteRunner_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockMailerForInvitation{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "noexiste@test.com",
 	})
@@ -151,13 +122,13 @@ func TestInvitationService_InviteRunner_MailerError(t *testing.T) {
 			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
 		},
 	}
-	mailer := &mockMailerForInvitation{
-		sendInvitationFn: func(ctx context.Context, to, name, teamName string) error {
+	mailerMock := &mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			return errors.New("smtp error")
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, mailer)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, mailerMock)
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -173,7 +144,7 @@ func TestInvitationService_InviteRunner_TeamDaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockMailerForInvitation{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -194,7 +165,7 @@ func TestInvitationService_InviteRunner_UserFindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockMailerForInvitation{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})

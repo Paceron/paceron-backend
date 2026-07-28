@@ -42,14 +42,12 @@ func NewApplication() *Application {
 		fmt.Println("error initializing DB:", err)
 	}
 
-	// User flow
-	userDao := daos.NewUserDao(db)
-	userService := services.NewUserService(userDao)
-	userController := controllers.NewUserController(userService)
-
-	// Mailer
+	// Mailer: una única instancia compartida por todos los flujos que envían correo.
+	// Si falla su construcción se deja la interfaz en nil (no un *Client nulo), para
+	// que los chequeos `mailer != nil` de los services sigan funcionando.
+	var mailerClient mailer.MailerInterface
 	mailerLogger := customlogger.NewHTTPClientLogger()
-	mailerClient, err := mailer.New(
+	smtpClient, err := mailer.New(
 		mailer.WithHost(config.MySMTP.Host),
 		mailer.WithPort(config.MySMTP.Port),
 		mailer.WithCredentials(config.MySMTP.User, config.MySMTP.AppPassword),
@@ -57,7 +55,14 @@ func NewApplication() *Application {
 	)
 	if err != nil {
 		customlogger.Error(nil, "error initializing mailer", err)
+	} else {
+		mailerClient = smtpClient
 	}
+
+	// User flow
+	userDao := daos.NewUserDao(db)
+	userService := services.NewUserService(userDao, mailerClient)
+	userController := controllers.NewUserController(userService)
 
 	// Auth flow
 	authDao := daos.NewAuthDao(db)

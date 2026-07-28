@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
 type mockPasswordResetDao struct {
@@ -42,30 +42,7 @@ func (m mockPasswordResetDao) SoftDeleteByUserID(ctx *gin.Context, userID int64)
 	return m.mockSoftDeleteByUserID(ctx, userID)
 }
 
-type mockMailer struct {
-	sendPasswordResetEmailCalled bool
-	mockSendPasswordResetEmail   func(ctx context.Context, to, name, code string) error
-}
-
-func (m *mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
-	return nil
-}
-
-func (m *mockMailer) SendWelcomeEmail(ctx context.Context, to, name string) error {
-	return nil
-}
-
-func (m *mockMailer) SendPasswordResetEmail(ctx context.Context, to, name, code string) error {
-	m.sendPasswordResetEmailCalled = true
-	if m.mockSendPasswordResetEmail != nil {
-		return m.mockSendPasswordResetEmail(ctx, to, name, code)
-	}
-	return nil
-}
-
-func (m *mockMailer) SendInvitationEmail(ctx context.Context, to, name, teamName string) error {
-	return nil
-}
+// El doble de prueba del mailer es compartido: ver mockMailer en opt_service_test.go.
 
 func TestRequestPasswordReset_UserNotFound_NoErrorNoMail(t *testing.T) {
 	authDao := mockAuthDao{
@@ -79,7 +56,7 @@ func TestRequestPasswordReset_UserNotFound_NoErrorNoMail(t *testing.T) {
 	err := svc.RequestPasswordReset(nil, "nobody@test.com")
 
 	assert.NoError(t, err)
-	assert.False(t, mailerMock.sendPasswordResetEmailCalled)
+	assert.False(t, mailerMock.sendEmailCalled)
 }
 
 func TestRequestPasswordReset_UserNotActive_NoErrorNoMail(t *testing.T) {
@@ -94,7 +71,7 @@ func TestRequestPasswordReset_UserNotActive_NoErrorNoMail(t *testing.T) {
 	err := svc.RequestPasswordReset(nil, "blocked@test.com")
 
 	assert.NoError(t, err)
-	assert.False(t, mailerMock.sendPasswordResetEmailCalled)
+	assert.False(t, mailerMock.sendEmailCalled)
 }
 
 func TestRequestPasswordReset_FindByEmailError_ReturnsError(t *testing.T) {
@@ -133,14 +110,7 @@ func TestRequestPasswordReset_ActiveUser_InvalidatesPreviousAndSendsMail(t *test
 			return nil
 		},
 	}
-	mailerMock := &mockMailer{
-		mockSendPasswordResetEmail: func(ctx context.Context, to, name, code string) error {
-			assert.Equal(t, "user@test.com", to)
-			assert.Equal(t, "Juan", name)
-			assert.Len(t, code, 6)
-			return nil
-		},
-	}
+	mailerMock := &mockMailer{}
 
 	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, mailerMock)
 	err := svc.RequestPasswordReset(nil, "user@test.com")
@@ -148,7 +118,11 @@ func TestRequestPasswordReset_ActiveUser_InvalidatesPreviousAndSendsMail(t *test
 	assert.NoError(t, err)
 	assert.True(t, softDeleteCalled)
 	assert.True(t, createCalled)
-	assert.True(t, mailerMock.sendPasswordResetEmailCalled)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "user@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypePasswordReset, mailerMock.lastEmailType)
+	assert.Equal(t, "Juan", mailerMock.lastData.Name)
+	assert.Len(t, mailerMock.lastData.Code, 6)
 }
 
 func TestResetPassword_UserNotFound_GenericError(t *testing.T) {

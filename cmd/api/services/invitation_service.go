@@ -59,7 +59,7 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, req *in
 		return nil, fmt.Errorf("no se encontró un usuario con el email proporcionado")
 	}
 
-	if err := s.mailer.SendInvitationEmail(ctx, user.Email, user.Name, teamDB.Name); err != nil {
+	if err := s.mailer.SendEmail(ctx, user.Email, mailer.EmailTypeInvitation, mailer.EmailData{Name: user.Name, TeamName: teamDB.Name}); err != nil {
 		customlogger.Error(ctx, "error sending invitation email", err,
 			customlogger.Tag("email", user.Email),
 			customlogger.TagMethod("InviteRunner"))

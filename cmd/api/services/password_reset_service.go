@@ -110,7 +110,7 @@ func (s *passwordResetService) RequestPasswordReset(ctx *gin.Context, email stri
 		customlogger.TagMethod("RequestPasswordReset"))
 
 	if s.mailer != nil {
-		if err := s.mailer.SendPasswordResetEmail(ctx, userDB.Email, userDB.Name, code); err != nil {
+		if err := s.mailer.SendEmail(ctx, userDB.Email, mailer.EmailTypePasswordReset, mailer.EmailData{Name: userDB.Name, Code: code}); err != nil {
 			customlogger.Error(ctx, "error sending password reset email", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
 				customlogger.Tag("step", "forgot_password_send_email"))

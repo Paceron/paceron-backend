@@ -86,7 +86,7 @@ func (s *authService) Register(ctx *gin.Context, req *auth.RegisterRequest, pass
 		customlogger.TagMethod("Register"))
 
 	if s.mailer != nil {
-		if err := s.mailer.SendWelcomeEmail(ctx, createdUser.Email, createdUser.Name); err != nil {
+		if err := s.mailer.SendEmail(ctx, createdUser.Email, mailer.EmailTypeWelcome, mailer.EmailData{Name: createdUser.Name}); err != nil {
 			customlogger.Error(ctx, "error sending welcome email", err,
 				customlogger.Tag("email", createdUser.Email),
 				customlogger.Tag("step", "send_welcome_email"))
