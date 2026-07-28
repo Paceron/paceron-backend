@@ -182,7 +182,9 @@ func (s *passwordResetService) ResetPassword(ctx *gin.Context, email, code, newP
 			customlogger.Tag("step", "reset_password_hash_new_password"))
 		return fmt.Errorf("error al restablecer la contraseña")
 	}
+	now := time.Now()
 	userDB.Password = string(hashedPassword)
+	userDB.PasswordChangedAt = &now
 
 	if err := s.userDao.Update(ctx, userDB); err != nil {
 		customlogger.Error(ctx, "error updating user password", err,

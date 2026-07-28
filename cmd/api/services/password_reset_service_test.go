@@ -280,6 +280,7 @@ func TestResetPassword_HappyPath_UpdatesPasswordAndMarksUsed(t *testing.T) {
 		mockUpdate: func(ctx *gin.Context, user *dbs.User) error {
 			updateCalled = true
 			assert.NotEqual(t, "old-hash", user.Password)
+			assert.NotNil(t, user.PasswordChangedAt)
 			return nil
 		},
 	}
