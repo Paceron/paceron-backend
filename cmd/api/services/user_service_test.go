@@ -507,3 +507,100 @@ func TestValidateUserUpdateRequest_BankAliasNull(t *testing.T) {
 	msg := ValidateUserUpdateRequest(req)
 	assert.Equal(t, "", msg)
 }
+
+func TestChangePassword_Success(t *testing.T) {
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("OldPass123"), bcrypt.DefaultCost)
+	updateCalled := false
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Email: "john@test.com", Password: string(hashedPassword)}, nil
+		},
+		mockUpdate: func(ctx *gin.Context, u *dbs.User) error {
+			updateCalled = true
+			assert.NotEqual(t, string(hashedPassword), u.Password)
+			assert.NotNil(t, u.PasswordChangedAt)
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
+
+	assert.NoError(t, err)
+	assert.True(t, updateCalled)
+}
+
+func TestChangePassword_UserNotFound(t *testing.T) {
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
+
+	assert.Error(t, err)
+	assert.Equal(t, "usuario no encontrado", err.Error())
+}
+
+func TestChangePassword_FindByIDError(t *testing.T) {
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
+
+	assert.Error(t, err)
+}
+
+func TestChangePassword_WrongCurrentPassword(t *testing.T) {
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("OldPass123"), bcrypt.DefaultCost)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Password: string(hashedPassword)}, nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "WrongPassword", "NewPass456")
+
+	assert.Error(t, err)
+	assert.Equal(t, "contraseña actual incorrecta", err.Error())
+}
+
+func TestChangePassword_NewPasswordSameAsCurrent(t *testing.T) {
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("OldPass123"), bcrypt.DefaultCost)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Password: string(hashedPassword)}, nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "OldPass123")
+
+	assert.Error(t, err)
+	assert.Equal(t, "la nueva contraseña debe ser distinta a la actual", err.Error())
+}
+
+func TestChangePassword_UpdateError(t *testing.T) {
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("OldPass123"), bcrypt.DefaultCost)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Password: string(hashedPassword)}, nil
+		},
+		mockUpdate: func(ctx *gin.Context, u *dbs.User) error {
+			return errors.New("db error")
+		},
+	}
+
+	svc := NewUserService(mockDao, nil)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al cambiar la contraseña")
+}

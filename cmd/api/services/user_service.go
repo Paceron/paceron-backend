@@ -23,6 +23,7 @@ type UserServiceInterface interface {
 	CreateUser(ctx *gin.Context, name, password string) (user.User, error)
 	Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
 	ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
+	ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 }
 
 type userService struct {
@@ -210,6 +211,54 @@ func (s *userService) ChangeStatus(ctx *gin.Context, id int64, status string) (*
 	}
 
 	return toUserUpdateResponse(userDB), nil
+}
+
+func (s *userService) ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+	userDB, err := s.userDao.FindByID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding user for password change", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
+			customlogger.Tag("step", "find_user"))
+		return fmt.Errorf("error al cambiar la contraseña")
+	}
+	if userDB == nil {
+		return fmt.Errorf("usuario no encontrado")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(currentPassword)); err != nil {
+		customlogger.Warn(ctx, "invalid current password for password change",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", id)))
+		return fmt.Errorf("contraseña actual incorrecta")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(newPassword)); err == nil {
+		return fmt.Errorf("la nueva contraseña debe ser distinta a la actual")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		customlogger.Error(ctx, "error hashing new password", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
+			customlogger.Tag("step", "hash_password"))
+		return fmt.Errorf("error al cambiar la contraseña")
+	}
+
+	now := time.Now()
+	userDB.Password = string(hashedPassword)
+	userDB.PasswordChangedAt = &now
+
+	if err := s.userDao.Update(ctx, userDB); err != nil {
+		customlogger.Error(ctx, "error updating user password", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
+			customlogger.Tag("step", "update_user"))
+		return fmt.Errorf("error al cambiar la contraseña")
+	}
+
+	customlogger.Info(ctx, "password changed successfully",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
+		customlogger.TagMethod("ChangePassword"))
+
+	return nil
 }
 
 func toUserUpdateResponse(userDB *dbs.User) *user.UserUpdateResponse {
