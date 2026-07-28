@@ -7,25 +7,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"github.com/stretchr/testify/assert"
 )
 
 type mockMailer struct {
-	mockSend              func(ctx context.Context, to, subject, htmlBody string) error
-	mockSendWelcomeEmail  func(ctx context.Context, to, name string) error
-	mockSendFarewellEmail func(ctx context.Context, to, name string) error
+	mockSend      func(ctx context.Context, to, subject, htmlBody string) error
+	mockSendEmail func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error
 }
 
 func (m mockMailer) Send(ctx context.Context, to, subject, htmlBody string) error {
 	return m.mockSend(ctx, to, subject, htmlBody)
 }
 
-func (m mockMailer) SendWelcomeEmail(ctx context.Context, to, name string) error {
-	return m.mockSendWelcomeEmail(ctx, to, name)
-}
-
-func (m mockMailer) SendFarewellEmail(ctx context.Context, to, name string) error {
-	return m.mockSendFarewellEmail(ctx, to, name)
+func (m mockMailer) SendEmail(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+	return m.mockSendEmail(ctx, to, emailType, data)
 }
 
 type mockUserDao struct {

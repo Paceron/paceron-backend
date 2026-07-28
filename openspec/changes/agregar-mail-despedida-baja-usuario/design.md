@@ -29,6 +29,14 @@ La infraestructura de mailer (`infrastructure/mailer/`) fue construida en `agreg
 ### 4. Mismo cliente/logger de mailer compartido entre Auth y User flow
 - **Por qué**: no hay razón para instanciar dos `mailer.Client` o dos loggers; se pasa la misma instancia `mailerClient` a `NewAuthService` y `NewUserService`.
 
+### 4.b Una única instancia del cliente SMTP, construida en `New` (feedback de code review)
+- **Por qué**: `Send` construía un `mail.Client` nuevo en cada envío, generando un cliente por correo. Ahora se construye una sola vez en `mailer.New` y se reutiliza. Es seguro compartirlo entre goroutines: `DialAndSendWithContext` abre y cierra su propia conexión por llamada (no la guarda en el struct) y go-mail protege el acceso a su configuración con un `RWMutex` interno.
+- **Efecto secundario**: `New` ahora sí puede fallar (antes nunca retornaba error). En `app.go` se declara `mailerClient` como `mailer.MailerInterface` y solo se asigna si la construcción tuvo éxito, para que en caso de error quede una interfaz nil real y no un `*Client` nulo envuelto en interfaz no-nil (que haría pasar los chequeos `mailer != nil` de los services y terminaría en panic).
+
+### 4.c Un único `SendEmail` parametrizado por tipo, en vez de un método por template (feedback de code review)
+- **Por qué**: `SendWelcomeEmail` y `SendFarewellEmail` eran el mismo código con distinto template y asunto. Se reemplazan por `SendEmail(ctx, to, emailType, data)` más un registro `emailTemplates` (tipo → asunto + template parseado) en `render.go`. Agregar un tipo de correo nuevo ahora es sumar una entrada al registro, sin tocar `mailer.go` ni la interfaz.
+- **Beneficio adicional**: los templates se parsean una sola vez al cargar el package (`template.Must`) en lugar de en cada envío.
+
 ### 5. Envío best-effort, nunca bloquea la respuesta (mismo criterio que Decisión 6 de `agregar-envio-mails-smtp`)
 - **Por qué**: el correo de despedida es una notificación, no un requisito para que la baja se efectivice. Un fallo de SMTP no debe impedir que el usuario quede desactivado.
 

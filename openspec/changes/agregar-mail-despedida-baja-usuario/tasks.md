@@ -32,6 +32,16 @@
 - [x] 5.7 `TestRenderFarewellEmail_NoSMTPRequired` en `mailer_test.go`: verifica el renderizado del template sin credenciales SMTP
 - [x] 5.8 Ejecutar `go test ./cmd/api/services/... -v -run TestChangeStatus` y `go test ./cmd/api/infrastructure/mailer/... -v -run TestRenderFarewellEmail` — todo verde
 
+## 7. Feedback de code review
+
+- [x] 7.1 Unificar `SendWelcomeEmail`/`SendFarewellEmail` en un único `SendEmail(ctx, to, emailType, data)`, con registro `emailTemplates` (tipo → asunto + template) en `render.go`
+- [x] 7.2 Construir el cliente SMTP una sola vez en `mailer.New` y reutilizarlo en cada envío, en lugar de instanciar uno por correo
+- [x] 7.3 Ajustar `app.go` para que `mailerClient` quede como interfaz nil si falla la construcción del mailer (evita un `*Client` nulo envuelto en interfaz no-nil)
+- [x] 7.4 Actualizar consumidores (`auth_service.go`, `user_service.go`) y `mockMailer` a la nueva interfaz
+- [x] 7.5 Ampliar cobertura de `infrastructure/mailer`: render de ambos tipos, tipo desconocido, auto-escaping (requisito de la spec que no tenía test), nombre vacío, registro completo de tipos, construcción del cliente único, puerto por defecto, puerto inválido, reutilización de la instancia SMTP entre envíos
+- [x] 7.6 Ampliar cobertura de `Register` + mailer en `auth_service_test.go` (cobertura que había quedado diferida en `agregar-envio-mails-smtp`): envía el correo, error no bloquea, mailer nil no rompe, alta fallida no envía correo
+- [x] 7.7 Verificar `go build ./...`, `go vet ./...`, `go test ./...` y el test de integración real con ambos tipos de correo — todo verde
+
 ## 6. Verificación end-to-end
 
 - [x] 6.1 Con el backend corriendo y credenciales SMTP reales, registrar un usuario de prueba descartable vía `POST /api/v1/auth/register` (user_id 13)

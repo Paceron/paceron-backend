@@ -33,8 +33,7 @@ type Logger interface {
 // MailerInterface permite mockear el envío de correos en los consumidores.
 type MailerInterface interface {
 	Send(ctx context.Context, to, subject, htmlBody string) error
-	SendWelcomeEmail(ctx context.Context, to, name string) error
-	SendFarewellEmail(ctx context.Context, to, name string) error
+	SendEmail(ctx context.Context, to string, emailType EmailType, data EmailData) error
 }
 
 // Client envía correos electrónicos vía SMTP.
@@ -45,9 +44,19 @@ type Client struct {
 	password string
 
 	logger Logger
+
+	// smtpClient es la única instancia del cliente SMTP, compartida por todos
+	// los envíos. Ver New para el detalle de por qué es seguro reutilizarla.
+	smtpClient *mail.Client
 }
 
 // New construye un Client de mailer aplicando las opciones dadas.
+//
+// El cliente SMTP subyacente se construye una sola vez acá y se reutiliza en
+// cada envío, en lugar de instanciarse por correo. Es seguro compartirlo entre
+// goroutines: go-mail abre y cierra una conexión propia dentro de cada
+// DialAndSendWithContext (no guarda la conexión en el struct) y protege el
+// acceso a su configuración con un RWMutex interno.
 func New(opts ...Option) (*Client, error) {
 	client := &Client{
 		port: 587,
@@ -57,24 +66,24 @@ func New(opts ...Option) (*Client, error) {
 		opt(client)
 	}
 
-	return client, nil
-}
-
-// Send renderiza y envía un correo HTML a un único destinatario.
-func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 	smtpClient, err := mail.NewClient(
-		c.host,
-		mail.WithPort(c.port),
+		client.host,
+		mail.WithPort(client.port),
 		mail.WithSMTPAuth(mail.SMTPAuthPlain),
-		mail.WithUsername(c.username),
-		mail.WithPassword(c.password),
+		mail.WithUsername(client.username),
+		mail.WithPassword(client.password),
 		mail.WithTLSPolicy(mail.TLSMandatory),
 	)
 	if err != nil {
-		c.logError(ctx, "error creando smtp client", err)
-		return fmt.Errorf("mailer: error creando smtp client: %w", err)
+		return nil, fmt.Errorf("mailer: error creando smtp client: %w", err)
 	}
+	client.smtpClient = smtpClient
 
+	return client, nil
+}
+
+// Send envía un correo HTML ya renderizado a un único destinatario.
+func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 	msg := mail.NewMsg()
 	if err := msg.From(c.username); err != nil {
 		c.logError(ctx, "error seteando remitente", err)
@@ -87,7 +96,7 @@ func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 	msg.Subject(subject)
 	msg.SetBodyString(mail.TypeTextHTML, htmlBody)
 
-	if err := smtpClient.DialAndSendWithContext(ctx, msg); err != nil {
+	if err := c.smtpClient.DialAndSendWithContext(ctx, msg); err != nil {
 		c.logError(ctx, "error enviando email", err)
 		return fmt.Errorf("mailer: error enviando email: %w", err)
 	}
@@ -96,22 +105,18 @@ func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 	return nil
 }
 
-// SendWelcomeEmail renderiza el template de bienvenida y lo envía a un destinatario.
-func (c *Client) SendWelcomeEmail(ctx context.Context, to, name string) error {
-	html, err := RenderWelcomeEmail(WelcomeEmailData{Name: name})
+// SendEmail renderiza el template del tipo de correo indicado y lo envía.
+// Es el único punto de entrada para mandar correos con template: para sumar un
+// tipo nuevo alcanza con registrarlo en emailTemplates (ver render.go), sin
+// tocar esta función.
+func (c *Client) SendEmail(ctx context.Context, to string, emailType EmailType, data EmailData) error {
+	subject, htmlBody, err := RenderEmail(emailType, data)
 	if err != nil {
-		return fmt.Errorf("mailer: error renderizando template: %w", err)
+		c.logError(ctx, "error renderizando email", err)
+		return err
 	}
-	return c.Send(ctx, to, "Bienvenido a Paceron", html)
-}
 
-// SendFarewellEmail renderiza el template de despedida y lo envía a un destinatario.
-func (c *Client) SendFarewellEmail(ctx context.Context, to, name string) error {
-	html, err := RenderFarewellEmail(FarewellEmailData{Name: name})
-	if err != nil {
-		return fmt.Errorf("mailer: error renderizando template: %w", err)
-	}
-	return c.Send(ctx, to, "Tu cuenta fue desactivada", html)
+	return c.Send(ctx, to, subject, htmlBody)
 }
 
 func (c *Client) logInfo(ctx context.Context, message, to string) {

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/domains/auth"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
 type mockAuthDao struct {
@@ -294,6 +296,105 @@ func TestRegister_Success(t *testing.T) {
 	assert.Equal(t, int64(1), resp.UserID)
 	assert.Equal(t, "John", resp.Name)
 	assert.Equal(t, "15/04/1990", resp.BirthDate)
+}
+
+func registerMockDao() mockAuthDao {
+	return mockAuthDao{
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return nil, nil
+		},
+		mockFindByDNI: func(ctx *gin.Context, dni string) (*dbs.User, error) {
+			return nil, nil
+		},
+		mockCreate: func(ctx *gin.Context, user *dbs.User) (*dbs.User, error) {
+			user.ID = 1
+			bankAlias := ""
+			user.BankAlias = &bankAlias
+			return user, nil
+		},
+	}
+}
+
+func registerRequest() *auth.RegisterRequest {
+	return &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Dni:       "12345678",
+		BirthDate: "15/04/1990",
+	}
+}
+
+func TestRegister_SendsWelcomeEmail(t *testing.T) {
+	var calledTo string
+	var calledType mailer.EmailType
+	var calledData mailer.EmailData
+	welcomeCalled := false
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+			welcomeCalled = true
+			calledTo = to
+			calledType = emailType
+			calledData = data
+			return nil
+		},
+	}
+
+	svc := NewAuthService(registerMockDao(), mailerMock)
+	resp, err := svc.Register(nil, registerRequest(), "securePass123")
+
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.UserID)
+	assert.True(t, welcomeCalled)
+	assert.Equal(t, "john@test.com", calledTo)
+	assert.Equal(t, mailer.EmailTypeWelcome, calledType)
+	assert.Equal(t, "John", calledData.Name)
+}
+
+func TestRegister_MailerErrorDoesNotBlock(t *testing.T) {
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+			return errors.New("smtp down")
+		},
+	}
+
+	svc := NewAuthService(registerMockDao(), mailerMock)
+	resp, err := svc.Register(nil, registerRequest(), "securePass123")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, int64(1), resp.UserID)
+}
+
+func TestRegister_NilMailerDoesNotPanic(t *testing.T) {
+	svc := NewAuthService(registerMockDao(), nil)
+
+	assert.NotPanics(t, func() {
+		resp, err := svc.Register(nil, registerRequest(), "securePass123")
+		assert.NoError(t, err)
+		assert.Equal(t, int64(1), resp.UserID)
+	})
+}
+
+func TestRegister_DuplicateEmailDoesNotSendWelcomeEmail(t *testing.T) {
+	mockDao := registerMockDao()
+	mockDao.mockFindByEmail = func(ctx *gin.Context, email string) (*dbs.User, error) {
+		return &dbs.User{ID: 99, Email: email}, nil
+	}
+
+	welcomeCalled := false
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
+			welcomeCalled = true
+			return nil
+		},
+	}
+
+	svc := NewAuthService(mockDao, mailerMock)
+	_, err := svc.Register(nil, registerRequest(), "securePass123")
+
+	assert.Error(t, err)
+	assert.False(t, welcomeCalled, "no debe enviarse el correo si el alta falló")
 }
 
 func TestRegister_EmailDuplicate(t *testing.T) {

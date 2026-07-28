@@ -200,7 +200,7 @@ func (s *userService) ChangeStatus(ctx *gin.Context, id int64, status string) (*
 
 	if previousStatus != string(constants.UserStatusInactive) && status == string(constants.UserStatusInactive) {
 		if s.mailer != nil {
-			if err := s.mailer.SendFarewellEmail(ctx, userDB.Email, userDB.Name); err != nil {
+			if err := s.mailer.SendEmail(ctx, userDB.Email, mailer.EmailTypeFarewell, mailer.EmailData{Name: userDB.Name}); err != nil {
 				customlogger.Error(ctx, "error sending farewell email", err,
 					customlogger.Tag("email", userDB.Email),
 					customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),

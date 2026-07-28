@@ -12,6 +12,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/user"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
 func TestUserUpdate_Success(t *testing.T) {
@@ -284,25 +285,29 @@ func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
 		},
 	}
 
-	var calledTo, calledName string
+	var calledTo string
+	var calledType mailer.EmailType
+	var calledData mailer.EmailData
 	farewellCalled := false
-	mailer := mockMailer{
-		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			farewellCalled = true
 			calledTo = to
-			calledName = name
+			calledType = emailType
+			calledData = data
 			return nil
 		},
 	}
 
-	svc := NewUserService(mockDao, mailer)
+	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "inactive", resp.Status)
 	assert.True(t, farewellCalled)
 	assert.Equal(t, "john@test.com", calledTo)
-	assert.Equal(t, "John", calledName)
+	assert.Equal(t, mailer.EmailTypeFarewell, calledType)
+	assert.Equal(t, "John", calledData.Name)
 }
 
 func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
@@ -323,13 +328,13 @@ func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
 		},
 	}
 
-	mailer := mockMailer{
-		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			return errors.New("smtp down")
 		},
 	}
 
-	svc := NewUserService(mockDao, mailer)
+	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -356,14 +361,14 @@ func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
 	}
 
 	farewellCalled := false
-	mailer := mockMailer{
-		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			farewellCalled = true
 			return nil
 		},
 	}
 
-	svc := NewUserService(mockDao, mailer)
+	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 
 	assert.NoError(t, err)
@@ -390,14 +395,14 @@ func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
 	}
 
 	farewellCalled := false
-	mailer := mockMailer{
-		mockSendFarewellEmail: func(ctx context.Context, to, name string) error {
+	mailerMock := mockMailer{
+		mockSendEmail: func(ctx context.Context, to string, emailType mailer.EmailType, data mailer.EmailData) error {
 			farewellCalled = true
 			return nil
 		},
 	}
 
-	svc := NewUserService(mockDao, mailer)
+	svc := NewUserService(mockDao, mailerMock)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
