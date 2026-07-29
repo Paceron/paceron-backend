@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -106,6 +107,23 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 		customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
 		customlogger.Tag("name", teamDB.Name),
 		customlogger.TagMethod("Create"))
+
+	// El owner queda como miembro del equipo (rol entrenador) para que las
+	// validaciones de pertenencia (ej. Delete) lo reconozcan. No se aborta la
+	// creación si esto falla, mismo criterio tolerante que el alta del grupo
+	// por defecto en TeamDelegate.
+	ownerTeamUser := &dbs.TeamUser{
+		TeamID:         teamDB.ID,
+		UserID:         teamDB.OwnerID,
+		RoleInTeam:     teamOwnerRoleName,
+		Status:         "active",
+		AssignmentDate: time.Now(),
+	}
+	if err := s.teamUserDao.Create(ctx, ownerTeamUser); err != nil {
+		customlogger.Error(ctx, "error creating owner team_user membership", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
+			customlogger.TagMethod("Create"))
+	}
 
 	return s.toResponse(teamDB), nil
 }

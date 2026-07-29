@@ -77,7 +77,19 @@ func TestTeamService_Create_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{})
+	teamUserCreateCalled := false
+	mockTeamUserDao := &mockTeamUserDao{
+		createFn: func(ctx *gin.Context, tu *dbs.TeamUser) error {
+			teamUserCreateCalled = true
+			assert.Equal(t, int64(1), tu.TeamID)
+			assert.Equal(t, int64(1), tu.UserID)
+			assert.Equal(t, "entrenador", tu.RoleInTeam)
+			assert.Equal(t, "active", tu.Status)
+			return nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao)
 	resp, err := svc.Create(nil, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -90,6 +102,46 @@ func TestTeamService_Create_Success(t *testing.T) {
 	assert.Equal(t, int64(20), resp.MaxMembers)
 	assert.Equal(t, int64(1), resp.OwnerID)
 	assert.Equal(t, "active", resp.Status)
+	assert.True(t, teamUserCreateCalled)
+}
+
+func TestTeamService_Create_TeamUserDaoCreateError_StillSucceeds(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Coach"}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	mockTeamUserDao := &mockTeamUserDao{
+		createFn: func(ctx *gin.Context, tu *dbs.TeamUser) error {
+			return errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao)
+	resp, err := svc.Create(nil, &team.CreateTeamRequest{
+		Name:       "Equipo Alpha",
+		MaxMembers: 20,
+		OwnerID:    1,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
 }
 
 func TestTeamService_Create_OwnerNotFound(t *testing.T) {
