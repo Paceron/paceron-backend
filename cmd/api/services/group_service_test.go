@@ -31,6 +31,9 @@ func (m *mockTeamUserDaoGroup) FindByUserID(ctx *gin.Context, u int64) ([]dbs.Te
 func (m *mockTeamUserDaoGroup) CountActiveByTeam(ctx *gin.Context, t int64) (int64, error) {
 	return 0, nil
 }
+func (m *mockTeamUserDaoGroup) CountActiveByTeamExcludingUser(ctx *gin.Context, t, u int64) (int64, error) {
+	return 0, nil
+}
 func (m *mockTeamUserDaoGroup) HasOwnerByTeam(ctx *gin.Context, t int64) (bool, error) {
 	return false, nil
 }

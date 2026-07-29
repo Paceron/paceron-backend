@@ -291,7 +291,7 @@ func TestTeamService_Delete_Success(t *testing.T) {
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{TeamID: 1, UserID: 1, RoleInTeam: "entrenador"}, nil
 		},
-		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) {
+		countActiveByTeamExcludingUserFn: func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
 			return 0, nil
 		},
 	}
@@ -365,7 +365,7 @@ func TestTeamService_Delete_HasMembers(t *testing.T) {
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{TeamID: 1, UserID: 1, RoleInTeam: "entrenador"}, nil
 		},
-		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) {
+		countActiveByTeamExcludingUserFn: func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
 			return 3, nil
 		},
 	}
@@ -547,7 +547,7 @@ func TestTeamService_Delete_SoftDeleteError(t *testing.T) {
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{TeamID: 1, UserID: 1, RoleInTeam: "entrenador"}, nil
 		},
-		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) {
+		countActiveByTeamExcludingUserFn: func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
 			return 0, nil
 		},
 	}

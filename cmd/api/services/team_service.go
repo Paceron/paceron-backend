@@ -199,7 +199,7 @@ func (s *teamService) Delete(ctx *gin.Context, id int64, userID int64) error {
 		return fmt.Errorf("solo el entrenador puede eliminar el equipo")
 	}
 
-	count, err := s.teamUserDao.CountActiveByTeam(ctx, id)
+	count, err := s.teamUserDao.CountActiveByTeamExcludingUser(ctx, id, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error counting team members for delete", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),

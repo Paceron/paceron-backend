@@ -17,6 +17,7 @@ type mockTeamUserDao struct {
 	findByTeamIDFn    func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
 	findByUserIDFn    func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
 	countActiveByTeamFn func(ctx *gin.Context, teamID int64) (int64, error)
+	countActiveByTeamExcludingUserFn func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error)
 	hasOwnerByTeamFn  func(ctx *gin.Context, teamID int64) (bool, error)
 	softDeleteFn      func(ctx *gin.Context, id int64) error
 }
@@ -52,6 +53,13 @@ func (m *mockTeamUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.Te
 func (m *mockTeamUserDao) CountActiveByTeam(ctx *gin.Context, teamID int64) (int64, error) {
 	if m.countActiveByTeamFn != nil {
 		return m.countActiveByTeamFn(ctx, teamID)
+	}
+	return 0, nil
+}
+
+func (m *mockTeamUserDao) CountActiveByTeamExcludingUser(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
+	if m.countActiveByTeamExcludingUserFn != nil {
+		return m.countActiveByTeamExcludingUserFn(ctx, teamID, excludeUserID)
 	}
 	return 0, nil
 }
