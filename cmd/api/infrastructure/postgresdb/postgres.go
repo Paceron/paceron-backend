@@ -80,6 +80,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.Group{},
 		&dbs.TeamUser{},
 		&dbs.GroupUser{},
+		&dbs.Invitation{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)
