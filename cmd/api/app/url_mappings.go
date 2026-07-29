@@ -71,6 +71,9 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Invitations
 	r.POST("/api/v1/teams/:id/invite", app.invitationController.InviteRunner)
+	r.GET("/api/v1/teams/:id/invitations", app.invitationController.ListPendingInvitations)
+	r.POST("/api/v1/invitations/:id/accept", app.invitationController.AcceptInvitation)
+	r.POST("/api/v1/invitations/:id/reject", app.invitationController.RejectInvitation)
 
 	mapSwagger(r)
 	mapGuide(r)
