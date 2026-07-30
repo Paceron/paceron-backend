@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -25,11 +26,13 @@ type TeamServiceInterface interface {
 }
 
 type teamService struct {
-	teamDao     daos.TeamDaoInterface
-	userDao     daos.UserDaoInterface
-	userRoleDao daos.UserRoleDaoInterface
-	roleDao     daos.RoleDaoInterface
-	teamUserDao daos.TeamUserDaoInterface
+	teamDao      daos.TeamDaoInterface
+	userDao      daos.UserDaoInterface
+	userRoleDao  daos.UserRoleDaoInterface
+	roleDao      daos.RoleDaoInterface
+	teamUserDao  daos.TeamUserDaoInterface
+	groupDao     daos.GroupDaoInterface
+	groupUserDao daos.GroupUserDaoInterface
 }
 
 // NewTeamService crea una nueva instancia de TeamService.
@@ -39,13 +42,17 @@ func NewTeamService(
 	userRoleDao daos.UserRoleDaoInterface,
 	roleDao daos.RoleDaoInterface,
 	teamUserDao daos.TeamUserDaoInterface,
+	groupDao daos.GroupDaoInterface,
+	groupUserDao daos.GroupUserDaoInterface,
 ) TeamServiceInterface {
 	return &teamService{
-		teamDao:     teamDao,
-		userDao:     userDao,
-		userRoleDao: userRoleDao,
-		roleDao:     roleDao,
-		teamUserDao: teamUserDao,
+		teamDao:      teamDao,
+		userDao:      userDao,
+		userRoleDao:  userRoleDao,
+		roleDao:      roleDao,
+		teamUserDao:  teamUserDao,
+		groupDao:     groupDao,
+		groupUserDao: groupUserDao,
 	}
 }
 
@@ -106,6 +113,23 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 		customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
 		customlogger.Tag("name", teamDB.Name),
 		customlogger.TagMethod("Create"))
+
+	// El owner queda como miembro del equipo (rol entrenador) para que las
+	// validaciones de pertenencia (ej. Delete) lo reconozcan. No se aborta la
+	// creación si esto falla, mismo criterio tolerante que el alta del grupo
+	// por defecto en TeamDelegate.
+	ownerTeamUser := &dbs.TeamUser{
+		TeamID:         teamDB.ID,
+		UserID:         teamDB.OwnerID,
+		RoleInTeam:     teamOwnerRoleName,
+		Status:         "active",
+		AssignmentDate: time.Now(),
+	}
+	if err := s.teamUserDao.Create(ctx, ownerTeamUser); err != nil {
+		customlogger.Error(ctx, "error creating owner team_user membership", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
+			customlogger.TagMethod("Create"))
+	}
 
 	return s.toResponse(teamDB), nil
 }
@@ -181,7 +205,7 @@ func (s *teamService) Delete(ctx *gin.Context, id int64, userID int64) error {
 		return fmt.Errorf("solo el entrenador puede eliminar el equipo")
 	}
 
-	count, err := s.teamUserDao.CountActiveByTeam(ctx, id)
+	count, err := s.teamUserDao.CountActiveByTeamExcludingUser(ctx, id, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error counting team members for delete", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
@@ -197,6 +221,26 @@ func (s *teamService) Delete(ctx *gin.Context, id int64, userID int64) error {
 			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 			customlogger.TagMethod("Delete"))
 		return fmt.Errorf("error al eliminar equipo")
+	}
+
+	// Cascada: limpiar las filas huérfanas que quedarían apuntando a un equipo
+	// ya eliminado (la fila team_users del propio owner que llamó Delete, los
+	// grupos del equipo y sus group_users). No bloquea el éxito del delete si
+	// alguna falla, mismo criterio tolerante que el resto de este archivo.
+	if err := s.groupUserDao.SoftDeleteByTeamID(ctx, id); err != nil {
+		customlogger.Error(ctx, "error cascading delete to group users", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Delete"))
+	}
+	if err := s.groupDao.SoftDeleteByTeamID(ctx, id); err != nil {
+		customlogger.Error(ctx, "error cascading delete to groups", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Delete"))
+	}
+	if err := s.teamUserDao.SoftDeleteByTeamID(ctx, id); err != nil {
+		customlogger.Error(ctx, "error cascading delete to team users", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Delete"))
 	}
 
 	customlogger.Info(ctx, "team deleted successfully",
