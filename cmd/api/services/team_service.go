@@ -104,6 +104,9 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 		OwnerID:      req.OwnerID,
 		Status:       "active",
 	}
+	if req.ShowGroupsToRunners != nil {
+		teamDB.ShowGroupsToRunners = *req.ShowGroupsToRunners
+	}
 
 	if err := s.teamDao.Create(ctx, teamDB); err != nil {
 		customlogger.Error(ctx, "error creating team", err,
@@ -164,6 +167,9 @@ func (s *teamService) Update(ctx *gin.Context, id int64, req *team.UpdateTeamReq
 	}
 	if req.Requirements != nil {
 		teamDB.Requirements = *req.Requirements
+	}
+	if req.ShowGroupsToRunners != nil {
+		teamDB.ShowGroupsToRunners = *req.ShowGroupsToRunners
 	}
 
 	if err := s.teamDao.Update(ctx, teamDB); err != nil {
@@ -362,20 +368,21 @@ func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, req *team.Update
 // toResponse convierte un modelo DB a un DTO de respuesta.
 func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 	return &team.TeamResponse{
-		ID:           t.ID,
-		Name:         t.Name,
-		Description:  t.Description,
-		Level:        t.Level,
-		MaxMembers:   t.MaxMembers,
-		Requirements: t.Requirements,
-		OwnerID:      t.OwnerID,
-		Status:       t.Status,
-		Country:      t.Country,
-		Province:     t.Province,
-		City:         t.City,
-		Street:       t.Street,
-		Number:       t.Number,
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
+		ID:                  t.ID,
+		Name:                t.Name,
+		Description:         t.Description,
+		Level:               t.Level,
+		MaxMembers:          t.MaxMembers,
+		Requirements:        t.Requirements,
+		OwnerID:             t.OwnerID,
+		Status:              t.Status,
+		Country:             t.Country,
+		Province:            t.Province,
+		City:                t.City,
+		Street:              t.Street,
+		Number:              t.Number,
+		ShowGroupsToRunners: t.ShowGroupsToRunners,
+		CreatedAt:           t.CreatedAt,
+		UpdatedAt:           t.UpdatedAt,
 	}
 }
