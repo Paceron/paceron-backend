@@ -394,6 +394,10 @@ definitions:
       requirements:
         description: Requerimientos para entrar (opcional)
         type: string
+      show_groups_to_runners:
+        description: Si los corredores ven a qué grupo pertenece cada compañero (opcional,
+          default false)
+        type: boolean
     required:
     - max_members
     - name
@@ -443,6 +447,9 @@ definitions:
       requirements:
         description: Requerimientos para entrar
         type: string
+      show_groups_to_runners:
+        description: Si los corredores ven a qué grupo pertenece cada compañero
+        type: boolean
       status:
         description: Estado del equipo
         type: string
@@ -488,6 +495,9 @@ definitions:
       requirements:
         description: Requerimientos para entrar (opcional)
         type: string
+      show_groups_to_runners:
+        description: Si los corredores ven a qué grupo pertenece cada compañero (opcional)
+        type: boolean
     type: object
   simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
     properties:
