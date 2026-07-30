@@ -611,6 +611,24 @@ definitions:
         description: ID del tier
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest:
+    properties:
+      confirm_password:
+        type: string
+      current_password:
+        type: string
+      new_password:
+        type: string
+    required:
+    - confirm_password
+    - current_password
+    - new_password
+    type: object
+  simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse:
+    properties:
+      message:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_user.StatusChangeRequest:
     properties:
       status:
@@ -2385,6 +2403,50 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Update user attributes
+      tags:
+      - users
+  /api/v1/users/{id}/password:
+    patch:
+      consumes:
+      - application/json
+      description: Changes the user's password, verifying the current one. Distinct
+        from the forgot/reset-password OTP flow.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Current and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Change password while authenticated
       tags:
       - users
   /api/v1/users/{id}/roles:

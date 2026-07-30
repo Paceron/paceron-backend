@@ -9,15 +9,16 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"simple-arq-golang/cmd/api/domains/user"
 	"github.com/stretchr/testify/assert"
+	"simple-arq-golang/cmd/api/domains/user"
 )
 
 type mockUserService struct {
-	mockGetUser      func(ctx *gin.Context, userID int64) (user.User, error)
-	mockCreateUser   func(ctx *gin.Context, name, password string) (user.User, error)
-	mockUpdate       func(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
-	mockChangeStatus func(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
+	mockGetUser        func(ctx *gin.Context, userID int64) (user.User, error)
+	mockCreateUser     func(ctx *gin.Context, name, password string) (user.User, error)
+	mockUpdate         func(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
+	mockChangeStatus   func(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
+	mockChangePassword func(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 }
 
 func (m mockUserService) GetUser(ctx *gin.Context, userID int64) (user.User, error) {
@@ -34,6 +35,10 @@ func (m mockUserService) Update(ctx *gin.Context, id int64, req *user.UserUpdate
 
 func (m mockUserService) ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error) {
 	return m.mockChangeStatus(ctx, id, status)
+}
+
+func (m mockUserService) ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error {
+	return m.mockChangePassword(ctx, id, currentPassword, newPassword)
 }
 
 func TestGetUser_Success(t *testing.T) {

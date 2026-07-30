@@ -18,6 +18,7 @@ type GroupDaoInterface interface {
 	GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
 	Update(ctx *gin.Context, group *dbs.Group) error
 	SoftDelete(ctx *gin.Context, id int64) error
+	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 }
 
 type groupDao struct {
@@ -90,4 +91,12 @@ func (d *groupDao) Update(ctx *gin.Context, group *dbs.Group) error {
 // SoftDelete marca un grupo como eliminado lógicamente.
 func (d *groupDao) SoftDelete(ctx *gin.Context, id int64) error {
 	return d.DB.Model(&dbs.Group{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// SoftDeleteByTeamID marca como eliminados lógicamente todos los grupos activos
+// de un equipo (usado en cascada al eliminar el equipo).
+func (d *groupDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	return d.DB.Model(&dbs.Group{}).
+		Where("team_id = ? AND deleted_at IS NULL", teamID).
+		Update("deleted_at", gorm.Expr("NOW()")).Error
 }

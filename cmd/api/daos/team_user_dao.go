@@ -16,7 +16,9 @@ type TeamUserDaoInterface interface {
 	FindByTeamID(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
 	CountActiveByTeam(ctx *gin.Context, teamID int64) (int64, error)
+	CountActiveByTeamExcludingUser(ctx *gin.Context, teamID, excludeUserID int64) (int64, error)
 	HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, error)
+	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 	SoftDelete(ctx *gin.Context, id int64) error
 }
 
@@ -79,6 +81,20 @@ func (d *teamUserDao) CountActiveByTeam(ctx *gin.Context, teamID int64) (int64, 
 	return count, nil
 }
 
+// CountActiveByTeamExcludingUser cuenta los miembros activos de un equipo, excluyendo
+// a un usuario puntual. Se usa para validar si quedan miembros además del propio
+// entrenador que está eliminando el equipo.
+func (d *teamUserDao) CountActiveByTeamExcludingUser(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
+	var count int64
+	err := d.DB.Model(&dbs.TeamUser{}).
+		Where("team_id = ? AND user_id != ? AND deleted_at IS NULL", teamID, excludeUserID).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("error counting team members: %w", err)
+	}
+	return count, nil
+}
+
 // HasOwnerByTeam verifica si un equipo ya tiene un owner asignado.
 func (d *teamUserDao) HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, error) {
 	var count int64
@@ -92,4 +108,12 @@ func (d *teamUserDao) HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, erro
 // SoftDelete marca una asociación usuario-equipo como eliminada lógicamente.
 func (d *teamUserDao) SoftDelete(ctx *gin.Context, id int64) error {
 	return d.DB.Model(&dbs.TeamUser{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// SoftDeleteByTeamID marca como eliminadas lógicamente todas las asociaciones
+// usuario-equipo activas de un equipo (usado en cascada al eliminar el equipo).
+func (d *teamUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	return d.DB.Model(&dbs.TeamUser{}).
+		Where("team_id = ? AND deleted_at IS NULL", teamID).
+		Update("deleted_at", gorm.Expr("NOW()")).Error
 }

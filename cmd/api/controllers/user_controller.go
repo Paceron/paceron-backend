@@ -18,6 +18,7 @@ type UserController interface {
 	CreateUser(c *gin.Context)
 	Update(c *gin.Context)
 	ChangeStatus(c *gin.Context)
+	ChangePassword(c *gin.Context)
 }
 
 type userController struct {
@@ -236,4 +237,92 @@ func (u *userController) ChangeStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// ChangePassword godoc
+// @Summary      Change password while authenticated
+// @Description  Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow.
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id    path      int                          true  "User ID"
+// @Param        body  body      user.ChangePasswordRequest    true  "Current and new password"
+// @Success      200   {object}  user.ChangePasswordResponse
+// @Failure      400   {object}  apierror.APIError
+// @Failure      401   {object}  apierror.APIError
+// @Failure      404   {object}  apierror.APIError
+// @Failure      500   {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/password [patch]
+func (u *userController) ChangePassword(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	var req user.ChangePasswordRequest
+	if err := c.BindJSON(&req); err != nil {
+		customlogger.Warn(c, "invalid change password request body",
+			customlogger.Tag("field", "body"))
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "Cuerpo de solicitud inválido",
+		})
+		return
+	}
+
+	if req.NewPassword != req.ConfirmPassword {
+		customlogger.Warn(c, "password confirmation mismatch",
+			customlogger.Tag("field", "confirm_password"))
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "las contraseñas no coinciden",
+		})
+		return
+	}
+
+	if msg := services.ValidatePassword(req.NewPassword); msg != "" {
+		customlogger.Warn(c, "password validation failed",
+			customlogger.Tag("field", "new_password"))
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    msg,
+		})
+		return
+	}
+
+	err = u.userService.ChangePassword(c, userID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		switch errMsg {
+		case "usuario no encontrado":
+			statusCode = http.StatusNotFound
+			code = "Not Found"
+		case "contraseña actual incorrecta":
+			statusCode = http.StatusUnauthorized
+			code = "Unauthorized"
+		case "la nueva contraseña debe ser distinta a la actual":
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, user.ChangePasswordResponse{Message: "Contraseña actualizada correctamente"})
 }

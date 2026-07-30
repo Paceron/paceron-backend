@@ -15,7 +15,7 @@ type mockTeamUserDaoGroup struct {
 	findByTeamAndUserFn func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error)
 }
 
-func (m *mockTeamUserDaoGroup) Create(ctx *gin.Context, tu *dbs.TeamUser) error            { return nil }
+func (m *mockTeamUserDaoGroup) Create(ctx *gin.Context, tu *dbs.TeamUser) error { return nil }
 func (m *mockTeamUserDaoGroup) FindByTeamAndUser(ctx *gin.Context, t, u int64) (*dbs.TeamUser, error) {
 	if m.findByTeamAndUserFn != nil {
 		return m.findByTeamAndUserFn(ctx, t, u)
@@ -31,19 +31,26 @@ func (m *mockTeamUserDaoGroup) FindByUserID(ctx *gin.Context, u int64) ([]dbs.Te
 func (m *mockTeamUserDaoGroup) CountActiveByTeam(ctx *gin.Context, t int64) (int64, error) {
 	return 0, nil
 }
+func (m *mockTeamUserDaoGroup) CountActiveByTeamExcludingUser(ctx *gin.Context, t, u int64) (int64, error) {
+	return 0, nil
+}
 func (m *mockTeamUserDaoGroup) HasOwnerByTeam(ctx *gin.Context, t int64) (bool, error) {
 	return false, nil
 }
 func (m *mockTeamUserDaoGroup) SoftDelete(ctx *gin.Context, id int64) error { return nil }
+func (m *mockTeamUserDaoGroup) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	return nil
+}
 
 type mockGroupDao struct {
-	createFn            func(ctx *gin.Context, g *dbs.Group) error
-	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.Group, error)
-	findByIDAndTeamIDFn func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
-	getAllFn            func(ctx *gin.Context) ([]dbs.Group, error)
-	getByTeamIDFn       func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
-	updateFn            func(ctx *gin.Context, g *dbs.Group) error
-	softDeleteFn        func(ctx *gin.Context, id int64) error
+	createFn             func(ctx *gin.Context, g *dbs.Group) error
+	findByIDFn           func(ctx *gin.Context, id int64) (*dbs.Group, error)
+	findByIDAndTeamIDFn  func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
+	getAllFn             func(ctx *gin.Context) ([]dbs.Group, error)
+	getByTeamIDFn        func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
+	updateFn             func(ctx *gin.Context, g *dbs.Group) error
+	softDeleteFn         func(ctx *gin.Context, id int64) error
+	softDeleteByTeamIDFn func(ctx *gin.Context, teamID int64) error
 }
 
 func (m *mockGroupDao) Create(ctx *gin.Context, g *dbs.Group) error {
@@ -84,6 +91,13 @@ func (m *mockGroupDao) GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group,
 func (m *mockGroupDao) Update(ctx *gin.Context, g *dbs.Group) error {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, g)
+	}
+	return nil
+}
+
+func (m *mockGroupDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	if m.softDeleteByTeamIDFn != nil {
+		return m.softDeleteByTeamIDFn(ctx, teamID)
 	}
 	return nil
 }

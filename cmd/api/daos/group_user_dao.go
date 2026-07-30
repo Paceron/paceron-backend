@@ -16,6 +16,7 @@ type GroupUserDaoInterface interface {
 	FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
 	SoftDelete(ctx *gin.Context, id int64) error
+	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 }
 
 type groupUserDao struct {
@@ -70,4 +71,14 @@ func (d *groupUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.Group
 // SoftDelete marca una asociación usuario-grupo como eliminada lógicamente.
 func (d *groupUserDao) SoftDelete(ctx *gin.Context, id int64) error {
 	return d.DB.Model(&dbs.GroupUser{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// SoftDeleteByTeamID marca como eliminadas lógicamente todas las asociaciones
+// usuario-grupo activas de los grupos de un equipo (usado en cascada al eliminar
+// el equipo). Resuelve los grupos vía subquery en vez de recibir una lista de IDs,
+// para que el caller no tenga que orquestar el fetch de grupos primero.
+func (d *groupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	return d.DB.Model(&dbs.GroupUser{}).
+		Where("deleted_at IS NULL AND group_id IN (SELECT id FROM groups WHERE team_id = ?)", teamID).
+		Update("deleted_at", gorm.Expr("NOW()")).Error
 }
