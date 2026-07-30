@@ -19,7 +19,7 @@ type mockTeamService struct {
 	updateFn        func(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
 	deleteFn        func(ctx *gin.Context, id int64, userID int64) error
 	getByIDFn       func(ctx *gin.Context, id int64) (*team.TeamResponse, error)
-	getAllFn        func(ctx *gin.Context) ([]team.TeamResponse, error)
+	getAllFn        func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
 	updateAddressFn func(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 }
 
@@ -51,9 +51,9 @@ func (m *mockTeamService) GetByID(ctx *gin.Context, id int64) (*team.TeamRespons
 	return nil, nil
 }
 
-func (m *mockTeamService) GetAll(ctx *gin.Context) ([]team.TeamResponse, error) {
+func (m *mockTeamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
 	if m.getAllFn != nil {
-		return m.getAllFn(ctx)
+		return m.getAllFn(ctx, ownerID, memberID)
 	}
 	return nil, nil
 }
@@ -388,7 +388,7 @@ func TestTeamController_Update_NotFound(t *testing.T) {
 
 func TestTeamController_GetAll_Success(t *testing.T) {
 	mockSvc := &mockTeamService{
-		getAllFn: func(ctx *gin.Context) ([]team.TeamResponse, error) {
+		getAllFn: func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
 			return []team.TeamResponse{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}}, nil
 		},
 	}
@@ -408,7 +408,7 @@ func TestTeamController_GetAll_Success(t *testing.T) {
 
 func TestTeamController_GetAll_Error(t *testing.T) {
 	mockSvc := &mockTeamService{
-		getAllFn: func(ctx *gin.Context) ([]team.TeamResponse, error) {
+		getAllFn: func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -421,6 +421,72 @@ func TestTeamController_GetAll_Error(t *testing.T) {
 	controller.GetAll(c)
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestTeamController_GetAll_FilterByOwnerID(t *testing.T) {
+	var gotOwnerID, gotMemberID *int64
+	mockSvc := &mockTeamService{
+		getAllFn: func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
+			gotOwnerID = ownerID
+			gotMemberID = memberID
+			return []team.TeamResponse{{ID: 1, Name: "A"}}, nil
+		},
+	}
+
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams?owner_id=5", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.NotNil(t, gotOwnerID)
+	assert.Equal(t, int64(5), *gotOwnerID)
+	assert.Nil(t, gotMemberID)
+}
+
+func TestTeamController_GetAll_FilterByMemberID(t *testing.T) {
+	var gotMemberID *int64
+	mockSvc := &mockTeamService{
+		getAllFn: func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
+			gotMemberID = memberID
+			return []team.TeamResponse{{ID: 2, Name: "B"}}, nil
+		},
+	}
+
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams?member_id=7", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.NotNil(t, gotMemberID)
+	assert.Equal(t, int64(7), *gotMemberID)
+}
+
+func TestTeamController_GetAll_InvalidOwnerID(t *testing.T) {
+	controller := NewTeamController(&mockTeamService{}, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams?owner_id=abc", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestTeamController_GetAll_InvalidMemberID(t *testing.T) {
+	controller := NewTeamController(&mockTeamService{}, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams?member_id=abc", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 func TestTeamController_UpdateAddress_Success(t *testing.T) {
