@@ -18,6 +18,7 @@ type InvitationDaoInterface interface {
 	FindPendingByTeamAndInvitee(ctx *gin.Context, teamID, inviteeID int64) (*dbs.Invitation, error)
 	FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error)
 	UpdateStatus(ctx *gin.Context, id int64, status string, respondedAt time.Time) error
+	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 }
 
 type invitationDao struct {
@@ -78,4 +79,12 @@ func (d *invitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]d
 func (d *invitationDao) UpdateStatus(ctx *gin.Context, id int64, status string, respondedAt time.Time) error {
 	return d.DB.Model(&dbs.Invitation{}).Where("id = ?", id).
 		Updates(map[string]interface{}{"status": status, "responded_at": respondedAt}).Error
+}
+
+// SoftDeleteByTeamID marca como eliminadas lógicamente todas las invitaciones de un
+// equipo (cualquier estado), usado en cascada al eliminar el equipo.
+func (d *invitationDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	return d.DB.Model(&dbs.Invitation{}).
+		Where("team_id = ? AND deleted_at IS NULL", teamID).
+		Update("deleted_at", gorm.Expr("NOW()")).Error
 }

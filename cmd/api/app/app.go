@@ -138,8 +138,11 @@ func NewApplication() *Application {
 	groupUserDao := daos.NewGroupUserDao(db)
 	groupService := services.NewGroupService(groupDao, teamDao, teamUserDao)
 
+	// Invitation DAO (también lo necesita teamService para cascadear el soft-delete)
+	invitationDao := daos.NewInvitationDao(db)
+
 	// Team flow
-	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao)
+	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao)
 
 	// Team Delegate (coordina team + group)
 	teamDelegate := delegates.NewTeamDelegate(teamService, groupService)
@@ -154,7 +157,6 @@ func NewApplication() *Application {
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow
-	invitationDao := daos.NewInvitationDao(db)
 	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, mailerClient)
 	invitationController := controllers.NewInvitationController(invitationService)
 

@@ -26,13 +26,14 @@ type TeamServiceInterface interface {
 }
 
 type teamService struct {
-	teamDao      daos.TeamDaoInterface
-	userDao      daos.UserDaoInterface
-	userRoleDao  daos.UserRoleDaoInterface
-	roleDao      daos.RoleDaoInterface
-	teamUserDao  daos.TeamUserDaoInterface
-	groupDao     daos.GroupDaoInterface
-	groupUserDao daos.GroupUserDaoInterface
+	teamDao       daos.TeamDaoInterface
+	userDao       daos.UserDaoInterface
+	userRoleDao   daos.UserRoleDaoInterface
+	roleDao       daos.RoleDaoInterface
+	teamUserDao   daos.TeamUserDaoInterface
+	groupDao      daos.GroupDaoInterface
+	groupUserDao  daos.GroupUserDaoInterface
+	invitationDao daos.InvitationDaoInterface
 }
 
 // NewTeamService crea una nueva instancia de TeamService.
@@ -44,15 +45,17 @@ func NewTeamService(
 	teamUserDao daos.TeamUserDaoInterface,
 	groupDao daos.GroupDaoInterface,
 	groupUserDao daos.GroupUserDaoInterface,
+	invitationDao daos.InvitationDaoInterface,
 ) TeamServiceInterface {
 	return &teamService{
-		teamDao:      teamDao,
-		userDao:      userDao,
-		userRoleDao:  userRoleDao,
-		roleDao:      roleDao,
-		teamUserDao:  teamUserDao,
-		groupDao:     groupDao,
-		groupUserDao: groupUserDao,
+		teamDao:       teamDao,
+		userDao:       userDao,
+		userRoleDao:   userRoleDao,
+		roleDao:       roleDao,
+		teamUserDao:   teamUserDao,
+		groupDao:      groupDao,
+		groupUserDao:  groupUserDao,
+		invitationDao: invitationDao,
 	}
 }
 
@@ -225,8 +228,9 @@ func (s *teamService) Delete(ctx *gin.Context, id int64, userID int64) error {
 
 	// Cascada: limpiar las filas huérfanas que quedarían apuntando a un equipo
 	// ya eliminado (la fila team_users del propio owner que llamó Delete, los
-	// grupos del equipo y sus group_users). No bloquea el éxito del delete si
-	// alguna falla, mismo criterio tolerante que el resto de este archivo.
+	// grupos del equipo, sus group_users, e invitaciones pendientes). No bloquea
+	// el éxito del delete si alguna falla, mismo criterio tolerante que el resto
+	// de este archivo.
 	if err := s.groupUserDao.SoftDeleteByTeamID(ctx, id); err != nil {
 		customlogger.Error(ctx, "error cascading delete to group users", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
@@ -239,6 +243,11 @@ func (s *teamService) Delete(ctx *gin.Context, id int64, userID int64) error {
 	}
 	if err := s.teamUserDao.SoftDeleteByTeamID(ctx, id); err != nil {
 		customlogger.Error(ctx, "error cascading delete to team users", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Delete"))
+	}
+	if err := s.invitationDao.SoftDeleteByTeamID(ctx, id); err != nil {
+		customlogger.Error(ctx, "error cascading delete to invitations", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 			customlogger.TagMethod("Delete"))
 	}

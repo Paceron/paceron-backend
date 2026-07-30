@@ -58,6 +58,7 @@ type mockInvitationDao struct {
 	findPendingByTeamAndInviteeFn func(ctx *gin.Context, teamID, inviteeID int64) (*dbs.Invitation, error)
 	findPendingByTeamIDFn         func(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error)
 	updateStatusFn                func(ctx *gin.Context, id int64, status string, respondedAt time.Time) error
+	softDeleteByTeamIDFn          func(ctx *gin.Context, teamID int64) error
 }
 
 func (m *mockInvitationDao) Create(ctx *gin.Context, inv *dbs.Invitation) error {
@@ -91,6 +92,13 @@ func (m *mockInvitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) 
 func (m *mockInvitationDao) UpdateStatus(ctx *gin.Context, id int64, status string, respondedAt time.Time) error {
 	if m.updateStatusFn != nil {
 		return m.updateStatusFn(ctx, id, status, respondedAt)
+	}
+	return nil
+}
+
+func (m *mockInvitationDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	if m.softDeleteByTeamIDFn != nil {
+		return m.softDeleteByTeamIDFn(ctx, teamID)
 	}
 	return nil
 }
