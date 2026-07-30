@@ -3336,6 +3336,10 @@ const docTemplate = `{
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",
                     "type": "string"
+                },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero (opcional, default false)",
+                    "type": "boolean"
                 }
             }
         },
@@ -3399,6 +3403,10 @@ const docTemplate = `{
                     "description": "Requerimientos para entrar",
                     "type": "string"
                 },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero",
+                    "type": "boolean"
+                },
                 "status": {
                     "description": "Estado del equipo",
                     "type": "string"
@@ -3460,6 +3468,10 @@ const docTemplate = `{
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",
                     "type": "string"
+                },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero (opcional)",
+                    "type": "boolean"
                 }
             }
         },

@@ -3,18 +3,19 @@ package team
 // UpdateTeamRequest es el DTO para actualizar un equipo existente.
 // Todos los campos son opcionales (solo se actualizan los enviados).
 type UpdateTeamRequest struct {
-	Name         *string `json:"name"`           // Nombre del equipo (opcional)
-	Description  *string `json:"description"`    // Descripción del equipo (opcional)
-	Level        *string `json:"level"`          // Nivel del equipo (opcional)
-	MaxMembers   *int64  `json:"max_members"`    // Cantidad máxima de integrantes (opcional)
-	Requirements *string `json:"requirements"`   // Requerimientos para entrar (opcional)
+	Name                *string `json:"name"`                   // Nombre del equipo (opcional)
+	Description         *string `json:"description"`            // Descripción del equipo (opcional)
+	Level               *string `json:"level"`                  // Nivel del equipo (opcional)
+	MaxMembers          *int64  `json:"max_members"`            // Cantidad máxima de integrantes (opcional)
+	Requirements        *string `json:"requirements"`           // Requerimientos para entrar (opcional)
+	ShowGroupsToRunners *bool   `json:"show_groups_to_runners"` // Si los corredores ven a qué grupo pertenece cada compañero (opcional)
 }
 
 // UpdateTeamAddressRequest es el DTO para actualizar la dirección de un equipo.
 type UpdateTeamAddressRequest struct {
-	Country  string `json:"country"`   // País
-	Province string `json:"province"`  // Provincia
-	City     string `json:"city"`      // Ciudad
-	Street   string `json:"street"`    // Calle
-	Number   string `json:"number"`    // Número
+	Country  string `json:"country"`  // País
+	Province string `json:"province"` // Provincia
+	City     string `json:"city"`     // Ciudad
+	Street   string `json:"street"`   // Calle
+	Number   string `json:"number"`   // Número
 }

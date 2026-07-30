@@ -118,7 +118,44 @@ func TestTeamService_Create_Success(t *testing.T) {
 	assert.Equal(t, int64(20), resp.MaxMembers)
 	assert.Equal(t, int64(1), resp.OwnerID)
 	assert.Equal(t, "active", resp.Status)
+	assert.False(t, resp.ShowGroupsToRunners)
 	assert.True(t, teamUserCreateCalled)
+}
+
+func TestTeamService_Create_ShowGroupsToRunners_True(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Coach"}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{})
+	showGroups := true
+	resp, err := svc.Create(nil, &team.CreateTeamRequest{
+		Name:                "Equipo Alpha",
+		MaxMembers:          20,
+		OwnerID:             1,
+		ShowGroupsToRunners: &showGroups,
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, resp.ShowGroupsToRunners)
 }
 
 func TestTeamService_Create_TeamUserDaoCreateError_StillSucceeds(t *testing.T) {
@@ -276,6 +313,27 @@ func TestTeamService_Update_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, "New Name", resp.Name)
+}
+
+func TestTeamService_Update_ShowGroupsToRunners(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Old Name", Status: "active", ShowGroupsToRunners: false}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error {
+			return nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{})
+	showGroups := true
+	resp, err := svc.Update(nil, 1, &team.UpdateTeamRequest{
+		ShowGroupsToRunners: &showGroups,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.True(t, resp.ShowGroupsToRunners)
 }
 
 func TestTeamService_Update_TeamNotFound(t *testing.T) {

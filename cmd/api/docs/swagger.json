@@ -3330,6 +3330,10 @@
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",
                     "type": "string"
+                },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero (opcional, default false)",
+                    "type": "boolean"
                 }
             }
         },
@@ -3393,6 +3397,10 @@
                     "description": "Requerimientos para entrar",
                     "type": "string"
                 },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero",
+                    "type": "boolean"
+                },
                 "status": {
                     "description": "Estado del equipo",
                     "type": "string"
@@ -3454,6 +3462,10 @@
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",
                     "type": "string"
+                },
+                "show_groups_to_runners": {
+                    "description": "Si los corredores ven a qué grupo pertenece cada compañero (opcional)",
+                    "type": "boolean"
                 }
             }
         },
