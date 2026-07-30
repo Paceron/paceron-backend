@@ -130,14 +130,16 @@ func NewApplication() *Application {
 
 	// Team User flow (needed by teamService and groupService)
 	teamUserDao := daos.NewTeamUserDao(db)
+	teamDao := daos.NewTeamDao(db)
+
+	// Group flow (groupDao/groupUserDao también los necesita teamService para
+	// cascadear el soft-delete al eliminar un equipo)
+	groupDao := daos.NewGroupDao(db)
+	groupUserDao := daos.NewGroupUserDao(db)
+	groupService := services.NewGroupService(groupDao, teamDao, teamUserDao)
 
 	// Team flow
-	teamDao := daos.NewTeamDao(db)
-	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao)
-
-	// Group flow
-	groupDao := daos.NewGroupDao(db)
-	groupService := services.NewGroupService(groupDao, teamDao, teamUserDao)
+	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao)
 
 	// Team Delegate (coordina team + group)
 	teamDelegate := delegates.NewTeamDelegate(teamService, groupService)
@@ -148,7 +150,6 @@ func NewApplication() *Application {
 	teamUserController := controllers.NewTeamUserController(teamUserService)
 
 	// Group User flow
-	groupUserDao := daos.NewGroupUserDao(db)
 	groupUserService := services.NewGroupUserService(groupUserDao, groupDao, userDao)
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 

@@ -12,14 +12,15 @@ import (
 )
 
 type mockTeamUserDao struct {
-	createFn          func(ctx *gin.Context, tu *dbs.TeamUser) error
-	findByTeamAndUserFn func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error)
-	findByTeamIDFn    func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
-	findByUserIDFn    func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
-	countActiveByTeamFn func(ctx *gin.Context, teamID int64) (int64, error)
+	createFn                         func(ctx *gin.Context, tu *dbs.TeamUser) error
+	findByTeamAndUserFn              func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error)
+	findByTeamIDFn                   func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
+	findByUserIDFn                   func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
+	countActiveByTeamFn              func(ctx *gin.Context, teamID int64) (int64, error)
 	countActiveByTeamExcludingUserFn func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error)
-	hasOwnerByTeamFn  func(ctx *gin.Context, teamID int64) (bool, error)
-	softDeleteFn      func(ctx *gin.Context, id int64) error
+	hasOwnerByTeamFn                 func(ctx *gin.Context, teamID int64) (bool, error)
+	softDeleteFn                     func(ctx *gin.Context, id int64) error
+	softDeleteByTeamIDFn             func(ctx *gin.Context, teamID int64) error
 }
 
 func (m *mockTeamUserDao) Create(ctx *gin.Context, tu *dbs.TeamUser) error {
@@ -74,6 +75,13 @@ func (m *mockTeamUserDao) HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, 
 func (m *mockTeamUserDao) SoftDelete(ctx *gin.Context, id int64) error {
 	if m.softDeleteFn != nil {
 		return m.softDeleteFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockTeamUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
+	if m.softDeleteByTeamIDFn != nil {
+		return m.softDeleteByTeamIDFn(ctx, teamID)
 	}
 	return nil
 }
