@@ -21,7 +21,7 @@ type TeamServiceInterface interface {
 	Update(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
 	Delete(ctx *gin.Context, id int64, userID int64) error
 	GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, error)
-	GetAll(ctx *gin.Context) ([]team.TeamResponse, error)
+	GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
 	UpdateAddress(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 }
 
@@ -275,9 +275,28 @@ func (s *teamService) GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, e
 	return s.toResponse(teamDB), nil
 }
 
-// GetAll obtiene todos los equipos activos.
-func (s *teamService) GetAll(ctx *gin.Context) ([]team.TeamResponse, error) {
-	teams, err := s.teamDao.GetAll(ctx)
+// GetAll obtiene los equipos activos. Sin filtros, devuelve todos. Con owner_id
+// y/o member_id, filtra por equipos administrados y/o equipos donde el usuario
+// es miembro (cualquier rol). Si se pasan ambos, se aplican como AND (caso poco
+// común, se resuelve filtrando en memoria sin agregar una query nueva al DAO).
+func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
+	var teams []dbs.Team
+	var err error
+
+	switch {
+	case ownerID != nil && memberID != nil:
+		teams, err = s.teamDao.GetAllByOwnerID(ctx, *ownerID)
+		if err == nil {
+			teams, err = s.filterByMember(ctx, teams, *memberID)
+		}
+	case ownerID != nil:
+		teams, err = s.teamDao.GetAllByOwnerID(ctx, *ownerID)
+	case memberID != nil:
+		teams, err = s.teamDao.GetAllByMemberID(ctx, *memberID)
+	default:
+		teams, err = s.teamDao.GetAll(ctx)
+	}
+
 	if err != nil {
 		customlogger.Error(ctx, "error getting all teams", err,
 			customlogger.TagMethod("GetAll"))
@@ -290,6 +309,21 @@ func (s *teamService) GetAll(ctx *gin.Context) ([]team.TeamResponse, error) {
 	}
 
 	return responses, nil
+}
+
+// filterByMember reduce una lista de equipos a los que el usuario indicado integra.
+func (s *teamService) filterByMember(ctx *gin.Context, teams []dbs.Team, memberID int64) ([]dbs.Team, error) {
+	filtered := make([]dbs.Team, 0, len(teams))
+	for _, t := range teams {
+		member, err := s.teamUserDao.FindByTeamAndUser(ctx, t.ID, memberID)
+		if err != nil {
+			return nil, err
+		}
+		if member != nil {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered, nil
 }
 
 // UpdateAddress actualiza la dirección de un equipo.

@@ -1666,7 +1666,17 @@ paths:
       - roles
   /api/v1/teams:
     get:
-      description: Devuelve todos los equipos activos
+      description: Devuelve equipos activos. Sin filtros, todos. owner_id filtra por
+        equipos administrados, member_id por equipos donde el usuario es miembro
+      parameters:
+      - description: Filtrar por owner
+        in: query
+        name: owner_id
+        type: integer
+      - description: Filtrar por miembro
+        in: query
+        name: member_id
+        type: integer
       produces:
       - application/json
       responses:
@@ -1676,11 +1686,15 @@ paths:
             items:
               $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Listar todos los equipos
+      summary: Listar equipos
       tags:
       - teams
     post:

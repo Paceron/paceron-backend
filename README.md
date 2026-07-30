@@ -266,7 +266,7 @@ sequenceDiagram
 | PUT | `/api/v1/roles/:id` | Update role |
 | DELETE | `/api/v1/roles/:id` | Soft delete role |
 | POST | `/api/v1/teams` | Create team (owner must have "entrenador" role) |
-| GET | `/api/v1/teams` | List all teams |
+| GET | `/api/v1/teams` | List teams (optional `owner_id`/`member_id` filters) |
 | GET | `/api/v1/teams/:id` | Get team by ID |
 | PUT | `/api/v1/teams/:id` | Update team |
 | DELETE | `/api/v1/teams/:id` | Soft delete team |

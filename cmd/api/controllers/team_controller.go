@@ -23,7 +23,7 @@ type TeamController interface {
 }
 
 type teamController struct {
-	teamService services.TeamServiceInterface
+	teamService  services.TeamServiceInterface
 	teamDelegate delegates.TeamDelegate
 }
 
@@ -254,15 +254,47 @@ func (tc *teamController) GetByID(c *gin.Context) {
 }
 
 // GetAll godoc
-// @Summary      Listar todos los equipos
-// @Description  Devuelve todos los equipos activos
+// @Summary      Listar equipos
+// @Description  Devuelve equipos activos. Sin filtros, todos. owner_id filtra por equipos administrados, member_id por equipos donde el usuario es miembro
 // @Tags         teams
 // @Produce      json
+// @Param        owner_id   query     int  false  "Filtrar por owner"
+// @Param        member_id  query     int  false  "Filtrar por miembro"
 // @Success      200  {array}   team.TeamResponse
+// @Failure      400  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/teams [get]
 func (tc *teamController) GetAll(c *gin.Context) {
-	response, err := tc.teamService.GetAll(c)
+	var ownerID *int64
+	var memberID *int64
+
+	if oid := c.Query("owner_id"); oid != "" {
+		parsed, err := strconv.ParseInt(oid, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apierror.APIError{
+				StatusCode: http.StatusBadRequest,
+				Code:       "Bad request",
+				Message:    "owner_id debe ser un número válido",
+			})
+			return
+		}
+		ownerID = &parsed
+	}
+
+	if mid := c.Query("member_id"); mid != "" {
+		parsed, err := strconv.ParseInt(mid, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apierror.APIError{
+				StatusCode: http.StatusBadRequest,
+				Code:       "Bad request",
+				Message:    "member_id debe ser un número válido",
+			})
+			return
+		}
+		memberID = &parsed
+	}
+
+	response, err := tc.teamService.GetAll(c, ownerID, memberID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, apierror.APIError{
 			StatusCode: http.StatusInternalServerError,

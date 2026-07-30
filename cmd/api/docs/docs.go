@@ -1364,14 +1364,28 @@ const docTemplate = `{
         },
         "/api/v1/teams": {
             "get": {
-                "description": "Devuelve todos los equipos activos",
+                "description": "Devuelve equipos activos. Sin filtros, todos. owner_id filtra por equipos administrados, member_id por equipos donde el usuario es miembro",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "teams"
                 ],
-                "summary": "Listar todos los equipos",
+                "summary": "Listar equipos",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filtrar por owner",
+                        "name": "owner_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filtrar por miembro",
+                        "name": "member_id",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1380,6 +1394,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
