@@ -281,6 +281,9 @@ sequenceDiagram
 | POST | `/api/v1/groups/:id/users` | Add user to group |
 | DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group |
 | POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email |
+| GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team |
+| POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor) |
+| POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
 | GET | `/example/weather` | Get weather from Open-Meteo |
 | GET | `/user/:user_id/weather` | Get user with weather data |
 | GET | `/swagger` | Swagger UI |

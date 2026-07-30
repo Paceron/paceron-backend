@@ -235,6 +235,25 @@ definitions:
         description: Mensaje de confirmación
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_invitation.InvitationResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: integer
+      invitee_email:
+        type: string
+      invitee_id:
+        type: integer
+      invitee_name:
+        type: string
+      status:
+        type: string
+      team_id:
+        type: integer
+    type: object
   simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest:
     properties:
       email:
@@ -244,6 +263,20 @@ definitions:
     - email
     type: object
   simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse:
+    properties:
+      message:
+        description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest:
+    properties:
+      user_id:
+        description: ID del usuario invitado que responde (requerido)
+        type: integer
+    required:
+    - user_id
+    type: object
+  simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse:
     properties:
       message:
         description: Mensaje de confirmación
@@ -1188,6 +1221,101 @@ paths:
       summary: Quitar usuario de grupo
       tags:
       - group-users
+  /api/v1/invitations/{id}/accept:
+    post:
+      consumes:
+      - application/json
+      description: El usuario invitado acepta la invitación y queda como corredor
+        del equipo
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del usuario que responde
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Aceptar invitación
+      tags:
+      - invitations
+  /api/v1/invitations/{id}/reject:
+    post:
+      consumes:
+      - application/json
+      description: El usuario invitado rechaza la invitación
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del usuario que responde
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Rechazar invitación
+      tags:
+      - invitations
   /api/v1/permissions:
     get:
       description: Get all active permissions
@@ -1784,6 +1912,39 @@ paths:
       summary: Agregar usuario a grupo
       tags:
       - group-users
+  /api/v1/teams/{id}/invitations:
+    get:
+      description: Devuelve las invitaciones pendientes (no vencidas) de un equipo
+      parameters:
+      - description: Team ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar invitaciones pendientes de un equipo
+      tags:
+      - invitations
   /api/v1/teams/{id}/invite:
     post:
       consumes:
@@ -1815,6 +1976,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
