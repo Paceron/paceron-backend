@@ -14,6 +14,8 @@ type TeamDaoInterface interface {
 	Create(ctx *gin.Context, team *dbs.Team) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Team, error)
 	GetAll(ctx *gin.Context) ([]dbs.Team, error)
+	GetAllByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
+	GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
 	Update(ctx *gin.Context, team *dbs.Team) error
 	SoftDelete(ctx *gin.Context, id int64) error
 }
@@ -53,6 +55,30 @@ func (d *teamDao) GetAll(ctx *gin.Context) ([]dbs.Team, error) {
 	err := d.DB.Where("deleted_at IS NULL").Find(&teams).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding teams: %w", err)
+	}
+	return teams, nil
+}
+
+// GetAllByOwnerID devuelve todos los equipos activos administrados por un owner.
+func (d *teamDao) GetAllByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
+	var teams []dbs.Team
+	err := d.DB.Where("owner_id = ? AND deleted_at IS NULL", ownerID).Find(&teams).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding teams by owner: %w", err)
+	}
+	return teams, nil
+}
+
+// GetAllByMemberID devuelve todos los equipos activos donde el usuario es miembro
+// (vía team_users), sin importar el rol.
+func (d *teamDao) GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error) {
+	var teams []dbs.Team
+	err := d.DB.
+		Joins("JOIN team_users ON team_users.team_id = teams.id").
+		Where("team_users.user_id = ? AND team_users.deleted_at IS NULL AND teams.deleted_at IS NULL", memberID).
+		Find(&teams).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding teams by member: %w", err)
 	}
 	return teams, nil
 }
