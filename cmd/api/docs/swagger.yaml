@@ -381,8 +381,8 @@ definitions:
   simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
     properties:
       create_default_group:
-        description: Si es true, crea un grupo principal con nombre "{name} - group"
-          (opcional)
+        description: Crea un grupo principal "{name} - group" por default; pasar explícitamente
+          false para saltearlo (opcional)
         type: boolean
       description:
         description: Descripción del equipo (opcional)

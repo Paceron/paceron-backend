@@ -3424,7 +3424,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "create_default_group": {
-                    "description": "Si es true, crea un grupo principal con nombre \"{name} - group\" (opcional)",
+                    "description": "Crea un grupo principal \"{name} - group\" por default; pasar explícitamente false para saltearlo (opcional)",
                     "type": "boolean"
                 },
                 "description": {
