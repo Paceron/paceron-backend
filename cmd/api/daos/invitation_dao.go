@@ -17,6 +17,7 @@ type InvitationDaoInterface interface {
 	FindByID(ctx *gin.Context, id int64) (*dbs.Invitation, error)
 	FindPendingByTeamAndInvitee(ctx *gin.Context, teamID, inviteeID int64) (*dbs.Invitation, error)
 	FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error)
+	FindPendingByInviteeID(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error)
 	UpdateStatus(ctx *gin.Context, id int64, status string, respondedAt time.Time) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 }
@@ -71,6 +72,18 @@ func (d *invitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]d
 		Find(&invitations).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding pending invitations: %w", err)
+	}
+	return invitations, nil
+}
+
+// FindPendingByInviteeID devuelve todas las invitaciones pendientes de un usuario, sin
+// importar el equipo.
+func (d *invitationDao) FindPendingByInviteeID(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
+	var invitations []dbs.Invitation
+	err := d.DB.Where("invitee_id = ? AND status = ? AND deleted_at IS NULL", inviteeID, string(constants.InvitationStatusPending)).
+		Find(&invitations).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding pending invitations for invitee: %w", err)
 	}
 	return invitations, nil
 }
