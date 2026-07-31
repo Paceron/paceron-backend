@@ -21,9 +21,11 @@ type TeamUserServiceInterface interface {
 }
 
 type teamUserService struct {
-	teamUserDao daos.TeamUserDaoInterface
-	teamDao     daos.TeamDaoInterface
-	userDao     daos.UserDaoInterface
+	teamUserDao  daos.TeamUserDaoInterface
+	teamDao      daos.TeamDaoInterface
+	userDao      daos.UserDaoInterface
+	groupDao     daos.GroupDaoInterface
+	groupUserDao daos.GroupUserDaoInterface
 }
 
 // NewTeamUserService crea una nueva instancia de TeamUserService.
@@ -31,11 +33,15 @@ func NewTeamUserService(
 	teamUserDao daos.TeamUserDaoInterface,
 	teamDao daos.TeamDaoInterface,
 	userDao daos.UserDaoInterface,
+	groupDao daos.GroupDaoInterface,
+	groupUserDao daos.GroupUserDaoInterface,
 ) TeamUserServiceInterface {
 	return &teamUserService{
-		teamUserDao: teamUserDao,
-		teamDao:     teamDao,
-		userDao:     userDao,
+		teamUserDao:  teamUserDao,
+		teamDao:      teamDao,
+		userDao:      userDao,
+		groupDao:     groupDao,
+		groupUserDao: groupUserDao,
 	}
 }
 
@@ -114,6 +120,13 @@ func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, req *teamuser.
 		customlogger.Tag("role", req.RoleInTeam),
 		customlogger.TagMethod("AddUser"))
 
+	// La membresía de equipo siempre implica pertenecer a un grupo. El alta directa
+	// (sin pasar por invitación) no permite elegir un grupo específico, así que va al
+	// principal del equipo. No bloqueante: mismo criterio que assignInviteeToGroup en
+	// invitation_service.go (si falla o el equipo no tiene grupo principal, el alta al
+	// equipo igual se completa).
+	s.assignToMainGroup(ctx, teamID, req.UserID)
+
 	return &teamuser.TeamUserResponse{
 		ID:             teamUser.ID,
 		TeamID:         teamUser.TeamID,
@@ -122,6 +135,57 @@ func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, req *teamuser.
 		Status:         teamUser.Status,
 		AssignmentDate: teamUser.AssignmentDate,
 	}, nil
+}
+
+// assignToMainGroup da de alta al usuario en el grupo principal del equipo. No bloquea
+// AddUser si falla o si el equipo no tiene grupo principal (equipos creados con
+// create_default_group: false, o de antes de que el grupo default fuera automático).
+func (s *teamUserService) assignToMainGroup(ctx *gin.Context, teamID, userID int64) {
+	groups, err := s.groupDao.GetByTeamID(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team groups for main group assignment", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("AddUser"))
+		return
+	}
+
+	var mainGroupID *int64
+	for _, g := range groups {
+		if g.IsMain {
+			id := g.ID
+			mainGroupID = &id
+			break
+		}
+	}
+	if mainGroupID == nil {
+		customlogger.Warn(ctx, "no main group found for team on user addition",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("AddUser"))
+		return
+	}
+
+	existingGroupMember, err := s.groupUserDao.FindByGroupAndUser(ctx, *mainGroupID, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking main group membership on user addition", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("AddUser"))
+		return
+	}
+	if existingGroupMember != nil {
+		return
+	}
+
+	groupUser := &dbs.GroupUser{
+		GroupID:   *mainGroupID,
+		UserID:    userID,
+		DateStart: time.Now(),
+	}
+	if err := s.groupUserDao.Create(ctx, groupUser); err != nil {
+		customlogger.Error(ctx, "error creating group_user on user addition", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.Tag("group_id", fmt.Sprintf("%d", *mainGroupID)),
+			customlogger.TagMethod("AddUser"))
+	}
 }
 
 // RemoveUser quita un usuario de un equipo (soft-delete de la asociación).

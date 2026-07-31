@@ -149,7 +149,7 @@ func NewApplication() *Application {
 	teamController := controllers.NewTeamController(teamService, teamDelegate)
 	groupController := controllers.NewGroupController(groupService)
 
-	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao)
+	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao, groupDao, groupUserDao)
 	teamUserController := controllers.NewTeamUserController(teamUserService)
 
 	// Group User flow
