@@ -57,6 +57,7 @@ type mockInvitationDao struct {
 	findByIDFn                    func(ctx *gin.Context, id int64) (*dbs.Invitation, error)
 	findPendingByTeamAndInviteeFn func(ctx *gin.Context, teamID, inviteeID int64) (*dbs.Invitation, error)
 	findPendingByTeamIDFn         func(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error)
+	findPendingByInviteeIDFn      func(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error)
 	updateStatusFn                func(ctx *gin.Context, id int64, status string, respondedAt time.Time) error
 	softDeleteByTeamIDFn          func(ctx *gin.Context, teamID int64) error
 }
@@ -85,6 +86,13 @@ func (m *mockInvitationDao) FindPendingByTeamAndInvitee(ctx *gin.Context, teamID
 func (m *mockInvitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error) {
 	if m.findPendingByTeamIDFn != nil {
 		return m.findPendingByTeamIDFn(ctx, teamID)
+	}
+	return nil, nil
+}
+
+func (m *mockInvitationDao) FindPendingByInviteeID(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
+	if m.findPendingByInviteeIDFn != nil {
+		return m.findPendingByInviteeIDFn(ctx, inviteeID)
 	}
 	return nil, nil
 }
@@ -125,7 +133,7 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 	}
 	mailerMock := &mockMailer{}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, mailerMock)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
 	resp, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -146,7 +154,7 @@ func TestInvitationService_InviteRunner_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 999, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -167,7 +175,7 @@ func TestInvitationService_InviteRunner_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "noexiste@test.com",
 	})
@@ -193,7 +201,7 @@ func TestInvitationService_InviteRunner_UserAlreadyMember(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -219,13 +227,77 @@ func TestInvitationService_InviteRunner_DuplicatePendingInvitation(t *testing.T)
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ya existe una invitación pendiente")
+}
+
+func TestInvitationService_InviteRunner_WithValidGroupID(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha", OwnerID: 5}, nil
+		},
+	}
+	userDaoForInvitation := &mockUserDaoForInvitation{
+		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+		},
+	}
+	mockGroup := &mockGroupDao{
+		findByIDAndTeamIDFn: func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error) {
+			assert.Equal(t, int64(3), groupID)
+			assert.Equal(t, int64(1), teamID)
+			return &dbs.Group{ID: 3, TeamID: 1}, nil
+		},
+	}
+	invDao := &mockInvitationDao{
+		createFn: func(ctx *gin.Context, inv *dbs.Invitation) error {
+			assert.NotNil(t, inv.GroupID)
+			assert.Equal(t, int64(3), *inv.GroupID)
+			return nil
+		},
+	}
+
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, mockGroup, &mockGroupUserDao{}, &mockMailer{})
+	groupID := int64(3)
+	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+		Email:   "juan@test.com",
+		GroupID: &groupID,
+	})
+
+	assert.NoError(t, err)
+}
+
+func TestInvitationService_InviteRunner_GroupNotInTeam(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	userDaoForInvitation := &mockUserDaoForInvitation{
+		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+		},
+	}
+	mockGroup := &mockGroupDao{
+		findByIDAndTeamIDFn: func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, mockGroup, &mockGroupUserDao{}, &mockMailer{})
+	groupID := int64(999)
+	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+		Email:   "juan@test.com",
+		GroupID: &groupID,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el grupo no existe en este equipo")
 }
 
 func TestInvitationService_InviteRunner_InvitationDaoCreateError(t *testing.T) {
@@ -245,7 +317,7 @@ func TestInvitationService_InviteRunner_InvitationDaoCreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -271,7 +343,7 @@ func TestInvitationService_InviteRunner_MailerError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, mailerMock)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -287,7 +359,7 @@ func TestInvitationService_InviteRunner_TeamDaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -308,7 +380,7 @@ func TestInvitationService_InviteRunner_UserFindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -336,7 +408,7 @@ func TestInvitationService_ListPendingInvitations_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	resp, err := svc.ListPendingInvitations(nil, 1)
 
 	assert.NoError(t, err)
@@ -352,7 +424,7 @@ func TestInvitationService_ListPendingInvitations_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.ListPendingInvitations(nil, 999)
 
 	assert.Error(t, err)
@@ -373,7 +445,7 @@ func TestInvitationService_ListPendingInvitations_FiltersExpired(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	resp, err := svc.ListPendingInvitations(nil, 1)
 
 	assert.NoError(t, err)
@@ -392,11 +464,117 @@ func TestInvitationService_ListPendingInvitations_DaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.ListPendingInvitations(nil, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al listar invitaciones")
+}
+
+func TestInvitationService_ListPendingInvitationsForUser_Success(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findPendingByInviteeIDFn: func(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
+			assert.Equal(t, int64(2), inviteeID)
+			return []dbs.Invitation{
+				{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)},
+			}, nil
+		},
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	userDaoForInvitation := &mockUserDaoForInvitation{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"}, nil
+		},
+	}
+
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitationsForUser(nil, 2)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 1)
+	assert.Equal(t, "Alpha", resp[0].TeamName)
+}
+
+func TestInvitationService_ListPendingInvitationsForUser_FiltersExpired(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findPendingByInviteeIDFn: func(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
+			return []dbs.Invitation{
+				{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(-time.Hour)},
+			}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitationsForUser(nil, 2)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 0)
+}
+
+func TestInvitationService_ListPendingInvitationsForUser_DaoError(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findPendingByInviteeIDFn: func(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.ListPendingInvitationsForUser(nil, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al listar invitaciones")
+}
+
+func TestInvitationService_GetInvitationDetail_Success(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.GetInvitationDetail(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, "Alpha", resp.TeamName)
+}
+
+func TestInvitationService_GetInvitationDetail_NotFound(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.GetInvitationDetail(nil, 999, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invitación no encontrada")
+}
+
+func TestInvitationService_GetInvitationDetail_WrongUser(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.GetInvitationDetail(nil, 1, 999)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no pertenece a este usuario")
 }
 
 func TestInvitationService_AcceptInvitation_Success(t *testing.T) {
@@ -425,7 +603,7 @@ func TestInvitationService_AcceptInvitation_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -441,7 +619,7 @@ func TestInvitationService_AcceptInvitation_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 999, 2)
 
 	assert.Error(t, err)
@@ -455,7 +633,7 @@ func TestInvitationService_AcceptInvitation_WrongUser(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 1, 999)
 
 	assert.Error(t, err)
@@ -469,7 +647,7 @@ func TestInvitationService_AcceptInvitation_AlreadyResponded(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -483,7 +661,7 @@ func TestInvitationService_AcceptInvitation_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -507,7 +685,7 @@ func TestInvitationService_AcceptInvitation_AlreadyMember_MarksAcceptedWithoutDu
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -530,7 +708,7 @@ func TestInvitationService_AcceptInvitation_TeamUserCreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -552,11 +730,132 @@ func TestInvitationService_AcceptInvitation_UpdateStatusErrorAfterTeamUserCreate
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al procesar la invitación")
+}
+
+func TestInvitationService_AcceptInvitation_AssignsToInvitationGroup(t *testing.T) {
+	groupID := int64(7)
+	groupUserCreateCalled := false
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, GroupID: &groupID, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, nil
+		},
+	}
+	mockGroupUser := &mockGroupUserDao{
+		findByGroupAndUserFn: func(ctx *gin.Context, gID, userID int64) (*dbs.GroupUser, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, gu *dbs.GroupUser) error {
+			groupUserCreateCalled = true
+			assert.Equal(t, int64(7), gu.GroupID)
+			assert.Equal(t, int64(2), gu.UserID)
+			return nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{})
+	_, err := svc.AcceptInvitation(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.True(t, groupUserCreateCalled)
+}
+
+func TestInvitationService_AcceptInvitation_AssignsToTeamMainGroup_WhenNoGroupID(t *testing.T) {
+	groupUserCreateCalled := false
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, nil
+		},
+	}
+	mockGroup := &mockGroupDao{
+		getByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.Group, error) {
+			return []dbs.Group{
+				{ID: 4, TeamID: 1, IsMain: false},
+				{ID: 5, TeamID: 1, IsMain: true},
+			}, nil
+		},
+	}
+	mockGroupUser := &mockGroupUserDao{
+		createFn: func(ctx *gin.Context, gu *dbs.GroupUser) error {
+			groupUserCreateCalled = true
+			assert.Equal(t, int64(5), gu.GroupID)
+			return nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, mockGroup, mockGroupUser, &mockMailer{})
+	_, err := svc.AcceptInvitation(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.True(t, groupUserCreateCalled)
+}
+
+func TestInvitationService_AcceptInvitation_NoMainGroup_StillSucceeds(t *testing.T) {
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, nil
+		},
+	}
+	mockGroup := &mockGroupDao{
+		getByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.Group, error) {
+			return []dbs.Group{}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.AcceptInvitation(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+}
+
+func TestInvitationService_AcceptInvitation_AlreadyGroupMember_DoesNotDuplicate(t *testing.T) {
+	groupID := int64(7)
+	groupUserCreateCalled := false
+	invDao := &mockInvitationDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Invitation, error) {
+			return &dbs.Invitation{ID: 1, TeamID: 1, InviteeID: 2, GroupID: &groupID, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, nil
+		},
+	}
+	mockGroupUser := &mockGroupUserDao{
+		findByGroupAndUserFn: func(ctx *gin.Context, gID, userID int64) (*dbs.GroupUser, error) {
+			return &dbs.GroupUser{ID: 1, GroupID: gID, UserID: userID}, nil
+		},
+		createFn: func(ctx *gin.Context, gu *dbs.GroupUser) error {
+			groupUserCreateCalled = true
+			return nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{})
+	_, err := svc.AcceptInvitation(nil, 1, 2)
+
+	assert.NoError(t, err)
+	assert.False(t, groupUserCreateCalled)
 }
 
 func TestInvitationService_RejectInvitation_Success(t *testing.T) {
@@ -572,7 +871,7 @@ func TestInvitationService_RejectInvitation_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	resp, err := svc.RejectInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -587,7 +886,7 @@ func TestInvitationService_RejectInvitation_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.RejectInvitation(nil, 999, 2)
 
 	assert.Error(t, err)
@@ -601,7 +900,7 @@ func TestInvitationService_RejectInvitation_WrongUser(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.RejectInvitation(nil, 1, 999)
 
 	assert.Error(t, err)
@@ -615,7 +914,7 @@ func TestInvitationService_RejectInvitation_AlreadyResponded(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockMailer{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
 	_, err := svc.RejectInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
