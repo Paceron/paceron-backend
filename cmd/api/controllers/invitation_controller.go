@@ -15,6 +15,8 @@ import (
 type InvitationController interface {
 	InviteRunner(c *gin.Context)
 	ListPendingInvitations(c *gin.Context)
+	ListMyInvitations(c *gin.Context)
+	GetInvitationByID(c *gin.Context)
 	AcceptInvitation(c *gin.Context)
 	RejectInvitation(c *gin.Context)
 }
@@ -72,7 +74,7 @@ func (ic *invitationController) InviteRunner(c *gin.Context) {
 		code := "Internal Server Error"
 
 		switch errMsg {
-		case "equipo no encontrado", "no se encontró un usuario con el email proporcionado":
+		case "equipo no encontrado", "no se encontró un usuario con el email proporcionado", "el grupo no existe en este equipo":
 			statusCode = http.StatusNotFound
 			code = "Not Found"
 		case "el usuario ya pertenece a este equipo", "ya existe una invitación pendiente para este usuario en este equipo":
@@ -122,6 +124,118 @@ func (ic *invitationController) ListPendingInvitations(c *gin.Context) {
 		if errMsg == "equipo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// ListMyInvitations godoc
+// @Summary      Listar mis invitaciones pendientes
+// @Description  Devuelve las invitaciones pendientes (no vencidas) de un usuario, sin importar el equipo
+// @Tags         invitations
+// @Produce      json
+// @Param        user_id  query     int  true  "User ID"
+// @Success      200 {array}   invitation.InvitationResponse
+// @Failure      400 {object}  apierror.APIError
+// @Failure      500 {object}  apierror.APIError
+// @Router       /api/v1/invitations [get]
+func (ic *invitationController) ListMyInvitations(c *gin.Context) {
+	uid := c.Query("user_id")
+	if uid == "" {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "user_id es requerido",
+		})
+		return
+	}
+	userID, err := strconv.ParseInt(uid, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "user_id debe ser un número válido",
+		})
+		return
+	}
+
+	response, err := ic.invitationService.ListPendingInvitationsForUser(c, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, apierror.APIError{
+			StatusCode: http.StatusInternalServerError,
+			Code:       "Internal Server Error",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetInvitationByID godoc
+// @Summary      Detalle de una invitación
+// @Description  Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario que consulta
+// @Tags         invitations
+// @Produce      json
+// @Param        id       path      int  true  "Invitation ID"
+// @Param        user_id  query     int  true  "User ID (debe coincidir con el invitado)"
+// @Success      200      {object}  invitation.InvitationResponse
+// @Failure      400      {object}  apierror.APIError
+// @Failure      403      {object}  apierror.APIError
+// @Failure      404      {object}  apierror.APIError
+// @Failure      500      {object}  apierror.APIError
+// @Router       /api/v1/invitations/{id} [get]
+func (ic *invitationController) GetInvitationByID(c *gin.Context) {
+	invitationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "invitation id debe ser un número válido",
+		})
+		return
+	}
+
+	uid := c.Query("user_id")
+	if uid == "" {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "user_id es requerido",
+		})
+		return
+	}
+	userID, err := strconv.ParseInt(uid, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "user_id debe ser un número válido",
+		})
+		return
+	}
+
+	response, err := ic.invitationService.GetInvitationDetail(c, invitationID, userID)
+	if err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		switch errMsg {
+		case "invitación no encontrada":
+			statusCode = http.StatusNotFound
+			code = "Not Found"
+		case "la invitación no pertenece a este usuario":
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
