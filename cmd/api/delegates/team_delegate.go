@@ -29,14 +29,17 @@ func NewTeamDelegate(teamSvc services.TeamServiceInterface, groupSvc services.Gr
 	}
 }
 
-// CreateTeam crea un equipo y opcionalmente un grupo principal si create_default_group es true.
+// CreateTeam crea un equipo y su grupo principal. La membresía de equipo siempre pasa
+// por un grupo (el principal u otro más específico), así que el grupo principal se crea
+// por default — create_default_group solo sirve para saltearlo, pasando explícitamente
+// false.
 func (d *teamDelegate) CreateTeam(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
 	teamResp, err := d.teamSvc.Create(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	if req.CreateDefaultGroup != nil && *req.CreateDefaultGroup {
+	if req.CreateDefaultGroup == nil || *req.CreateDefaultGroup {
 		groupReq := &group.CreateGroupRequest{
 			Name:   req.Name + " - group",
 			TeamID: teamResp.ID,

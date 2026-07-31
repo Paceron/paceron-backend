@@ -280,9 +280,11 @@ sequenceDiagram
 | DELETE | `/api/v1/groups/:id` | Soft delete group |
 | POST | `/api/v1/groups/:id/users` | Add user to group |
 | DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group |
-| POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email |
+| POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email (optional `group_id`) |
 | GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team |
-| POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor) |
+| GET | `/api/v1/invitations` | List my pending invitations (`user_id` query) |
+| GET | `/api/v1/invitations/:id` | Get invitation detail (`user_id` query, must match invitee) |
+| POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
 | GET | `/example/weather` | Get weather from Open-Meteo |
 | GET | `/user/:user_id/weather` | Get user with weather data |

@@ -15,10 +15,12 @@ import (
 )
 
 type mockInvitationService struct {
-	inviteRunnerFn           func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
-	listPendingInvitationsFn func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
-	acceptInvitationFn       func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
-	rejectInvitationFn       func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
+	inviteRunnerFn                  func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
+	listPendingInvitationsFn        func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
+	listPendingInvitationsForUserFn func(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error)
+	getInvitationDetailFn           func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error)
+	acceptInvitationFn              func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
+	rejectInvitationFn              func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
 }
 
 func (m *mockInvitationService) InviteRunner(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
@@ -31,6 +33,20 @@ func (m *mockInvitationService) InviteRunner(ctx *gin.Context, teamID int64, req
 func (m *mockInvitationService) ListPendingInvitations(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
 	if m.listPendingInvitationsFn != nil {
 		return m.listPendingInvitationsFn(ctx, teamID)
+	}
+	return nil, nil
+}
+
+func (m *mockInvitationService) ListPendingInvitationsForUser(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error) {
+	if m.listPendingInvitationsForUserFn != nil {
+		return m.listPendingInvitationsForUserFn(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockInvitationService) GetInvitationDetail(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error) {
+	if m.getInvitationDetailFn != nil {
+		return m.getInvitationDetailFn(ctx, invitationID, userID)
 	}
 	return nil, nil
 }
@@ -344,4 +360,140 @@ func TestInvitationController_RejectInvitation_AlreadyResponded(t *testing.T) {
 	controller.RejectInvitation(c)
 
 	assert.Equal(t, http.StatusConflict, response.Code)
+}
+
+func TestInvitationController_ListMyInvitations_Success(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		listPendingInvitationsForUserFn: func(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error) {
+			return []invitation.InvitationResponse{{ID: 1, TeamID: 2}}, nil
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations?user_id=1", nil)
+
+	controller.ListMyInvitations(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestInvitationController_ListMyInvitations_MissingUserID(t *testing.T) {
+	controller := NewInvitationController(&mockInvitationService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations", nil)
+
+	controller.ListMyInvitations(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestInvitationController_ListMyInvitations_InvalidUserID(t *testing.T) {
+	controller := NewInvitationController(&mockInvitationService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations?user_id=abc", nil)
+
+	controller.ListMyInvitations(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestInvitationController_GetInvitationByID_Success(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		getInvitationDetailFn: func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error) {
+			return &invitation.InvitationResponse{ID: invitationID, TeamID: 2}, nil
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1?user_id=2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.GetInvitationByID(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestInvitationController_GetInvitationByID_NotFound(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		getInvitationDetailFn: func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error) {
+			return nil, errors.New("invitación no encontrada")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/999?user_id=2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+
+	controller.GetInvitationByID(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestInvitationController_GetInvitationByID_WrongUser(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		getInvitationDetailFn: func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error) {
+			return nil, errors.New("la invitación no pertenece a este usuario")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1?user_id=999", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.GetInvitationByID(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestInvitationController_GetInvitationByID_MissingUserID(t *testing.T) {
+	controller := NewInvitationController(&mockInvitationService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.GetInvitationByID(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestInvitationController_GetInvitationByID_InvalidID(t *testing.T) {
+	controller := NewInvitationController(&mockInvitationService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/abc?user_id=2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
+
+	controller.GetInvitationByID(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestInvitationController_InviteRunner_GroupNotFound(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+			return nil, errors.New("el grupo no existe en este equipo")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(`{"email":"juan@test.com","group_id":99}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.InviteRunner(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
 }

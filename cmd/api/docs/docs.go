@@ -694,6 +694,110 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/invitations": {
+            "get": {
+                "description": "Devuelve las invitaciones pendientes (no vencidas) de un usuario, sin importar el equipo",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Listar mis invitaciones pendientes",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invitations/{id}": {
+            "get": {
+                "description": "Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario que consulta",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Detalle de una invitación",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "User ID (debe coincidir con el invitado)",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/invitations/{id}/accept": {
             "post": {
                 "description": "El usuario invitado acepta la invitación y queda como corredor del equipo",
@@ -3113,6 +3217,9 @@ const docTemplate = `{
                 "expires_at": {
                     "type": "string"
                 },
+                "group_id": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -3130,6 +3237,9 @@ const docTemplate = `{
                 },
                 "team_id": {
                     "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
                 }
             }
         },
@@ -3142,6 +3252,10 @@ const docTemplate = `{
                 "email": {
                     "description": "Email del usuario existente a invitar (requerido)",
                     "type": "string"
+                },
+                "group_id": {
+                    "description": "Grupo al que se une al aceptar (opcional, default: grupo principal del equipo)",
+                    "type": "integer"
                 }
             }
         },
@@ -3310,7 +3424,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "create_default_group": {
-                    "description": "Si es true, crea un grupo principal con nombre \"{name} - group\" (opcional)",
+                    "description": "Crea un grupo principal \"{name} - group\" por default; pasar explícitamente false para saltearlo (opcional)",
                     "type": "boolean"
                 },
                 "description": {

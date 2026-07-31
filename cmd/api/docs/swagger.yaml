@@ -241,6 +241,8 @@ definitions:
         type: string
       expires_at:
         type: string
+      group_id:
+        type: integer
       id:
         type: integer
       invitee_email:
@@ -253,12 +255,18 @@ definitions:
         type: string
       team_id:
         type: integer
+      team_name:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest:
     properties:
       email:
         description: Email del usuario existente a invitar (requerido)
         type: string
+      group_id:
+        description: 'Grupo al que se une al aceptar (opcional, default: grupo principal
+          del equipo)'
+        type: integer
     required:
     - email
     type: object
@@ -373,8 +381,8 @@ definitions:
   simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
     properties:
       create_default_group:
-        description: Si es true, crea un grupo principal con nombre "{name} - group"
-          (opcional)
+        description: Crea un grupo principal "{name} - group" por default; pasar explícitamente
+          false para saltearlo (opcional)
         type: boolean
       description:
         description: Descripción del equipo (opcional)
@@ -1231,6 +1239,77 @@ paths:
       summary: Quitar usuario de grupo
       tags:
       - group-users
+  /api/v1/invitations:
+    get:
+      description: Devuelve las invitaciones pendientes (no vencidas) de un usuario,
+        sin importar el equipo
+      parameters:
+      - description: User ID
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar mis invitaciones pendientes
+      tags:
+      - invitations
+  /api/v1/invitations/{id}:
+    get:
+      description: Devuelve el detalle de una invitación puntual, validando que pertenezca
+        al usuario que consulta
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User ID (debe coincidir con el invitado)
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Detalle de una invitación
+      tags:
+      - invitations
   /api/v1/invitations/{id}/accept:
     post:
       consumes:

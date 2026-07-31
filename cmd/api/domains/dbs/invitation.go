@@ -10,6 +10,7 @@ type Invitation struct {
 	TeamID      int64      `gorm:"column:team_id;not null;index"`
 	InviterID   int64      `gorm:"column:inviter_id;not null"`
 	InviteeID   int64      `gorm:"column:invitee_id;not null;index"`
+	GroupID     *int64     `gorm:"column:group_id"` // Grupo elegido al invitar (nil = grupo principal del equipo al aceptar)
 	Status      string     `gorm:"column:status;not null;default:pending"`
 	ExpiresAt   time.Time  `gorm:"column:expires_at;not null"`
 	RespondedAt *time.Time `gorm:"column:responded_at"`

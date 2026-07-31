@@ -25,6 +25,8 @@ const invitationExpiryDuration = 15 * 24 * time.Hour
 type InvitationServiceInterface interface {
 	InviteRunner(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
 	ListPendingInvitations(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
+	ListPendingInvitationsForUser(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error)
+	GetInvitationDetail(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error)
 	AcceptInvitation(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
 	RejectInvitation(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
 }
@@ -34,6 +36,8 @@ type invitationService struct {
 	teamDao       daos.TeamDaoInterface
 	invitationDao daos.InvitationDaoInterface
 	teamUserDao   daos.TeamUserDaoInterface
+	groupDao      daos.GroupDaoInterface
+	groupUserDao  daos.GroupUserDaoInterface
 	mailer        mailer.MailerInterface
 }
 
@@ -43,6 +47,8 @@ func NewInvitationService(
 	teamDao daos.TeamDaoInterface,
 	invitationDao daos.InvitationDaoInterface,
 	teamUserDao daos.TeamUserDaoInterface,
+	groupDao daos.GroupDaoInterface,
+	groupUserDao daos.GroupUserDaoInterface,
 	mailerClient mailer.MailerInterface,
 ) InvitationServiceInterface {
 	return &invitationService{
@@ -50,6 +56,8 @@ func NewInvitationService(
 		teamDao:       teamDao,
 		invitationDao: invitationDao,
 		teamUserDao:   teamUserDao,
+		groupDao:      groupDao,
+		groupUserDao:  groupUserDao,
 		mailer:        mailerClient,
 	}
 }
@@ -103,10 +111,25 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, req *in
 		return nil, fmt.Errorf("ya existe una invitación pendiente para este usuario en este equipo")
 	}
 
+	if req.GroupID != nil {
+		groupDB, err := s.groupDao.FindByIDAndTeamID(ctx, *req.GroupID, teamID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding group for invitation", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.Tag("group_id", fmt.Sprintf("%d", *req.GroupID)),
+				customlogger.TagMethod("InviteRunner"))
+			return nil, fmt.Errorf("error al enviar invitación")
+		}
+		if groupDB == nil {
+			return nil, fmt.Errorf("el grupo no existe en este equipo")
+		}
+	}
+
 	inv := &dbs.Invitation{
 		TeamID:    teamID,
 		InviterID: teamDB.OwnerID,
 		InviteeID: user.ID,
+		GroupID:   req.GroupID,
 		Status:    string(constants.InvitationStatusPending),
 		ExpiresAt: time.Now().Add(invitationExpiryDuration),
 	}
@@ -163,32 +186,105 @@ func (s *invitationService) ListPendingInvitations(ctx *gin.Context, teamID int6
 		if now.After(inv.ExpiresAt) {
 			continue
 		}
-
-		inviteeName, inviteeEmail := "", ""
-		inviteeUser, err := s.userDao.FindByID(ctx, inv.InviteeID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding invitee user for invitation listing", err,
-				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-				customlogger.Tag("invitee_id", fmt.Sprintf("%d", inv.InviteeID)),
-				customlogger.TagMethod("ListPendingInvitations"))
-		} else if inviteeUser != nil {
-			inviteeName = inviteeUser.Name
-			inviteeEmail = inviteeUser.Email
-		}
-
-		responses = append(responses, invitation.InvitationResponse{
-			ID:           inv.ID,
-			TeamID:       inv.TeamID,
-			InviteeID:    inv.InviteeID,
-			InviteeName:  inviteeName,
-			InviteeEmail: inviteeEmail,
-			Status:       inv.Status,
-			ExpiresAt:    inv.ExpiresAt,
-			CreatedAt:    inv.CreatedAt,
-		})
+		responses = append(responses, s.toInvitationResponse(ctx, inv, teamDB, "ListPendingInvitations"))
 	}
 
 	return responses, nil
+}
+
+// ListPendingInvitationsForUser devuelve las invitaciones pendientes de un usuario,
+// sin importar el equipo. Mismo chequeo perezoso de expiración que ListPendingInvitations.
+func (s *invitationService) ListPendingInvitationsForUser(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error) {
+	invitations, err := s.invitationDao.FindPendingByInviteeID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing pending invitations for user", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("ListPendingInvitationsForUser"))
+		return nil, fmt.Errorf("error al listar invitaciones")
+	}
+
+	now := time.Now()
+	responses := make([]invitation.InvitationResponse, 0, len(invitations))
+	for _, inv := range invitations {
+		if now.After(inv.ExpiresAt) {
+			continue
+		}
+
+		teamDB, err := s.teamDao.FindByID(ctx, inv.TeamID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding team for invitation listing", err,
+				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+				customlogger.Tag("team_id", fmt.Sprintf("%d", inv.TeamID)),
+				customlogger.TagMethod("ListPendingInvitationsForUser"))
+		}
+		responses = append(responses, s.toInvitationResponse(ctx, inv, teamDB, "ListPendingInvitationsForUser"))
+	}
+
+	return responses, nil
+}
+
+// GetInvitationDetail devuelve el detalle de una invitación puntual, validando que
+// pertenezca al usuario que consulta. A diferencia de accept/reject, no exige que
+// siga pendiente (permite ver invitaciones ya respondidas).
+func (s *invitationService) GetInvitationDetail(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error) {
+	inv, err := s.invitationDao.FindByID(ctx, invitationID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding invitation detail", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", invitationID)),
+			customlogger.TagMethod("GetInvitationDetail"))
+		return nil, fmt.Errorf("error al obtener la invitación")
+	}
+	if inv == nil {
+		return nil, fmt.Errorf("invitación no encontrada")
+	}
+	if inv.InviteeID != userID {
+		return nil, fmt.Errorf("la invitación no pertenece a este usuario")
+	}
+
+	teamDB, err := s.teamDao.FindByID(ctx, inv.TeamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for invitation detail", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", invitationID)),
+			customlogger.TagMethod("GetInvitationDetail"))
+	}
+
+	response := s.toInvitationResponse(ctx, *inv, teamDB, "GetInvitationDetail")
+	return &response, nil
+}
+
+// toInvitationResponse arma el DTO de respuesta compartido por listados y detalle.
+// teamDB puede ser nil (si falló resolverlo) — en ese caso team_name queda vacío,
+// no bloquea la respuesta.
+func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invitation, teamDB *dbs.Team, method string) invitation.InvitationResponse {
+	inviteeName, inviteeEmail := "", ""
+	inviteeUser, err := s.userDao.FindByID(ctx, inv.InviteeID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding invitee user for invitation response", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+			customlogger.Tag("invitee_id", fmt.Sprintf("%d", inv.InviteeID)),
+			customlogger.TagMethod(method))
+	} else if inviteeUser != nil {
+		inviteeName = inviteeUser.Name
+		inviteeEmail = inviteeUser.Email
+	}
+
+	teamName := ""
+	if teamDB != nil {
+		teamName = teamDB.Name
+	}
+
+	return invitation.InvitationResponse{
+		ID:           inv.ID,
+		TeamID:       inv.TeamID,
+		TeamName:     teamName,
+		GroupID:      inv.GroupID,
+		InviteeID:    inv.InviteeID,
+		InviteeName:  inviteeName,
+		InviteeEmail: inviteeEmail,
+		Status:       inv.Status,
+		ExpiresAt:    inv.ExpiresAt,
+		CreatedAt:    inv.CreatedAt,
+	}
 }
 
 // AcceptInvitation acepta una invitación pendiente: da de alta al invitado como corredor
@@ -227,6 +323,12 @@ func (s *invitationService) AcceptInvitation(ctx *gin.Context, invitationID, use
 		}
 	}
 
+	// El alta en el grupo es secundaria a la membresía del equipo: si falla o no hay
+	// grupo destino (sin group_id y el equipo no tiene grupo principal), se loguea y
+	// se sigue — la invitación igual se marca como aceptada y el usuario ya es
+	// miembro del equipo, que es la parte que importa.
+	s.assignInviteeToGroup(ctx, inv, userID)
+
 	if err := s.invitationDao.UpdateStatus(ctx, inv.ID, string(constants.InvitationStatusAccepted), time.Now()); err != nil {
 		customlogger.Error(ctx, "team_user creado pero invitación no pudo marcarse como aceptada", err,
 			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
@@ -239,6 +341,60 @@ func (s *invitationService) AcceptInvitation(ctx *gin.Context, invitationID, use
 		customlogger.TagMethod("AcceptInvitation"))
 
 	return &invitation.RespondInvitationResponse{Message: "Invitación aceptada"}, nil
+}
+
+// assignInviteeToGroup da de alta al invitado en el grupo elegido al invitar, o en el
+// grupo principal del equipo si no se eligió ninguno. No bloquea AcceptInvitation si
+// falla — ver comentario en el call site.
+func (s *invitationService) assignInviteeToGroup(ctx *gin.Context, inv *dbs.Invitation, userID int64) {
+	targetGroupID := inv.GroupID
+
+	if targetGroupID == nil {
+		groups, err := s.groupDao.GetByTeamID(ctx, inv.TeamID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding team groups for invitation group assignment", err,
+				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+				customlogger.TagMethod("AcceptInvitation"))
+			return
+		}
+		for _, g := range groups {
+			if g.IsMain {
+				id := g.ID
+				targetGroupID = &id
+				break
+			}
+		}
+		if targetGroupID == nil {
+			customlogger.Warn(ctx, "no default group found for team on invitation accept",
+				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+				customlogger.Tag("team_id", fmt.Sprintf("%d", inv.TeamID)),
+				customlogger.TagMethod("AcceptInvitation"))
+			return
+		}
+	}
+
+	existingGroupMember, err := s.groupUserDao.FindByGroupAndUser(ctx, *targetGroupID, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking group membership on accept invitation", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+			customlogger.TagMethod("AcceptInvitation"))
+		return
+	}
+	if existingGroupMember != nil {
+		return
+	}
+
+	groupUser := &dbs.GroupUser{
+		GroupID:   *targetGroupID,
+		UserID:    userID,
+		DateStart: time.Now(),
+	}
+	if err := s.groupUserDao.Create(ctx, groupUser); err != nil {
+		customlogger.Error(ctx, "error creating group_user on accept invitation", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+			customlogger.Tag("group_id", fmt.Sprintf("%d", *targetGroupID)),
+			customlogger.TagMethod("AcceptInvitation"))
+	}
 }
 
 // RejectInvitation rechaza una invitación pendiente, sin afectar TeamUser.
