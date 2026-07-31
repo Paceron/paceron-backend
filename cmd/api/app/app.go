@@ -157,7 +157,7 @@ func NewApplication() *Application {
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow
-	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, mailerClient)
+	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient)
 	invitationController := controllers.NewInvitationController(invitationService)
 
 	return &Application{
