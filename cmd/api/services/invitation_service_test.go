@@ -417,6 +417,37 @@ func TestInvitationService_ListPendingInvitations_Success(t *testing.T) {
 	assert.Equal(t, "pedro@test.com", resp[0].InviteeEmail)
 }
 
+func TestInvitationService_ListPendingInvitations_IncludesInviterInfo(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+	invDao := &mockInvitationDao{
+		findPendingByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error) {
+			return []dbs.Invitation{
+				{ID: 1, TeamID: 1, InviterID: 5, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)},
+			}, nil
+		},
+	}
+	userDaoForInvitation := &mockUserDaoForInvitation{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			if userID == 5 {
+				return &dbs.User{ID: 5, Name: "Entrenador Juan"}, nil
+			}
+			return &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"}, nil
+		},
+	}
+
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitations(nil, 1)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 1)
+	assert.Equal(t, int64(5), resp[0].InviterID)
+	assert.Equal(t, "Entrenador Juan", resp[0].InviterName)
+}
+
 func TestInvitationService_ListPendingInvitations_TeamNotFound(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
