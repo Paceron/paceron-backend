@@ -268,6 +268,17 @@ func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invit
 		inviteeEmail = inviteeUser.Email
 	}
 
+	inviterName := ""
+	inviterUser, err := s.userDao.FindByID(ctx, inv.InviterID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding inviter user for invitation response", err,
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+			customlogger.Tag("inviter_id", fmt.Sprintf("%d", inv.InviterID)),
+			customlogger.TagMethod(method))
+	} else if inviterUser != nil {
+		inviterName = inviterUser.Name
+	}
+
 	teamName := ""
 	if teamDB != nil {
 		teamName = teamDB.Name
@@ -278,6 +289,8 @@ func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invit
 		TeamID:       inv.TeamID,
 		TeamName:     teamName,
 		GroupID:      inv.GroupID,
+		InviterID:    inv.InviterID,
+		InviterName:  inviterName,
 		InviteeID:    inv.InviteeID,
 		InviteeName:  inviteeName,
 		InviteeEmail: inviteeEmail,

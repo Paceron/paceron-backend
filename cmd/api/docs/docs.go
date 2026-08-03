@@ -3232,6 +3232,12 @@ const docTemplate = `{
                 "invitee_name": {
                     "type": "string"
                 },
+                "inviter_id": {
+                    "type": "integer"
+                },
+                "inviter_name": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string"
                 },

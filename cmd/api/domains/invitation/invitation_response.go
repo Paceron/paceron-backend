@@ -13,6 +13,8 @@ type InvitationResponse struct {
 	TeamID       int64     `json:"team_id"`
 	TeamName     string    `json:"team_name"`
 	GroupID      *int64    `json:"group_id"`
+	InviterID    int64     `json:"inviter_id"`
+	InviterName  string    `json:"inviter_name"`
 	InviteeID    int64     `json:"invitee_id"`
 	InviteeName  string    `json:"invitee_name"`
 	InviteeEmail string    `json:"invitee_email"`
