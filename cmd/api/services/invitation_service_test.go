@@ -125,16 +125,17 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 	invDao := &mockInvitationDao{
 		createFn: func(ctx *gin.Context, inv *dbs.Invitation) error {
 			assert.Equal(t, int64(1), inv.TeamID)
-			assert.Equal(t, int64(5), inv.InviterID)
+			assert.Equal(t, testEntrenadorCallerID, inv.InviterID)
 			assert.Equal(t, int64(1), inv.InviteeID)
 			assert.Equal(t, string(constants.InvitationStatusPending), inv.Status)
 			return nil
 		},
 	}
 	mailerMock := &mockMailer{}
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
-	resp, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
+	resp, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -155,7 +156,7 @@ func TestInvitationService_InviteRunner_TeamNotFound(t *testing.T) {
 	}
 
 	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 999, &invitation.InviteRunnerRequest{
+	_, err := svc.InviteRunner(nil, 999, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -175,13 +176,35 @@ func TestInvitationService_InviteRunner_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "noexiste@test.com",
 	})
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no se encontró un usuario")
+}
+
+func TestInvitationService_InviteRunner_NotEntrenador(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID, RoleInTeam: "corredor"}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, 2, &invitation.InviteRunnerRequest{
+		Email: "juan@test.com",
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "solo el entrenador puede invitar usuarios al equipo")
 }
 
 func TestInvitationService_InviteRunner_UserAlreadyMember(t *testing.T) {
@@ -196,13 +219,13 @@ func TestInvitationService_InviteRunner_UserAlreadyMember(t *testing.T) {
 		},
 	}
 	teamUserDao := &mockTeamUserDao{
-		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{ID: 1, TeamID: teamID, UserID: userID}, nil
-		},
+		}),
 	}
 
 	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -227,8 +250,9 @@ func TestInvitationService_InviteRunner_DuplicatePendingInvitation(t *testing.T)
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -262,9 +286,10 @@ func TestInvitationService_InviteRunner_WithValidGroupID(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, mockGroup, &mockGroupUserDao{}, &mockMailer{})
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{})
 	groupID := int64(3)
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email:   "juan@test.com",
 		GroupID: &groupID,
 	})
@@ -289,9 +314,10 @@ func TestInvitationService_InviteRunner_GroupNotInTeam(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, mockGroup, &mockGroupUserDao{}, &mockMailer{})
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{})
 	groupID := int64(999)
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email:   "juan@test.com",
 		GroupID: &groupID,
 	})
@@ -317,8 +343,9 @@ func TestInvitationService_InviteRunner_InvitationDaoCreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -343,8 +370,9 @@ func TestInvitationService_InviteRunner_MailerError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock)
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -360,7 +388,7 @@ func TestInvitationService_InviteRunner_TeamDaoError(t *testing.T) {
 	}
 
 	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 
@@ -380,8 +408,9 @@ func TestInvitationService_InviteRunner_UserFindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.InviteRunner(nil, 1, &invitation.InviteRunnerRequest{
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
 

@@ -23,7 +23,7 @@ const invitationExpiryDuration = 15 * 24 * time.Hour
 
 // InvitationServiceInterface define las operaciones de negocio para invitaciones.
 type InvitationServiceInterface interface {
-	InviteRunner(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
+	InviteRunner(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
 	ListPendingInvitations(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
 	ListPendingInvitationsForUser(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error)
 	GetInvitationDetail(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error)
@@ -64,7 +64,8 @@ func NewInvitationService(
 
 // InviteRunner envía una invitación por email a un usuario existente para unirlo a un equipo,
 // y persiste la invitación para que el invitado pueda verla y responderla desde la app.
-func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+// Solo el entrenador del equipo puede invitar.
+func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for invitation", err,
@@ -74,6 +75,17 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, req *in
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for invitation", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("InviteRunner"))
+		return nil, fmt.Errorf("error al enviar invitación")
+	}
+	if caller == nil || caller.RoleInTeam != "entrenador" {
+		return nil, fmt.Errorf("solo el entrenador puede invitar usuarios al equipo")
 	}
 
 	user, err := s.userDao.FindByEmail(ctx, req.Email)
@@ -127,7 +139,7 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, req *in
 
 	inv := &dbs.Invitation{
 		TeamID:    teamID,
-		InviterID: teamDB.OwnerID,
+		InviterID: callerID,
 		InviteeID: user.ID,
 		GroupID:   req.GroupID,
 		Status:    string(constants.InvitationStatusPending),

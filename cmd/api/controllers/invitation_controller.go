@@ -9,6 +9,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/invitation"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // InvitationController define las operaciones HTTP para invitaciones.
@@ -34,7 +35,7 @@ func NewInvitationController(invitationService services.InvitationServiceInterfa
 
 // InviteRunner godoc
 // @Summary      Invitar corredor por email
-// @Description  Envía una invitación por email a un usuario existente para unirlo a un equipo
+// @Description  Envía una invitación por email a un usuario existente para unirlo a un equipo. Solo el entrenador del equipo puede invitar
 // @Tags         invitations
 // @Accept       json
 // @Produce      json
@@ -42,6 +43,7 @@ func NewInvitationController(invitationService services.InvitationServiceInterfa
 // @Param        body  body      invitation.InviteRunnerRequest true  "Email del usuario a invitar"
 // @Success      200   {object}  invitation.InviteRunnerResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      409   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
@@ -67,7 +69,8 @@ func (ic *invitationController) InviteRunner(c *gin.Context) {
 		return
 	}
 
-	response, err := ic.invitationService.InviteRunner(c, teamID, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := ic.invitationService.InviteRunner(c, teamID, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -80,6 +83,9 @@ func (ic *invitationController) InviteRunner(c *gin.Context) {
 		case "el usuario ya pertenece a este equipo", "ya existe una invitación pendiente para este usuario en este equipo":
 			statusCode = http.StatusConflict
 			code = "Conflict"
+		case "solo el entrenador puede invitar usuarios al equipo":
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -139,33 +145,14 @@ func (ic *invitationController) ListPendingInvitations(c *gin.Context) {
 
 // ListMyInvitations godoc
 // @Summary      Listar mis invitaciones pendientes
-// @Description  Devuelve las invitaciones pendientes (no vencidas) de un usuario, sin importar el equipo
+// @Description  Devuelve las invitaciones pendientes (no vencidas) del usuario autenticado, sin importar el equipo
 // @Tags         invitations
 // @Produce      json
-// @Param        user_id  query     int  true  "User ID"
 // @Success      200 {array}   invitation.InvitationResponse
-// @Failure      400 {object}  apierror.APIError
 // @Failure      500 {object}  apierror.APIError
 // @Router       /api/v1/invitations [get]
 func (ic *invitationController) ListMyInvitations(c *gin.Context) {
-	uid := c.Query("user_id")
-	if uid == "" {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id es requerido",
-		})
-		return
-	}
-	userID, err := strconv.ParseInt(uid, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id debe ser un número válido",
-		})
-		return
-	}
+	userID, _ := utils.GetAuthUserID(c)
 
 	response, err := ic.invitationService.ListPendingInvitationsForUser(c, userID)
 	if err != nil {
@@ -182,11 +169,10 @@ func (ic *invitationController) ListMyInvitations(c *gin.Context) {
 
 // GetInvitationByID godoc
 // @Summary      Detalle de una invitación
-// @Description  Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario que consulta
+// @Description  Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario autenticado
 // @Tags         invitations
 // @Produce      json
-// @Param        id       path      int  true  "Invitation ID"
-// @Param        user_id  query     int  true  "User ID (debe coincidir con el invitado)"
+// @Param        id  path      int  true  "Invitation ID"
 // @Success      200      {object}  invitation.InvitationResponse
 // @Failure      400      {object}  apierror.APIError
 // @Failure      403      {object}  apierror.APIError
@@ -204,24 +190,7 @@ func (ic *invitationController) GetInvitationByID(c *gin.Context) {
 		return
 	}
 
-	uid := c.Query("user_id")
-	if uid == "" {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id es requerido",
-		})
-		return
-	}
-	userID, err := strconv.ParseInt(uid, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id debe ser un número válido",
-		})
-		return
-	}
+	userID, _ := utils.GetAuthUserID(c)
 
 	response, err := ic.invitationService.GetInvitationDetail(c, invitationID, userID)
 	if err != nil {
@@ -253,10 +222,8 @@ func (ic *invitationController) GetInvitationByID(c *gin.Context) {
 // @Summary      Aceptar invitación
 // @Description  El usuario invitado acepta la invitación y queda como corredor del equipo
 // @Tags         invitations
-// @Accept       json
 // @Produce      json
-// @Param        id    path      int                                true  "Invitation ID"
-// @Param        body  body      invitation.RespondInvitationRequest true  "ID del usuario que responde"
+// @Param        id  path      int  true  "Invitation ID"
 // @Success      200   {object}  invitation.RespondInvitationResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      403   {object}  apierror.APIError
@@ -272,10 +239,8 @@ func (ic *invitationController) AcceptInvitation(c *gin.Context) {
 // @Summary      Rechazar invitación
 // @Description  El usuario invitado rechaza la invitación
 // @Tags         invitations
-// @Accept       json
 // @Produce      json
-// @Param        id    path      int                                true  "Invitation ID"
-// @Param        body  body      invitation.RespondInvitationRequest true  "ID del usuario que responde"
+// @Param        id  path      int  true  "Invitation ID"
 // @Success      200   {object}  invitation.RespondInvitationResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      403   {object}  apierror.APIError
@@ -303,17 +268,8 @@ func (ic *invitationController) respondInvitation(
 		return
 	}
 
-	var req invitation.RespondInvitationRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "Cuerpo de solicitud inválido",
-		})
-		return
-	}
-
-	response, err := respond(c, invitationID, req.UserID)
+	userID, _ := utils.GetAuthUserID(c)
+	response, err := respond(c, invitationID, userID)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
