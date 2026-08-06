@@ -13,8 +13,8 @@ import (
 
 // GroupServiceInterface define las operaciones de negocio para grupos.
 type GroupServiceInterface interface {
-	Create(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error)
-	Update(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error)
+	Create(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error)
+	Update(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error)
 	Delete(ctx *gin.Context, id int64, userID int64) error
 	GetByID(ctx *gin.Context, id int64) (*group.GroupResponse, error)
 	GetAll(ctx *gin.Context, teamID *int64, userID *int64) ([]group.GroupResponse, error)
@@ -39,8 +39,17 @@ func NewGroupService(
 	}
 }
 
-// Create crea un nuevo grupo dentro de un equipo existente.
-func (s *groupService) Create(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
+// isEntrenadorOfTeam valida que userID sea miembro con rol "entrenador" del equipo.
+func (s *groupService) isEntrenadorOfTeam(ctx *gin.Context, teamID, userID int64) (bool, error) {
+	member, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, userID)
+	if err != nil {
+		return false, err
+	}
+	return member != nil && member.RoleInTeam == "entrenador", nil
+}
+
+// Create crea un nuevo grupo dentro de un equipo existente. Solo el entrenador del equipo puede hacerlo.
+func (s *groupService) Create(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, req.TeamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for group creation", err,
@@ -50,6 +59,17 @@ func (s *groupService) Create(ctx *gin.Context, req *group.CreateGroupRequest) (
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("el equipo no existe")
+	}
+
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, req.TeamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for group creation", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", req.TeamID)),
+			customlogger.TagMethod("Create"))
+		return nil, fmt.Errorf("error al crear grupo")
+	}
+	if !isEntrenador {
+		return nil, fmt.Errorf("solo el entrenador del equipo puede crear grupos")
 	}
 
 	groupDB := &dbs.Group{
@@ -74,8 +94,8 @@ func (s *groupService) Create(ctx *gin.Context, req *group.CreateGroupRequest) (
 	return s.toResponse(groupDB), nil
 }
 
-// Update actualiza los campos de un grupo existente.
-func (s *groupService) Update(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
+// Update actualiza los campos de un grupo existente. Solo el entrenador del equipo puede hacerlo.
+func (s *groupService) Update(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
 	groupDB, err := s.groupDao.FindByID(ctx, id)
 	if err != nil {
 		customlogger.Error(ctx, "error finding group for update", err,
@@ -85,6 +105,17 @@ func (s *groupService) Update(ctx *gin.Context, id int64, req *group.UpdateGroup
 	}
 	if groupDB == nil {
 		return nil, fmt.Errorf("grupo no encontrado")
+	}
+
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, groupDB.TeamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for group update", err,
+			customlogger.Tag("group_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al actualizar grupo")
+	}
+	if !isEntrenador {
+		return nil, fmt.Errorf("solo el entrenador puede actualizar el grupo")
 	}
 
 	if req.Name != nil {
