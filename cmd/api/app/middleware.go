@@ -1,12 +1,24 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
+
+	"simple-arq-golang/cmd/api/domains/apierror"
+	"simple-arq-golang/cmd/api/utils"
+)
+
+const (
+	_AuthUserID    = "auth_user_id"
+	_AuthSessionID = "auth_session_id"
+	_AuthRoles     = "auth_roles"
 )
 
 const (
@@ -79,6 +91,58 @@ func CORSMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+// AuthMiddleware valida el access token del header Authorization y deja la identidad
+// del usuario disponible en el contexto (auth_user_id, auth_session_id, auth_roles)
+// para que los controllers/services la usen en vez de confiar en un user_id que mande
+// el cliente. No emite ni renueva tokens — esa responsabilidad es del frontend vía
+// POST /api/v1/auth/refresh.
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := c.Request.Header.Get("Authorization")
+		const prefix = "Bearer "
+		if !strings.HasPrefix(header, prefix) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, apierror.APIError{
+				StatusCode: http.StatusUnauthorized,
+				Code:       "unauthorized",
+				Message:    "falta el header Authorization",
+			})
+			return
+		}
+
+		tokenString := strings.TrimPrefix(header, prefix)
+		claims, err := utils.ParseAccessToken(tokenString)
+		if err != nil {
+			code := "unauthorized"
+			message := "token inválido"
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				code = "token_expired"
+				message = "el access token expiró"
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, apierror.APIError{
+				StatusCode: http.StatusUnauthorized,
+				Code:       code,
+				Message:    message,
+			})
+			return
+		}
+
+		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, apierror.APIError{
+				StatusCode: http.StatusUnauthorized,
+				Code:       "unauthorized",
+				Message:    "token inválido",
+			})
+			return
+		}
+
+		c.Set(_AuthUserID, userID)
+		c.Set(_AuthSessionID, claims.SessionID)
+		c.Set(_AuthRoles, claims.Roles)
 		c.Next()
 	}
 }
