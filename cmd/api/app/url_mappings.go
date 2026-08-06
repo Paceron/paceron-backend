@@ -8,6 +8,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.Use(CORSMiddleware())
 	r.Use(SetRequestID())
 
+	// Rutas públicas: no requieren Authorization. register/login/forgot/reset-password
+	// son de por sí previas a tener sesión; refresh/logout usan el refresh token como
+	// credencial propia (no un access token); GET /auth/user es lookup público a
+	// propósito; las rutas legacy /user y /user/:user_id y las de weather quedan
+	// públicas sin discusión (demo/deuda documentada, ver openspec de esta rama).
 	r.GET("/ping", app.pingController.Ping)
 	r.GET("/user/:user_id", app.userController.GetUser)
 	r.POST("/user", app.userController.CreateUser)
@@ -18,6 +23,14 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/auth/user", app.authController.GetUser)
 	r.POST("/api/v1/auth/forgot-password", app.passwordResetController.ForgotPassword)
 	r.POST("/api/v1/auth/reset-password", app.passwordResetController.ResetPassword)
+	r.GET("/example/weather", app.exampleWeatherController.GetWeather)
+	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
+	mapSwagger(r)
+	mapGuide(r)
+
+	// A partir de acá, todas las rutas requieren Authorization: Bearer <access_token>.
+	r.Use(AuthMiddleware())
+
 	r.GET("/api/v1/auth/permissions", app.permissionsQueryController.GetUserPermissions)
 	r.PUT("/api/v1/users/:id", app.userController.Update)
 	r.PATCH("/api/v1/users/:id/status", app.userController.ChangeStatus)
@@ -44,8 +57,6 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.POST("/api/v1/roles", app.roleController.Create)
 	r.PUT("/api/v1/roles/:id", app.roleController.Update)
 	r.DELETE("/api/v1/roles/:id", app.roleController.Delete)
-	r.GET("/example/weather", app.exampleWeatherController.GetWeather)
-	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
 
 	// Teams
 	r.POST("/api/v1/teams", app.teamController.Create)
@@ -79,7 +90,4 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/invitations/:id", app.invitationController.GetInvitationByID)
 	r.POST("/api/v1/invitations/:id/accept", app.invitationController.AcceptInvitation)
 	r.POST("/api/v1/invitations/:id/reject", app.invitationController.RejectInvitation)
-
-	mapSwagger(r)
-	mapGuide(r)
 }
