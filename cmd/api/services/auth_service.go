@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/auth"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -22,17 +24,31 @@ type AuthServiceInterface interface {
 	Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error)
 	Login(ctx *gin.Context, email, password string) (*auth.LoginResponse, error)
 	GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error)
+	Refresh(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error)
+	Logout(ctx *gin.Context, refreshToken string) error
 }
 
 type authService struct {
-	authDao daos.AuthDaoInterface
-	mailer  mailer.MailerInterface
+	authDao         daos.AuthDaoInterface
+	userRoleDao     daos.UserRoleDaoInterface
+	roleDao         daos.RoleDaoInterface
+	refreshTokenDao daos.RefreshTokenDaoInterface
+	mailer          mailer.MailerInterface
 }
 
-func NewAuthService(authDao daos.AuthDaoInterface, mailerClient mailer.MailerInterface) AuthServiceInterface {
+func NewAuthService(
+	authDao daos.AuthDaoInterface,
+	userRoleDao daos.UserRoleDaoInterface,
+	roleDao daos.RoleDaoInterface,
+	refreshTokenDao daos.RefreshTokenDaoInterface,
+	mailerClient mailer.MailerInterface,
+) AuthServiceInterface {
 	return &authService{
-		authDao: authDao,
-		mailer:  mailerClient,
+		authDao:         authDao,
+		userRoleDao:     userRoleDao,
+		roleDao:         roleDao,
+		refreshTokenDao: refreshTokenDao,
+		mailer:          mailerClient,
 	}
 }
 
@@ -127,7 +143,24 @@ func (s *authService) Login(ctx *gin.Context, email, password string) (*auth.Log
 		return nil, fmt.Errorf("No se pudo autenticar")
 	}
 
-	accessToken, err := utils.GenerateAccessToken(userDB.ID, userDB.Email)
+	roles, err := s.roleNamesForUser(ctx, userDB.ID)
+	if err != nil {
+		customlogger.Error(ctx, "error loading roles for login", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+			customlogger.Tag("step", "login_load_roles"))
+		return nil, fmt.Errorf("No se pudo autenticar")
+	}
+
+	sessionUUID, err := uuid.NewV4()
+	if err != nil {
+		customlogger.Error(ctx, "error generating session id", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+			customlogger.Tag("step", "login_generate_session"))
+		return nil, fmt.Errorf("No se pudo autenticar")
+	}
+	sessionID := sessionUUID.String()
+
+	accessToken, err := utils.GenerateAccessToken(userDB.ID, sessionID, roles)
 	if err != nil {
 		customlogger.Error(ctx, "error generating access token", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
@@ -135,11 +168,8 @@ func (s *authService) Login(ctx *gin.Context, email, password string) (*auth.Log
 		return nil, fmt.Errorf("No se pudo autenticar")
 	}
 
-	refreshToken, err := utils.GenerateRefreshToken(userDB.ID)
+	refreshToken, err := s.issueRefreshToken(ctx, userDB.ID, sessionID, "Login")
 	if err != nil {
-		customlogger.Error(ctx, "error generating refresh token", err,
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
-			customlogger.Tag("step", "login_generate_refresh"))
 		return nil, fmt.Errorf("No se pudo autenticar")
 	}
 
@@ -151,13 +181,189 @@ func (s *authService) Login(ctx *gin.Context, email, password string) (*auth.Log
 	userResponse := toResponse(userDB)
 
 	return &auth.LoginResponse{
-		Authorization: auth.AuthorizationData{
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			ExpiresIn:    3600,
-		},
-		User: *userResponse,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(config.AccessTokenDuration.Seconds()),
+		User:         *userResponse,
 	}, nil
+}
+
+// Refresh valida un refresh token activo, lo rota (revoca el usado, emite uno nuevo con
+// la misma sesión) y emite un access token nuevo.
+func (s *authService) Refresh(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error) {
+	genericErr := fmt.Errorf("refresh token inválido o expirado")
+
+	tokenHash := utils.HashToken(refreshToken)
+	existing, err := s.refreshTokenDao.FindActiveByHash(ctx, tokenHash)
+	if err != nil {
+		customlogger.Error(ctx, "error finding refresh token", err,
+			customlogger.Tag("step", "refresh_find_token"))
+		return nil, fmt.Errorf("error al renovar la sesión")
+	}
+	if existing == nil {
+		customlogger.Warn(ctx, "refresh attempt with invalid or expired token",
+			customlogger.Tag("step", "refresh_invalid_token"))
+		return nil, genericErr
+	}
+
+	userDB, err := s.authDao.FindByID(ctx, existing.UserID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding user for refresh", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.Tag("step", "refresh_find_user"))
+		return nil, fmt.Errorf("error al renovar la sesión")
+	}
+	if userDB == nil || userDB.Status != string(constants.UserStatusActive) {
+		customlogger.Warn(ctx, "refresh attempt for missing or inactive user",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.Tag("step", "refresh_inactive_user"))
+		return nil, genericErr
+	}
+
+	roles, err := s.roleNamesForUser(ctx, userDB.ID)
+	if err != nil {
+		customlogger.Error(ctx, "error loading roles for refresh", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+			customlogger.Tag("step", "refresh_load_roles"))
+		return nil, fmt.Errorf("error al renovar la sesión")
+	}
+
+	newRefreshToken, newTokenID, err := s.rotateRefreshToken(ctx, existing)
+	if err != nil {
+		return nil, fmt.Errorf("error al renovar la sesión")
+	}
+
+	accessToken, err := utils.GenerateAccessToken(userDB.ID, existing.SessionID, roles)
+	if err != nil {
+		customlogger.Error(ctx, "error generating access token on refresh", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+			customlogger.Tag("step", "refresh_generate_access"))
+		return nil, fmt.Errorf("error al renovar la sesión")
+	}
+
+	customlogger.Info(ctx, "refresh token rotated successfully",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+		customlogger.Tag("session_id", existing.SessionID),
+		customlogger.Tag("new_token_id", fmt.Sprintf("%d", newTokenID)),
+		customlogger.TagMethod("Refresh"))
+
+	return &auth.RefreshResponse{
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    int(config.AccessTokenDuration.Seconds()),
+	}, nil
+}
+
+// Logout revoca la sesión de refresh asociada al token. Idempotente: si el token no
+// existe o ya estaba revocado, igual responde éxito (no filtra información).
+func (s *authService) Logout(ctx *gin.Context, refreshToken string) error {
+	tokenHash := utils.HashToken(refreshToken)
+	existing, err := s.refreshTokenDao.FindActiveByHash(ctx, tokenHash)
+	if err != nil {
+		customlogger.Error(ctx, "error finding refresh token for logout", err,
+			customlogger.Tag("step", "logout_find_token"))
+		return fmt.Errorf("error al cerrar sesión")
+	}
+	if existing == nil {
+		return nil
+	}
+
+	if err := s.refreshTokenDao.Revoke(ctx, existing.ID, nil); err != nil {
+		customlogger.Error(ctx, "error revoking refresh token on logout", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.Tag("step", "logout_revoke_token"))
+		return fmt.Errorf("error al cerrar sesión")
+	}
+
+	customlogger.Info(ctx, "user logged out successfully",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+		customlogger.Tag("session_id", existing.SessionID),
+		customlogger.TagMethod("Logout"))
+
+	return nil
+}
+
+// issueRefreshToken genera, persiste y devuelve un refresh token opaco nuevo para una sesión.
+func (s *authService) issueRefreshToken(ctx *gin.Context, userID int64, sessionID string, method string) (string, error) {
+	refreshToken, err := utils.GenerateOpaqueToken()
+	if err != nil {
+		customlogger.Error(ctx, "error generating refresh token", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod(method))
+		return "", err
+	}
+
+	tokenDB := &dbs.RefreshToken{
+		UserID:    userID,
+		SessionID: sessionID,
+		TokenHash: utils.HashToken(refreshToken),
+		ExpiresAt: time.Now().Add(config.RefreshTokenDuration),
+	}
+	if err := s.refreshTokenDao.Create(ctx, tokenDB); err != nil {
+		customlogger.Error(ctx, "error persisting refresh token", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod(method))
+		return "", err
+	}
+
+	return refreshToken, nil
+}
+
+// rotateRefreshToken emite un refresh token nuevo para la misma sesión y revoca el
+// anterior, dejando el rastro de reemplazo (replaced_by).
+func (s *authService) rotateRefreshToken(ctx *gin.Context, existing *dbs.RefreshToken) (string, int64, error) {
+	newRefreshToken, err := utils.GenerateOpaqueToken()
+	if err != nil {
+		customlogger.Error(ctx, "error generating rotated refresh token", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.TagMethod("Refresh"))
+		return "", 0, err
+	}
+
+	newTokenDB := &dbs.RefreshToken{
+		UserID:    existing.UserID,
+		SessionID: existing.SessionID,
+		TokenHash: utils.HashToken(newRefreshToken),
+		ExpiresAt: time.Now().Add(config.RefreshTokenDuration),
+	}
+	if err := s.refreshTokenDao.Create(ctx, newTokenDB); err != nil {
+		customlogger.Error(ctx, "error persisting rotated refresh token", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.TagMethod("Refresh"))
+		return "", 0, err
+	}
+
+	if err := s.refreshTokenDao.Revoke(ctx, existing.ID, &newTokenDB.ID); err != nil {
+		customlogger.Error(ctx, "error revoking previous refresh token", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", existing.UserID)),
+			customlogger.Tag("old_token_id", fmt.Sprintf("%d", existing.ID)),
+			customlogger.TagMethod("Refresh"))
+		return "", 0, err
+	}
+
+	return newRefreshToken, newTokenDB.ID, nil
+}
+
+// roleNamesForUser resuelve los nombres de los roles globales de un usuario (el sistema
+// de roles ya existente vía user_role/role — no confundir con TeamUser.RoleInTeam, que
+// es un rol por equipo, no global).
+func (s *authService) roleNamesForUser(ctx *gin.Context, userID int64) ([]string, error) {
+	userRoles, err := s.userRoleDao.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(userRoles))
+	for _, ur := range userRoles {
+		role, err := s.roleDao.FindByID(ctx, ur.RoleID)
+		if err != nil {
+			continue
+		}
+		if role != nil {
+			names = append(names, role.Name)
+		}
+	}
+	return names, nil
 }
 
 func (s *authService) GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
