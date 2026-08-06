@@ -9,15 +9,6 @@ definitions:
       status_code:
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_auth.AuthorizationData:
-    properties:
-      access_token:
-        type: string
-      expires_in:
-        type: integer
-      refresh_token:
-        type: string
-    type: object
   simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest:
     properties:
       email:
@@ -42,10 +33,42 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_auth.LoginResponse:
     properties:
-      authorization:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.AuthorizationData'
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
       user:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.LogoutResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  simple-arq-golang_cmd_api_domains_auth.RefreshResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_auth.RegisterRequest:
     properties:
@@ -855,6 +878,37 @@ paths:
       summary: Authenticate user and get tokens
       tags:
       - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Revoca el refresh token indicado. El access token sigue válido
+        hasta su expiración natural
+      parameters:
+      - description: Refresh token a revocar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Cerrar sesión
+      tags:
+      - auth
   /api/v1/auth/permissions:
     get:
       description: Returns all permissions for a user grouped by role and tier
@@ -886,6 +940,41 @@ paths:
       summary: Get user permissions
       tags:
       - permissions
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 'Rota un refresh token activo: lo revoca y emite un access + refresh
+        nuevos'
+      parameters:
+      - description: Refresh token vigente
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Renovar sesión
+      tags:
+      - auth
   /api/v1/auth/register:
     post:
       consumes:
