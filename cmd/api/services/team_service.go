@@ -17,12 +17,12 @@ const teamOwnerRoleName = "entrenador"
 
 // TeamServiceInterface define las operaciones de negocio para equipos.
 type TeamServiceInterface interface {
-	Create(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error)
-	Update(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
+	Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
+	Update(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
 	Delete(ctx *gin.Context, id int64, userID int64) error
 	GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, error)
 	GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
-	UpdateAddress(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
+	UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 }
 
 type teamService struct {
@@ -59,12 +59,13 @@ func NewTeamService(
 	}
 }
 
-// Create crea un nuevo equipo. El owner debe tener el rol "entrenador".
-func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
-	user, err := s.userDao.FindByID(ctx, req.OwnerID)
+// Create crea un nuevo equipo a nombre del usuario autenticado, que pasa a ser el owner.
+// El owner debe tener el rol "entrenador".
+func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+	user, err := s.userDao.FindByID(ctx, ownerID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding owner user", err,
-			customlogger.Tag("owner_id", fmt.Sprintf("%d", req.OwnerID)),
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("Create"))
 		return nil, fmt.Errorf("error al crear equipo")
 	}
@@ -72,10 +73,10 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 		return nil, fmt.Errorf("el usuario owner no existe")
 	}
 
-	userRoles, err := s.userRoleDao.FindByUserID(ctx, req.OwnerID)
+	userRoles, err := s.userRoleDao.FindByUserID(ctx, ownerID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding owner roles", err,
-			customlogger.Tag("owner_id", fmt.Sprintf("%d", req.OwnerID)),
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("Create"))
 		return nil, fmt.Errorf("error al crear equipo")
 	}
@@ -101,7 +102,7 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 		Level:        req.Level,
 		MaxMembers:   req.MaxMembers,
 		Requirements: req.Requirements,
-		OwnerID:      req.OwnerID,
+		OwnerID:      ownerID,
 		Status:       "active",
 	}
 	if req.ShowGroupsToRunners != nil {
@@ -140,8 +141,17 @@ func (s *teamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*te
 	return s.toResponse(teamDB), nil
 }
 
-// Update actualiza los campos de un equipo existente.
-func (s *teamService) Update(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+// isEntrenadorOfTeam valida que userID sea miembro con rol "entrenador" del equipo.
+func (s *teamService) isEntrenadorOfTeam(ctx *gin.Context, teamID, userID int64) (bool, error) {
+	member, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, userID)
+	if err != nil {
+		return false, err
+	}
+	return member != nil && member.RoleInTeam == teamOwnerRoleName, nil
+}
+
+// Update actualiza los campos de un equipo existente. Solo el entrenador del equipo puede hacerlo.
+func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, id)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for update", err,
@@ -151,6 +161,17 @@ func (s *teamService) Update(ctx *gin.Context, id int64, req *team.UpdateTeamReq
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, id, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for team update", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al actualizar equipo")
+	}
+	if !isEntrenador {
+		return nil, fmt.Errorf("solo el entrenador puede actualizar el equipo")
 	}
 
 	if req.Name != nil {
@@ -332,8 +353,8 @@ func (s *teamService) filterByMember(ctx *gin.Context, teams []dbs.Team, memberI
 	return filtered, nil
 }
 
-// UpdateAddress actualiza la dirección de un equipo.
-func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+// UpdateAddress actualiza la dirección de un equipo. Solo el entrenador del equipo puede hacerlo.
+func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, id)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for address update", err,
@@ -343,6 +364,17 @@ func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, req *team.Update
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, id, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for team address update", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("UpdateAddress"))
+		return nil, fmt.Errorf("error al actualizar dirección")
+	}
+	if !isEntrenador {
+		return nil, fmt.Errorf("solo el entrenador puede actualizar el equipo")
 	}
 
 	teamDB.Country = req.Country

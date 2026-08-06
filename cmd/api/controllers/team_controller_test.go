@@ -15,24 +15,24 @@ import (
 )
 
 type mockTeamService struct {
-	createFn        func(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error)
-	updateFn        func(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
+	createFn        func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
+	updateFn        func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error)
 	deleteFn        func(ctx *gin.Context, id int64, userID int64) error
 	getByIDFn       func(ctx *gin.Context, id int64) (*team.TeamResponse, error)
 	getAllFn        func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
-	updateAddressFn func(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
+	updateAddressFn func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 }
 
-func (m *mockTeamService) Create(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+func (m *mockTeamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
 	if m.createFn != nil {
-		return m.createFn(ctx, req)
+		return m.createFn(ctx, ownerID, req)
 	}
 	return nil, nil
 }
 
-func (m *mockTeamService) Update(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+func (m *mockTeamService) Update(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
 	if m.updateFn != nil {
-		return m.updateFn(ctx, id, req)
+		return m.updateFn(ctx, id, callerID, req)
 	}
 	return nil, nil
 }
@@ -58,37 +58,38 @@ func (m *mockTeamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int
 	return nil, nil
 }
 
-func (m *mockTeamService) UpdateAddress(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+func (m *mockTeamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
 	if m.updateAddressFn != nil {
-		return m.updateAddressFn(ctx, id, req)
+		return m.updateAddressFn(ctx, id, callerID, req)
 	}
 	return nil, nil
 }
 
 type mockTeamDelegate struct {
-	createTeamFn func(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error)
+	createTeamFn func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
 }
 
-func (m *mockTeamDelegate) CreateTeam(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+func (m *mockTeamDelegate) CreateTeam(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
 	if m.createTeamFn != nil {
-		return m.createTeamFn(ctx, req)
+		return m.createTeamFn(ctx, ownerID, req)
 	}
 	return nil, nil
 }
 
 func TestTeamController_Create_Success(t *testing.T) {
 	mockSvc := &mockTeamService{
-		createFn: func(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
-			return &team.TeamResponse{ID: 1, Name: req.Name, MaxMembers: req.MaxMembers, OwnerID: req.OwnerID, Status: "active"}, nil
+		createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+			return &team.TeamResponse{ID: 1, Name: req.Name, MaxMembers: req.MaxMembers, OwnerID: ownerID, Status: "active"}, nil
 		},
 	}
 
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
-	body := `{"name":"Alpha","max_members":20,"owner_id":1}`
+	body := `{"name":"Alpha","max_members":20}`
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
 
 	controller.Create(c)
 
@@ -96,6 +97,7 @@ func TestTeamController_Create_Success(t *testing.T) {
 	var result team.TeamResponse
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equal(t, "Alpha", result.Name)
+	assert.Equal(t, int64(1), result.OwnerID)
 }
 
 func TestTeamController_Create_BadRequest(t *testing.T) {
@@ -112,17 +114,18 @@ func TestTeamController_Create_BadRequest(t *testing.T) {
 
 func TestTeamController_Create_OwnerNotFound(t *testing.T) {
 	mockSvc := &mockTeamService{
-		createFn: func(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+		createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
 			return nil, errors.New("el usuario owner no existe")
 		},
 	}
 
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
-	body := `{"name":"Alpha","max_members":20,"owner_id":999}`
+	body := `{"name":"Alpha","max_members":20}`
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 999)
 
 	controller.Create(c)
 
@@ -131,17 +134,18 @@ func TestTeamController_Create_OwnerNotFound(t *testing.T) {
 
 func TestTeamController_Create_OwnerNotEntrenador(t *testing.T) {
 	mockSvc := &mockTeamService{
-		createFn: func(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+		createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
 			return nil, errors.New("el owner debe tener el rol 'entrenador'")
 		},
 	}
 
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
-	body := `{"name":"Alpha","max_members":20,"owner_id":1}`
+	body := `{"name":"Alpha","max_members":20}`
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
 
 	controller.Create(c)
 
@@ -215,8 +219,9 @@ func TestTeamController_Delete_Success(t *testing.T) {
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Delete(c)
 
@@ -227,32 +232,8 @@ func TestTeamController_Delete_BadRequest_InvalidID(t *testing.T) {
 	controller := NewTeamController(&mockTeamService{}, &mockTeamDelegate{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/abc?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/abc", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
-
-	controller.Delete(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestTeamController_Delete_BadRequest_MissingUserID(t *testing.T) {
-	controller := NewTeamController(&mockTeamService{}, &mockTeamDelegate{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.Delete(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestTeamController_Delete_BadRequest_InvalidUserID(t *testing.T) {
-	controller := NewTeamController(&mockTeamService{}, &mockTeamDelegate{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1?user_id=abc", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
 
 	controller.Delete(c)
 
@@ -269,8 +250,9 @@ func TestTeamController_Delete_NotFound(t *testing.T) {
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/999?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/999", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.Delete(c)
 
@@ -287,8 +269,9 @@ func TestTeamController_Delete_Forbidden(t *testing.T) {
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1?user_id=2", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.Delete(c)
 
@@ -305,8 +288,9 @@ func TestTeamController_Delete_HasMembers(t *testing.T) {
 	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Delete(c)
 
@@ -315,7 +299,7 @@ func TestTeamController_Delete_HasMembers(t *testing.T) {
 
 func TestTeamController_Update_Success(t *testing.T) {
 	mockSvc := &mockTeamService{
-		updateFn: func(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
 			name := ""
 			if req.Name != nil {
 				name = *req.Name
@@ -331,6 +315,7 @@ func TestTeamController_Update_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -368,7 +353,7 @@ func TestTeamController_Update_BadRequest_Body(t *testing.T) {
 
 func TestTeamController_Update_NotFound(t *testing.T) {
 	mockSvc := &mockTeamService{
-		updateFn: func(ctx *gin.Context, id int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -380,10 +365,32 @@ func TestTeamController_Update_NotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/999", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestTeamController_Update_Forbidden(t *testing.T) {
+	mockSvc := &mockTeamService{
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+			return nil, errors.New("solo el entrenador puede actualizar el equipo")
+		},
+	}
+
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	body := `{"name":"Beta"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestTeamController_GetAll_Success(t *testing.T) {
@@ -491,7 +498,7 @@ func TestTeamController_GetAll_InvalidMemberID(t *testing.T) {
 
 func TestTeamController_UpdateAddress_Success(t *testing.T) {
 	mockSvc := &mockTeamService{
-		updateAddressFn: func(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+		updateAddressFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
 			return &team.TeamResponse{ID: 1, Country: req.Country, City: req.City}, nil
 		},
 	}
@@ -503,6 +510,7 @@ func TestTeamController_UpdateAddress_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1/address", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.UpdateAddress(c)
 
@@ -540,7 +548,7 @@ func TestTeamController_UpdateAddress_BadRequest_Body(t *testing.T) {
 
 func TestTeamController_UpdateAddress_NotFound(t *testing.T) {
 	mockSvc := &mockTeamService{
-		updateAddressFn: func(ctx *gin.Context, id int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+		updateAddressFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -552,8 +560,30 @@ func TestTeamController_UpdateAddress_NotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/999/address", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.UpdateAddress(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestTeamController_UpdateAddress_Forbidden(t *testing.T) {
+	mockSvc := &mockTeamService{
+		updateAddressFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+			return nil, errors.New("solo el entrenador puede actualizar el equipo")
+		},
+	}
+
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	body := `{"country":"Argentina"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1/address", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.UpdateAddress(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }

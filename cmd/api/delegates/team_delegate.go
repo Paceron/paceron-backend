@@ -13,7 +13,7 @@ import (
 
 // TeamDelegate coordina operaciones que involucran teams y groups.
 type TeamDelegate interface {
-	CreateTeam(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error)
+	CreateTeam(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
 }
 
 type teamDelegate struct {
@@ -33,8 +33,8 @@ func NewTeamDelegate(teamSvc services.TeamServiceInterface, groupSvc services.Gr
 // por un grupo (el principal u otro más específico), así que el grupo principal se crea
 // por default — create_default_group solo sirve para saltearlo, pasando explícitamente
 // false.
-func (d *teamDelegate) CreateTeam(ctx *gin.Context, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
-	teamResp, err := d.teamSvc.Create(ctx, req)
+func (d *teamDelegate) CreateTeam(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+	teamResp, err := d.teamSvc.Create(ctx, ownerID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (d *teamDelegate) CreateTeam(ctx *gin.Context, req *team.CreateTeamRequest)
 			TeamID: teamResp.ID,
 			IsMain: true,
 		}
-		if _, err := d.groupSvc.Create(ctx, groupReq); err != nil {
+		if _, err := d.groupSvc.Create(ctx, ownerID, groupReq); err != nil {
 			customlogger.Error(ctx, "error creating default group for team", err,
 				customlogger.Tag("team_id", fmt.Sprintf("%d", teamResp.ID)),
 				customlogger.TagMethod("CreateTeam"))
