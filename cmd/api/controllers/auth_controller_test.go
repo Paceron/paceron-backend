@@ -26,6 +26,8 @@ type mockAuthService struct {
 	mockRegister func(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error)
 	mockLogin    func(ctx *gin.Context, email, password string) (*auth.LoginResponse, error)
 	mockGetUser  func(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error)
+	mockRefresh  func(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error)
+	mockLogout   func(ctx *gin.Context, refreshToken string) error
 }
 
 func (m mockAuthService) Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error) {
@@ -38,6 +40,20 @@ func (m mockAuthService) Login(ctx *gin.Context, email, password string) (*auth.
 
 func (m mockAuthService) GetUser(ctx *gin.Context, id int64, email string) (*auth.UserResponse, error) {
 	return m.mockGetUser(ctx, id, email)
+}
+
+func (m mockAuthService) Refresh(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error) {
+	if m.mockRefresh != nil {
+		return m.mockRefresh(ctx, refreshToken)
+	}
+	return nil, nil
+}
+
+func (m mockAuthService) Logout(ctx *gin.Context, refreshToken string) error {
+	if m.mockLogout != nil {
+		return m.mockLogout(ctx, refreshToken)
+	}
+	return nil
 }
 
 func TestRegister_Success(t *testing.T) {
@@ -300,11 +316,9 @@ func TestLogin_Success(t *testing.T) {
 	mockSvc := mockAuthService{
 		mockLogin: func(ctx *gin.Context, email, password string) (*auth.LoginResponse, error) {
 			return &auth.LoginResponse{
-				Authorization: auth.AuthorizationData{
-					AccessToken:  "access-token",
-					RefreshToken: "refresh-token",
-					ExpiresIn:    3600,
-				},
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				ExpiresIn:    900,
 				User: auth.UserResponse{
 					UserID: 1, Name: "John", Email: "john@test.com",
 				},
@@ -325,14 +339,100 @@ func TestLogin_Success(t *testing.T) {
 
 	var result map[string]json.RawMessage
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Contains(t, result, "authorization")
+	assert.Contains(t, result, "access_token")
+	assert.Contains(t, result, "refresh_token")
 	assert.Contains(t, result, "user")
 
-	var authData auth.AuthorizationData
-	json.Unmarshal(result["authorization"], &authData)
-	assert.Equal(t, "access-token", authData.AccessToken)
-	assert.Equal(t, "refresh-token", authData.RefreshToken)
-	assert.Equal(t, 3600, authData.ExpiresIn)
+	var resp auth.LoginResponse
+	json.Unmarshal(response.Body.Bytes(), &resp)
+	assert.Equal(t, "access-token", resp.AccessToken)
+	assert.Equal(t, "refresh-token", resp.RefreshToken)
+	assert.Equal(t, 900, resp.ExpiresIn)
+}
+
+func TestRefresh_Success(t *testing.T) {
+	mockSvc := mockAuthService{
+		mockRefresh: func(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error) {
+			assert.Equal(t, "old-refresh-token", refreshToken)
+			return &auth.RefreshResponse{AccessToken: "new-access", RefreshToken: "new-refresh", ExpiresIn: 900}, nil
+		},
+	}
+
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"refresh_token":"old-refresh-token"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Refresh(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestRefresh_InvalidToken(t *testing.T) {
+	mockSvc := mockAuthService{
+		mockRefresh: func(ctx *gin.Context, refreshToken string) (*auth.RefreshResponse, error) {
+			return nil, errors.New("refresh token inválido o expirado")
+		},
+	}
+
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"refresh_token":"bogus"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Refresh(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestRefresh_InvalidBody(t *testing.T) {
+	mockSvc := mockAuthService{}
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Refresh(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestLogout_Success(t *testing.T) {
+	mockSvc := mockAuthService{
+		mockLogout: func(ctx *gin.Context, refreshToken string) error {
+			assert.Equal(t, "some-refresh-token", refreshToken)
+			return nil
+		},
+	}
+
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"refresh_token":"some-refresh-token"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Logout(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestLogout_InvalidBody(t *testing.T) {
+	mockSvc := mockAuthService{}
+	controller := NewAuthController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Logout(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 func TestLogin_InvalidBody(t *testing.T) {
