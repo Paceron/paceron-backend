@@ -233,7 +233,9 @@ sequenceDiagram
 |--------|------|-------------|
 | GET | `/ping` | Health check |
 | POST | `/api/v1/auth/register` | Register new user (name, surname, email, dni, birth_date, password + optional fields) |
-| POST | `/api/v1/auth/login` | Login with email/password, returns JWT access + refresh tokens |
+| POST | `/api/v1/auth/login` | Login with email/password, returns a session: 15min access token + opaque refresh token |
+| POST | `/api/v1/auth/refresh` | Rotate a refresh token: revokes it, issues a new access + refresh pair for the same session |
+| POST | `/api/v1/auth/logout` | Revoke a refresh token (idempotent) |
 | GET | `/api/v1/auth/user?id=&email=` | Get user by ID or email |
 | POST | `/api/v1/auth/forgot-password` | Request a password reset OTP code by email |
 | POST | `/api/v1/auth/reset-password` | Reset password using the OTP code sent by email |
