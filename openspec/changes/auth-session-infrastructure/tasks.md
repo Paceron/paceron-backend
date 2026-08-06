@@ -55,4 +55,4 @@
 - [x] 9.1 `go build ./...` / `go vet ./...` / `go test ./...` verdes
 - [x] 9.2 Regenerar Swagger
 - [x] 9.3 Actualizar tabla de endpoints en `README.md`
-- [ ] 9.4 Verificación manual: login → refresh (confirmar que el token viejo ya no sirve) → logout → confirmar que un refresh posterior con ese token falla
+- [x] 9.4 Verificación manual: login → refresh (confirmar que el token viejo ya no sirve) → logout → confirmar que un refresh posterior con ese token falla
