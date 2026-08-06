@@ -16,6 +16,41 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
+type mockRefreshTokenDao struct {
+	createFn            func(ctx *gin.Context, token *dbs.RefreshToken) error
+	findActiveByHashFn  func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error)
+	revokeFn            func(ctx *gin.Context, id int64, replacedBy *int64) error
+	revokeBySessionIDFn func(ctx *gin.Context, sessionID string) error
+}
+
+func (m *mockRefreshTokenDao) Create(ctx *gin.Context, token *dbs.RefreshToken) error {
+	if m.createFn != nil {
+		return m.createFn(ctx, token)
+	}
+	return nil
+}
+
+func (m *mockRefreshTokenDao) FindActiveByHash(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+	if m.findActiveByHashFn != nil {
+		return m.findActiveByHashFn(ctx, tokenHash)
+	}
+	return nil, nil
+}
+
+func (m *mockRefreshTokenDao) Revoke(ctx *gin.Context, id int64, replacedBy *int64) error {
+	if m.revokeFn != nil {
+		return m.revokeFn(ctx, id, replacedBy)
+	}
+	return nil
+}
+
+func (m *mockRefreshTokenDao) RevokeBySessionID(ctx *gin.Context, sessionID string) error {
+	if m.revokeBySessionIDFn != nil {
+		return m.revokeBySessionIDFn(ctx, sessionID)
+	}
+	return nil
+}
+
 type mockAuthDao struct {
 	mockFindByEmail func(ctx *gin.Context, email string) (*dbs.User, error)
 	mockFindByDNI   func(ctx *gin.Context, dni string) (*dbs.User, error)
@@ -282,7 +317,7 @@ func TestRegister_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -328,7 +363,7 @@ func registerRequest() *auth.RegisterRequest {
 func TestRegister_SendsWelcomeEmail(t *testing.T) {
 	mailerMock := &mockMailer{}
 
-	svc := NewAuthService(registerMockDao(), mailerMock)
+	svc := NewAuthService(registerMockDao(), &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, mailerMock)
 	resp, err := svc.Register(nil, registerRequest(), "securePass123")
 
 	assert.NoError(t, err)
@@ -346,7 +381,7 @@ func TestRegister_MailerErrorDoesNotBlock(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(registerMockDao(), mailerMock)
+	svc := NewAuthService(registerMockDao(), &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, mailerMock)
 	resp, err := svc.Register(nil, registerRequest(), "securePass123")
 
 	assert.NoError(t, err)
@@ -355,7 +390,7 @@ func TestRegister_MailerErrorDoesNotBlock(t *testing.T) {
 }
 
 func TestRegister_NilMailerDoesNotPanic(t *testing.T) {
-	svc := NewAuthService(registerMockDao(), nil)
+	svc := NewAuthService(registerMockDao(), &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 
 	assert.NotPanics(t, func() {
 		resp, err := svc.Register(nil, registerRequest(), "securePass123")
@@ -372,7 +407,7 @@ func TestRegister_DuplicateEmailDoesNotSendWelcomeEmail(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewAuthService(mockDao, mailerMock)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, mailerMock)
 	_, err := svc.Register(nil, registerRequest(), "securePass123")
 
 	assert.Error(t, err)
@@ -386,7 +421,7 @@ func TestRegister_EmailDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -410,7 +445,7 @@ func TestRegister_DNIDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -434,7 +469,7 @@ func TestRegister_FindByDNIError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -454,7 +489,7 @@ func TestRegister_FindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -480,7 +515,7 @@ func TestRegister_CreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	req := &auth.RegisterRequest{
 		Name:      "John",
 		Surname:   "Doe",
@@ -497,17 +532,17 @@ func TestGetUser_ByID(t *testing.T) {
 	mockDao := mockAuthDao{
 		mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
 			return &dbs.User{
-				ID:       id,
-				Name:     "John",
-				Surname:  "Doe",
-				Email:    "john@test.com",
-				DNI:      "12345678",
+				ID:        id,
+				Name:      "John",
+				Surname:   "Doe",
+				Email:     "john@test.com",
+				DNI:       "12345678",
 				BirthDate: time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC),
 			}, nil
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	resp, err := svc.GetUser(nil, 1, "")
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), resp.UserID)
@@ -518,17 +553,17 @@ func TestGetUser_ByEmail(t *testing.T) {
 	mockDao := mockAuthDao{
 		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
 			return &dbs.User{
-				ID:       2,
-				Name:     "Jane",
-				Surname:  "Smith",
-				Email:    email,
-				DNI:      "87654321",
+				ID:        2,
+				Name:      "Jane",
+				Surname:   "Smith",
+				Email:     email,
+				DNI:       "87654321",
 				BirthDate: time.Date(1992, 6, 20, 0, 0, 0, 0, time.UTC),
 			}, nil
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	resp, err := svc.GetUser(nil, 0, "jane@test.com")
 	assert.NoError(t, err)
 	assert.Equal(t, int64(2), resp.UserID)
@@ -542,7 +577,7 @@ func TestAuthGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.GetUser(nil, 999, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -555,7 +590,7 @@ func TestGetUser_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.GetUser(nil, 1, "")
 	assert.Error(t, err)
 }
@@ -563,7 +598,7 @@ func TestGetUser_FindByIDError(t *testing.T) {
 func TestGetUser_NoParams(t *testing.T) {
 	mockDao := mockAuthDao{}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.GetUser(nil, 0, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "debe proporcionar id o email")
@@ -572,7 +607,7 @@ func TestGetUser_NoParams(t *testing.T) {
 func TestGetUser_BothParams(t *testing.T) {
 	mockDao := mockAuthDao{}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.GetUser(nil, 1, "john@test.com")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no ambos")
@@ -655,15 +690,170 @@ func TestLogin_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	resp, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.NoError(t, err)
-	assert.NotEmpty(t, resp.Authorization.AccessToken)
-	assert.NotEmpty(t, resp.Authorization.RefreshToken)
-	assert.Equal(t, 3600, resp.Authorization.ExpiresIn)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.NotEmpty(t, resp.RefreshToken)
+	assert.Equal(t, int(config.AccessTokenDuration.Seconds()), resp.ExpiresIn)
 	assert.Equal(t, int64(1), resp.User.UserID)
 	assert.Equal(t, "John", resp.User.Name)
 	assert.Equal(t, "john@test.com", resp.User.Email)
+}
+
+func TestLogin_PersistsRefreshTokenAndRoles(t *testing.T) {
+	config.JWTSecret = "test-secret-key-for-testing"
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("securePass123"), bcrypt.DefaultCost)
+
+	mockDao := mockAuthDao{
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        1,
+				Name:      "John",
+				Email:     "john@test.com",
+				Password:  string(hashedPassword),
+				Status:    "active",
+				BirthDate: time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC),
+			}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	roleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+	createCalled := false
+	refreshTokenDao := &mockRefreshTokenDao{
+		createFn: func(ctx *gin.Context, token *dbs.RefreshToken) error {
+			createCalled = true
+			assert.Equal(t, int64(1), token.UserID)
+			assert.NotEmpty(t, token.SessionID)
+			assert.NotEmpty(t, token.TokenHash)
+			return nil
+		},
+	}
+
+	svc := NewAuthService(mockDao, userRoleDao, roleDao, refreshTokenDao, nil)
+	_, err := svc.Login(nil, "john@test.com", "securePass123")
+
+	assert.NoError(t, err)
+	assert.True(t, createCalled)
+}
+
+func TestRefresh_Success(t *testing.T) {
+	config.JWTSecret = "test-secret-key-for-testing"
+
+	existing := &dbs.RefreshToken{ID: 1, UserID: 1, SessionID: "session-abc", ExpiresAt: time.Now().Add(time.Hour)}
+	createCalled := false
+	revokeCalled := false
+
+	refreshTokenDao := &mockRefreshTokenDao{
+		findActiveByHashFn: func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+			return existing, nil
+		},
+		createFn: func(ctx *gin.Context, token *dbs.RefreshToken) error {
+			createCalled = true
+			token.ID = 2
+			assert.Equal(t, existing.SessionID, token.SessionID)
+			return nil
+		},
+		revokeFn: func(ctx *gin.Context, id int64, replacedBy *int64) error {
+			revokeCalled = true
+			assert.Equal(t, int64(1), id)
+			assert.NotNil(t, replacedBy)
+			assert.Equal(t, int64(2), *replacedBy)
+			return nil
+		},
+	}
+	mockDao := mockAuthDao{
+		mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Status: "active"}, nil
+		},
+	}
+
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, refreshTokenDao, nil)
+	resp, err := svc.Refresh(nil, "some-refresh-token")
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.NotEmpty(t, resp.RefreshToken)
+	assert.True(t, createCalled)
+	assert.True(t, revokeCalled)
+}
+
+func TestRefresh_InvalidOrExpiredToken(t *testing.T) {
+	config.JWTSecret = "test-secret-key-for-testing"
+
+	refreshTokenDao := &mockRefreshTokenDao{
+		findActiveByHashFn: func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewAuthService(mockAuthDao{}, &mockUserRoleDao{}, &mockRoleDao{}, refreshTokenDao, nil)
+	_, err := svc.Refresh(nil, "bogus-token")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "inválido o expirado")
+}
+
+func TestRefresh_InactiveUser(t *testing.T) {
+	config.JWTSecret = "test-secret-key-for-testing"
+
+	refreshTokenDao := &mockRefreshTokenDao{
+		findActiveByHashFn: func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+			return &dbs.RefreshToken{ID: 1, UserID: 1, SessionID: "s1", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		},
+	}
+	mockDao := mockAuthDao{
+		mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Status: "blocked"}, nil
+		},
+	}
+
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, refreshTokenDao, nil)
+	_, err := svc.Refresh(nil, "some-token")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "inválido o expirado")
+}
+
+func TestLogout_Success(t *testing.T) {
+	revokeCalled := false
+	refreshTokenDao := &mockRefreshTokenDao{
+		findActiveByHashFn: func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+			return &dbs.RefreshToken{ID: 1, UserID: 1, SessionID: "s1"}, nil
+		},
+		revokeFn: func(ctx *gin.Context, id int64, replacedBy *int64) error {
+			revokeCalled = true
+			assert.Nil(t, replacedBy)
+			return nil
+		},
+	}
+
+	svc := NewAuthService(mockAuthDao{}, &mockUserRoleDao{}, &mockRoleDao{}, refreshTokenDao, nil)
+	err := svc.Logout(nil, "some-refresh-token")
+
+	assert.NoError(t, err)
+	assert.True(t, revokeCalled)
+}
+
+func TestLogout_UnknownTokenIsIdempotent(t *testing.T) {
+	refreshTokenDao := &mockRefreshTokenDao{
+		findActiveByHashFn: func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewAuthService(mockAuthDao{}, &mockUserRoleDao{}, &mockRoleDao{}, refreshTokenDao, nil)
+	err := svc.Logout(nil, "unknown-token")
+
+	assert.NoError(t, err)
 }
 
 func TestLogin_EmailNotFound(t *testing.T) {
@@ -675,7 +865,7 @@ func TestLogin_EmailNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.Login(nil, "nonexistent@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -697,7 +887,7 @@ func TestLogin_InactiveUser(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -719,7 +909,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.Login(nil, "john@test.com", "wrongPassword")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
@@ -734,7 +924,7 @@ func TestLogin_FindByEmailError(t *testing.T) {
 		},
 	}
 
-	svc := NewAuthService(mockDao, nil)
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
 	_, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")

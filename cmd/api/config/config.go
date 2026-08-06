@@ -46,9 +46,13 @@ type SMTP struct {
 }
 
 var (
-	MyDB      DB
-	JWTSecret string
-	MySMTP    SMTP
+	MyDB                 DB
+	JWTSecret            string
+	JWTIssuer            string
+	JWTAudience          string
+	AccessTokenDuration  time.Duration
+	RefreshTokenDuration time.Duration
+	MySMTP               SMTP
 )
 
 func (d Environment) String() string {
@@ -132,6 +136,26 @@ func loadDBConfig() {
 	}
 	MyDB = LoadDBConfigDB(MyDB)
 	JWTSecret = os.Getenv("JWT_SECRET")
+	JWTIssuer = getEnvOrDefault("JWT_ISSUER", "paceron-backend")
+	JWTAudience = getEnvOrDefault("JWT_AUDIENCE", "paceron-app")
+	AccessTokenDuration = getDurationOrDefault("ACCESS_TOKEN_DURATION", 15*time.Minute)
+	RefreshTokenDuration = getDurationOrDefault("REFRESH_TOKEN_DURATION", 30*24*time.Hour)
+}
+
+func getEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getDurationOrDefault(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
 }
 
 func loadSMTPConfig() {

@@ -16,6 +16,8 @@ type AuthController interface {
 	Register(c *gin.Context)
 	Login(c *gin.Context)
 	GetUser(c *gin.Context)
+	Refresh(c *gin.Context)
+	Logout(c *gin.Context)
 }
 
 type authController struct {
@@ -147,6 +149,85 @@ func (ac *authController) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// Refresh godoc
+// @Summary      Renovar sesión
+// @Description  Rota un refresh token activo: lo revoca y emite un access + refresh nuevos
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      auth.RefreshRequest  true  "Refresh token vigente"
+// @Success      200   {object}  auth.RefreshResponse
+// @Failure      400   {object}  apierror.APIError
+// @Failure      401   {object}  apierror.APIError
+// @Failure      500   {object}  apierror.APIError
+// @Router       /api/v1/auth/refresh [post]
+func (ac *authController) Refresh(c *gin.Context) {
+	var req auth.RefreshRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "Cuerpo de solicitud inválido",
+		})
+		return
+	}
+
+	response, err := ac.authService.Refresh(c, req.RefreshToken)
+	if err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errMsg == "refresh token inválido o expirado" {
+			statusCode = http.StatusUnauthorized
+			code = "Unauthorized"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// Logout godoc
+// @Summary      Cerrar sesión
+// @Description  Revoca el refresh token indicado. El access token sigue válido hasta su expiración natural
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      auth.LogoutRequest  true  "Refresh token a revocar"
+// @Success      200   {object}  auth.LogoutResponse
+// @Failure      400   {object}  apierror.APIError
+// @Failure      500   {object}  apierror.APIError
+// @Router       /api/v1/auth/logout [post]
+func (ac *authController) Logout(c *gin.Context) {
+	var req auth.LogoutRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "Cuerpo de solicitud inválido",
+		})
+		return
+	}
+
+	if err := ac.authService.Logout(c, req.RefreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, apierror.APIError{
+			StatusCode: http.StatusInternalServerError,
+			Code:       "Internal Server Error",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, auth.LogoutResponse{Message: "Sesión cerrada correctamente"})
 }
 
 // GetUser godoc

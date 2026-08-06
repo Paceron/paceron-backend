@@ -64,9 +64,18 @@ func NewApplication() *Application {
 	userService := services.NewUserService(userDao, mailerClient)
 	userController := controllers.NewUserController(userService)
 
+	// Role flow (roleDao/userRoleDao también los necesita authService para los claims
+	// de roles del access token)
+	roleDao := daos.NewRoleDao(db)
+	roleService := services.NewRoleService(roleDao)
+	roleController := controllers.NewRoleController(roleService)
+
+	userRoleDao := daos.NewUserRoleDao(db)
+
 	// Auth flow
 	authDao := daos.NewAuthDao(db)
-	authService := services.NewAuthService(authDao, mailerClient)
+	refreshTokenDao := daos.NewRefreshTokenDao(db)
+	authService := services.NewAuthService(authDao, userRoleDao, roleDao, refreshTokenDao, mailerClient)
 	authController := controllers.NewAuthController(authService)
 
 	// Password reset flow
@@ -104,11 +113,6 @@ func NewApplication() *Application {
 	permissionService := services.NewPermissionService(permissionDao)
 	permissionController := controllers.NewPermissionController(permissionService)
 
-	// Role flow
-	roleDao := daos.NewRoleDao(db)
-	roleService := services.NewRoleService(roleDao)
-	roleController := controllers.NewRoleController(roleService)
-
 	// Tier flow
 	tierDao := daos.NewTierDao(db)
 	tierService := services.NewTierService(tierDao, roleDao)
@@ -120,7 +124,6 @@ func NewApplication() *Application {
 	tierPermissionController := controllers.NewTierPermissionController(tierPermissionService)
 
 	// User Role flow
-	userRoleDao := daos.NewUserRoleDao(db)
 	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao)
 	userRoleController := controllers.NewUserRoleController(userRoleService)
 
