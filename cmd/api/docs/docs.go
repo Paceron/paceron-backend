@@ -415,7 +415,7 @@ const docTemplate = `{
         },
         "/api/v1/groups": {
             "get": {
-                "description": "Devuelve los grupos de un equipo. Requiere user_id para validar membresía",
+                "description": "Devuelve los grupos de un equipo. Si se filtra por team_id, valida que el usuario autenticado sea miembro",
                 "produces": [
                     "application/json"
                 ],
@@ -428,15 +428,7 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "ID del equipo",
                         "name": "team_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (valida membresía)",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -476,7 +468,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Crea un nuevo grupo dentro de un equipo",
+                "description": "Crea un nuevo grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -507,6 +499,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -573,7 +571,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Actualiza los campos de un grupo existente",
+                "description": "Actualiza los campos de un grupo existente. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -615,6 +613,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -644,13 +648,6 @@ const docTemplate = `{
                         "description": "Group ID",
                         "name": "id",
                         "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (debe ser entrenador del equipo)",
-                        "name": "user_id",
-                        "in": "query",
                         "required": true
                     }
                 ],
@@ -740,7 +737,7 @@ const docTemplate = `{
         },
         "/api/v1/groups/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un grupo (soft-delete de la asociación)",
+                "description": "Quita un usuario de un grupo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
                 "produces": [
                     "application/json"
                 ],
@@ -777,6 +774,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -794,7 +797,7 @@ const docTemplate = `{
         },
         "/api/v1/invitations": {
             "get": {
-                "description": "Devuelve las invitaciones pendientes (no vencidas) de un usuario, sin importar el equipo",
+                "description": "Devuelve las invitaciones pendientes (no vencidas) del usuario autenticado, sin importar el equipo",
                 "produces": [
                     "application/json"
                 ],
@@ -802,15 +805,6 @@ const docTemplate = `{
                     "invitations"
                 ],
                 "summary": "Listar mis invitaciones pendientes",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "User ID",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -819,12 +813,6 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
                             }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
@@ -838,7 +826,7 @@ const docTemplate = `{
         },
         "/api/v1/invitations/{id}": {
             "get": {
-                "description": "Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario que consulta",
+                "description": "Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario autenticado",
                 "produces": [
                     "application/json"
                 ],
@@ -852,13 +840,6 @@ const docTemplate = `{
                         "description": "Invitation ID",
                         "name": "id",
                         "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "User ID (debe coincidir con el invitado)",
-                        "name": "user_id",
-                        "in": "query",
                         "required": true
                     }
                 ],
@@ -899,9 +880,6 @@ const docTemplate = `{
         "/api/v1/invitations/{id}/accept": {
             "post": {
                 "description": "El usuario invitado acepta la invitación y queda como corredor del equipo",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -916,15 +894,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "ID del usuario que responde",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -970,9 +939,6 @@ const docTemplate = `{
         "/api/v1/invitations/{id}/reject": {
             "post": {
                 "description": "El usuario invitado rechaza la invitación",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -987,15 +953,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "ID del usuario que responde",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -1710,7 +1667,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Actualiza los campos de un equipo existente",
+                "description": "Actualiza los campos de un equipo existente. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1752,6 +1709,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -1781,13 +1744,6 @@ const docTemplate = `{
                         "description": "Team ID",
                         "name": "id",
                         "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (debe ser entrenador)",
-                        "name": "user_id",
-                        "in": "query",
                         "required": true
                     }
                 ],
@@ -1827,7 +1783,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/address": {
             "put": {
-                "description": "Actualiza la dirección de un equipo mediante un endpoint dedicado",
+                "description": "Actualiza la dirección de un equipo mediante un endpoint dedicado. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1869,6 +1825,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -1886,7 +1848,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/groups/{group_id}/users": {
             "post": {
-                "description": "Agrega un usuario a un grupo dentro de un equipo",
+                "description": "Agrega un usuario a un grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1931,6 +1893,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -2008,7 +1976,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/invite": {
             "post": {
-                "description": "Envía una invitación por email a un usuario existente para unirlo a un equipo",
+                "description": "Envía una invitación por email a un usuario existente para unirlo a un equipo. Solo el entrenador del equipo puede invitar",
                 "consumes": [
                     "application/json"
                 ],
@@ -2046,6 +2014,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -2121,7 +2095,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Agrega un usuario a un equipo con un rol específico",
+                "description": "Agrega un usuario a un equipo con un rol específico. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -2163,6 +2137,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -2186,7 +2166,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un equipo (soft-delete de la asociación)",
+                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
                 "produces": [
                     "application/json"
                 ],
@@ -2219,6 +2199,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -2622,7 +2608,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}": {
             "put": {
-                "description": "Update user attributes (all fields except id, status). Email change requires X-Current-Password header.",
+                "description": "Update user attributes (all fields except id, status). Email change requires X-Current-Password header. Only the user itself can update its own data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2676,6 +2662,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -2699,7 +2691,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/password": {
             "patch": {
-                "description": "Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow.",
+                "description": "Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow. Only the user itself can change its own password.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2743,6 +2735,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -2886,7 +2884,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/status": {
             "patch": {
-                "description": "Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended.",
+                "description": "Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended. Only the user itself can change its own status.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2924,6 +2922,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -3408,18 +3412,6 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest": {
-            "type": "object",
-            "required": [
-                "user_id"
-            ],
-            "properties": {
-                "user_id": {
-                    "description": "ID del usuario invitado que responde (requerido)",
-                    "type": "integer"
-                }
-            }
-        },
         "simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse": {
             "type": "object",
             "properties": {
@@ -3559,8 +3551,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "max_members",
-                "name",
-                "owner_id"
+                "name"
             ],
             "properties": {
                 "create_default_group": {
@@ -3582,10 +3573,6 @@ const docTemplate = `{
                 "name": {
                     "description": "Nombre del equipo (requerido)",
                     "type": "string"
-                },
-                "owner_id": {
-                    "description": "ID del usuario owner (requerido, debe tener rol entrenador)",
-                    "type": "integer"
                 },
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",

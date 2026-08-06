@@ -229,22 +229,27 @@ sequenceDiagram
 
 ## Endpoints
 
+All routes require `Authorization: Bearer <access_token>` **except** the ones marked 🔓 below (register/login/refresh/logout/forgot/reset-password, the public user lookup, and the legacy/demo routes — see `docs/AUTH_MIGRATION.md` for the full rationale and per-endpoint authorization rules).
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/ping` | Health check |
-| POST | `/api/v1/auth/register` | Register new user (name, surname, email, dni, birth_date, password + optional fields) |
-| POST | `/api/v1/auth/login` | Login with email/password, returns a session: 15min access token + opaque refresh token |
-| POST | `/api/v1/auth/refresh` | Rotate a refresh token: revokes it, issues a new access + refresh pair for the same session |
-| POST | `/api/v1/auth/logout` | Revoke a refresh token (idempotent) |
-| GET | `/api/v1/auth/user?id=&email=` | Get user by ID or email |
-| POST | `/api/v1/auth/forgot-password` | Request a password reset OTP code by email |
-| POST | `/api/v1/auth/reset-password` | Reset password using the OTP code sent by email |
+| GET | `/ping` 🔓 | Health check |
+| POST | `/api/v1/auth/register` 🔓 | Register new user (name, surname, email, dni, birth_date, password + optional fields) |
+| POST | `/api/v1/auth/login` 🔓 | Login with email/password, returns a session: 15min access token + opaque refresh token |
+| POST | `/api/v1/auth/refresh` 🔓 | Rotate a refresh token: revokes it, issues a new access + refresh pair for the same session |
+| POST | `/api/v1/auth/logout` 🔓 | Revoke a refresh token (idempotent) |
+| GET | `/api/v1/auth/user?id=&email=` 🔓 | Get user by ID or email |
+| POST | `/api/v1/auth/forgot-password` 🔓 | Request a password reset OTP code by email |
+| POST | `/api/v1/auth/reset-password` 🔓 | Reset password using the OTP code sent by email |
+| GET | `/user/:user_id` 🔓 | Get user by ID (legacy, deprecated) |
+| POST | `/user` 🔓 | Create user (legacy, deprecated) |
+| GET | `/example/weather` 🔓 | Get weather from Open-Meteo (demo) |
+| GET | `/user/:user_id/weather` 🔓 | Get user with weather data (demo) |
+| GET | `/swagger` 🔓 | Swagger UI |
 | GET | `/api/v1/auth/permissions?user_id=` | Get user permissions with roles and tiers |
-| GET | `/user/:user_id` | Get user by ID (legacy) |
-| POST | `/user` | Create user (legacy) |
-| PUT | `/api/v1/users/:id` | Update user attributes (email change requires X-Current-Password header) |
-| PATCH | `/api/v1/users/:id/status` | Change user status (active/inactive/pause/blocked/suspended) |
-| PATCH | `/api/v1/users/:id/password` | Change password while authenticated (verifies current password) |
+| PUT | `/api/v1/users/:id` | Update user attributes (self only; email change requires X-Current-Password header) |
+| PATCH | `/api/v1/users/:id/status` | Change user status (self only; active/inactive/pause/blocked/suspended) |
+| PATCH | `/api/v1/users/:id/password` | Change password while authenticated (self only; verifies current password) |
 | POST | `/api/v1/users/:id/roles` | Assign role to user (with optional tier, default "base") |
 | DELETE | `/api/v1/users/:id/roles/:role_id` | Remove a role from a user (list roles via `GET /api/v1/auth/permissions?user_id=`) |
 | GET | `/api/v1/permissions` | List all permissions |
@@ -267,30 +272,28 @@ sequenceDiagram
 | POST | `/api/v1/roles` | Create role |
 | PUT | `/api/v1/roles/:id` | Update role |
 | DELETE | `/api/v1/roles/:id` | Soft delete role |
-| POST | `/api/v1/teams` | Create team (owner must have "entrenador" role) |
+| POST | `/api/v1/teams` | Create team (authenticated user becomes owner; must have "entrenador" role) |
 | GET | `/api/v1/teams` | List teams (optional `owner_id`/`member_id` filters) |
 | GET | `/api/v1/teams/:id` | Get team by ID |
-| PUT | `/api/v1/teams/:id` | Update team |
-| DELETE | `/api/v1/teams/:id` | Soft delete team |
-| PUT | `/api/v1/teams/:id/address` | Update team address (country, province, city, street, number) |
-| POST | `/api/v1/teams/:id/users` | Add user to team with role (owner/coach/member) |
-| DELETE | `/api/v1/teams/:id/users/:user_id` | Remove user from team |
-| POST | `/api/v1/groups` | Create group within a team |
-| GET | `/api/v1/groups` | List all groups |
+| PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only) |
+| DELETE | `/api/v1/teams/:id` | Soft delete team (entrenador only) |
+| PUT | `/api/v1/teams/:id/address` | Update team address (entrenador of the team only) |
+| POST | `/api/v1/teams/:id/users` | Add user to team with role (entrenador of the team only) |
+| DELETE | `/api/v1/teams/:id/users/:user_id` | Remove user from team (self, or entrenador of the team) |
+| POST | `/api/v1/groups` | Create group within a team (entrenador of the team only) |
+| GET | `/api/v1/groups` | List all groups (with `team_id`, validates membership of the authenticated user) |
 | GET | `/api/v1/groups/:id` | Get group by ID |
-| PUT | `/api/v1/groups/:id` | Update group |
-| DELETE | `/api/v1/groups/:id` | Soft delete group |
-| POST | `/api/v1/groups/:id/users` | Add user to group |
-| DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group |
-| POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email (optional `group_id`) |
+| PUT | `/api/v1/groups/:id` | Update group (entrenador of the team only) |
+| DELETE | `/api/v1/groups/:id` | Soft delete group (entrenador of the team only) |
+| POST | `/api/v1/teams/:id/groups/:group_id/users` | Add user to group (entrenador of the team only) |
+| GET | `/api/v1/groups/:id/users` | List users of a group |
+| DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group (self, or entrenador of the team) |
+| POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email (entrenador of the team only, optional `group_id`) |
 | GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team |
-| GET | `/api/v1/invitations` | List my pending invitations (`user_id` query) |
-| GET | `/api/v1/invitations/:id` | Get invitation detail (`user_id` query, must match invitee) |
+| GET | `/api/v1/invitations` | List the authenticated user's pending invitations |
+| GET | `/api/v1/invitations/:id` | Get invitation detail (must be the invitee) |
 | POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
-| GET | `/example/weather` | Get weather from Open-Meteo |
-| GET | `/user/:user_id/weather` | Get user with weather data |
-| GET | `/swagger` | Swagger UI |
 
 ## Run
 

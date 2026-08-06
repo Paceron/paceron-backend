@@ -303,14 +303,6 @@ definitions:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest:
-    properties:
-      user_id:
-        description: ID del usuario invitado que responde (requerido)
-        type: integer
-    required:
-    - user_id
-    type: object
   simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse:
     properties:
       message:
@@ -423,9 +415,6 @@ definitions:
       name:
         description: Nombre del equipo (requerido)
         type: string
-      owner_id:
-        description: ID del usuario owner (requerido, debe tener rol entrenador)
-        type: integer
       requirements:
         description: Requerimientos para entrar (opcional)
         type: string
@@ -436,7 +425,6 @@ definitions:
     required:
     - max_members
     - name
-    - owner_id
     type: object
   simple-arq-golang_cmd_api_domains_team.DeleteTeamResponse:
     properties:
@@ -1080,18 +1068,12 @@ paths:
       - auth
   /api/v1/groups:
     get:
-      description: Devuelve los grupos de un equipo. Requiere user_id para validar
-        membresía
+      description: Devuelve los grupos de un equipo. Si se filtra por team_id, valida
+        que el usuario autenticado sea miembro
       parameters:
       - description: ID del equipo
         in: query
         name: team_id
-        required: true
-        type: integer
-      - description: ID del usuario (valida membresía)
-        in: query
-        name: user_id
-        required: true
         type: integer
       produces:
       - application/json
@@ -1124,7 +1106,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Crea un nuevo grupo dentro de un equipo
+      description: Crea un nuevo grupo dentro de un equipo. Solo el entrenador del
+        equipo puede hacerlo
       parameters:
       - description: Datos del grupo
         in: body
@@ -1141,6 +1124,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -1162,11 +1149,6 @@ paths:
       - description: Group ID
         in: path
         name: id
-        required: true
-        type: integer
-      - description: ID del usuario (debe ser entrenador del equipo)
-        in: query
-        name: user_id
         required: true
         type: integer
       produces:
@@ -1228,7 +1210,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Actualiza los campos de un grupo existente
+      description: Actualiza los campos de un grupo existente. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Group ID
         in: path
@@ -1250,6 +1233,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -1298,7 +1285,8 @@ paths:
       - group-users
   /api/v1/groups/{id}/users/{user_id}:
     delete:
-      description: Quita un usuario de un grupo (soft-delete de la asociación)
+      description: Quita un usuario de un grupo (soft-delete de la asociación). El
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
       parameters:
       - description: Group ID
         in: path
@@ -1321,6 +1309,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -1334,14 +1326,8 @@ paths:
       - group-users
   /api/v1/invitations:
     get:
-      description: Devuelve las invitaciones pendientes (no vencidas) de un usuario,
-        sin importar el equipo
-      parameters:
-      - description: User ID
-        in: query
-        name: user_id
-        required: true
-        type: integer
+      description: Devuelve las invitaciones pendientes (no vencidas) del usuario
+        autenticado, sin importar el equipo
       produces:
       - application/json
       responses:
@@ -1351,10 +1337,6 @@ paths:
             items:
               $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
             type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -1365,16 +1347,11 @@ paths:
   /api/v1/invitations/{id}:
     get:
       description: Devuelve el detalle de una invitación puntual, validando que pertenezca
-        al usuario que consulta
+        al usuario autenticado
       parameters:
       - description: Invitation ID
         in: path
         name: id
-        required: true
-        type: integer
-      - description: User ID (debe coincidir con el invitado)
-        in: query
-        name: user_id
         required: true
         type: integer
       produces:
@@ -1405,8 +1382,6 @@ paths:
       - invitations
   /api/v1/invitations/{id}/accept:
     post:
-      consumes:
-      - application/json
       description: El usuario invitado acepta la invitación y queda como corredor
         del equipo
       parameters:
@@ -1415,12 +1390,6 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario que responde
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
       produces:
       - application/json
       responses:
@@ -1453,8 +1422,6 @@ paths:
       - invitations
   /api/v1/invitations/{id}/reject:
     post:
-      consumes:
-      - application/json
       description: El usuario invitado rechaza la invitación
       parameters:
       - description: Invitation ID
@@ -1462,12 +1429,6 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario que responde
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
       produces:
       - application/json
       responses:
@@ -1922,11 +1883,6 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario (debe ser entrenador)
-        in: query
-        name: user_id
-        required: true
-        type: integer
       produces:
       - application/json
       responses:
@@ -1986,7 +1942,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Actualiza los campos de un equipo existente
+      description: Actualiza los campos de un equipo existente. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2010,6 +1967,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -2025,7 +1986,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Actualiza la dirección de un equipo mediante un endpoint dedicado
+      description: Actualiza la dirección de un equipo mediante un endpoint dedicado.
+        Solo el entrenador del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2049,6 +2011,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -2064,7 +2030,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Agrega un usuario a un grupo dentro de un equipo
+      description: Agrega un usuario a un grupo dentro de un equipo. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2091,6 +2058,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -2146,7 +2117,7 @@ paths:
       consumes:
       - application/json
       description: Envía una invitación por email a un usuario existente para unirlo
-        a un equipo
+        a un equipo. Solo el entrenador del equipo puede invitar
       parameters:
       - description: Team ID
         in: path
@@ -2168,6 +2139,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -2221,7 +2196,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Agrega un usuario a un equipo con un rol específico
+      description: Agrega un usuario a un equipo con un rol específico. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2245,6 +2221,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -2262,7 +2242,8 @@ paths:
       - team-users
   /api/v1/teams/{id}/users/{user_id}:
     delete:
-      description: Quita un usuario de un equipo (soft-delete de la asociación)
+      description: Quita un usuario de un equipo (soft-delete de la asociación). El
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
       parameters:
       - description: Team ID
         in: path
@@ -2283,6 +2264,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamuser.RemoveTeamUserResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -2554,7 +2539,8 @@ paths:
       consumes:
       - application/json
       description: Update user attributes (all fields except id, status). Email change
-        requires X-Current-Password header.
+        requires X-Current-Password header. Only the user itself can update its own
+        data.
       parameters:
       - description: User ID
         in: path
@@ -2586,6 +2572,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -2606,7 +2596,8 @@ paths:
       consumes:
       - application/json
       description: Changes the user's password, verifying the current one. Distinct
-        from the forgot/reset-password OTP flow.
+        from the forgot/reset-password OTP flow. Only the user itself can change its
+        own password.
       parameters:
       - description: User ID
         in: path
@@ -2632,6 +2623,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
@@ -2732,7 +2727,7 @@ paths:
       consumes:
       - application/json
       description: 'Change the status of a user. Valid statuses: active, inactive,
-        pause, blocked, suspended.'
+        pause, blocked, suspended. Only the user itself can change its own status.'
       parameters:
       - description: User ID
         in: path
@@ -2754,6 +2749,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
