@@ -101,12 +101,13 @@ func (ic *invitationController) InviteRunner(c *gin.Context) {
 
 // ListPendingInvitations godoc
 // @Summary      Listar invitaciones pendientes de un equipo
-// @Description  Devuelve las invitaciones pendientes (no vencidas) de un equipo
+// @Description  Devuelve las invitaciones pendientes (no vencidas) de un equipo. Solo el entrenador del equipo puede verlas
 // @Tags         invitations
 // @Produce      json
 // @Param        id  path      int  true  "Team ID"
 // @Success      200 {array}   invitation.InvitationResponse
 // @Failure      400 {object}  apierror.APIError
+// @Failure      403 {object}  apierror.APIError
 // @Failure      404 {object}  apierror.APIError
 // @Failure      500 {object}  apierror.APIError
 // @Router       /api/v1/teams/{id}/invitations [get]
@@ -121,7 +122,8 @@ func (ic *invitationController) ListPendingInvitations(c *gin.Context) {
 		return
 	}
 
-	response, err := ic.invitationService.ListPendingInvitations(c, teamID)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := ic.invitationService.ListPendingInvitations(c, teamID, callerID)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -130,6 +132,9 @@ func (ic *invitationController) ListPendingInvitations(c *gin.Context) {
 		if errMsg == "equipo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador puede ver las invitaciones del equipo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

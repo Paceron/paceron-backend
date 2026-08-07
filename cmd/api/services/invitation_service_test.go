@@ -437,8 +437,8 @@ func TestInvitationService_ListPendingInvitations_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	resp, err := svc.ListPendingInvitations(nil, 1)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 1)
@@ -468,8 +468,8 @@ func TestInvitationService_ListPendingInvitations_IncludesInviterInfo(t *testing
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	resp, err := svc.ListPendingInvitations(nil, 1)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 1)
@@ -485,10 +485,29 @@ func TestInvitationService_ListPendingInvitations_TeamNotFound(t *testing.T) {
 	}
 
 	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.ListPendingInvitations(nil, 999)
+	_, err := svc.ListPendingInvitations(nil, 999, testEntrenadorCallerID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "equipo no encontrado")
+}
+
+func TestInvitationService_ListPendingInvitations_NotEntrenador(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID, RoleInTeam: "corredor"}, nil
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.ListPendingInvitations(nil, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "solo el entrenador puede ver las invitaciones del equipo")
 }
 
 func TestInvitationService_ListPendingInvitations_FiltersExpired(t *testing.T) {
@@ -505,8 +524,8 @@ func TestInvitationService_ListPendingInvitations_FiltersExpired(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	resp, err := svc.ListPendingInvitations(nil, 1)
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 0)
@@ -524,8 +543,8 @@ func TestInvitationService_ListPendingInvitations_DaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
-	_, err := svc.ListPendingInvitations(nil, 1)
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al listar invitaciones")

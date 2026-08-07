@@ -94,7 +94,7 @@ Estos endpoints antes recibían la identidad del usuario como query param o camp
 
 Antes casi ninguna operación de escritura sobre equipos/grupos verificaba quién llamaba — se confiaba en lo que mandara el cliente. Ahora:
 
-- **Solo entrenador del equipo**: crear/actualizar/borrar equipo, actualizar dirección, agregar usuarios al equipo, crear/actualizar/borrar grupo, agregar usuarios a un grupo, invitar corredores. Si un corredor (o alguien sin membresía) intenta estas acciones, `403 Forbidden`.
+- **Solo entrenador del equipo**: crear/actualizar/borrar equipo, actualizar dirección, agregar usuarios al equipo, crear/actualizar/borrar grupo, agregar usuarios a un grupo, invitar corredores, **listar las invitaciones pendientes de un equipo** (`GET /api/v1/teams/:id/invitations` — antes cualquier usuario logueado podía ver nombres/emails de invitados de cualquier equipo con solo saber el `team_id`). Si un corredor (o alguien sin membresía) intenta estas acciones, `403 Forbidden`.
 - **Self o entrenador delegado**: sacarse a sí mismo de un equipo/grupo, o que el entrenador saque a otro. Cualquier otro intento (ej. un corredor tratando de sacar a otro corredor) → `403 Forbidden`.
 - **Self-only**: actualizar el propio usuario, cambiar el propio estado, cambiar la propia contraseña. Intentar modificar el usuario de otro (aun autenticado) → `403 Forbidden`.
 

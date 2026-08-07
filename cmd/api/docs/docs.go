@@ -1926,7 +1926,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/invitations": {
             "get": {
-                "description": "Devuelve las invitaciones pendientes (no vencidas) de un equipo",
+                "description": "Devuelve las invitaciones pendientes (no vencidas) de un equipo. Solo el entrenador del equipo puede verlas",
                 "produces": [
                     "application/json"
                 ],
@@ -1955,6 +1955,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }

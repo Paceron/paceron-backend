@@ -16,7 +16,7 @@ import (
 
 type mockInvitationService struct {
 	inviteRunnerFn                  func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
-	listPendingInvitationsFn        func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
+	listPendingInvitationsFn        func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error)
 	listPendingInvitationsForUserFn func(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error)
 	getInvitationDetailFn           func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error)
 	acceptInvitationFn              func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
@@ -30,9 +30,9 @@ func (m *mockInvitationService) InviteRunner(ctx *gin.Context, teamID int64, cal
 	return nil, nil
 }
 
-func (m *mockInvitationService) ListPendingInvitations(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+func (m *mockInvitationService) ListPendingInvitations(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 	if m.listPendingInvitationsFn != nil {
-		return m.listPendingInvitationsFn(ctx, teamID)
+		return m.listPendingInvitationsFn(ctx, teamID, callerID)
 	}
 	return nil, nil
 }
@@ -201,7 +201,7 @@ func TestInvitationController_InviteRunner_DuplicateInvitation(t *testing.T) {
 
 func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 			return []invitation.InvitationResponse{{ID: 1, TeamID: teamID}}, nil
 		},
 	}
@@ -211,6 +211,7 @@ func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/invitations", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.ListPendingInvitations(c)
 
@@ -219,7 +220,7 @@ func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 
 func TestInvitationController_ListPendingInvitations_TeamNotFound(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -229,10 +230,30 @@ func TestInvitationController_ListPendingInvitations_TeamNotFound(t *testing.T) 
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/999/invitations", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 5)
 
 	controller.ListPendingInvitations(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestInvitationController_ListPendingInvitations_Forbidden(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
+			return nil, errors.New("solo el entrenador puede ver las invitaciones del equipo")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/invitations", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.ListPendingInvitations(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestInvitationController_ListPendingInvitations_InvalidID(t *testing.T) {

@@ -289,7 +289,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/groups/:id/users` | List users of a group |
 | DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group (self, or entrenador of the team) |
 | POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email (entrenador of the team only, optional `group_id`) |
-| GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team |
+| GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team (entrenador of the team only) |
 | GET | `/api/v1/invitations` | List the authenticated user's pending invitations |
 | GET | `/api/v1/invitations/:id` | Get invitation detail (must be the invitee) |
 | POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
