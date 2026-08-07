@@ -30,6 +30,31 @@ jobs:
     name: Test paceron-backend
     runs-on: ubuntu-latest
 
+    # Postgres real para los tests de daos/ (antes solo se testeaba conformidad de
+    # interfaz, sin DB). postgres:16-alpine: la imagen oficial mas liviana, container
+    # descartable por job, no persiste entre corridas. Ver docs/TESTING.md.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paceron_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: 5432
+      TEST_DB_USER: postgres
+      TEST_DB_PASSWORD: postgres
+      TEST_DB_NAME: paceron_test
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
