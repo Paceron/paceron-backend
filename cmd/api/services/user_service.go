@@ -29,12 +29,17 @@ const bankAliasFormatError = "bank_alias debe tener entre 6 y 20 caracteres (let
 const searchMinQueryLength = 3
 const searchResultsLimit = 5
 
+// batchLookupMaxIDs acota /users?ids= — el caso de uso es resolver el roster de un
+// equipo/grupo (decenas de miembros como mucho), no un lookup masivo arbitrario.
+const batchLookupMaxIDs = 50
+
 type UserServiceInterface interface {
 	GetUser(ctx *gin.Context, userID int64) (user.User, error)
 	Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
 	ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
 	ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 	Search(ctx *gin.Context, query string) (*user.SearchResponse, error)
+	BatchLookup(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error)
 }
 
 type userService struct {
@@ -88,6 +93,33 @@ func (s *userService) Search(ctx *gin.Context, query string) (*user.SearchRespon
 	}
 
 	return &user.SearchResponse{Results: results}, nil
+}
+
+func (s *userService) BatchLookup(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
+	if len(userIDs) == 0 {
+		return nil, fmt.Errorf("se requiere al menos un id de usuario")
+	}
+	if len(userIDs) > batchLookupMaxIDs {
+		return nil, fmt.Errorf("no se pueden consultar más de %d usuarios a la vez", batchLookupMaxIDs)
+	}
+
+	usersDB, err := s.userDao.FindByIDs(ctx, userIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error looking up users in batch", err)
+		return nil, fmt.Errorf("error al consultar usuarios")
+	}
+
+	results := make([]user.SearchResultItem, 0, len(usersDB))
+	for _, u := range usersDB {
+		results = append(results, user.SearchResultItem{
+			UserID:  u.ID,
+			Name:    u.Name,
+			Surname: u.Surname,
+			Email:   u.Email,
+		})
+	}
+
+	return &user.BatchLookupResponse{Results: results}, nil
 }
 
 func (s *userService) Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error) {

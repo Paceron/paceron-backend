@@ -41,6 +41,10 @@ func (m *mockUserDaoForQuery) SearchActive(ctx *gin.Context, query string, limit
 	return nil, nil
 }
 
+func (m *mockUserDaoForQuery) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	return nil, nil
+}
+
 type mockUserRoleDaoForQuery struct {
 	findByUserIDFn func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error)
 }

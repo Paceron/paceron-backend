@@ -52,6 +52,10 @@ func (m *mockUserDaoForInvitation) SearchActive(ctx *gin.Context, query string, 
 	return nil, nil
 }
 
+func (m *mockUserDaoForInvitation) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	return nil, nil
+}
+
 type mockInvitationDao struct {
 	createFn                      func(ctx *gin.Context, inv *dbs.Invitation) error
 	findByIDFn                    func(ctx *gin.Context, id int64) (*dbs.Invitation, error)

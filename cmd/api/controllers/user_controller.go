@@ -20,6 +20,7 @@ type UserController interface {
 	ChangeStatus(c *gin.Context)
 	ChangePassword(c *gin.Context)
 	Search(c *gin.Context)
+	BatchLookup(c *gin.Context)
 }
 
 type userController struct {
@@ -327,6 +328,66 @@ func (u *userController) Search(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		code := "Internal Server Error"
 		if strings.Contains(err.Error(), "la búsqueda requiere al menos") {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// BatchLookup godoc
+// @Summary      Batch user lookup
+// @Description  Resuelve nombre/apellido/email para varios user_id de una sola consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere login, sin restricción adicional de rol. Hasta 50 ids.
+// @Tags         users
+// @Produce      json
+// @Param        ids  query     string  true  "Ids de usuario separados por coma, ej. 1,2,3"
+// @Success      200  {object}  user.BatchLookupResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/users [get]
+func (u *userController) BatchLookup(c *gin.Context) {
+	idsParam := c.Query("ids")
+	if strings.TrimSpace(idsParam) == "" {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "se requiere el parámetro ids",
+		})
+		return
+	}
+
+	rawIDs := strings.Split(idsParam, ",")
+	userIDs := make([]int64, 0, len(rawIDs))
+	for _, raw := range rawIDs {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apierror.APIError{
+				StatusCode: http.StatusBadRequest,
+				Code:       "Bad request",
+				Message:    fmt.Sprintf("id inválido: %s", trimmed),
+			})
+			return
+		}
+		userIDs = append(userIDs, id)
+	}
+
+	result, err := u.userService.BatchLookup(c, userIDs)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+		if strings.Contains(err.Error(), "se requiere al menos") || strings.Contains(err.Error(), "no se pueden consultar más de") {
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
 		}
