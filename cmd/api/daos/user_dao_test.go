@@ -29,3 +29,9 @@ func TestUserDao_SearchActive_ImplementsInterface(t *testing.T) {
 	var iface UserDaoInterface = dao
 	assert.NotNil(t, iface.SearchActive)
 }
+
+func TestUserDao_FindByIDs_ImplementsInterface(t *testing.T) {
+	dao := NewUserDao(&gorm.DB{})
+	var iface UserDaoInterface = dao
+	assert.NotNil(t, iface.FindByIDs)
+}

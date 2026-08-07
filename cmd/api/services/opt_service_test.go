@@ -51,6 +51,7 @@ type mockUserDao struct {
 	mockUpdate       func(ctx *gin.Context, user *dbs.User) error
 	mockUpdateStatus func(ctx *gin.Context, userID int64, status string) error
 	mockSearchActive func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
+	mockFindByIDs    func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
 }
 
 func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -79,6 +80,10 @@ func (m mockUserDao) UpdateStatus(ctx *gin.Context, userID int64, status string)
 
 func (m mockUserDao) SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
 	return m.mockSearchActive(ctx, query, limit)
+}
+
+func (m mockUserDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	return m.mockFindByIDs(ctx, userIDs)
 }
 
 func TestGetUser_Success(t *testing.T) {
@@ -218,4 +223,59 @@ func TestUserService_Search_DaoError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al buscar usuarios")
+}
+
+func TestUserService_BatchLookup_Success(t *testing.T) {
+	mockDao := mockUserDao{
+		mockFindByIDs: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			assert.Equal(t, []int64{1, 2}, userIDs)
+			return []*dbs.User{
+				{ID: 1, Name: "Ana", Surname: "Gomez", Email: "ana@test.com"},
+				{ID: 2, Name: "Bob", Surname: "Perez", Email: "bob@test.com"},
+			}, nil
+		},
+	}
+
+	service := NewUserService(mockDao, nil)
+	result, err := service.BatchLookup(nil, []int64{1, 2})
+
+	assert.NoError(t, err)
+	assert.Len(t, result.Results, 2)
+	assert.Equal(t, int64(1), result.Results[0].UserID)
+	assert.Equal(t, "Ana", result.Results[0].Name)
+}
+
+func TestUserService_BatchLookup_EmptyIDs(t *testing.T) {
+	service := NewUserService(mockUserDao{}, nil)
+	_, err := service.BatchLookup(nil, []int64{})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "se requiere al menos un id")
+}
+
+func TestUserService_BatchLookup_TooManyIDs(t *testing.T) {
+	ids := make([]int64, batchLookupMaxIDs+1)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+
+	service := NewUserService(mockUserDao{}, nil)
+	_, err := service.BatchLookup(nil, ids)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no se pueden consultar más de")
+}
+
+func TestUserService_BatchLookup_DaoError(t *testing.T) {
+	mockDao := mockUserDao{
+		mockFindByIDs: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			return nil, errors.New("dao error")
+		},
+	}
+
+	service := NewUserService(mockDao, nil)
+	_, err := service.BatchLookup(nil, []int64{1})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al consultar usuarios")
 }

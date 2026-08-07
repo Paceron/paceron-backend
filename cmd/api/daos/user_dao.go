@@ -17,6 +17,7 @@ type UserDaoInterface interface {
 	Update(ctx *gin.Context, user *dbs.User) error
 	UpdateStatus(ctx *gin.Context, userID int64, status string) error
 	SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
+	FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
 }
 
 type userDao struct {
@@ -94,6 +95,17 @@ func (ud *userDao) SearchActive(ctx *gin.Context, query string, limit int) ([]*d
 		Find(&users).Error
 	if err != nil {
 		return nil, fmt.Errorf("error searching users: %w", err)
+	}
+	return users, nil
+}
+
+// FindByIDs trae varios usuarios de una sola consulta — pensado para resolver nombre/email
+// del roster de un equipo/grupo (que solo trae user_id) sin un fan-out N+1 por cliente.
+func (ud *userDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	var users []*dbs.User
+	err := ud.DB.Where("id IN ?", userIDs).Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding users by ids: %w", err)
 	}
 	return users, nil
 }

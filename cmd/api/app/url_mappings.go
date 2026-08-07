@@ -32,6 +32,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.Use(AuthMiddleware())
 
 	r.GET("/api/v1/auth/permissions", app.permissionsQueryController.GetUserPermissions)
+	r.GET("/api/v1/users", app.userController.BatchLookup)
 	r.GET("/api/v1/users/search", app.userController.Search)
 	r.PUT("/api/v1/users/:id", app.userController.Update)
 	r.PATCH("/api/v1/users/:id/status", app.userController.ChangeStatus)
