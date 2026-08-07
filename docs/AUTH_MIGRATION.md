@@ -105,8 +105,8 @@ Nuevo `code` en las respuestas de error para estos casos: `"Forbidden"`, `status
 
 `POST /api/v1/users/:id/roles` sigue existiendo genérico (self-only) para casos como el rol base `corredor`, pero volverse entrenador tiene reglas propias — es la capacidad que desbloquea crear equipos y todos los chequeos "solo entrenador" de la sección 4, así que amerita su propio endpoint en vez de un `role_id` genérico a ciegas:
 
-- `POST /api/v1/users/:id/entrenador-role` — activa el rol. Self-only. Body: `{"password": "...", "bank_alias": "..."}`. `password` confirma que es una acción deliberada del dueño de la cuenta (mismo patrón que cambiar email). `bank_alias` es obligatorio si el usuario no tiene uno ya guardado en el perfil; si lo manda, también actualiza el perfil. `400` si falta el alias o tiene formato inválido, `401` si la contraseña no coincide, `409` si ya es entrenador.
-- `DELETE /api/v1/users/:id/entrenador-role` — desactiva el rol. Self-only. Bloqueado con `409 Conflict` mientras el usuario siga siendo entrenador (`RoleInTeam`) de algún equipo activo — primero hay que transferir o eliminar esos equipos.
+- `POST /api/v1/users/:id/trainer-role` — activa el rol. Self-only. Body: `{"password": "...", "bank_alias": "..."}`. `password` confirma que es una acción deliberada del dueño de la cuenta (mismo patrón que cambiar email). `bank_alias` es obligatorio si el usuario no tiene uno ya guardado en el perfil; si lo manda, también actualiza el perfil. `400` si falta el alias o tiene formato inválido, `401` si la contraseña no coincide, `409` si ya es entrenador.
+- `DELETE /api/v1/users/:id/trainer-role` — desactiva el rol. Self-only. Bloqueado con `409 Conflict` mientras el usuario siga siendo entrenador (`RoleInTeam`) de algún equipo activo — primero hay que transferir o eliminar esos equipos.
 
 ## 6. Limitación conocida (no resuelta en esta iniciativa)
 

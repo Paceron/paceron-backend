@@ -21,7 +21,7 @@
 Al revisar la rama se detectó que `POST/DELETE /api/v1/users/:id/roles` no tenía ningún chequeo de caller — cualquier logueado podía asignar o quitar cualquier rol a cualquier otra cuenta, incluido `entrenador`, la capacidad que desbloquea crear equipos y todas las reglas "solo entrenador" de esta misma rama. Se cierra en dos partes:
 
 - `AssignRole`/`RemoveRole` genéricos pasan a ser self-only.
-- Se agrega `POST/DELETE /api/v1/users/:id/entrenador-role`, endpoint dedicado (self-only) que exige confirmar la contraseña actual y un alias bancario válido para activar, y bloquea la desactivación si el usuario sigue liderando algún equipo activo.
+- Se agrega `POST/DELETE /api/v1/users/:id/trainer-role`, endpoint dedicado (self-only) que exige confirmar la contraseña actual y un alias bancario válido para activar, y bloquea la desactivación si el usuario sigue liderando algún equipo activo.
 
 No se resuelve (decisión de producto explícita, fuera de esta rama): un concepto de rol "admin" para moderación (baneos, soporte) está planeado a futuro, pero es una iniciativa aparte.
 

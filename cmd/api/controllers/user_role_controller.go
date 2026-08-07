@@ -189,7 +189,7 @@ func (urc *userRoleController) RemoveRole(c *gin.Context) {
 // @Failure      404   {object}  apierror.APIError
 // @Failure      409   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
-// @Router       /api/v1/users/{id}/entrenador-role [post]
+// @Router       /api/v1/users/{id}/trainer-role [post]
 func (urc *userRoleController) ActivateEntrenador(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -261,7 +261,7 @@ func (urc *userRoleController) ActivateEntrenador(c *gin.Context) {
 // @Failure      404 {object}  apierror.APIError
 // @Failure      409 {object}  apierror.APIError
 // @Failure      500 {object}  apierror.APIError
-// @Router       /api/v1/users/{id}/entrenador-role [delete]
+// @Router       /api/v1/users/{id}/trainer-role [delete]
 func (urc *userRoleController) DeactivateEntrenador(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

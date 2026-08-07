@@ -28,7 +28,7 @@
 - [x] 10.5 `user_role_service.DeactivateEntrenador`: bloquea si el usuario lidera (`RoleInTeam == "entrenador"`) algún equipo activo (`teamUserDao.FindByUserID`), si no reutiliza `RemoveRole`
 - [x] 10.6 `userRoleService` gana `teamUserDao` como dependencia nueva — reordenado `app.go` para construir `teamUserDao` antes de `userRoleService`
 - [x] 10.7 Controller: `ActivateEntrenador`/`DeactivateEntrenador`, ambos self-only, mapeo de errores a 400/401/403/404/409
-- [x] 10.8 Rutas `POST/DELETE /api/v1/users/:id/entrenador-role`
+- [x] 10.8 Rutas `POST/DELETE /api/v1/users/:id/trainer-role`
 - [x] 10.9 Tests: service (éxito, cada validación, cada error de DAO) y controller (éxito, forbidden, cada mapeo de error) para ambos métodos nuevos, más self-only en AssignRole/RemoveRole existentes
 - [x] 10.10 Swagger regenerado, README y `docs/AUTH_MIGRATION.md` actualizados
 - [x] 10.11 Verificación manual contra la DB de staging: asignar rol a otro usuario → 403; activar sin alias → 400; activar con password incorrecta → 401; activar OK → 201; crear equipo ahora permitido; desactivar liderando equipo activo → 409; borrar el equipo y reintentar desactivar → 200
