@@ -18,6 +18,20 @@
 - [x] 3.6 `invitation_service.InviteRunner`: agregar `callerID`, `InviterID` pasa a ser `callerID` (antes `team.OwnerID` sin verificar)
 - [x] 3.8 `invitation_service.ListPendingInvitations`: agregar `callerID` + chequeo entrenador (confirmado sin ningún chequeo antes)
 - [x] 3.9 `team_user_service.GetUsersByTeam` / `group_user_service.GetUsersByGroup`: agregar `callerID` + chequeo de membresía (cualquier rol, no solo entrenador) — confirmado sin ningún chequeo antes
+
+## 10. Activación/desactivación de entrenador (addendum post-revisión)
+
+- [x] 10.1 `user_role_controller.AssignRole`/`RemoveRole`: agregar chequeo self-only (confirmado sin ningún chequeo antes — cualquiera gestionaba roles de cualquiera)
+- [x] 10.2 `userrole.ActivateEntrenadorRequest` (password + bank_alias opcional) nuevo DTO
+- [x] 10.3 `bankAliasRegex`/mensaje de formato extraídos de `user_service.go` a variables de paquete, reutilizados por la nueva validación (evita duplicar el regex)
+- [x] 10.4 `user_role_service.ActivateEntrenador`: valida password (bcrypt), exige bank_alias propio o provisto, persiste el alias si viene en el body, reutiliza `AssignRole` internamente (busca el rol por nombre vía `roleDao.FindByName`)
+- [x] 10.5 `user_role_service.DeactivateEntrenador`: bloquea si el usuario lidera (`RoleInTeam == "entrenador"`) algún equipo activo (`teamUserDao.FindByUserID`), si no reutiliza `RemoveRole`
+- [x] 10.6 `userRoleService` gana `teamUserDao` como dependencia nueva — reordenado `app.go` para construir `teamUserDao` antes de `userRoleService`
+- [x] 10.7 Controller: `ActivateEntrenador`/`DeactivateEntrenador`, ambos self-only, mapeo de errores a 400/401/403/404/409
+- [x] 10.8 Rutas `POST/DELETE /api/v1/users/:id/entrenador-role`
+- [x] 10.9 Tests: service (éxito, cada validación, cada error de DAO) y controller (éxito, forbidden, cada mapeo de error) para ambos métodos nuevos, más self-only en AssignRole/RemoveRole existentes
+- [x] 10.10 Swagger regenerado, README y `docs/AUTH_MIGRATION.md` actualizados
+- [x] 10.11 Verificación manual contra la DB de staging: asignar rol a otro usuario → 403; activar sin alias → 400; activar con password incorrecta → 401; activar OK → 201; crear equipo ahora permitido; desactivar liderando equipo activo → 409; borrar el equipo y reintentar desactivar → 200
 - [x] 3.7 `team_delegate.CreateTeam`: propaga `ownerID` a `teamSvc.Create` y `groupSvc.Create`
 
 ## 4. Self o entrenador delegado

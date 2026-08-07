@@ -731,6 +731,18 @@ definitions:
       user_id:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_userrole.ActivateEntrenadorRequest:
+    properties:
+      bank_alias:
+        description: Alias bancario (requerido si el usuario no tiene uno ya guardado)
+        type: string
+      password:
+        description: Contraseña actual, confirma que es una acción deliberada del
+          dueño de la cuenta
+        type: string
+    required:
+    - password
+    type: object
   simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest:
     properties:
       role_id:
@@ -2606,6 +2618,98 @@ paths:
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/entrenador-role:
+    delete:
+      description: Desactiva el rol entrenador del usuario autenticado sobre sí mismo.
+        Bloqueado mientras lidere equipos activos
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Desactivar rol entrenador
+      tags:
+      - user-roles
+    post:
+      consumes:
+      - application/json
+      description: Activa el rol entrenador del usuario autenticado sobre sí mismo.
+        Exige confirmar la contraseña actual y un alias bancario válido (propio o
+        recién provisto)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Contraseña actual y alias bancario
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.ActivateEntrenadorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Activar rol entrenador
+      tags:
+      - user-roles
   /api/v1/users/{id}/password:
     patch:
       consumes:
@@ -2659,7 +2763,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Assigns a role to a user with optional tier (default: "base")'
+      description: 'Assigns a role to yourself, with optional tier (default: "base").
+        Self only.'
       parameters:
       - description: User ID
         in: path
@@ -2683,6 +2788,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
           schema:
@@ -2702,8 +2811,8 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Soft-deletes the active role assignment for a user, identified
-        by role_id
+      description: Soft-deletes your own active role assignment, identified by role_id.
+        Self only.
       parameters:
       - description: User ID
         in: path
@@ -2724,6 +2833,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":

@@ -51,3 +51,40 @@ El sistema SHALL restringir la actualización de datos, estado y contraseña de 
 #### Scenario: Usuario intenta modificar datos de otro usuario
 - **WHEN** el `id` del usuario en la URL no coincide con el usuario autenticado
 - **THEN** el sistema retorna HTTP 403 con `code: "Forbidden"`, sin importar si el usuario autenticado tiene otro rol
+
+### Requirement: Autorización self-only sobre asignación de roles
+El sistema SHALL restringir la asignación y remoción de roles de un usuario exclusivamente al propio usuario autenticado.
+
+#### Scenario: Usuario intenta asignar o quitar un rol de otro usuario
+- **WHEN** el `id` del usuario en la URL no coincide con el usuario autenticado
+- **THEN** el sistema retorna HTTP 403 con `code: "Forbidden"`
+
+### Requirement: Activación del rol entrenador requiere verificación
+El sistema SHALL exigir confirmar la contraseña actual y un alias bancario válido (propio o provisto en la solicitud) antes de activar el rol entrenador sobre el usuario autenticado.
+
+#### Scenario: Activación exitosa con alias nuevo
+- **WHEN** el usuario autenticado envía su contraseña correcta y un `bank_alias` con formato válido
+- **THEN** el sistema activa el rol entrenador, persiste el alias en el perfil si vino en la solicitud, y retorna HTTP 201
+
+#### Scenario: Activación con alias ya guardado
+- **WHEN** el usuario autenticado ya tiene un `bank_alias` válido guardado y no envía uno nuevo
+- **THEN** el sistema activa el rol entrenador sin requerir el campo en la solicitud
+
+#### Scenario: Contraseña incorrecta
+- **WHEN** la contraseña enviada no coincide con la del usuario autenticado
+- **THEN** el sistema retorna HTTP 401 sin activar el rol
+
+#### Scenario: Sin alias bancario disponible
+- **WHEN** el usuario autenticado no tiene `bank_alias` guardado y no envía uno en la solicitud
+- **THEN** el sistema retorna HTTP 400 sin activar el rol
+
+### Requirement: Desactivación del rol entrenador bloqueada mientras lidere equipos activos
+El sistema SHALL impedir que un usuario desactive su propio rol entrenador si todavía es entrenador (`RoleInTeam`) de algún equipo activo.
+
+#### Scenario: Desactivación exitosa sin equipos activos
+- **WHEN** el usuario autenticado no lidera ningún equipo activo
+- **THEN** el sistema desactiva el rol entrenador
+
+#### Scenario: Desactivación bloqueada
+- **WHEN** el usuario autenticado todavía es entrenador de al menos un equipo activo
+- **THEN** el sistema retorna HTTP 409 sin desactivar el rol
