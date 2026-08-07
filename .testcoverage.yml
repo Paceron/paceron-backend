@@ -1,13 +1,15 @@
 # Config de vladopajic/go-test-coverage.
 #
-# Fase actual: solo medir, no bloquear. threshold en 0 a proposito.
-# Cuando el coverage real del proyecto sea solido, subir threshold.total
-# (y opcionalmente file/package) a 80 y recien ahi empezar a bloquear PRs.
-# No bajar el numero real del proyecto para cumplir el gate, subir el numero real.
+# threshold.total en 80: bloquea el merge si el coverage total cae por debajo.
+# Alcanzado con Postgres real en CI para testear daos/ (antes en ~4%, ahora >85%),
+# ver docs/TESTING.md. Total real hoy: ~85% — deja margen antes de romper CI por
+# ruido menor. No bajar este numero para pasar el gate — si baja, es porque se
+# borro/dejo sin testear codigo con logica real, hay que agregar tests, no
+# ajustar el umbral hacia abajo.
 threshold:
   file: 0
   package: 0
-  total: 0
+  total: 80
 
 # Paquetes sin logica real (structs/DTOs puros, constantes, codigo autogenerado,
 # wiring de arranque, helpers de test) - se excluyen del calculo por completo,
