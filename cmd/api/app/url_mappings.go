@@ -11,11 +11,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Rutas públicas: no requieren Authorization. register/login/forgot/reset-password
 	// son de por sí previas a tener sesión; refresh/logout usan el refresh token como
 	// credencial propia (no un access token); GET /auth/user es lookup público a
-	// propósito; las rutas legacy /user y /user/:user_id y las de weather quedan
-	// públicas sin discusión (demo/deuda documentada, ver openspec de esta rama).
+	// propósito; las de weather quedan públicas sin discusión (demo, ver openspec
+	// de protect-all-endpoints). Las rutas legacy /user y POST /user (duplicadas de
+	// /api/v1/auth/user y /api/v1/auth/register) se eliminaron, ver openspec de
+	// remove-legacy-user-routes.
 	r.GET("/ping", app.pingController.Ping)
-	r.GET("/user/:user_id", app.userController.GetUser)
-	r.POST("/user", app.userController.CreateUser)
 	r.POST("/api/v1/auth/register", app.authController.Register)
 	r.POST("/api/v1/auth/login", app.authController.Login)
 	r.POST("/api/v1/auth/refresh", app.authController.Refresh)

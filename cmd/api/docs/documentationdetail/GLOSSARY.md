@@ -46,7 +46,7 @@ Funciones que se ejecutan en **cada request** antes de llegar al controller:
 El **mapa de rutas** del proyecto. Cada línea conecta un método HTTP + path con un método de un controller:
 ```go
 r.GET("/ping", app.pingController.Ping)
-r.GET("/user/:user_id", app.userController.GetUser)
+r.GET("/api/v1/users/search", app.userController.Search)
 ```
 
 ---
@@ -110,8 +110,8 @@ Controladores actuales:
 | Controller | Endpoint | Qué hace |
 |---|---|---|
 | `pingController` | `GET /ping` | Devuelve "pong" (health check) |
-| `userController` | `GET /user/:id` | Busca usuario por ID |
-| `userController` | `POST /user` | Crea un usuario nuevo |
+| `userController` | `PUT /api/v1/users/:id` | Actualiza datos del propio usuario |
+| `userController` | `GET /api/v1/users/search` | Busca usuarios activos por nombre/apellido/email parcial |
 | `exampleWeatherController` | `GET /example/weather` | Obtiene clima de Open-Meteo |
 | `userWeatherController` | `GET /user/:id/weather` | Usuario + clima combinados |
 

@@ -45,7 +45,6 @@ func (m *mockMailer) SendEmail(ctx context.Context, to string, emailType mailer.
 
 type mockUserDao struct {
 	mockGetByID      func(ctx *gin.Context, userID int64) (*dbs.User, error)
-	mockCreate       func(ctx *gin.Context, name, password string) (*dbs.User, error)
 	mockFindByID     func(ctx *gin.Context, userID int64) (*dbs.User, error)
 	mockFindByEmail  func(ctx *gin.Context, email string) (*dbs.User, error)
 	mockUpdate       func(ctx *gin.Context, user *dbs.User) error
@@ -56,10 +55,6 @@ type mockUserDao struct {
 
 func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
 	return m.mockGetByID(ctx, userID)
-}
-
-func (m mockUserDao) Create(ctx *gin.Context, name, password string) (*dbs.User, error) {
-	return m.mockCreate(ctx, name, password)
 }
 
 func (m mockUserDao) FindByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -126,36 +121,6 @@ func TestGetUser_DaoError(t *testing.T) {
 
 	service := NewUserService(mockDao, nil)
 	_, err := service.GetUser(nil, 1)
-
-	assert.Error(t, err)
-}
-
-func TestCreateUser_Success(t *testing.T) {
-	createdUser := &dbs.User{ID: 1, Name: "test"}
-
-	mockDao := mockUserDao{
-		mockCreate: func(ctx *gin.Context, name, password string) (*dbs.User, error) {
-			return createdUser, nil
-		},
-	}
-
-	service := NewUserService(mockDao, nil)
-	result, err := service.CreateUser(nil, "test", "secret")
-
-	assert.NoError(t, err)
-	assert.Equal(t, int64(1), result.ID)
-	assert.Equal(t, "test", result.Name)
-}
-
-func TestCreateUser_DaoError(t *testing.T) {
-	mockDao := mockUserDao{
-		mockCreate: func(ctx *gin.Context, name, password string) (*dbs.User, error) {
-			return nil, errors.New("dao error")
-		},
-	}
-
-	service := NewUserService(mockDao, nil)
-	_, err := service.CreateUser(nil, "test", "secret")
 
 	assert.Error(t, err)
 }

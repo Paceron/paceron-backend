@@ -59,7 +59,6 @@ Rutas públicas (sin header):
 - `GET /api/v1/auth/user?id=&email=` (lookup público, decisión explícita)
 - `POST /api/v1/auth/forgot-password`
 - `POST /api/v1/auth/reset-password`
-- `GET /user/:user_id`, `POST /user` (legacy, deprecados, no tocar)
 - `GET /example/weather`, `GET /user/:user_id/weather` (demo)
 - `GET /swagger`
 
@@ -124,6 +123,10 @@ Nuevo `code` en las respuestas de error para estos casos: `"Forbidden"`, `status
 - Sin filtro de `status` (a diferencia de `/users/search`): un id ya es un miembro conocido de un equipo/grupo, no un resultado de búsqueda arbitraria — se resuelve igual esté activo, pausado, etc.
 - Mismo shape de resultado que `/users/search`: `user_id`, `name`, `surname`, `email` por cada id encontrado. Ids inexistentes simplemente no aparecen en `results` (no es un 404 por id).
 
-## 8. Limitación conocida (no resuelta en esta iniciativa)
+## 8. Rutas legacy eliminadas
+
+`GET /user/:user_id` y `POST /user` (sin prefijo `/api/v1`, sin `Authorization`) se eliminaron — eran leftovers de la plantilla original del proyecto, duplicaban `GET /api/v1/auth/user` y `POST /api/v1/auth/register`, y `POST /user` además guardaba la contraseña en texto plano. Confirmado con el frontend que no estaban en uso. Si algún cliente viejo les pegaba, ahora recibe `404`.
+
+## 9. Limitación conocida (no resuelta en esta iniciativa)
 
 Los endpoints de catálogo (`/api/v1/roles`, `/api/v1/tiers`, `/api/v1/permissions`, `/api/v1/auth/permissions`) ahora exigen estar logueado, pero **cualquier usuario autenticado puede gestionarlos** — no hay chequeo de rol especial tipo "admin", porque ese concepto no existe hoy en el dominio (uno está planeado a futuro, fuera del MVP, para moderación tipo baneos/soporte — no reemplaza esto). Documentado como deuda conocida, no como bug.
