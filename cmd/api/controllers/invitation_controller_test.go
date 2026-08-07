@@ -15,24 +15,24 @@ import (
 )
 
 type mockInvitationService struct {
-	inviteRunnerFn                  func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
-	listPendingInvitationsFn        func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error)
+	inviteRunnerFn                  func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error)
+	listPendingInvitationsFn        func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error)
 	listPendingInvitationsForUserFn func(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error)
 	getInvitationDetailFn           func(ctx *gin.Context, invitationID, userID int64) (*invitation.InvitationResponse, error)
 	acceptInvitationFn              func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
 	rejectInvitationFn              func(ctx *gin.Context, invitationID, userID int64) (*invitation.RespondInvitationResponse, error)
 }
 
-func (m *mockInvitationService) InviteRunner(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+func (m *mockInvitationService) InviteRunner(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 	if m.inviteRunnerFn != nil {
-		return m.inviteRunnerFn(ctx, teamID, req)
+		return m.inviteRunnerFn(ctx, teamID, callerID, req)
 	}
 	return nil, nil
 }
 
-func (m *mockInvitationService) ListPendingInvitations(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+func (m *mockInvitationService) ListPendingInvitations(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 	if m.listPendingInvitationsFn != nil {
-		return m.listPendingInvitationsFn(ctx, teamID)
+		return m.listPendingInvitationsFn(ctx, teamID, callerID)
 	}
 	return nil, nil
 }
@@ -67,7 +67,7 @@ func (m *mockInvitationService) RejectInvitation(ctx *gin.Context, invitationID,
 
 func TestInvitationController_InviteRunner_Success(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 			return &invitation.InviteRunnerResponse{Message: "Invitación enviada a " + req.Email}, nil
 		},
 	}
@@ -79,6 +79,7 @@ func TestInvitationController_InviteRunner_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.InviteRunner(c)
 
@@ -90,7 +91,7 @@ func TestInvitationController_InviteRunner_Success(t *testing.T) {
 
 func TestInvitationController_InviteRunner_TeamNotFound(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -102,6 +103,7 @@ func TestInvitationController_InviteRunner_TeamNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/999/invite", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 5)
 
 	controller.InviteRunner(c)
 
@@ -110,7 +112,7 @@ func TestInvitationController_InviteRunner_TeamNotFound(t *testing.T) {
 
 func TestInvitationController_InviteRunner_UserNotFound(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 			return nil, errors.New("no se encontró un usuario con el email proporcionado")
 		},
 	}
@@ -122,10 +124,32 @@ func TestInvitationController_InviteRunner_UserNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.InviteRunner(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestInvitationController_InviteRunner_Forbidden(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+			return nil, errors.New("solo el entrenador puede invitar usuarios al equipo")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"email":"juan@test.com"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.InviteRunner(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestInvitationController_InviteRunner_BadRequest(t *testing.T) {
@@ -156,7 +180,7 @@ func TestInvitationController_InviteRunner_InvalidID(t *testing.T) {
 
 func TestInvitationController_InviteRunner_DuplicateInvitation(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 			return nil, errors.New("ya existe una invitación pendiente para este usuario en este equipo")
 		},
 	}
@@ -168,6 +192,7 @@ func TestInvitationController_InviteRunner_DuplicateInvitation(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.InviteRunner(c)
 
@@ -176,7 +201,7 @@ func TestInvitationController_InviteRunner_DuplicateInvitation(t *testing.T) {
 
 func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 			return []invitation.InvitationResponse{{ID: 1, TeamID: teamID}}, nil
 		},
 	}
@@ -186,6 +211,7 @@ func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/invitations", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.ListPendingInvitations(c)
 
@@ -194,7 +220,7 @@ func TestInvitationController_ListPendingInvitations_Success(t *testing.T) {
 
 func TestInvitationController_ListPendingInvitations_TeamNotFound(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64) ([]invitation.InvitationResponse, error) {
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -204,10 +230,30 @@ func TestInvitationController_ListPendingInvitations_TeamNotFound(t *testing.T) 
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/999/invitations", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 5)
 
 	controller.ListPendingInvitations(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestInvitationController_ListPendingInvitations_Forbidden(t *testing.T) {
+	mockSvc := &mockInvitationService{
+		listPendingInvitationsFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
+			return nil, errors.New("solo el entrenador puede ver las invitaciones del equipo")
+		},
+	}
+
+	controller := NewInvitationController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/invitations", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.ListPendingInvitations(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestInvitationController_ListPendingInvitations_InvalidID(t *testing.T) {
@@ -232,9 +278,9 @@ func TestInvitationController_AcceptInvitation_Success(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/accept", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/accept", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.AcceptInvitation(c)
 
@@ -251,9 +297,9 @@ func TestInvitationController_AcceptInvitation_NotFound(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/999/accept", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/999/accept", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 2)
 
 	controller.AcceptInvitation(c)
 
@@ -270,34 +316,20 @@ func TestInvitationController_AcceptInvitation_WrongUser(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/accept", strings.NewReader(`{"user_id":999}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/accept", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 999)
 
 	controller.AcceptInvitation(c)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
-func TestInvitationController_AcceptInvitation_BadRequest(t *testing.T) {
-	controller := NewInvitationController(&mockInvitationService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/accept", strings.NewReader(`{}`))
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.AcceptInvitation(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
 func TestInvitationController_AcceptInvitation_InvalidID(t *testing.T) {
 	controller := NewInvitationController(&mockInvitationService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/abc/accept", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/abc/accept", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
 
 	controller.AcceptInvitation(c)
@@ -315,9 +347,9 @@ func TestInvitationController_RejectInvitation_Success(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/reject", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/reject", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.RejectInvitation(c)
 
@@ -334,9 +366,9 @@ func TestInvitationController_RejectInvitation_NotFound(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/999/reject", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/999/reject", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 2)
 
 	controller.RejectInvitation(c)
 
@@ -353,9 +385,9 @@ func TestInvitationController_RejectInvitation_AlreadyResponded(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/reject", strings.NewReader(`{"user_id":2}`))
-	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/invitations/1/reject", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.RejectInvitation(c)
 
@@ -372,33 +404,12 @@ func TestInvitationController_ListMyInvitations_Success(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations", nil)
+	setAuthUserID(c, 1)
 
 	controller.ListMyInvitations(c)
 
 	assert.Equal(t, http.StatusOK, response.Code)
-}
-
-func TestInvitationController_ListMyInvitations_MissingUserID(t *testing.T) {
-	controller := NewInvitationController(&mockInvitationService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations", nil)
-
-	controller.ListMyInvitations(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestInvitationController_ListMyInvitations_InvalidUserID(t *testing.T) {
-	controller := NewInvitationController(&mockInvitationService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations?user_id=abc", nil)
-
-	controller.ListMyInvitations(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 func TestInvitationController_GetInvitationByID_Success(t *testing.T) {
@@ -411,8 +422,9 @@ func TestInvitationController_GetInvitationByID_Success(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1?user_id=2", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.GetInvitationByID(c)
 
@@ -429,8 +441,9 @@ func TestInvitationController_GetInvitationByID_NotFound(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/999?user_id=2", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/999", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 2)
 
 	controller.GetInvitationByID(c)
 
@@ -447,31 +460,20 @@ func TestInvitationController_GetInvitationByID_WrongUser(t *testing.T) {
 	controller := NewInvitationController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1?user_id=999", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 999)
 
 	controller.GetInvitationByID(c)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
-func TestInvitationController_GetInvitationByID_MissingUserID(t *testing.T) {
-	controller := NewInvitationController(&mockInvitationService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/1", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.GetInvitationByID(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
 func TestInvitationController_GetInvitationByID_InvalidID(t *testing.T) {
 	controller := NewInvitationController(&mockInvitationService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/abc?user_id=2", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/invitations/abc", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
 
 	controller.GetInvitationByID(c)
@@ -481,7 +483,7 @@ func TestInvitationController_GetInvitationByID_InvalidID(t *testing.T) {
 
 func TestInvitationController_InviteRunner_GroupNotFound(t *testing.T) {
 	mockSvc := &mockInvitationService{
-		inviteRunnerFn: func(ctx *gin.Context, teamID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
+		inviteRunnerFn: func(ctx *gin.Context, teamID int64, callerID int64, req *invitation.InviteRunnerRequest) (*invitation.InviteRunnerResponse, error) {
 			return nil, errors.New("el grupo no existe en este equipo")
 		},
 	}
@@ -492,6 +494,7 @@ func TestInvitationController_InviteRunner_GroupNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams/1/invite", strings.NewReader(`{"email":"juan@test.com","group_id":99}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 5)
 
 	controller.InviteRunner(c)
 

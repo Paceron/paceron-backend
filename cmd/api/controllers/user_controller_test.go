@@ -33,6 +33,7 @@ func TestUserUpdate_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -61,6 +62,21 @@ func TestUserUpdate_InvalidID(t *testing.T) {
 	assert.Equal(t, "ID de usuario inválido", result.Message)
 }
 
+func TestUserUpdate_Forbidden_NotSelf(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"name":"John Updated"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
 func TestUserUpdate_InvalidBody(t *testing.T) {
 	controller := NewUserController(mockUserService{})
 	response := httptest.NewRecorder()
@@ -68,6 +84,7 @@ func TestUserUpdate_InvalidBody(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(`{invalid json}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -88,6 +105,7 @@ func TestUserUpdate_UserNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/999", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 999)
 
 	controller.Update(c)
 
@@ -112,6 +130,7 @@ func TestUserUpdate_EmailWithoutPassword(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -133,6 +152,7 @@ func TestUserUpdate_WrongPassword(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("X-Current-Password", "wrong")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -154,6 +174,7 @@ func TestUserUpdate_EmailConflict(t *testing.T) {
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("X-Current-Password", "pass")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -183,6 +204,7 @@ func TestChangeStatus_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/status", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangeStatus(c)
 
@@ -206,6 +228,21 @@ func TestChangeStatus_InvalidID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+func TestChangeStatus_Forbidden_NotSelf(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"status":"pause"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/status", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.ChangeStatus(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
 func TestChangeStatus_InvalidStatus(t *testing.T) {
 	controller := NewUserController(mockUserService{})
 	response := httptest.NewRecorder()
@@ -214,6 +251,7 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/status", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangeStatus(c)
 
@@ -232,6 +270,7 @@ func TestChangeStatus_InvalidBody(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/status", strings.NewReader(`{invalid}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangeStatus(c)
 
@@ -252,6 +291,7 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/999/status", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 999)
 
 	controller.ChangeStatus(c)
 
@@ -285,6 +325,7 @@ func TestUserUpdate_ValidationError_EmptyName(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -303,6 +344,7 @@ func TestUserUpdate_ValidationError_InvalidEmail(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -323,6 +365,7 @@ func TestUserUpdate_BirthDateFormatError(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -347,6 +390,7 @@ func TestUserUpdate_InternalError(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -366,6 +410,7 @@ func TestChangePassword_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -386,6 +431,21 @@ func TestChangePassword_InvalidUserID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+func TestChangePassword_Forbidden_NotSelf(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	body := `{"current_password":"OldPass123","new_password":"NewPass456","confirm_password":"NewPass456"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.ChangePassword(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
 func TestChangePassword_InvalidBody(t *testing.T) {
 	controller := NewUserController(mockUserService{})
 	response := httptest.NewRecorder()
@@ -394,6 +454,7 @@ func TestChangePassword_InvalidBody(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -408,6 +469,7 @@ func TestChangePassword_PasswordMismatch(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -426,6 +488,7 @@ func TestChangePassword_WeakPassword(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -445,6 +508,7 @@ func TestChangePassword_WrongCurrentPassword(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -464,6 +528,7 @@ func TestChangePassword_UserNotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/999/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 999)
 
 	controller.ChangePassword(c)
 
@@ -483,6 +548,7 @@ func TestChangePassword_SameAsCurrent(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 
@@ -502,6 +568,7 @@ func TestChangePassword_InternalError(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/users/1/password", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.ChangePassword(c)
 

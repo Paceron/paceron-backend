@@ -16,12 +16,6 @@ import (
 )
 
 const (
-	_AuthUserID    = "auth_user_id"
-	_AuthSessionID = "auth_session_id"
-	_AuthRoles     = "auth_roles"
-)
-
-const (
 	_XrequestID  = "X-Request-Id"
 	_Flow        = "Flow"
 	_StringEmpty = ""
@@ -140,9 +134,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Set(_AuthUserID, userID)
-		c.Set(_AuthSessionID, claims.SessionID)
-		c.Set(_AuthRoles, claims.Roles)
+		c.Set(utils.AuthUserIDKey, userID)
+		c.Set(utils.AuthSessionIDKey, claims.SessionID)
+		c.Set(utils.AuthRolesKey, claims.Roles)
 		c.Next()
 	}
 }

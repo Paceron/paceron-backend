@@ -121,15 +121,15 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	assert.False(t, ctx.IsAborted())
 	assert.Equal(t, http.StatusOK, response.Code)
 
-	userID, exists := ctx.Get(_AuthUserID)
+	userID, exists := ctx.Get(utils.AuthUserIDKey)
 	assert.True(t, exists)
 	assert.Equal(t, int64(42), userID)
 
-	sessionID, exists := ctx.Get(_AuthSessionID)
+	sessionID, exists := ctx.Get(utils.AuthSessionIDKey)
 	assert.True(t, exists)
 	assert.Equal(t, "session-1", sessionID)
 
-	roles, exists := ctx.Get(_AuthRoles)
+	roles, exists := ctx.Get(utils.AuthRolesKey)
 	assert.True(t, exists)
 	assert.Equal(t, []string{"corredor", "entrenador"}, roles)
 }

@@ -9,6 +9,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/groupuser"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // GroupUserController define las operaciones HTTP para la asociación usuario-grupo.
@@ -31,7 +32,7 @@ func NewGroupUserController(groupUserService services.GroupUserServiceInterface)
 
 // AddUser godoc
 // @Summary      Agregar usuario a grupo
-// @Description  Agrega un usuario a un grupo dentro de un equipo
+// @Description  Agrega un usuario a un grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo
 // @Tags         group-users
 // @Accept       json
 // @Produce      json
@@ -40,6 +41,7 @@ func NewGroupUserController(groupUserService services.GroupUserServiceInterface)
 // @Param        body      body      groupuser.AddGroupUserRequest  true  "Usuario a agregar"
 // @Success      201   {object}  groupuser.GroupUserResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      409   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
@@ -75,7 +77,8 @@ func (guc *groupUserController) AddUser(c *gin.Context) {
 		return
 	}
 
-	response, err := guc.groupUserService.AddUser(c, teamID, groupID, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := guc.groupUserService.AddUser(c, teamID, groupID, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -87,6 +90,9 @@ func (guc *groupUserController) AddUser(c *gin.Context) {
 		} else if errMsg == "el usuario ya pertenece a este grupo" {
 			statusCode = http.StatusConflict
 			code = "Conflict"
+		} else if errMsg == "solo el entrenador puede agregar usuarios al grupo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -102,13 +108,14 @@ func (guc *groupUserController) AddUser(c *gin.Context) {
 
 // RemoveUser godoc
 // @Summary      Quitar usuario de grupo
-// @Description  Quita un usuario de un grupo (soft-delete de la asociación)
+// @Description  Quita un usuario de un grupo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
 // @Tags         group-users
 // @Produce      json
 // @Param        id       path  int  true  "Group ID"
 // @Param        user_id  path  int  true  "User ID"
 // @Success      200  {object}  groupuser.RemoveGroupUserResponse
 // @Failure      400  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
 // @Failure      404  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/groups/{id}/users/{user_id} [delete]
@@ -123,7 +130,7 @@ func (guc *groupUserController) RemoveUser(c *gin.Context) {
 		return
 	}
 
-	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	targetUserID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, apierror.APIError{
 			StatusCode: http.StatusBadRequest,
@@ -133,7 +140,8 @@ func (guc *groupUserController) RemoveUser(c *gin.Context) {
 		return
 	}
 
-	if err := guc.groupUserService.RemoveUser(c, groupID, userID); err != nil {
+	callerID, _ := utils.GetAuthUserID(c)
+	if err := guc.groupUserService.RemoveUser(c, groupID, callerID, targetUserID); err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
 		code := "Internal Server Error"
@@ -141,6 +149,9 @@ func (guc *groupUserController) RemoveUser(c *gin.Context) {
 		if errMsg == "grupo no encontrado" || errMsg == "el usuario no pertenece a este grupo" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador puede quitar a otro usuario del grupo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -156,12 +167,13 @@ func (guc *groupUserController) RemoveUser(c *gin.Context) {
 
 // GetUsersByGroup godoc
 // @Summary      Listar usuarios de un grupo
-// @Description  Devuelve todos los miembros activos de un grupo
+// @Description  Devuelve todos los miembros activos de un grupo. Solo un miembro del equipo del grupo puede consultarlo
 // @Tags         group-users
 // @Produce      json
 // @Param        id    path  int  true  "Group ID"
 // @Success      200   {array}  groupuser.GroupUserResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/groups/{id}/users [get]
@@ -176,7 +188,8 @@ func (guc *groupUserController) GetUsersByGroup(c *gin.Context) {
 		return
 	}
 
-	response, err := guc.groupUserService.GetUsersByGroup(c, groupID)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := guc.groupUserService.GetUsersByGroup(c, groupID, callerID)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -185,6 +198,9 @@ func (guc *groupUserController) GetUsersByGroup(c *gin.Context) {
 		if errMsg == "grupo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el usuario no pertenece al equipo de este grupo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

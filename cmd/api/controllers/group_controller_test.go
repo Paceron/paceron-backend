@@ -12,26 +12,27 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"simple-arq-golang/cmd/api/domains/group"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 type mockGroupService struct {
-	createFn  func(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error)
-	updateFn  func(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error)
+	createFn  func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error)
+	updateFn  func(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error)
 	deleteFn  func(ctx *gin.Context, id int64, userID int64) error
 	getByIDFn func(ctx *gin.Context, id int64) (*group.GroupResponse, error)
 	getAllFn  func(ctx *gin.Context, teamID *int64, userID *int64) ([]group.GroupResponse, error)
 }
 
-func (m *mockGroupService) Create(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
+func (m *mockGroupService) Create(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
 	if m.createFn != nil {
-		return m.createFn(ctx, req)
+		return m.createFn(ctx, callerID, req)
 	}
 	return nil, nil
 }
 
-func (m *mockGroupService) Update(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
+func (m *mockGroupService) Update(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
 	if m.updateFn != nil {
-		return m.updateFn(ctx, id, req)
+		return m.updateFn(ctx, id, callerID, req)
 	}
 	return nil, nil
 }
@@ -57,9 +58,14 @@ func (m *mockGroupService) GetAll(ctx *gin.Context, teamID *int64, userID *int64
 	return nil, nil
 }
 
+// setAuthUserID simula lo que AuthMiddleware dejaría en el contexto tras validar el token.
+func setAuthUserID(c *gin.Context, userID int64) {
+	c.Set(utils.AuthUserIDKey, userID)
+}
+
 func TestGroupController_Create_Success(t *testing.T) {
 	mockSvc := &mockGroupService{
-		createFn: func(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
+		createFn: func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
 			return &group.GroupResponse{ID: 1, Name: req.Name, TeamID: req.TeamID}, nil
 		},
 	}
@@ -70,6 +76,7 @@ func TestGroupController_Create_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/groups", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
 
 	controller.Create(c)
 
@@ -81,7 +88,7 @@ func TestGroupController_Create_Success(t *testing.T) {
 
 func TestGroupController_Create_TeamNotFound(t *testing.T) {
 	mockSvc := &mockGroupService{
-		createFn: func(ctx *gin.Context, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
+		createFn: func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
 			return nil, errors.New("el equipo no existe")
 		},
 	}
@@ -92,10 +99,31 @@ func TestGroupController_Create_TeamNotFound(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/groups", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
 
 	controller.Create(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestGroupController_Create_Forbidden(t *testing.T) {
+	mockSvc := &mockGroupService{
+		createFn: func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error) {
+			return nil, errors.New("solo el entrenador del equipo puede crear grupos")
+		},
+	}
+
+	controller := NewGroupController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"Grupo 1","team_id":1}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/groups", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 2)
+
+	controller.Create(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
 
 func TestGroupController_GetByID_Success(t *testing.T) {
@@ -126,8 +154,9 @@ func TestGroupController_Delete_Success(t *testing.T) {
 	controller := NewGroupController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Delete(c)
 
@@ -203,7 +232,7 @@ func TestGroupController_GetByID_NotFound(t *testing.T) {
 
 func TestGroupController_Update_Success(t *testing.T) {
 	mockSvc := &mockGroupService{
-		updateFn: func(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
 			name := ""
 			if req.Name != nil {
 				name = *req.Name
@@ -219,6 +248,7 @@ func TestGroupController_Update_Success(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/groups/1", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
@@ -256,7 +286,7 @@ func TestGroupController_Update_BadRequest_Body(t *testing.T) {
 
 func TestGroupController_Update_NotFound(t *testing.T) {
 	mockSvc := &mockGroupService{
-		updateFn: func(ctx *gin.Context, id int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
 			return nil, errors.New("grupo no encontrado")
 		},
 	}
@@ -268,42 +298,40 @@ func TestGroupController_Update_NotFound(t *testing.T) {
 	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/groups/999", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.Update(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
+func TestGroupController_Update_Forbidden(t *testing.T) {
+	mockSvc := &mockGroupService{
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *group.UpdateGroupRequest) (*group.GroupResponse, error) {
+			return nil, errors.New("solo el entrenador puede actualizar el grupo")
+		},
+	}
+
+	controller := NewGroupController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"Grupo Actualizado"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/groups/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
 func TestGroupController_Delete_BadRequest(t *testing.T) {
 	controller := NewGroupController(&mockGroupService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/abc?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/abc", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
-
-	controller.Delete(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestGroupController_Delete_MissingUserID(t *testing.T) {
-	controller := NewGroupController(&mockGroupService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
-
-	controller.Delete(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestGroupController_Delete_InvalidUserID(t *testing.T) {
-	controller := NewGroupController(&mockGroupService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1?user_id=abc", nil)
-	c.Params = []gin.Param{{Key: "id", Value: "1"}}
 
 	controller.Delete(c)
 
@@ -320,8 +348,9 @@ func TestGroupController_Delete_NotFound(t *testing.T) {
 	controller := NewGroupController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/999?user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/999", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.Delete(c)
 
@@ -338,8 +367,9 @@ func TestGroupController_Delete_Forbidden(t *testing.T) {
 	controller := NewGroupController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1?user_id=2", nil)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/groups/1", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
 
 	controller.Delete(c)
 
@@ -358,33 +388,11 @@ func TestGroupController_Create_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
-func TestGroupController_GetAll_TeamIDRequired_WithUserID(t *testing.T) {
-	controller := NewGroupController(&mockGroupService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=1", nil)
-
-	controller.GetAll(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestGroupController_GetAll_UserIDInvalid(t *testing.T) {
-	controller := NewGroupController(&mockGroupService{})
-	response := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=1&user_id=abc", nil)
-
-	controller.GetAll(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
 func TestGroupController_GetAll_TeamIDInvalid(t *testing.T) {
 	controller := NewGroupController(&mockGroupService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=abc&user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=abc", nil)
 
 	controller.GetAll(c)
 
@@ -401,7 +409,8 @@ func TestGroupController_GetAll_Forbidden(t *testing.T) {
 	controller := NewGroupController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=1&user_id=99", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=1", nil)
+	setAuthUserID(c, 99)
 
 	controller.GetAll(c)
 
@@ -418,7 +427,8 @@ func TestGroupController_GetAll_TeamNotFound(t *testing.T) {
 	controller := NewGroupController(mockSvc)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=999&user_id=1", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups?team_id=999", nil)
+	setAuthUserID(c, 1)
 
 	controller.GetAll(c)
 

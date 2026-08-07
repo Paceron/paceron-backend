@@ -10,6 +10,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/team"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // TeamController define las operaciones HTTP para equipos.
@@ -58,7 +59,8 @@ func (tc *teamController) Create(c *gin.Context) {
 		return
 	}
 
-	response, err := tc.teamDelegate.CreateTeam(c, &req)
+	ownerID, _ := utils.GetAuthUserID(c)
+	response, err := tc.teamDelegate.CreateTeam(c, ownerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -85,7 +87,7 @@ func (tc *teamController) Create(c *gin.Context) {
 
 // Update godoc
 // @Summary      Actualizar equipo
-// @Description  Actualiza los campos de un equipo existente
+// @Description  Actualiza los campos de un equipo existente. Solo el entrenador del equipo puede hacerlo
 // @Tags         teams
 // @Accept       json
 // @Produce      json
@@ -93,6 +95,7 @@ func (tc *teamController) Create(c *gin.Context) {
 // @Param        body  body      team.UpdateTeamRequest   true  "Campos a actualizar"
 // @Success      200   {object}  team.TeamResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/teams/{id} [put]
@@ -117,7 +120,8 @@ func (tc *teamController) Update(c *gin.Context) {
 		return
 	}
 
-	response, err := tc.teamService.Update(c, id, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := tc.teamService.Update(c, id, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -126,6 +130,9 @@ func (tc *teamController) Update(c *gin.Context) {
 		if errMsg == "equipo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador puede actualizar el equipo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -144,8 +151,7 @@ func (tc *teamController) Update(c *gin.Context) {
 // @Description  Elimina lógicamente un equipo. Solo el entrenador puede hacerlo y no debe tener miembros
 // @Tags         teams
 // @Produce      json
-// @Param        id       path  int  true  "Team ID"
-// @Param        user_id  query int  true  "ID del usuario (debe ser entrenador)"
+// @Param        id  path  int  true  "Team ID"
 // @Success      200   {object}  team.DeleteTeamResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      403   {object}  apierror.APIError
@@ -163,24 +169,7 @@ func (tc *teamController) Delete(c *gin.Context) {
 		return
 	}
 
-	uid := c.Query("user_id")
-	if uid == "" {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id es requerido",
-		})
-		return
-	}
-	userID, err := strconv.ParseInt(uid, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id debe ser un número válido",
-		})
-		return
-	}
+	userID, _ := utils.GetAuthUserID(c)
 
 	if err := tc.teamService.Delete(c, id, userID); err != nil {
 		errMsg := err.Error()
@@ -309,7 +298,7 @@ func (tc *teamController) GetAll(c *gin.Context) {
 
 // UpdateAddress godoc
 // @Summary      Actualizar dirección del equipo
-// @Description  Actualiza la dirección de un equipo mediante un endpoint dedicado
+// @Description  Actualiza la dirección de un equipo mediante un endpoint dedicado. Solo el entrenador del equipo puede hacerlo
 // @Tags         teams
 // @Accept       json
 // @Produce      json
@@ -317,6 +306,7 @@ func (tc *teamController) GetAll(c *gin.Context) {
 // @Param        body  body      team.UpdateTeamAddressRequest   true  "Dirección del equipo"
 // @Success      200   {object}  team.TeamResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/teams/{id}/address [put]
@@ -341,7 +331,8 @@ func (tc *teamController) UpdateAddress(c *gin.Context) {
 		return
 	}
 
-	response, err := tc.teamService.UpdateAddress(c, id, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := tc.teamService.UpdateAddress(c, id, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -350,6 +341,9 @@ func (tc *teamController) UpdateAddress(c *gin.Context) {
 		if errMsg == "equipo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador puede actualizar el equipo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

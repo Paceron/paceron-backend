@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@example.com"
+            "email": "dev@paceron.com"
         },
         "license": {
             "name": "MIT",
@@ -43,7 +43,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest"
+                            "$ref": "#/definitions/auth.ForgotPasswordRequest"
                         }
                     }
                 ],
@@ -51,13 +51,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse"
+                            "$ref": "#/definitions/auth.ForgotPasswordResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -83,7 +83,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginRequest"
+                            "$ref": "#/definitions/auth.LoginRequest"
                         }
                     }
                 ],
@@ -91,25 +91,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginResponse"
+                            "$ref": "#/definitions/auth.LoginResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -135,7 +135,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutRequest"
+                            "$ref": "#/definitions/auth.LogoutRequest"
                         }
                     }
                 ],
@@ -143,19 +143,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutResponse"
+                            "$ref": "#/definitions/auth.LogoutResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -184,25 +184,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_services.PermissionsQueryResponse"
+                            "$ref": "#/definitions/services.PermissionsQueryResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -228,7 +228,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshRequest"
+                            "$ref": "#/definitions/auth.RefreshRequest"
                         }
                     }
                 ],
@@ -236,25 +236,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshResponse"
+                            "$ref": "#/definitions/auth.RefreshResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -280,7 +280,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.RegisterRequest"
+                            "$ref": "#/definitions/auth.RegisterRequest"
                         }
                     }
                 ],
@@ -288,25 +288,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
+                            "$ref": "#/definitions/auth.UserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -332,7 +332,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest"
+                            "$ref": "#/definitions/auth.ResetPasswordRequest"
                         }
                     }
                 ],
@@ -340,19 +340,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse"
+                            "$ref": "#/definitions/auth.ResetPasswordResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -389,25 +389,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
+                            "$ref": "#/definitions/auth.UserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -415,7 +415,7 @@ const docTemplate = `{
         },
         "/api/v1/groups": {
             "get": {
-                "description": "Devuelve los grupos de un equipo. Requiere user_id para validar membresía",
+                "description": "Devuelve los grupos de un equipo. Si se filtra por team_id, valida que el usuario autenticado sea miembro",
                 "produces": [
                     "application/json"
                 ],
@@ -428,15 +428,7 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "ID del equipo",
                         "name": "team_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (valida membresía)",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -445,38 +437,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse"
+                                "$ref": "#/definitions/group.GroupResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
             },
             "post": {
-                "description": "Crea un nuevo grupo dentro de un equipo",
+                "description": "Crea un nuevo grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -494,7 +486,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.CreateGroupRequest"
+                            "$ref": "#/definitions/group.CreateGroupRequest"
                         }
                     }
                 ],
@@ -502,25 +494,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse"
+                            "$ref": "#/definitions/group.GroupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -549,31 +547,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse"
+                            "$ref": "#/definitions/group.GroupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
             },
             "put": {
-                "description": "Actualiza los campos de un grupo existente",
+                "description": "Actualiza los campos de un grupo existente. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -598,7 +596,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.UpdateGroupRequest"
+                            "$ref": "#/definitions/group.UpdateGroupRequest"
                         }
                     }
                 ],
@@ -606,25 +604,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse"
+                            "$ref": "#/definitions/group.GroupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -645,44 +649,37 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (debe ser entrenador del equipo)",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_group.DeleteGroupResponse"
+                            "$ref": "#/definitions/group.DeleteGroupResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -690,7 +687,7 @@ const docTemplate = `{
         },
         "/api/v1/groups/{id}/users": {
             "get": {
-                "description": "Devuelve todos los miembros activos de un grupo",
+                "description": "Devuelve todos los miembros activos de un grupo. Solo un miembro del equipo del grupo puede consultarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -713,26 +710,32 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse"
+                                "$ref": "#/definitions/groupuser.GroupUserResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -740,7 +743,7 @@ const docTemplate = `{
         },
         "/api/v1/groups/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un grupo (soft-delete de la asociación)",
+                "description": "Quita un usuario de un grupo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
                 "produces": [
                     "application/json"
                 ],
@@ -768,25 +771,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_groupuser.RemoveGroupUserResponse"
+                            "$ref": "#/definitions/groupuser.RemoveGroupUserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -794,7 +803,7 @@ const docTemplate = `{
         },
         "/api/v1/invitations": {
             "get": {
-                "description": "Devuelve las invitaciones pendientes (no vencidas) de un usuario, sin importar el equipo",
+                "description": "Devuelve las invitaciones pendientes (no vencidas) del usuario autenticado, sin importar el equipo",
                 "produces": [
                     "application/json"
                 ],
@@ -802,35 +811,20 @@ const docTemplate = `{
                     "invitations"
                 ],
                 "summary": "Listar mis invitaciones pendientes",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "User ID",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
+                                "$ref": "#/definitions/invitation.InvitationResponse"
                             }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -838,7 +832,7 @@ const docTemplate = `{
         },
         "/api/v1/invitations/{id}": {
             "get": {
-                "description": "Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario que consulta",
+                "description": "Devuelve el detalle de una invitación puntual, validando que pertenezca al usuario autenticado",
                 "produces": [
                     "application/json"
                 ],
@@ -853,44 +847,37 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "User ID (debe coincidir con el invitado)",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
+                            "$ref": "#/definitions/invitation.InvitationResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -899,9 +886,6 @@ const docTemplate = `{
         "/api/v1/invitations/{id}/accept": {
             "post": {
                 "description": "El usuario invitado acepta la invitación y queda como corredor del equipo",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -916,52 +900,43 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "ID del usuario que responde",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest"
-                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse"
+                            "$ref": "#/definitions/invitation.RespondInvitationResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -970,9 +945,6 @@ const docTemplate = `{
         "/api/v1/invitations/{id}/reject": {
             "post": {
                 "description": "El usuario invitado rechaza la invitación",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -987,52 +959,43 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "ID del usuario que responde",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest"
-                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse"
+                            "$ref": "#/definitions/invitation.RespondInvitationResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1054,14 +1017,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                                "$ref": "#/definitions/permission.PermissionResponse"
                             }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1085,7 +1048,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest"
+                            "$ref": "#/definitions/permission.CreatePermissionRequest"
                         }
                     }
                 ],
@@ -1093,25 +1056,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                            "$ref": "#/definitions/permission.PermissionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1140,19 +1103,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                            "$ref": "#/definitions/permission.PermissionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1181,19 +1144,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                            "$ref": "#/definitions/permission.PermissionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1224,7 +1187,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest"
+                            "$ref": "#/definitions/permission.UpdatePermissionRequest"
                         }
                     }
                 ],
@@ -1232,31 +1195,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse"
+                            "$ref": "#/definitions/permission.PermissionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1283,19 +1246,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse"
+                            "$ref": "#/definitions/permission.DeletePermissionResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1317,14 +1280,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                                "$ref": "#/definitions/role.RoleResponse"
                             }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1348,7 +1311,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.CreateRoleRequest"
+                            "$ref": "#/definitions/role.CreateRoleRequest"
                         }
                     }
                 ],
@@ -1356,25 +1319,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                            "$ref": "#/definitions/role.RoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1403,19 +1366,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                            "$ref": "#/definitions/role.RoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1444,19 +1407,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                            "$ref": "#/definitions/role.RoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1487,7 +1450,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest"
+                            "$ref": "#/definitions/role.UpdateRoleRequest"
                         }
                     }
                 ],
@@ -1495,31 +1458,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse"
+                            "$ref": "#/definitions/role.RoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1546,19 +1509,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse"
+                            "$ref": "#/definitions/role.DeleteRoleResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1594,20 +1557,20 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
+                                "$ref": "#/definitions/team.TeamResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1631,7 +1594,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.CreateTeamRequest"
+                            "$ref": "#/definitions/team.CreateTeamRequest"
                         }
                     }
                 ],
@@ -1639,25 +1602,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
+                            "$ref": "#/definitions/team.TeamResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1686,31 +1649,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
+                            "$ref": "#/definitions/team.TeamResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
             },
             "put": {
-                "description": "Actualiza los campos de un equipo existente",
+                "description": "Actualiza los campos de un equipo existente. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1735,7 +1698,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.UpdateTeamRequest"
+                            "$ref": "#/definitions/team.UpdateTeamRequest"
                         }
                     }
                 ],
@@ -1743,25 +1706,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
+                            "$ref": "#/definitions/team.TeamResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1782,44 +1751,37 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "ID del usuario (debe ser entrenador)",
-                        "name": "user_id",
-                        "in": "query",
-                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.DeleteTeamResponse"
+                            "$ref": "#/definitions/team.DeleteTeamResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1827,7 +1789,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/address": {
             "put": {
-                "description": "Actualiza la dirección de un equipo mediante un endpoint dedicado",
+                "description": "Actualiza la dirección de un equipo mediante un endpoint dedicado. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1852,7 +1814,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.UpdateTeamAddressRequest"
+                            "$ref": "#/definitions/team.UpdateTeamAddressRequest"
                         }
                     }
                 ],
@@ -1860,25 +1822,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse"
+                            "$ref": "#/definitions/team.TeamResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1886,7 +1854,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/groups/{group_id}/users": {
             "post": {
-                "description": "Agrega un usuario a un grupo dentro de un equipo",
+                "description": "Agrega un usuario a un grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -1918,7 +1886,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_groupuser.AddGroupUserRequest"
+                            "$ref": "#/definitions/groupuser.AddGroupUserRequest"
                         }
                     }
                 ],
@@ -1926,31 +1894,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse"
+                            "$ref": "#/definitions/groupuser.GroupUserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -1958,7 +1932,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/invitations": {
             "get": {
-                "description": "Devuelve las invitaciones pendientes (no vencidas) de un equipo",
+                "description": "Devuelve las invitaciones pendientes (no vencidas) de un equipo. Solo el entrenador del equipo puede verlas",
                 "produces": [
                     "application/json"
                 ],
@@ -1981,26 +1955,32 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse"
+                                "$ref": "#/definitions/invitation.InvitationResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2008,7 +1988,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/invite": {
             "post": {
-                "description": "Envía una invitación por email a un usuario existente para unirlo a un equipo",
+                "description": "Envía una invitación por email a un usuario existente para unirlo a un equipo. Solo el entrenador del equipo puede invitar",
                 "consumes": [
                     "application/json"
                 ],
@@ -2033,7 +2013,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest"
+                            "$ref": "#/definitions/invitation.InviteRunnerRequest"
                         }
                     }
                 ],
@@ -2041,31 +2021,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse"
+                            "$ref": "#/definitions/invitation.InviteRunnerResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2073,7 +2059,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/users": {
             "get": {
-                "description": "Devuelve todos los miembros activos de un equipo",
+                "description": "Devuelve todos los miembros activos de un equipo. Solo otro miembro del equipo puede consultarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -2096,32 +2082,38 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse"
+                                "$ref": "#/definitions/teamuser.TeamUserResponse"
                             }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
             },
             "post": {
-                "description": "Agrega un usuario a un equipo con un rol específico",
+                "description": "Agrega un usuario a un equipo con un rol específico. Solo el entrenador del equipo puede hacerlo",
                 "consumes": [
                     "application/json"
                 ],
@@ -2146,7 +2138,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest"
+                            "$ref": "#/definitions/teamuser.AddTeamUserRequest"
                         }
                     }
                 ],
@@ -2154,31 +2146,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse"
+                            "$ref": "#/definitions/teamuser.TeamUserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2186,7 +2184,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un equipo (soft-delete de la asociación)",
+                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
                 "produces": [
                     "application/json"
                 ],
@@ -2214,25 +2212,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamuser.RemoveTeamUserResponse"
+                            "$ref": "#/definitions/teamuser.RemoveTeamUserResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2254,14 +2258,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                                "$ref": "#/definitions/tier.TierResponse"
                             }
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2285,7 +2289,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.CreateTierRequest"
+                            "$ref": "#/definitions/tier.CreateTierRequest"
                         }
                     }
                 ],
@@ -2293,31 +2297,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                            "$ref": "#/definitions/tier.TierResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2346,19 +2350,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                            "$ref": "#/definitions/tier.TierResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2387,19 +2391,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                            "$ref": "#/definitions/tier.TierResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2430,7 +2434,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest"
+                            "$ref": "#/definitions/tier.UpdateTierRequest"
                         }
                     }
                 ],
@@ -2438,31 +2442,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
+                            "$ref": "#/definitions/tier.TierResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2489,19 +2493,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse"
+                            "$ref": "#/definitions/tier.DeleteTierResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2534,7 +2538,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest"
+                            "$ref": "#/definitions/tierpermission.AssignPermissionRequest"
                         }
                     }
                 ],
@@ -2542,31 +2546,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse"
+                            "$ref": "#/definitions/tierpermission.TierPermissionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2602,19 +2606,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse"
+                            "$ref": "#/definitions/tierpermission.DeleteTierPermissionResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2622,7 +2626,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}": {
             "put": {
-                "description": "Update user attributes (all fields except id, status). Email change requires X-Current-Password header.",
+                "description": "Update user attributes (all fields except id, status). Email change requires X-Current-Password header. Only the user itself can update its own data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2653,7 +2657,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateRequest"
+                            "$ref": "#/definitions/user.UserUpdateRequest"
                         }
                     }
                 ],
@@ -2661,37 +2665,43 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse"
+                            "$ref": "#/definitions/user.UserUpdateResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2699,7 +2709,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/password": {
             "patch": {
-                "description": "Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow.",
+                "description": "Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow. Only the user itself can change its own password.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2724,7 +2734,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest"
+                            "$ref": "#/definitions/user.ChangePasswordRequest"
                         }
                     }
                 ],
@@ -2732,31 +2742,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse"
+                            "$ref": "#/definitions/user.ChangePasswordResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2764,7 +2780,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/roles": {
             "post": {
-                "description": "Assigns a role to a user with optional tier (default: \"base\")",
+                "description": "Assigns a role to yourself, with optional tier (default: \"base\"). Self only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2789,7 +2805,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest"
+                            "$ref": "#/definitions/userrole.AssignRoleRequest"
                         }
                     }
                 ],
@@ -2797,31 +2813,37 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse"
+                            "$ref": "#/definitions/userrole.UserRoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2829,7 +2851,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/roles/{role_id}": {
             "delete": {
-                "description": "Soft-deletes the active role assignment for a user, identified by role_id",
+                "description": "Soft-deletes your own active role assignment, identified by role_id. Self only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2860,25 +2882,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse"
+                            "$ref": "#/definitions/userrole.RemoveRoleResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2886,7 +2914,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/status": {
             "patch": {
-                "description": "Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended.",
+                "description": "Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended. Only the user itself can change its own status.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2911,7 +2939,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.StatusChangeRequest"
+                            "$ref": "#/definitions/user.StatusChangeRequest"
                         }
                     }
                 ],
@@ -2919,25 +2947,165 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse"
+                            "$ref": "#/definitions/user.UserUpdateResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/trainer-role": {
+            "post": {
+                "description": "Activa el rol entrenador del usuario autenticado sobre sí mismo. Exige confirmar la contraseña actual y un alias bancario válido (propio o recién provisto)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Activar rol entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Contraseña actual y alias bancario",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/userrole.ActivateEntrenadorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/userrole.UserRoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Desactiva el rol entrenador del usuario autenticado sobre sí mismo. Bloqueado mientras lidere equipos activos",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Desactivar rol entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/userrole.RemoveRoleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
                         }
                     }
                 }
@@ -2962,7 +3130,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "simple-arq-golang_cmd_api_domains_apierror.APIError": {
+        "apierror.APIError": {
             "type": "object",
             "properties": {
                 "code": {
@@ -2976,7 +3144,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest": {
+        "auth.ForgotPasswordRequest": {
             "type": "object",
             "required": [
                 "email"
@@ -2987,7 +3155,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse": {
+        "auth.ForgotPasswordResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -2995,7 +3163,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.LoginRequest": {
+        "auth.LoginRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -3010,7 +3178,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.LoginResponse": {
+        "auth.LoginResponse": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -3023,11 +3191,11 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
-                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse"
+                    "$ref": "#/definitions/auth.UserResponse"
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.LogoutRequest": {
+        "auth.LogoutRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -3038,7 +3206,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.LogoutResponse": {
+        "auth.LogoutResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3046,7 +3214,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.RefreshRequest": {
+        "auth.RefreshRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -3057,7 +3225,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.RefreshResponse": {
+        "auth.RefreshResponse": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -3071,7 +3239,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.RegisterRequest": {
+        "auth.RegisterRequest": {
             "type": "object",
             "required": [
                 "birth_date",
@@ -3123,7 +3291,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest": {
+        "auth.ResetPasswordRequest": {
             "type": "object",
             "required": [
                 "code",
@@ -3146,7 +3314,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse": {
+        "auth.ResetPasswordResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3154,7 +3322,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_auth.UserResponse": {
+        "auth.UserResponse": {
             "type": "object",
             "properties": {
                 "bank_alias": {
@@ -3204,7 +3372,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_group.CreateGroupRequest": {
+        "group.CreateGroupRequest": {
             "type": "object",
             "required": [
                 "name",
@@ -3229,7 +3397,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_group.DeleteGroupResponse": {
+        "group.DeleteGroupResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3238,7 +3406,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_group.GroupResponse": {
+        "group.GroupResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3271,7 +3439,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_group.UpdateGroupRequest": {
+        "group.UpdateGroupRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3288,7 +3456,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_groupuser.AddGroupUserRequest": {
+        "groupuser.AddGroupUserRequest": {
             "type": "object",
             "required": [
                 "user_id"
@@ -3308,7 +3476,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse": {
+        "groupuser.GroupUserResponse": {
             "type": "object",
             "properties": {
                 "date_end": {
@@ -3333,7 +3501,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_groupuser.RemoveGroupUserResponse": {
+        "groupuser.RemoveGroupUserResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3342,7 +3510,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_invitation.InvitationResponse": {
+        "invitation.InvitationResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3383,7 +3551,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest": {
+        "invitation.InviteRunnerRequest": {
             "type": "object",
             "required": [
                 "email"
@@ -3399,7 +3567,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse": {
+        "invitation.InviteRunnerResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3408,19 +3576,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest": {
-            "type": "object",
-            "required": [
-                "user_id"
-            ],
-            "properties": {
-                "user_id": {
-                    "description": "ID del usuario invitado que responde (requerido)",
-                    "type": "integer"
-                }
-            }
-        },
-        "simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse": {
+        "invitation.RespondInvitationResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3429,7 +3585,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest": {
+        "permission.CreatePermissionRequest": {
             "type": "object",
             "required": [
                 "name"
@@ -3445,7 +3601,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse": {
+        "permission.DeletePermissionResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3454,7 +3610,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_permission.PermissionResponse": {
+        "permission.PermissionResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3479,7 +3635,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest": {
+        "permission.UpdatePermissionRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3492,7 +3648,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_role.CreateRoleRequest": {
+        "role.CreateRoleRequest": {
             "type": "object",
             "required": [
                 "name"
@@ -3508,7 +3664,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse": {
+        "role.DeleteRoleResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3517,7 +3673,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_role.RoleResponse": {
+        "role.RoleResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3542,7 +3698,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest": {
+        "role.UpdateRoleRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3555,12 +3711,45 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_team.CreateTeamRequest": {
+        "services.PermissionsQueryResponse": {
+            "type": "object",
+            "properties": {
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/services.RolePermission"
+                    }
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "services.RolePermission": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tier": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.CreateTeamRequest": {
             "type": "object",
             "required": [
                 "max_members",
-                "name",
-                "owner_id"
+                "name"
             ],
             "properties": {
                 "create_default_group": {
@@ -3583,10 +3772,6 @@ const docTemplate = `{
                     "description": "Nombre del equipo (requerido)",
                     "type": "string"
                 },
-                "owner_id": {
-                    "description": "ID del usuario owner (requerido, debe tener rol entrenador)",
-                    "type": "integer"
-                },
                 "requirements": {
                     "description": "Requerimientos para entrar (opcional)",
                     "type": "string"
@@ -3597,7 +3782,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_team.DeleteTeamResponse": {
+        "team.DeleteTeamResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3606,7 +3791,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_team.TeamResponse": {
+        "team.TeamResponse": {
             "type": "object",
             "properties": {
                 "city": {
@@ -3675,7 +3860,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_team.UpdateTeamAddressRequest": {
+        "team.UpdateTeamAddressRequest": {
             "type": "object",
             "properties": {
                 "city": {
@@ -3700,7 +3885,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_team.UpdateTeamRequest": {
+        "team.UpdateTeamRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3729,7 +3914,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest": {
+        "teamuser.AddTeamUserRequest": {
             "type": "object",
             "required": [
                 "role_in_team",
@@ -3746,7 +3931,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_teamuser.RemoveTeamUserResponse": {
+        "teamuser.RemoveTeamUserResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3755,7 +3940,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse": {
+        "teamuser.TeamUserResponse": {
             "type": "object",
             "properties": {
                 "assignment_date": {
@@ -3784,7 +3969,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tier.CreateTierRequest": {
+        "tier.CreateTierRequest": {
             "type": "object",
             "required": [
                 "name",
@@ -3805,7 +3990,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse": {
+        "tier.DeleteTierResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3814,7 +3999,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tier.TierResponse": {
+        "tier.TierResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3847,7 +4032,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest": {
+        "tier.UpdateTierRequest": {
             "type": "object",
             "properties": {
                 "description": {
@@ -3860,7 +4045,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest": {
+        "tierpermission.AssignPermissionRequest": {
             "type": "object",
             "required": [
                 "permission_id"
@@ -3872,7 +4057,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse": {
+        "tierpermission.DeleteTierPermissionResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3881,7 +4066,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse": {
+        "tierpermission.TierPermissionResponse": {
             "type": "object",
             "properties": {
                 "asignation_date": {
@@ -3902,7 +4087,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest": {
+        "user.ChangePasswordRequest": {
             "type": "object",
             "required": [
                 "confirm_password",
@@ -3921,7 +4106,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse": {
+        "user.ChangePasswordResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3929,7 +4114,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_user.StatusChangeRequest": {
+        "user.StatusChangeRequest": {
             "type": "object",
             "required": [
                 "status"
@@ -3940,7 +4125,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_user.UserUpdateRequest": {
+        "user.UserUpdateRequest": {
             "type": "object",
             "properties": {
                 "bank_alias": {
@@ -3984,7 +4169,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_user.UserUpdateResponse": {
+        "user.UserUpdateResponse": {
             "type": "object",
             "properties": {
                 "bank_alias": {
@@ -4034,7 +4219,23 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest": {
+        "userrole.ActivateEntrenadorRequest": {
+            "type": "object",
+            "required": [
+                "password"
+            ],
+            "properties": {
+                "bank_alias": {
+                    "description": "Alias bancario (requerido si el usuario no tiene uno ya guardado)",
+                    "type": "string"
+                },
+                "password": {
+                    "description": "Contraseña actual, confirma que es una acción deliberada del dueño de la cuenta",
+                    "type": "string"
+                }
+            }
+        },
+        "userrole.AssignRoleRequest": {
             "type": "object",
             "required": [
                 "role_id"
@@ -4050,7 +4251,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse": {
+        "userrole.RemoveRoleResponse": {
             "type": "object",
             "properties": {
                 "message": {
@@ -4059,7 +4260,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse": {
+        "userrole.UserRoleResponse": {
             "type": "object",
             "properties": {
                 "assignment_date": {
@@ -4087,52 +4288,18 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
-        },
-        "simple-arq-golang_cmd_api_services.PermissionsQueryResponse": {
-            "type": "object",
-            "properties": {
-                "roles": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/simple-arq-golang_cmd_api_services.RolePermission"
-                    }
-                },
-                "user_id": {
-                    "type": "integer"
-                }
-            }
-        },
-        "simple-arq-golang_cmd_api_services.RolePermission": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "permissions": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "tier": {
-                    "type": "string"
-                }
-            }
         }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0.0",
+	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Simple Arq Golang API",
-	Description:      "Base scaffolding for Go APIs with Gin framework",
+	Title:            "Paceron Backend API",
+	Description:      "API para el registro y gestión de usuarios de Paceron",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

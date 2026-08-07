@@ -9,6 +9,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/group"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // GroupController define las operaciones HTTP para grupos.
@@ -33,13 +34,14 @@ func NewGroupController(groupService services.GroupServiceInterface) GroupContro
 
 // Create godoc
 // @Summary      Crear grupo
-// @Description  Crea un nuevo grupo dentro de un equipo
+// @Description  Crea un nuevo grupo dentro de un equipo. Solo el entrenador del equipo puede hacerlo
 // @Tags         groups
 // @Accept       json
 // @Produce      json
 // @Param        body  body      group.CreateGroupRequest  true  "Datos del grupo"
 // @Success      201   {object}  group.GroupResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/groups [post]
@@ -54,7 +56,8 @@ func (gc *groupController) Create(c *gin.Context) {
 		return
 	}
 
-	response, err := gc.groupService.Create(c, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := gc.groupService.Create(c, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -63,6 +66,9 @@ func (gc *groupController) Create(c *gin.Context) {
 		if errMsg == "el equipo no existe" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador del equipo puede crear grupos" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -78,7 +84,7 @@ func (gc *groupController) Create(c *gin.Context) {
 
 // Update godoc
 // @Summary      Actualizar grupo
-// @Description  Actualiza los campos de un grupo existente
+// @Description  Actualiza los campos de un grupo existente. Solo el entrenador del equipo puede hacerlo
 // @Tags         groups
 // @Accept       json
 // @Produce      json
@@ -86,6 +92,7 @@ func (gc *groupController) Create(c *gin.Context) {
 // @Param        body  body      group.UpdateGroupRequest  true  "Campos a actualizar"
 // @Success      200   {object}  group.GroupResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/groups/{id} [put]
@@ -110,7 +117,8 @@ func (gc *groupController) Update(c *gin.Context) {
 		return
 	}
 
-	response, err := gc.groupService.Update(c, id, &req)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := gc.groupService.Update(c, id, callerID, &req)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -119,6 +127,9 @@ func (gc *groupController) Update(c *gin.Context) {
 		if errMsg == "grupo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "solo el entrenador puede actualizar el grupo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -137,8 +148,7 @@ func (gc *groupController) Update(c *gin.Context) {
 // @Description  Elimina lógicamente un grupo. Solo el entrenador del equipo puede hacerlo
 // @Tags         groups
 // @Produce      json
-// @Param        id       path  int  true  "Group ID"
-// @Param        user_id  query int  true  "ID del usuario (debe ser entrenador del equipo)"
+// @Param        id  path  int  true  "Group ID"
 // @Success      200   {object}  group.DeleteGroupResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      403   {object}  apierror.APIError
@@ -156,24 +166,7 @@ func (gc *groupController) Delete(c *gin.Context) {
 		return
 	}
 
-	uid := c.Query("user_id")
-	if uid == "" {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id es requerido",
-		})
-		return
-	}
-	userID, err := strconv.ParseInt(uid, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id debe ser un número válido",
-		})
-		return
-	}
+	userID, _ := utils.GetAuthUserID(c)
 
 	if err := gc.groupService.Delete(c, id, userID); err != nil {
 		errMsg := err.Error()
@@ -245,11 +238,10 @@ func (gc *groupController) GetByID(c *gin.Context) {
 
 // GetAll godoc
 // @Summary      Listar grupos de un equipo
-// @Description  Devuelve los grupos de un equipo. Requiere user_id para validar membresía
+// @Description  Devuelve los grupos de un equipo. Si se filtra por team_id, valida que el usuario autenticado sea miembro
 // @Tags         groups
 // @Produce      json
-// @Param        team_id  query     int  true   "ID del equipo"
-// @Param        user_id  query     int  true   "ID del usuario (valida membresía)"
+// @Param        team_id  query     int  false  "ID del equipo"
 // @Success      200  {array}   group.GroupResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      403  {object}  apierror.APIError
@@ -271,28 +263,9 @@ func (gc *groupController) GetAll(c *gin.Context) {
 			return
 		}
 		teamID = &parsed
-	}
 
-	if uid := c.Query("user_id"); uid != "" {
-		parsed, err := strconv.ParseInt(uid, 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, apierror.APIError{
-				StatusCode: http.StatusBadRequest,
-				Code:       "Bad request",
-				Message:    "user_id debe ser un número válido",
-			})
-			return
-		}
-		userID = &parsed
-	}
-
-	if teamID != nil && userID == nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "user_id es requerido cuando se filtra por team_id",
-		})
-		return
+		authUserID, _ := utils.GetAuthUserID(c)
+		userID = &authUserID
 	}
 
 	response, err := gc.groupService.GetAll(c, teamID, userID)

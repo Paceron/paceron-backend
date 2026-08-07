@@ -2,7 +2,10 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gin-gonic/gin"
 
@@ -21,6 +24,8 @@ const protectedRoleName = "corredor"
 type UserRoleServiceInterface interface {
 	AssignRole(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error)
 	RemoveRole(ctx *gin.Context, userID, roleID int64) error
+	ActivateEntrenador(ctx *gin.Context, userID int64, req *userrole.ActivateEntrenadorRequest) (*userrole.UserRoleResponse, error)
+	DeactivateEntrenador(ctx *gin.Context, userID int64) error
 }
 
 type userRoleService struct {
@@ -28,6 +33,7 @@ type userRoleService struct {
 	roleDao     daos.RoleDaoInterface
 	tierDao     daos.TierDaoInterface
 	userDao     daos.UserDaoInterface
+	teamUserDao daos.TeamUserDaoInterface
 }
 
 func NewUserRoleService(
@@ -35,12 +41,14 @@ func NewUserRoleService(
 	roleDao daos.RoleDaoInterface,
 	tierDao daos.TierDaoInterface,
 	userDao daos.UserDaoInterface,
+	teamUserDao daos.TeamUserDaoInterface,
 ) UserRoleServiceInterface {
 	return &userRoleService{
 		userRoleDao: userRoleDao,
 		roleDao:     roleDao,
 		tierDao:     tierDao,
 		userDao:     userDao,
+		teamUserDao: teamUserDao,
 	}
 }
 
@@ -183,4 +191,108 @@ func (s *userRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) err
 		customlogger.TagMethod("RemoveRole"))
 
 	return nil
+}
+
+// ActivateEntrenador activa el rol "entrenador" del usuario autenticado sobre sí mismo.
+// Exige confirmar la contraseña actual (evita que un token robado alcance para
+// auto-promoverse) y un alias bancario válido, propio o recién provisto — internamente
+// reutiliza AssignRole para no duplicar la lógica de tier por defecto.
+func (s *userRoleService) ActivateEntrenador(ctx *gin.Context, userID int64, req *userrole.ActivateEntrenadorRequest) (*userrole.UserRoleResponse, error) {
+	userDB, err := s.userDao.FindByID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding user for entrenador activation", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("ActivateEntrenador"))
+		return nil, fmt.Errorf("error al activar rol entrenador")
+	}
+	if userDB == nil {
+		return nil, fmt.Errorf("usuario no encontrado")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(userDB.Password), []byte(req.Password)); err != nil {
+		customlogger.Warn(ctx, "invalid current password for entrenador activation",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)))
+		return nil, fmt.Errorf("contraseña actual incorrecta")
+	}
+
+	bankAlias := userDB.BankAlias
+	if req.BankAlias != nil {
+		trimmed := strings.TrimSpace(*req.BankAlias)
+		if !bankAliasRegex.MatchString(trimmed) {
+			return nil, fmt.Errorf(bankAliasFormatError)
+		}
+		bankAlias = &trimmed
+	}
+	if bankAlias == nil || *bankAlias == "" {
+		return nil, fmt.Errorf("se requiere un alias bancario para activar el rol entrenador")
+	}
+
+	role, err := s.roleDao.FindByName(ctx, teamOwnerRoleName)
+	if err != nil {
+		customlogger.Error(ctx, "error finding entrenador role", err,
+			customlogger.TagMethod("ActivateEntrenador"))
+		return nil, fmt.Errorf("error al activar rol entrenador")
+	}
+	if role == nil {
+		customlogger.Error(ctx, "entrenador role not found in catalog", nil,
+			customlogger.TagMethod("ActivateEntrenador"))
+		return nil, fmt.Errorf("error al activar rol entrenador")
+	}
+
+	if req.BankAlias != nil {
+		userDB.BankAlias = bankAlias
+		if err := s.userDao.Update(ctx, userDB); err != nil {
+			customlogger.Error(ctx, "error saving bank alias for entrenador activation", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.TagMethod("ActivateEntrenador"))
+			return nil, fmt.Errorf("error al activar rol entrenador")
+		}
+	}
+
+	return s.AssignRole(ctx, userID, &userrole.AssignRoleRequest{RoleID: role.ID})
+}
+
+// DeactivateEntrenador desactiva el rol "entrenador" del usuario autenticado sobre sí
+// mismo. Bloquea la desactivación si todavía lidera algún equipo activo (mismo criterio
+// que team_service.Delete con "no se puede eliminar un equipo con miembros activos") —
+// primero debe transferir o eliminar esos equipos.
+func (s *userRoleService) DeactivateEntrenador(ctx *gin.Context, userID int64) error {
+	role, err := s.roleDao.FindByName(ctx, teamOwnerRoleName)
+	if err != nil {
+		customlogger.Error(ctx, "error finding entrenador role", err,
+			customlogger.TagMethod("DeactivateEntrenador"))
+		return fmt.Errorf("error al desactivar rol entrenador")
+	}
+	if role == nil {
+		customlogger.Error(ctx, "entrenador role not found in catalog", nil,
+			customlogger.TagMethod("DeactivateEntrenador"))
+		return fmt.Errorf("error al desactivar rol entrenador")
+	}
+
+	leadsActiveTeam, err := s.leadsAnyActiveTeam(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking active team leadership", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("DeactivateEntrenador"))
+		return fmt.Errorf("error al desactivar rol entrenador")
+	}
+	if leadsActiveTeam {
+		return fmt.Errorf("no podés desactivar el rol entrenador mientras lideres equipos activos")
+	}
+
+	return s.RemoveRole(ctx, userID, role.ID)
+}
+
+// leadsAnyActiveTeam indica si el usuario es entrenador (RoleInTeam) de algún equipo activo.
+func (s *userRoleService) leadsAnyActiveTeam(ctx *gin.Context, userID int64) (bool, error) {
+	teamUsers, err := s.teamUserDao.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, tu := range teamUsers {
+		if tu.RoleInTeam == teamOwnerRoleName {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  simple-arq-golang_cmd_api_domains_apierror.APIError:
+  apierror.APIError:
     properties:
       code:
         type: string
@@ -9,19 +9,19 @@ definitions:
       status_code:
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest:
+  auth.ForgotPasswordRequest:
     properties:
       email:
         type: string
     required:
     - email
     type: object
-  simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse:
+  auth.ForgotPasswordResponse:
     properties:
       message:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_auth.LoginRequest:
+  auth.LoginRequest:
     properties:
       email:
         type: string
@@ -31,7 +31,7 @@ definitions:
     - email
     - password
     type: object
-  simple-arq-golang_cmd_api_domains_auth.LoginResponse:
+  auth.LoginResponse:
     properties:
       access_token:
         type: string
@@ -40,28 +40,28 @@ definitions:
       refresh_token:
         type: string
       user:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
+        $ref: '#/definitions/auth.UserResponse'
     type: object
-  simple-arq-golang_cmd_api_domains_auth.LogoutRequest:
+  auth.LogoutRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  simple-arq-golang_cmd_api_domains_auth.LogoutResponse:
+  auth.LogoutResponse:
     properties:
       message:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_auth.RefreshRequest:
+  auth.RefreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  simple-arq-golang_cmd_api_domains_auth.RefreshResponse:
+  auth.RefreshResponse:
     properties:
       access_token:
         type: string
@@ -70,7 +70,7 @@ definitions:
       refresh_token:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_auth.RegisterRequest:
+  auth.RegisterRequest:
     properties:
       birth_date:
         type: string
@@ -106,7 +106,7 @@ definitions:
     - password
     - surname
     type: object
-  simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest:
+  auth.ResetPasswordRequest:
     properties:
       code:
         type: string
@@ -122,12 +122,12 @@ definitions:
     - email
     - new_password
     type: object
-  simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse:
+  auth.ResetPasswordResponse:
     properties:
       message:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_auth.UserResponse:
+  auth.UserResponse:
     properties:
       bank_alias:
         type: string
@@ -160,7 +160,7 @@ definitions:
       user_id:
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_group.CreateGroupRequest:
+  group.CreateGroupRequest:
     properties:
       description:
         description: Descripción del grupo (opcional)
@@ -178,13 +178,13 @@ definitions:
     - name
     - team_id
     type: object
-  simple-arq-golang_cmd_api_domains_group.DeleteGroupResponse:
+  group.DeleteGroupResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_group.GroupResponse:
+  group.GroupResponse:
     properties:
       created_at:
         description: Fecha de creación
@@ -208,7 +208,7 @@ definitions:
         description: Fecha de última actualización
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_group.UpdateGroupRequest:
+  group.UpdateGroupRequest:
     properties:
       description:
         description: Descripción del grupo (opcional)
@@ -220,7 +220,7 @@ definitions:
         description: Nombre del grupo (opcional)
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_groupuser.AddGroupUserRequest:
+  groupuser.AddGroupUserRequest:
     properties:
       date_end:
         description: Fecha de fin de la membresía (opcional, nil = activa)
@@ -234,7 +234,7 @@ definitions:
     required:
     - user_id
     type: object
-  simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse:
+  groupuser.GroupUserResponse:
     properties:
       date_end:
         description: Fecha de fin de la membresía (nil = activa)
@@ -252,13 +252,13 @@ definitions:
         description: ID del usuario
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_groupuser.RemoveGroupUserResponse:
+  groupuser.RemoveGroupUserResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_invitation.InvitationResponse:
+  invitation.InvitationResponse:
     properties:
       created_at:
         type: string
@@ -285,7 +285,7 @@ definitions:
       team_name:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest:
+  invitation.InviteRunnerRequest:
     properties:
       email:
         description: Email del usuario existente a invitar (requerido)
@@ -297,27 +297,19 @@ definitions:
     required:
     - email
     type: object
-  simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse:
+  invitation.InviteRunnerResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest:
-    properties:
-      user_id:
-        description: ID del usuario invitado que responde (requerido)
-        type: integer
-    required:
-    - user_id
-    type: object
-  simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse:
+  invitation.RespondInvitationResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest:
+  permission.CreatePermissionRequest:
     properties:
       description:
         description: Descripción opcional del permiso
@@ -328,13 +320,13 @@ definitions:
     required:
     - name
     type: object
-  simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse:
+  permission.DeletePermissionResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_permission.PermissionResponse:
+  permission.PermissionResponse:
     properties:
       created_at:
         description: Fecha de creación
@@ -352,7 +344,7 @@ definitions:
         description: Fecha de última actualización
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest:
+  permission.UpdatePermissionRequest:
     properties:
       description:
         description: Nueva descripción (opcional)
@@ -361,7 +353,7 @@ definitions:
         description: Nuevo nombre del permiso (opcional)
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_role.CreateRoleRequest:
+  role.CreateRoleRequest:
     properties:
       description:
         description: Descripción opcional del rol
@@ -372,13 +364,13 @@ definitions:
     required:
     - name
     type: object
-  simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse:
+  role.DeleteRoleResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_role.RoleResponse:
+  role.RoleResponse:
     properties:
       created_at:
         description: Fecha de creación
@@ -396,7 +388,7 @@ definitions:
         description: Fecha de última actualización
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest:
+  role.UpdateRoleRequest:
     properties:
       description:
         description: Nueva descripción (opcional)
@@ -405,7 +397,29 @@ definitions:
         description: Nuevo nombre del rol (opcional)
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
+  services.PermissionsQueryResponse:
+    properties:
+      roles:
+        items:
+          $ref: '#/definitions/services.RolePermission'
+        type: array
+      user_id:
+        type: integer
+    type: object
+  services.RolePermission:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+      tier:
+        type: string
+    type: object
+  team.CreateTeamRequest:
     properties:
       create_default_group:
         description: Crea un grupo principal "{name} - group" por default; pasar explícitamente
@@ -423,9 +437,6 @@ definitions:
       name:
         description: Nombre del equipo (requerido)
         type: string
-      owner_id:
-        description: ID del usuario owner (requerido, debe tener rol entrenador)
-        type: integer
       requirements:
         description: Requerimientos para entrar (opcional)
         type: string
@@ -436,15 +447,14 @@ definitions:
     required:
     - max_members
     - name
-    - owner_id
     type: object
-  simple-arq-golang_cmd_api_domains_team.DeleteTeamResponse:
+  team.DeleteTeamResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_team.TeamResponse:
+  team.TeamResponse:
     properties:
       city:
         description: 'Dirección: ciudad'
@@ -495,7 +505,7 @@ definitions:
         description: Fecha de última actualización
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_team.UpdateTeamAddressRequest:
+  team.UpdateTeamAddressRequest:
     properties:
       city:
         description: Ciudad
@@ -513,7 +523,7 @@ definitions:
         description: Calle
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_team.UpdateTeamRequest:
+  team.UpdateTeamRequest:
     properties:
       description:
         description: Descripción del equipo (opcional)
@@ -534,7 +544,7 @@ definitions:
         description: Si los corredores ven a qué grupo pertenece cada compañero (opcional)
         type: boolean
     type: object
-  simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
+  teamuser.AddTeamUserRequest:
     properties:
       role_in_team:
         description: 'Rol del usuario en el equipo (requerido: corredor)'
@@ -546,13 +556,13 @@ definitions:
     - role_in_team
     - user_id
     type: object
-  simple-arq-golang_cmd_api_domains_teamuser.RemoveTeamUserResponse:
+  teamuser.RemoveTeamUserResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse:
+  teamuser.TeamUserResponse:
     properties:
       assignment_date:
         description: Fecha de asociación
@@ -573,7 +583,7 @@ definitions:
         description: ID del usuario
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_tier.CreateTierRequest:
+  tier.CreateTierRequest:
     properties:
       description:
         description: Descripción opcional del tier
@@ -588,13 +598,13 @@ definitions:
     - name
     - role_id
     type: object
-  simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse:
+  tier.DeleteTierResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_tier.TierResponse:
+  tier.TierResponse:
     properties:
       created_at:
         description: Fecha de creación
@@ -618,7 +628,7 @@ definitions:
         description: Fecha de última actualización
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest:
+  tier.UpdateTierRequest:
     properties:
       description:
         description: Nueva descripción (opcional)
@@ -627,7 +637,7 @@ definitions:
         description: Nuevo nombre del tier (opcional)
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest:
+  tierpermission.AssignPermissionRequest:
     properties:
       permission_id:
         description: ID del permiso a asignar (requerido)
@@ -635,13 +645,13 @@ definitions:
     required:
     - permission_id
     type: object
-  simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse:
+  tierpermission.DeleteTierPermissionResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse:
+  tierpermission.TierPermissionResponse:
     properties:
       asignation_date:
         description: Fecha de asignación
@@ -656,7 +666,7 @@ definitions:
         description: ID del tier
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest:
+  user.ChangePasswordRequest:
     properties:
       confirm_password:
         type: string
@@ -669,19 +679,19 @@ definitions:
     - current_password
     - new_password
     type: object
-  simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse:
+  user.ChangePasswordResponse:
     properties:
       message:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_user.StatusChangeRequest:
+  user.StatusChangeRequest:
     properties:
       status:
         type: string
     required:
     - status
     type: object
-  simple-arq-golang_cmd_api_domains_user.UserUpdateRequest:
+  user.UserUpdateRequest:
     properties:
       bank_alias:
         type: string
@@ -710,7 +720,7 @@ definitions:
       surname:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_user.UserUpdateResponse:
+  user.UserUpdateResponse:
     properties:
       bank_alias:
         type: string
@@ -743,7 +753,19 @@ definitions:
       user_id:
         type: integer
     type: object
-  simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest:
+  userrole.ActivateEntrenadorRequest:
+    properties:
+      bank_alias:
+        description: Alias bancario (requerido si el usuario no tiene uno ya guardado)
+        type: string
+      password:
+        description: Contraseña actual, confirma que es una acción deliberada del
+          dueño de la cuenta
+        type: string
+    required:
+    - password
+    type: object
+  userrole.AssignRoleRequest:
     properties:
       role_id:
         description: ID del rol a asignar (requerido)
@@ -754,13 +776,13 @@ definitions:
     required:
     - role_id
     type: object
-  simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse:
+  userrole.RemoveRoleResponse:
     properties:
       message:
         description: Mensaje de confirmación
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse:
+  userrole.UserRoleResponse:
     properties:
       assignment_date:
         description: Fecha de asignación
@@ -781,40 +803,18 @@ definitions:
         description: ID del usuario
         type: integer
     type: object
-  simple-arq-golang_cmd_api_services.PermissionsQueryResponse:
-    properties:
-      roles:
-        items:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_services.RolePermission'
-        type: array
-      user_id:
-        type: integer
-    type: object
-  simple-arq-golang_cmd_api_services.RolePermission:
-    properties:
-      id:
-        type: integer
-      name:
-        type: string
-      permissions:
-        items:
-          type: string
-        type: array
-      tier:
-        type: string
-    type: object
 host: localhost:8080
 info:
   contact:
-    email: dev@example.com
+    email: dev@paceron.com
     name: API Support
-  description: Base scaffolding for Go APIs with Gin framework
+  description: API para el registro y gestión de usuarios de Paceron
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Simple Arq Golang API
-  version: 1.0.0
+  title: Paceron Backend API
+  version: "1.0"
 paths:
   /api/v1/auth/forgot-password:
     post:
@@ -829,18 +829,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest'
+          $ref: '#/definitions/auth.ForgotPasswordRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ForgotPasswordResponse'
+            $ref: '#/definitions/auth.ForgotPasswordResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Request a password reset code
       tags:
       - auth
@@ -855,26 +855,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginRequest'
+          $ref: '#/definitions/auth.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LoginResponse'
+            $ref: '#/definitions/auth.LoginResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Authenticate user and get tokens
       tags:
       - auth
@@ -890,22 +890,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutRequest'
+          $ref: '#/definitions/auth.LogoutRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.LogoutResponse'
+            $ref: '#/definitions/auth.LogoutResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Cerrar sesión
       tags:
       - auth
@@ -924,19 +924,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_services.PermissionsQueryResponse'
+            $ref: '#/definitions/services.PermissionsQueryResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get user permissions
       tags:
       - permissions
@@ -952,26 +952,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshRequest'
+          $ref: '#/definitions/auth.RefreshRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RefreshResponse'
+            $ref: '#/definitions/auth.RefreshResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Renovar sesión
       tags:
       - auth
@@ -987,26 +987,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.RegisterRequest'
+          $ref: '#/definitions/auth.RegisterRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
+            $ref: '#/definitions/auth.UserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Register a new user
       tags:
       - auth
@@ -1022,22 +1022,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordRequest'
+          $ref: '#/definitions/auth.ResetPasswordRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.ResetPasswordResponse'
+            $ref: '#/definitions/auth.ResetPasswordResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Reset password using an OTP code
       tags:
       - auth
@@ -1062,36 +1062,30 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_auth.UserResponse'
+            $ref: '#/definitions/auth.UserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get user by ID or email
       tags:
       - auth
   /api/v1/groups:
     get:
-      description: Devuelve los grupos de un equipo. Requiere user_id para validar
-        membresía
+      description: Devuelve los grupos de un equipo. Si se filtra por team_id, valida
+        que el usuario autenticado sea miembro
       parameters:
       - description: ID del equipo
         in: query
         name: team_id
-        required: true
-        type: integer
-      - description: ID del usuario (valida membresía)
-        in: query
-        name: user_id
-        required: true
         type: integer
       produces:
       - application/json
@@ -1100,57 +1094,62 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
+              $ref: '#/definitions/group.GroupResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar grupos de un equipo
       tags:
       - groups
     post:
       consumes:
       - application/json
-      description: Crea un nuevo grupo dentro de un equipo
+      description: Crea un nuevo grupo dentro de un equipo. Solo el entrenador del
+        equipo puede hacerlo
       parameters:
       - description: Datos del grupo
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.CreateGroupRequest'
+          $ref: '#/definitions/group.CreateGroupRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
+            $ref: '#/definitions/group.GroupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Crear grupo
       tags:
       - groups
@@ -1164,34 +1163,29 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario (debe ser entrenador del equipo)
-        in: query
-        name: user_id
-        required: true
-        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.DeleteGroupResponse'
+            $ref: '#/definitions/group.DeleteGroupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Eliminar grupo
       tags:
       - groups
@@ -1209,26 +1203,27 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
+            $ref: '#/definitions/group.GroupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Obtener grupo por ID
       tags:
       - groups
     put:
       consumes:
       - application/json
-      description: Actualiza los campos de un grupo existente
+      description: Actualiza los campos de un grupo existente. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Group ID
         in: path
@@ -1240,32 +1235,37 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.UpdateGroupRequest'
+          $ref: '#/definitions/group.UpdateGroupRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_group.GroupResponse'
+            $ref: '#/definitions/group.GroupResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Actualizar grupo
       tags:
       - groups
   /api/v1/groups/{id}/users:
     get:
-      description: Devuelve todos los miembros activos de un grupo
+      description: Devuelve todos los miembros activos de un grupo. Solo un miembro
+        del equipo del grupo puede consultarlo
       parameters:
       - description: Group ID
         in: path
@@ -1279,26 +1279,31 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse'
+              $ref: '#/definitions/groupuser.GroupUserResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar usuarios de un grupo
       tags:
       - group-users
   /api/v1/groups/{id}/users/{user_id}:
     delete:
-      description: Quita un usuario de un grupo (soft-delete de la asociación)
+      description: Quita un usuario de un grupo (soft-delete de la asociación). El
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
       parameters:
       - description: Group ID
         in: path
@@ -1316,32 +1321,30 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_groupuser.RemoveGroupUserResponse'
+            $ref: '#/definitions/groupuser.RemoveGroupUserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Quitar usuario de grupo
       tags:
       - group-users
   /api/v1/invitations:
     get:
-      description: Devuelve las invitaciones pendientes (no vencidas) de un usuario,
-        sin importar el equipo
-      parameters:
-      - description: User ID
-        in: query
-        name: user_id
-        required: true
-        type: integer
+      description: Devuelve las invitaciones pendientes (no vencidas) del usuario
+        autenticado, sin importar el equipo
       produces:
       - application/json
       responses:
@@ -1349,32 +1352,23 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+              $ref: '#/definitions/invitation.InvitationResponse'
             type: array
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar mis invitaciones pendientes
       tags:
       - invitations
   /api/v1/invitations/{id}:
     get:
       description: Devuelve el detalle de una invitación puntual, validando que pertenezca
-        al usuario que consulta
+        al usuario autenticado
       parameters:
       - description: Invitation ID
         in: path
         name: id
-        required: true
-        type: integer
-      - description: User ID (debe coincidir con el invitado)
-        in: query
-        name: user_id
         required: true
         type: integer
       produces:
@@ -1383,30 +1377,28 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+            $ref: '#/definitions/invitation.InvitationResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Detalle de una invitación
       tags:
       - invitations
   /api/v1/invitations/{id}/accept:
     post:
-      consumes:
-      - application/json
       description: El usuario invitado acepta la invitación y queda como corredor
         del equipo
       parameters:
@@ -1415,46 +1407,38 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario que responde
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse'
+            $ref: '#/definitions/invitation.RespondInvitationResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Aceptar invitación
       tags:
       - invitations
   /api/v1/invitations/{id}/reject:
     post:
-      consumes:
-      - application/json
       description: El usuario invitado rechaza la invitación
       parameters:
       - description: Invitation ID
@@ -1462,39 +1446,33 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario que responde
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.RespondInvitationResponse'
+            $ref: '#/definitions/invitation.RespondInvitationResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Rechazar invitación
       tags:
       - invitations
@@ -1508,12 +1486,12 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+              $ref: '#/definitions/permission.PermissionResponse'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get all permissions
       tags:
       - permissions
@@ -1527,26 +1505,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.CreatePermissionRequest'
+          $ref: '#/definitions/permission.CreatePermissionRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+            $ref: '#/definitions/permission.PermissionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Create a new permission
       tags:
       - permissions
@@ -1565,15 +1543,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.DeletePermissionResponse'
+            $ref: '#/definitions/permission.DeletePermissionResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Delete a permission
       tags:
       - permissions
@@ -1591,15 +1569,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+            $ref: '#/definitions/permission.PermissionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get permission by ID
       tags:
       - permissions
@@ -1618,30 +1596,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.UpdatePermissionRequest'
+          $ref: '#/definitions/permission.UpdatePermissionRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+            $ref: '#/definitions/permission.PermissionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Update a permission
       tags:
       - permissions
@@ -1660,15 +1638,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_permission.PermissionResponse'
+            $ref: '#/definitions/permission.PermissionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get permission by name
       tags:
       - permissions
@@ -1682,12 +1660,12 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+              $ref: '#/definitions/role.RoleResponse'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get all roles
       tags:
       - roles
@@ -1701,26 +1679,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.CreateRoleRequest'
+          $ref: '#/definitions/role.CreateRoleRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+            $ref: '#/definitions/role.RoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Create a new role
       tags:
       - roles
@@ -1739,15 +1717,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.DeleteRoleResponse'
+            $ref: '#/definitions/role.DeleteRoleResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Delete a role
       tags:
       - roles
@@ -1765,15 +1743,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+            $ref: '#/definitions/role.RoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get role by ID
       tags:
       - roles
@@ -1792,30 +1770,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.UpdateRoleRequest'
+          $ref: '#/definitions/role.UpdateRoleRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+            $ref: '#/definitions/role.RoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Update a role
       tags:
       - roles
@@ -1834,15 +1812,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_role.RoleResponse'
+            $ref: '#/definitions/role.RoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get role by name
       tags:
       - roles
@@ -1866,16 +1844,16 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
+              $ref: '#/definitions/team.TeamResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar equipos
       tags:
       - teams
@@ -1889,26 +1867,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.CreateTeamRequest'
+          $ref: '#/definitions/team.CreateTeamRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
+            $ref: '#/definitions/team.TeamResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Crear equipo
       tags:
       - teams
@@ -1922,34 +1900,29 @@ paths:
         name: id
         required: true
         type: integer
-      - description: ID del usuario (debe ser entrenador)
-        in: query
-        name: user_id
-        required: true
-        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.DeleteTeamResponse'
+            $ref: '#/definitions/team.DeleteTeamResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Eliminar equipo
       tags:
       - teams
@@ -1967,26 +1940,27 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
+            $ref: '#/definitions/team.TeamResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Obtener equipo por ID
       tags:
       - teams
     put:
       consumes:
       - application/json
-      description: Actualiza los campos de un equipo existente
+      description: Actualiza los campos de un equipo existente. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -1998,26 +1972,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.UpdateTeamRequest'
+          $ref: '#/definitions/team.UpdateTeamRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
+            $ref: '#/definitions/team.TeamResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Actualizar equipo
       tags:
       - teams
@@ -2025,7 +2003,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Actualiza la dirección de un equipo mediante un endpoint dedicado
+      description: Actualiza la dirección de un equipo mediante un endpoint dedicado.
+        Solo el entrenador del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2037,26 +2016,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.UpdateTeamAddressRequest'
+          $ref: '#/definitions/team.UpdateTeamAddressRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_team.TeamResponse'
+            $ref: '#/definitions/team.TeamResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Actualizar dirección del equipo
       tags:
       - teams
@@ -2064,7 +2047,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Agrega un usuario a un grupo dentro de un equipo
+      description: Agrega un usuario a un grupo dentro de un equipo. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2081,36 +2065,41 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_groupuser.AddGroupUserRequest'
+          $ref: '#/definitions/groupuser.AddGroupUserRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_groupuser.GroupUserResponse'
+            $ref: '#/definitions/groupuser.GroupUserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Agregar usuario a grupo
       tags:
       - group-users
   /api/v1/teams/{id}/invitations:
     get:
-      description: Devuelve las invitaciones pendientes (no vencidas) de un equipo
+      description: Devuelve las invitaciones pendientes (no vencidas) de un equipo.
+        Solo el entrenador del equipo puede verlas
       parameters:
       - description: Team ID
         in: path
@@ -2124,20 +2113,24 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InvitationResponse'
+              $ref: '#/definitions/invitation.InvitationResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar invitaciones pendientes de un equipo
       tags:
       - invitations
@@ -2146,7 +2139,7 @@ paths:
       consumes:
       - application/json
       description: Envía una invitación por email a un usuario existente para unirlo
-        a un equipo
+        a un equipo. Solo el entrenador del equipo puede invitar
       parameters:
       - description: Team ID
         in: path
@@ -2158,36 +2151,41 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InviteRunnerRequest'
+          $ref: '#/definitions/invitation.InviteRunnerRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_invitation.InviteRunnerResponse'
+            $ref: '#/definitions/invitation.InviteRunnerResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Invitar corredor por email
       tags:
       - invitations
   /api/v1/teams/{id}/users:
     get:
-      description: Devuelve todos los miembros activos de un equipo
+      description: Devuelve todos los miembros activos de un equipo. Solo otro miembro
+        del equipo puede consultarlo
       parameters:
       - description: Team ID
         in: path
@@ -2201,27 +2199,32 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse'
+              $ref: '#/definitions/teamuser.TeamUserResponse'
             type: array
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Listar usuarios de un equipo
       tags:
       - team-users
     post:
       consumes:
       - application/json
-      description: Agrega un usuario a un equipo con un rol específico
+      description: Agrega un usuario a un equipo con un rol específico. Solo el entrenador
+        del equipo puede hacerlo
       parameters:
       - description: Team ID
         in: path
@@ -2233,36 +2236,41 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest'
+          $ref: '#/definitions/teamuser.AddTeamUserRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamuser.TeamUserResponse'
+            $ref: '#/definitions/teamuser.TeamUserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Agregar usuario a equipo
       tags:
       - team-users
   /api/v1/teams/{id}/users/{user_id}:
     delete:
-      description: Quita un usuario de un equipo (soft-delete de la asociación)
+      description: Quita un usuario de un equipo (soft-delete de la asociación). El
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
       parameters:
       - description: Team ID
         in: path
@@ -2280,19 +2288,23 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamuser.RemoveTeamUserResponse'
+            $ref: '#/definitions/teamuser.RemoveTeamUserResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Quitar usuario de equipo
       tags:
       - team-users
@@ -2306,12 +2318,12 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+              $ref: '#/definitions/tier.TierResponse'
             type: array
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get all tiers
       tags:
       - tiers
@@ -2325,30 +2337,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.CreateTierRequest'
+          $ref: '#/definitions/tier.CreateTierRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+            $ref: '#/definitions/tier.TierResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Create a new tier
       tags:
       - tiers
@@ -2367,15 +2379,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.DeleteTierResponse'
+            $ref: '#/definitions/tier.DeleteTierResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Delete a tier
       tags:
       - tiers
@@ -2393,15 +2405,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+            $ref: '#/definitions/tier.TierResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get tier by ID
       tags:
       - tiers
@@ -2420,30 +2432,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.UpdateTierRequest'
+          $ref: '#/definitions/tier.UpdateTierRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+            $ref: '#/definitions/tier.TierResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Update a tier
       tags:
       - tiers
@@ -2463,30 +2475,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.AssignPermissionRequest'
+          $ref: '#/definitions/tierpermission.AssignPermissionRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse'
+            $ref: '#/definitions/tierpermission.TierPermissionResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Assign permission to tier
       tags:
       - tier-permissions
@@ -2510,15 +2522,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse'
+            $ref: '#/definitions/tierpermission.DeleteTierPermissionResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Unassign permission from tier
       tags:
       - tier-permissions
@@ -2537,15 +2549,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
+            $ref: '#/definitions/tier.TierResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Get tier by name
       tags:
       - tiers
@@ -2554,7 +2566,8 @@ paths:
       consumes:
       - application/json
       description: Update user attributes (all fields except id, status). Email change
-        requires X-Current-Password header.
+        requires X-Current-Password header. Only the user itself can update its own
+        data.
       parameters:
       - description: User ID
         in: path
@@ -2570,34 +2583,38 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateRequest'
+          $ref: '#/definitions/user.UserUpdateRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse'
+            $ref: '#/definitions/user.UserUpdateResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Update user attributes
       tags:
       - users
@@ -2606,7 +2623,8 @@ paths:
       consumes:
       - application/json
       description: Changes the user's password, verifying the current one. Distinct
-        from the forgot/reset-password OTP flow.
+        from the forgot/reset-password OTP flow. Only the user itself can change its
+        own password.
       parameters:
       - description: User ID
         in: path
@@ -2618,30 +2636,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordRequest'
+          $ref: '#/definitions/user.ChangePasswordRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.ChangePasswordResponse'
+            $ref: '#/definitions/user.ChangePasswordResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Change password while authenticated
       tags:
       - users
@@ -2649,7 +2671,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Assigns a role to a user with optional tier (default: "base")'
+      description: 'Assigns a role to yourself, with optional tier (default: "base").
+        Self only.'
       parameters:
       - description: User ID
         in: path
@@ -2661,30 +2684,34 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.AssignRoleRequest'
+          $ref: '#/definitions/userrole.AssignRoleRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.UserRoleResponse'
+            $ref: '#/definitions/userrole.UserRoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Assign role to user
       tags:
       - user-roles
@@ -2692,8 +2719,8 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Soft-deletes the active role assignment for a user, identified
-        by role_id
+      description: Soft-deletes your own active role assignment, identified by role_id.
+        Self only.
       parameters:
       - description: User ID
         in: path
@@ -2711,19 +2738,23 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_userrole.RemoveRoleResponse'
+            $ref: '#/definitions/userrole.RemoveRoleResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Remove a role from a user
       tags:
       - user-roles
@@ -2732,7 +2763,7 @@ paths:
       consumes:
       - application/json
       description: 'Change the status of a user. Valid statuses: active, inactive,
-        pause, blocked, suspended.'
+        pause, blocked, suspended. Only the user itself can change its own status.'
       parameters:
       - description: User ID
         in: path
@@ -2744,29 +2775,125 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.StatusChangeRequest'
+          $ref: '#/definitions/user.StatusChangeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse'
+            $ref: '#/definitions/user.UserUpdateResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            $ref: '#/definitions/apierror.APIError'
       summary: Change user status
       tags:
       - users
+  /api/v1/users/{id}/trainer-role:
+    delete:
+      description: Desactiva el rol entrenador del usuario autenticado sobre sí mismo.
+        Bloqueado mientras lidere equipos activos
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/userrole.RemoveRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Desactivar rol entrenador
+      tags:
+      - user-roles
+    post:
+      consumes:
+      - application/json
+      description: Activa el rol entrenador del usuario autenticado sobre sí mismo.
+        Exige confirmar la contraseña actual y un alias bancario válido (propio o
+        recién provisto)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Contraseña actual y alias bancario
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/userrole.ActivateEntrenadorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/userrole.UserRoleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Activar rol entrenador
+      tags:
+      - user-roles
   /ping:
     get:
       description: Returns pong if the server is running

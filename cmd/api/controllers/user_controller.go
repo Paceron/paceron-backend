@@ -11,6 +11,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/user"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 type UserController interface {
@@ -82,7 +83,7 @@ func (u *userController) CreateUser(c *gin.Context) {
 
 // Update godoc
 // @Summary      Update user attributes
-// @Description  Update user attributes (all fields except id, status). Email change requires X-Current-Password header.
+// @Description  Update user attributes (all fields except id, status). Email change requires X-Current-Password header. Only the user itself can update its own data.
 // @Tags         users
 // @Accept       json
 // @Produce      json
@@ -92,6 +93,7 @@ func (u *userController) CreateUser(c *gin.Context) {
 // @Success      200                {object}  user.UserUpdateResponse
 // @Failure      400                {object}  apierror.APIError
 // @Failure      401                {object}  apierror.APIError
+// @Failure      403                {object}  apierror.APIError
 // @Failure      404                {object}  apierror.APIError
 // @Failure      409                {object}  apierror.APIError
 // @Failure      500                {object}  apierror.APIError
@@ -104,6 +106,15 @@ func (u *userController) Update(c *gin.Context) {
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
 			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "solo podés modificar tu propio usuario",
 		})
 		return
 	}
@@ -170,7 +181,7 @@ func (u *userController) Update(c *gin.Context) {
 
 // ChangeStatus godoc
 // @Summary      Change user status
-// @Description  Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended.
+// @Description  Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended. Only the user itself can change its own status.
 // @Tags         users
 // @Accept       json
 // @Produce      json
@@ -178,6 +189,7 @@ func (u *userController) Update(c *gin.Context) {
 // @Param        body  body      user.StatusChangeRequest     true  "New status"
 // @Success      200   {object}  user.UserUpdateResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/users/{id}/status [patch]
@@ -189,6 +201,15 @@ func (u *userController) ChangeStatus(c *gin.Context) {
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
 			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "solo podés modificar tu propio usuario",
 		})
 		return
 	}
@@ -241,7 +262,7 @@ func (u *userController) ChangeStatus(c *gin.Context) {
 
 // ChangePassword godoc
 // @Summary      Change password while authenticated
-// @Description  Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow.
+// @Description  Changes the user's password, verifying the current one. Distinct from the forgot/reset-password OTP flow. Only the user itself can change its own password.
 // @Tags         users
 // @Accept       json
 // @Produce      json
@@ -250,6 +271,7 @@ func (u *userController) ChangeStatus(c *gin.Context) {
 // @Success      200   {object}  user.ChangePasswordResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      401   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/users/{id}/password [patch]
@@ -260,6 +282,15 @@ func (u *userController) ChangePassword(c *gin.Context) {
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
 			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "solo podés modificar tu propio usuario",
 		})
 		return
 	}

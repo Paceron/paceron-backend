@@ -123,17 +123,18 @@ func NewApplication() *Application {
 	tierPermissionService := services.NewTierPermissionService(tierPermissionDao, tierDao, permissionDao)
 	tierPermissionController := controllers.NewTierPermissionController(tierPermissionService)
 
+	// Team User flow (needed by teamService, groupService, and userRoleService's
+	// entrenador activation/deactivation)
+	teamUserDao := daos.NewTeamUserDao(db)
+	teamDao := daos.NewTeamDao(db)
+
 	// User Role flow
-	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao)
+	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao, teamUserDao)
 	userRoleController := controllers.NewUserRoleController(userRoleService)
 
 	// Permissions Query flow
 	permissionsQueryService := services.NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermissionDao, permissionDao)
 	permissionsQueryController := controllers.NewPermissionsQueryController(permissionsQueryService)
-
-	// Team User flow (needed by teamService and groupService)
-	teamUserDao := daos.NewTeamUserDao(db)
-	teamDao := daos.NewTeamDao(db)
 
 	// Group flow (groupDao/groupUserDao también los necesita teamService para
 	// cascadear el soft-delete al eliminar un equipo)
@@ -156,7 +157,7 @@ func NewApplication() *Application {
 	teamUserController := controllers.NewTeamUserController(teamUserService)
 
 	// Group User flow
-	groupUserService := services.NewGroupUserService(groupUserDao, groupDao, userDao)
+	groupUserService := services.NewGroupUserService(groupUserDao, groupDao, userDao, teamUserDao)
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow

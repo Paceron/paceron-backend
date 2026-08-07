@@ -15,9 +15,9 @@ import (
 
 // TeamUserServiceInterface define las operaciones de negocio para la asociación usuario-equipo.
 type TeamUserServiceInterface interface {
-	AddUser(ctx *gin.Context, teamID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error)
-	RemoveUser(ctx *gin.Context, teamID, userID int64) error
-	GetUsersByTeam(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error)
+	AddUser(ctx *gin.Context, teamID int64, callerID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error)
+	RemoveUser(ctx *gin.Context, teamID, callerID, targetUserID int64) error
+	GetUsersByTeam(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error)
 }
 
 type teamUserService struct {
@@ -45,10 +45,10 @@ func NewTeamUserService(
 	}
 }
 
-// AddUser agrega un usuario a un equipo con el rol especificado.
-// Valida que el equipo exista, que el usuario exista, que no esté ya asociado
-// y que no se exceda la cantidad máxima de miembros.
-func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error) {
+// AddUser agrega un usuario a un equipo con el rol especificado. Solo el entrenador del
+// equipo puede hacerlo. Valida que el equipo exista, que el usuario exista, que no esté
+// ya asociado y que no se exceda la cantidad máxima de miembros.
+func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, callerID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for user addition", err,
@@ -58,6 +58,17 @@ func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, req *teamuser.
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for team user addition", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("AddUser"))
+		return nil, fmt.Errorf("error al agregar usuario al equipo")
+	}
+	if caller == nil || caller.RoleInTeam != "entrenador" {
+		return nil, fmt.Errorf("solo el entrenador puede agregar usuarios al equipo")
 	}
 
 	user, err := s.userDao.FindByID(ctx, req.UserID)
@@ -188,8 +199,9 @@ func (s *teamUserService) assignToMainGroup(ctx *gin.Context, teamID, userID int
 	}
 }
 
-// RemoveUser quita un usuario de un equipo (soft-delete de la asociación).
-func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, userID int64) error {
+// RemoveUser quita un usuario de un equipo (soft-delete de la asociación). El propio
+// usuario puede quitarse a sí mismo, o el entrenador del equipo puede quitar a otro.
+func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetUserID int64) error {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for user removal", err,
@@ -201,11 +213,24 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, userID int64) err
 		return fmt.Errorf("equipo no encontrado")
 	}
 
-	existing, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, userID)
+	if callerID != targetUserID {
+		caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking caller role for team user removal", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.TagMethod("RemoveUser"))
+			return fmt.Errorf("error al quitar usuario del equipo")
+		}
+		if caller == nil || caller.RoleInTeam != "entrenador" {
+			return fmt.Errorf("solo el entrenador puede quitar a otro usuario del equipo")
+		}
+	}
+
+	existing, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, targetUserID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team user for removal", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
 			customlogger.TagMethod("RemoveUser"))
 		return fmt.Errorf("error al quitar usuario del equipo")
 	}
@@ -220,21 +245,22 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, userID int64) err
 	if err := s.teamUserDao.SoftDelete(ctx, existing.ID); err != nil {
 		customlogger.Error(ctx, "error removing user from team", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
 			customlogger.TagMethod("RemoveUser"))
 		return fmt.Errorf("error al quitar usuario del equipo")
 	}
 
 	customlogger.Info(ctx, "user removed from team successfully",
 		customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
 		customlogger.TagMethod("RemoveUser"))
 
 	return nil
 }
 
-// GetUsersByTeam retorna todos los miembros activos de un equipo.
-func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error) {
+// GetUsersByTeam retorna todos los miembros activos de un equipo. Solo otro miembro
+// del equipo puede consultarlo (evita que cualquier logueado enumere el roster).
+func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for listing users", err,
@@ -244,6 +270,17 @@ func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64) ([]team
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller membership for listing users", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("GetUsersByTeam"))
+		return nil, fmt.Errorf("error al obtener usuarios del equipo")
+	}
+	if caller == nil {
+		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
 	}
 
 	teamUsers, err := s.teamUserDao.FindByTeamID(ctx, teamID)
