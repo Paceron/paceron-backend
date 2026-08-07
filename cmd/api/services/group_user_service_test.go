@@ -292,6 +292,46 @@ func TestGroupUserService_AddUser_GroupFindByIDError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al agregar usuario al grupo")
 }
 
+func TestGroupUserService_AddUser_CallerRoleCheckError(t *testing.T) {
+	mockGroupDao := &mockGroupDao{
+		findByIDAndTeamIDFn: func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error) {
+			return &dbs.Group{ID: 1}, nil
+		},
+	}
+	mockTU := &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, mockTU)
+	_, err := svc.AddUser(nil, 1, 1, 1, &groupuser.AddGroupUserRequest{
+		UserID: 1,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al agregar usuario al grupo")
+}
+
+func TestGroupUserService_RemoveUser_CallerRoleCheckError(t *testing.T) {
+	mockGroupDao := &mockGroupDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+			return &dbs.Group{ID: 1, TeamID: 1}, nil
+		},
+	}
+	mockTU := &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, mockTU)
+	err := svc.RemoveUser(nil, 1, 2, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al quitar usuario del grupo")
+}
+
 func TestGroupUserService_AddUser_UserFindByIDError(t *testing.T) {
 	mockGroupDao := &mockGroupDao{
 		findByIDAndTeamIDFn: func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error) {
@@ -468,8 +508,12 @@ func TestGroupUserService_GetUsersByGroup_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
-	resp, err := svc.GetUsersByGroup(nil, 1)
+	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
+	})
+	resp, err := svc.GetUsersByGroup(nil, 1, 1)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
@@ -484,7 +528,7 @@ func TestGroupUserService_GetUsersByGroup_GroupNotFound(t *testing.T) {
 	}
 
 	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
-	_, err := svc.GetUsersByGroup(nil, 999)
+	_, err := svc.GetUsersByGroup(nil, 999, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "grupo no encontrado")
@@ -498,7 +542,7 @@ func TestGroupUserService_GetUsersByGroup_GroupFindByIDError(t *testing.T) {
 	}
 
 	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
-	_, err := svc.GetUsersByGroup(nil, 1)
+	_, err := svc.GetUsersByGroup(nil, 1, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener usuarios del grupo")
@@ -516,8 +560,45 @@ func TestGroupUserService_GetUsersByGroup_FindByGroupIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
-	_, err := svc.GetUsersByGroup(nil, 1)
+	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
+	})
+	_, err := svc.GetUsersByGroup(nil, 1, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al obtener usuarios del grupo")
+}
+
+func TestGroupUserService_GetUsersByGroup_NotMember(t *testing.T) {
+	mockGroupDao := &mockGroupDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+			return &dbs.Group{ID: 1, TeamID: 1}, nil
+		},
+	}
+
+	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
+	_, err := svc.GetUsersByGroup(nil, 1, 99)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el usuario no pertenece al equipo de este grupo")
+}
+
+func TestGroupUserService_GetUsersByGroup_CallerRoleCheckError(t *testing.T) {
+	mockGroupDao := &mockGroupDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+			return &dbs.Group{ID: 1, TeamID: 1}, nil
+		},
+	}
+	mockTU := &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewGroupUserService(&mockGroupUserDao{}, mockGroupDao, &mockUserDaoForUserRole{}, mockTU)
+	_, err := svc.GetUsersByGroup(nil, 1, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener usuarios del grupo")
@@ -535,8 +616,12 @@ func TestGroupUserService_GetUsersByGroup_Empty(t *testing.T) {
 		},
 	}
 
-	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{})
-	resp, err := svc.GetUsersByGroup(nil, 1)
+	svc := NewGroupUserService(mockGroupUserDao, mockGroupDao, &mockUserDaoForUserRole{}, &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
+	})
+	resp, err := svc.GetUsersByGroup(nil, 1, 1)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 0)

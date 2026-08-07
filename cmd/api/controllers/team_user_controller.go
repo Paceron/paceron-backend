@@ -156,12 +156,13 @@ func (tuc *teamUserController) RemoveUser(c *gin.Context) {
 
 // GetUsersByTeam godoc
 // @Summary      Listar usuarios de un equipo
-// @Description  Devuelve todos los miembros activos de un equipo
+// @Description  Devuelve todos los miembros activos de un equipo. Solo otro miembro del equipo puede consultarlo
 // @Tags         team-users
 // @Produce      json
 // @Param        id    path  int  true  "Team ID"
 // @Success      200   {array}  teamuser.TeamUserResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/teams/{id}/users [get]
@@ -176,7 +177,8 @@ func (tuc *teamUserController) GetUsersByTeam(c *gin.Context) {
 		return
 	}
 
-	response, err := tuc.teamUserService.GetUsersByTeam(c, teamID)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := tuc.teamUserService.GetUsersByTeam(c, teamID, callerID)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -185,6 +187,9 @@ func (tuc *teamUserController) GetUsersByTeam(c *gin.Context) {
 		if errMsg == "equipo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el usuario no pertenece a este equipo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

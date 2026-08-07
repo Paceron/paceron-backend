@@ -687,7 +687,7 @@ const docTemplate = `{
         },
         "/api/v1/groups/{id}/users": {
             "get": {
-                "description": "Devuelve todos los miembros activos de un grupo",
+                "description": "Devuelve todos los miembros activos de un grupo. Solo un miembro del equipo del grupo puede consultarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -716,6 +716,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -2053,7 +2059,7 @@ const docTemplate = `{
         },
         "/api/v1/teams/{id}/users": {
             "get": {
-                "description": "Devuelve todos los miembros activos de un equipo",
+                "description": "Devuelve todos los miembros activos de un equipo. Solo otro miembro del equipo puede consultarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -2082,6 +2088,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }

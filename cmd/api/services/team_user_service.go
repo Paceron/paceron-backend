@@ -17,7 +17,7 @@ import (
 type TeamUserServiceInterface interface {
 	AddUser(ctx *gin.Context, teamID int64, callerID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error)
 	RemoveUser(ctx *gin.Context, teamID, callerID, targetUserID int64) error
-	GetUsersByTeam(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error)
+	GetUsersByTeam(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error)
 }
 
 type teamUserService struct {
@@ -258,8 +258,9 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 	return nil
 }
 
-// GetUsersByTeam retorna todos los miembros activos de un equipo.
-func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error) {
+// GetUsersByTeam retorna todos los miembros activos de un equipo. Solo otro miembro
+// del equipo puede consultarlo (evita que cualquier logueado enumere el roster).
+func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for listing users", err,
@@ -269,6 +270,17 @@ func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64) ([]team
 	}
 	if teamDB == nil {
 		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller membership for listing users", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("GetUsersByTeam"))
+		return nil, fmt.Errorf("error al obtener usuarios del equipo")
+	}
+	if caller == nil {
+		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
 	}
 
 	teamUsers, err := s.teamUserDao.FindByTeamID(ctx, teamID)

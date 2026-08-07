@@ -16,7 +16,7 @@ import (
 type GroupUserServiceInterface interface {
 	AddUser(ctx *gin.Context, teamID, groupID int64, callerID int64, req *groupuser.AddGroupUserRequest) (*groupuser.GroupUserResponse, error)
 	RemoveUser(ctx *gin.Context, groupID, callerID, targetUserID int64) error
-	GetUsersByGroup(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error)
+	GetUsersByGroup(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error)
 }
 
 type groupUserService struct {
@@ -179,8 +179,9 @@ func (s *groupUserService) RemoveUser(ctx *gin.Context, groupID, callerID, targe
 	return nil
 }
 
-// GetUsersByGroup retorna todos los miembros activos de un grupo.
-func (s *groupUserService) GetUsersByGroup(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error) {
+// GetUsersByGroup retorna todos los miembros activos de un grupo. Solo un miembro del
+// equipo del grupo puede consultarlo (evita que cualquier logueado enumere el roster).
+func (s *groupUserService) GetUsersByGroup(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error) {
 	groupDB, err := s.groupDao.FindByID(ctx, groupID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding group for listing users", err,
@@ -190,6 +191,17 @@ func (s *groupUserService) GetUsersByGroup(ctx *gin.Context, groupID int64) ([]g
 	}
 	if groupDB == nil {
 		return nil, fmt.Errorf("grupo no encontrado")
+	}
+
+	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, groupDB.TeamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller membership for listing group users", err,
+			customlogger.Tag("group_id", fmt.Sprintf("%d", groupID)),
+			customlogger.TagMethod("GetUsersByGroup"))
+		return nil, fmt.Errorf("error al obtener usuarios del grupo")
+	}
+	if caller == nil {
+		return nil, fmt.Errorf("el usuario no pertenece al equipo de este grupo")
 	}
 
 	groupUsers, err := s.groupUserDao.FindByGroupID(ctx, groupID)

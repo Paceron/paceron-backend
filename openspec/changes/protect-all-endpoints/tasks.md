@@ -17,6 +17,7 @@
 - [x] 3.5 `group_user_service.AddUser`: agregar `callerID` + `teamUserDao` nuevo en el constructor + chequeo entrenador
 - [x] 3.6 `invitation_service.InviteRunner`: agregar `callerID`, `InviterID` pasa a ser `callerID` (antes `team.OwnerID` sin verificar)
 - [x] 3.8 `invitation_service.ListPendingInvitations`: agregar `callerID` + chequeo entrenador (confirmado sin ningún chequeo antes)
+- [x] 3.9 `team_user_service.GetUsersByTeam` / `group_user_service.GetUsersByGroup`: agregar `callerID` + chequeo de membresía (cualquier rol, no solo entrenador) — confirmado sin ningún chequeo antes
 - [x] 3.7 `team_delegate.CreateTeam`: propaga `ownerID` a `teamSvc.Create` y `groupSvc.Create`
 
 ## 4. Self o entrenador delegado

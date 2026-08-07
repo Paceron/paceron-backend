@@ -8,6 +8,7 @@
 - Cada controller que antes leía `user_id` de query/body/path lo reemplaza por la identidad resuelta del access token (`utils.GetAuthUserID(c)`).
 - Se agrega autorización real en la capa de servicio, distribuida (no un middleware genérico — ABAC necesita el recurso ya cargado):
   - **Solo entrenador del equipo**: `team.Update/UpdateAddress/Create`, `group.Create/Update`, `team_user.AddUser`, `group_user.AddUser`, `invitation.InviteRunner`, `invitation.ListPendingInvitations` (confirmado sin ningún chequeo antes — cualquier logueado veía invitados de cualquier equipo).
+  - **Cualquier miembro del equipo**: `team_user.GetUsersByTeam`, `group_user.GetUsersByGroup` (confirmado sin ningún chequeo antes — cualquier logueado podía enumerar el roster de cualquier equipo/grupo).
   - **Self o entrenador delegado**: `team_user.RemoveUser`, `group_user.RemoveUser` (antes sin ningún chequeo — confirmado leyendo el código).
   - **Self-only**: `user.Update/ChangeStatus/ChangePassword`.
   - **Requiere login, sin chequeo adicional** (limitación documentada, no se resuelve acá — no existe concepto de "admin"): catálogo de roles/tiers/permisos.

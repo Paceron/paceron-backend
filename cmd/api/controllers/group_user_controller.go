@@ -167,12 +167,13 @@ func (guc *groupUserController) RemoveUser(c *gin.Context) {
 
 // GetUsersByGroup godoc
 // @Summary      Listar usuarios de un grupo
-// @Description  Devuelve todos los miembros activos de un grupo
+// @Description  Devuelve todos los miembros activos de un grupo. Solo un miembro del equipo del grupo puede consultarlo
 // @Tags         group-users
 // @Produce      json
 // @Param        id    path  int  true  "Group ID"
 // @Success      200   {array}  groupuser.GroupUserResponse
 // @Failure      400   {object}  apierror.APIError
+// @Failure      403   {object}  apierror.APIError
 // @Failure      404   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/groups/{id}/users [get]
@@ -187,7 +188,8 @@ func (guc *groupUserController) GetUsersByGroup(c *gin.Context) {
 		return
 	}
 
-	response, err := guc.groupUserService.GetUsersByGroup(c, groupID)
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := guc.groupUserService.GetUsersByGroup(c, groupID, callerID)
 	if err != nil {
 		errMsg := err.Error()
 		statusCode := http.StatusInternalServerError
@@ -196,6 +198,9 @@ func (guc *groupUserController) GetUsersByGroup(c *gin.Context) {
 		if errMsg == "grupo no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el usuario no pertenece al equipo de este grupo" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

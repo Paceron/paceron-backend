@@ -691,6 +691,9 @@ func TestTeamUserService_GetUsersByTeam_Success(t *testing.T) {
 				{ID: 2, TeamID: 1, UserID: 20, RoleInTeam: "corredor", Status: "active"},
 			}, nil
 		},
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
 	}
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
@@ -699,7 +702,7 @@ func TestTeamUserService_GetUsersByTeam_Success(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
-	resp, err := svc.GetUsersByTeam(nil, 1)
+	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
@@ -715,7 +718,7 @@ func TestTeamUserService_GetUsersByTeam_TeamNotFound(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
-	_, err := svc.GetUsersByTeam(nil, 999)
+	_, err := svc.GetUsersByTeam(nil, 999, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "equipo no encontrado")
@@ -729,7 +732,40 @@ func TestTeamUserService_GetUsersByTeam_TeamFindByIDError(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
-	_, err := svc.GetUsersByTeam(nil, 1)
+	_, err := svc.GetUsersByTeam(nil, 1, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al obtener usuarios del equipo")
+}
+
+func TestTeamUserService_GetUsersByTeam_NotMember(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	_, err := svc.GetUsersByTeam(nil, 1, 99)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el usuario no pertenece a este equipo")
+}
+
+func TestTeamUserService_GetUsersByTeam_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+	mockTeamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	_, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener usuarios del equipo")
@@ -740,6 +776,9 @@ func TestTeamUserService_GetUsersByTeam_FindByTeamIDError(t *testing.T) {
 		findByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error) {
 			return nil, errors.New("db error")
 		},
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
 	}
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
@@ -748,7 +787,7 @@ func TestTeamUserService_GetUsersByTeam_FindByTeamIDError(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
-	_, err := svc.GetUsersByTeam(nil, 1)
+	_, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener usuarios del equipo")
@@ -759,6 +798,9 @@ func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
 		findByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error) {
 			return []dbs.TeamUser{}, nil
 		},
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
 	}
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
@@ -767,7 +809,7 @@ func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
-	resp, err := svc.GetUsersByTeam(nil, 1)
+	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 0)

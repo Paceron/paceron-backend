@@ -17,7 +17,7 @@ import (
 type mockTeamUserService struct {
 	addUserFn        func(ctx *gin.Context, teamID int64, callerID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error)
 	removeUserFn     func(ctx *gin.Context, teamID, callerID, targetUserID int64) error
-	getUsersByTeamFn func(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error)
+	getUsersByTeamFn func(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error)
 }
 
 func (m *mockTeamUserService) AddUser(ctx *gin.Context, teamID int64, callerID int64, req *teamuser.AddTeamUserRequest) (*teamuser.TeamUserResponse, error) {
@@ -34,9 +34,9 @@ func (m *mockTeamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, tar
 	return nil
 }
 
-func (m *mockTeamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error) {
+func (m *mockTeamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
 	if m.getUsersByTeamFn != nil {
-		return m.getUsersByTeamFn(ctx, teamID)
+		return m.getUsersByTeamFn(ctx, teamID, callerID)
 	}
 	return nil, nil
 }
@@ -217,7 +217,7 @@ func TestTeamUserController_RemoveUser_BadRequest_InvalidUserID(t *testing.T) {
 
 func TestTeamUserController_GetUsersByTeam_Success(t *testing.T) {
 	mockSvc := &mockTeamUserService{
-		getUsersByTeamFn: func(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error) {
+		getUsersByTeamFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
 			return []teamuser.TeamUserResponse{
 				{ID: 1, TeamID: 1, UserID: 10, RoleInTeam: "entrenador", Status: "active"},
 				{ID: 2, TeamID: 1, UserID: 20, RoleInTeam: "corredor", Status: "active"},
@@ -230,6 +230,7 @@ func TestTeamUserController_GetUsersByTeam_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/users", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.GetUsersByTeam(c)
 
@@ -253,7 +254,7 @@ func TestTeamUserController_GetUsersByTeam_BadRequest(t *testing.T) {
 
 func TestTeamUserController_GetUsersByTeam_NotFound(t *testing.T) {
 	mockSvc := &mockTeamUserService{
-		getUsersByTeamFn: func(ctx *gin.Context, teamID int64) ([]teamuser.TeamUserResponse, error) {
+		getUsersByTeamFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
 			return nil, errors.New("equipo no encontrado")
 		},
 	}
@@ -263,8 +264,28 @@ func TestTeamUserController_GetUsersByTeam_NotFound(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/999/users", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.GetUsersByTeam(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestTeamUserController_GetUsersByTeam_Forbidden(t *testing.T) {
+	mockSvc := &mockTeamUserService{
+		getUsersByTeamFn: func(ctx *gin.Context, teamID int64, callerID int64) ([]teamuser.TeamUserResponse, error) {
+			return nil, errors.New("el usuario no pertenece a este equipo")
+		},
+	}
+
+	controller := NewTeamUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/teams/1/users", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 99)
+
+	controller.GetUsersByTeam(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }

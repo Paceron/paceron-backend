@@ -279,6 +279,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | DELETE | `/api/v1/teams/:id` | Soft delete team (entrenador only) |
 | PUT | `/api/v1/teams/:id/address` | Update team address (entrenador of the team only) |
 | POST | `/api/v1/teams/:id/users` | Add user to team with role (entrenador of the team only) |
+| GET | `/api/v1/teams/:id/users` | List members of a team (any member of the team only) |
 | DELETE | `/api/v1/teams/:id/users/:user_id` | Remove user from team (self, or entrenador of the team) |
 | POST | `/api/v1/groups` | Create group within a team (entrenador of the team only) |
 | GET | `/api/v1/groups` | List all groups (with `team_id`, validates membership of the authenticated user) |
@@ -286,7 +287,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | PUT | `/api/v1/groups/:id` | Update group (entrenador of the team only) |
 | DELETE | `/api/v1/groups/:id` | Soft delete group (entrenador of the team only) |
 | POST | `/api/v1/teams/:id/groups/:group_id/users` | Add user to group (entrenador of the team only) |
-| GET | `/api/v1/groups/:id/users` | List users of a group |
+| GET | `/api/v1/groups/:id/users` | List members of a group (any member of the group's team only) |
 | DELETE | `/api/v1/groups/:id/users/:user_id` | Remove user from group (self, or entrenador of the team) |
 | POST | `/api/v1/teams/:id/invite` | Invite existing user to team by email (entrenador of the team only, optional `group_id`) |
 | GET | `/api/v1/teams/:id/invitations` | List pending invitations of a team (entrenador of the team only) |

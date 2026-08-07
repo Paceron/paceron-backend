@@ -17,7 +17,7 @@ import (
 type mockGroupUserService struct {
 	addUserFn         func(ctx *gin.Context, teamID, groupID int64, callerID int64, req *groupuser.AddGroupUserRequest) (*groupuser.GroupUserResponse, error)
 	removeUserFn      func(ctx *gin.Context, groupID, callerID, targetUserID int64) error
-	getUsersByGroupFn func(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error)
+	getUsersByGroupFn func(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error)
 }
 
 func (m *mockGroupUserService) AddUser(ctx *gin.Context, teamID, groupID int64, callerID int64, req *groupuser.AddGroupUserRequest) (*groupuser.GroupUserResponse, error) {
@@ -34,9 +34,9 @@ func (m *mockGroupUserService) RemoveUser(ctx *gin.Context, groupID, callerID, t
 	return nil
 }
 
-func (m *mockGroupUserService) GetUsersByGroup(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error) {
+func (m *mockGroupUserService) GetUsersByGroup(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error) {
 	if m.getUsersByGroupFn != nil {
-		return m.getUsersByGroupFn(ctx, groupID)
+		return m.getUsersByGroupFn(ctx, groupID, callerID)
 	}
 	return nil, nil
 }
@@ -252,7 +252,7 @@ func TestGroupUserController_RemoveUser_BadRequest_InvalidUserID(t *testing.T) {
 
 func TestGroupUserController_GetUsersByGroup_Success(t *testing.T) {
 	mockSvc := &mockGroupUserService{
-		getUsersByGroupFn: func(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error) {
+		getUsersByGroupFn: func(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error) {
 			return []groupuser.GroupUserResponse{
 				{ID: 1, GroupID: 1, UserID: 10},
 				{ID: 2, GroupID: 1, UserID: 20},
@@ -265,6 +265,7 @@ func TestGroupUserController_GetUsersByGroup_Success(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups/1/users", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
 
 	controller.GetUsersByGroup(c)
 
@@ -288,7 +289,7 @@ func TestGroupUserController_GetUsersByGroup_BadRequest(t *testing.T) {
 
 func TestGroupUserController_GetUsersByGroup_NotFound(t *testing.T) {
 	mockSvc := &mockGroupUserService{
-		getUsersByGroupFn: func(ctx *gin.Context, groupID int64) ([]groupuser.GroupUserResponse, error) {
+		getUsersByGroupFn: func(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error) {
 			return nil, errors.New("grupo no encontrado")
 		},
 	}
@@ -298,8 +299,28 @@ func TestGroupUserController_GetUsersByGroup_NotFound(t *testing.T) {
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups/999/users", nil)
 	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
 
 	controller.GetUsersByGroup(c)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestGroupUserController_GetUsersByGroup_Forbidden(t *testing.T) {
+	mockSvc := &mockGroupUserService{
+		getUsersByGroupFn: func(ctx *gin.Context, groupID int64, callerID int64) ([]groupuser.GroupUserResponse, error) {
+			return nil, errors.New("el usuario no pertenece al equipo de este grupo")
+		},
+	}
+
+	controller := NewGroupUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/groups/1/users", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 99)
+
+	controller.GetUsersByGroup(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }
