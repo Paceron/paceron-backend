@@ -1,15 +1,39 @@
 services:
+  # Producción real. Master + --stage=production explícito: sin el flag, el
+  # binario cae en testing stage por default (ver docs/ENVIRONMENTS.md) — el
+  # flag tiene que estar sí o sí acá, no es opcional ni redundante.
   - type: web
     name: paceron-backend
     runtime: go
     repo: https://github.com/Paceron/paceron-backend
-    branch: main
+    branch: master
+    plan: free
+    buildCommand: go build -o main ./cmd/api
+    startCommand: ./main --stage=production
+    healthCheckPath: /ping
+    envVars:
+      - key: SUPABASE_PRODUCTION_DATABASE_URL
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: GIN_MODE
+        value: release
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+
+  # Preview de develop, contra testing stage (default, sin flag). Mismo repo,
+  # otro branch — sirve para probar develop desplegado sin tocar producción.
+  - type: web
+    name: paceron-backend-develop
+    runtime: go
+    repo: https://github.com/Paceron/paceron-backend
+    branch: develop
     plan: free
     buildCommand: go build -o main ./cmd/api
     startCommand: ./main
     healthCheckPath: /ping
     envVars:
-      - key: DATABASE_URL
+      - key: SUPABASE_TESTING_DATABASE_URL
         sync: false
       - key: ENVIRONMENT
         value: production

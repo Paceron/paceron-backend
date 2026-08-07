@@ -96,6 +96,10 @@ El comando usa `-coverpkg=./...` (no solo `-coverprofile` sobre los paquetes tes
 
 `CORSMiddleware()` en [`cmd/api/app/middleware.go`](cmd/api/app/middleware.go) lee `CORS_ALLOWED_ORIGINS` (env var, orígenes separados por coma). Si no está seteada, cae a una lista default hardcodeada en el código (hoy incluye localhost de desarrollo + los dominios de Vercel del frontend). En producción (Render, ver [`render.yaml`](render.yaml)) se configura explícitamente vía esa env var — al agregar un nuevo dominio de frontend, actualizar **ambos** lugares (el fallback en código y `render.yaml`) para que quede documentado en el repo, no solo en el dashboard de Render.
 
+## Stages de Supabase (testing / production)
+
+Dos proyectos de Supabase separados — `master` en Render pega a producción, `develop`/local/todo lo demás pega a testing **por default**. Producción exige un flag explícito (`--stage=production`) al arrancar el binario; sin él, siempre es testing, a propósito (falla seguro). Detalle completo, variables de entorno, y checklist de Render: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md). No confundir con `ENVIRONMENT` (esa gobierna cómo se carga la config local/test/prod, no a qué proyecto de Supabase apunta — son ejes independientes).
+
 ## Frontend
 
 - Repo separado (Expo/React Native + React Native Web), no vive en este working directory, lo mantiene otro miembro del equipo.
@@ -104,6 +108,5 @@ El comando usa `-coverpkg=./...` (no solo `-coverprofile` sobre los paquetes tes
 
 ## Quirks conocidos
 
-- `render.yaml` tiene `branch: main`, pero el repo no tiene rama `main` (usa `master`/`develop`) — revisar si esto es intencional o un desalineamiento antes de tocar el deploy config.
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es un error real si el backend "no responde" al toque.
 - El toolchain de Go 1.26 descargado automáticamente por `GOTOOLCHAIN=auto` (módulo `golang.org/toolchain@...go1.26.0...` en el mod cache) no trae el binario `covdata` — falla con `go: no such tool "covdata"` al correr `go test -coverprofile` sobre paquetes sin ningún `_test.go`. Confirmado que no es caché corrupto (persiste tras redescarga limpia). Por eso `make coverage`/`ci.yml` corren coverage solo sobre paquetes con `TestGoFiles` (`go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test ...`), no sobre `./...` directo — no tocar ese patrón sin motivo, evita el bug.
