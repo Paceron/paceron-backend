@@ -121,6 +121,30 @@ func TestRenderEmail_EmptyDataStillRenders(t *testing.T) {
 // TestEmailTemplates_AllTypesRegistered protege el registro: cada tipo declarado
 // debe tener asunto y template válidos, para que agregar un tipo nuevo sin
 // registrarlo falle en tests y no en producción.
+// TestRenderEmail_ReferencesEmbeddedLogo protege el header con marca: cada
+// template debe apuntar al logo embebido por Content-ID, no a una imagen
+// remota ni al viejo texto plano "Paceron" en el header.
+func TestRenderEmail_ReferencesEmbeddedLogo(t *testing.T) {
+	for _, emailType := range allEmailTypes {
+		t.Run(string(emailType), func(t *testing.T) {
+			_, html, err := RenderEmail(emailType, EmailData{})
+
+			require.NoError(t, err)
+			assert.Contains(t, html, "cid:"+logoContentID)
+		})
+	}
+}
+
+// TestLogoAssets_EmbedsExpectedFile protege el path del go:embed: si el asset
+// se mueve o se borra, esto falla en tests en vez de romper el envío recién en
+// producción (el error solo aparece ahí cuando msg.EmbedFromEmbedFS corre).
+func TestLogoAssets_EmbedsExpectedFile(t *testing.T) {
+	data, err := logoAssets.ReadFile("assets/paceron-logo.png")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
+}
+
 func TestEmailTemplates_AllTypesRegistered(t *testing.T) {
 	for _, emailType := range allEmailTypes {
 		tmpl, ok := emailTemplates[emailType]
