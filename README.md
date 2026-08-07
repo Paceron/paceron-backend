@@ -99,7 +99,6 @@ graph TB
 
     Router --> |/ping| PingController
     Router --> |/api/v1/auth/*| AuthController
-    Router --> |/user/*| UserController
     Router --> |/api/v1/users/*| UserController
     Router --> |/example/weather| WeatherController
     Router --> |/user/*/weather| UserWeatherController
@@ -229,7 +228,7 @@ sequenceDiagram
 
 ## Endpoints
 
-All routes require `Authorization: Bearer <access_token>` **except** the ones marked 🔓 below (register/login/refresh/logout/forgot/reset-password, the public user lookup, and the legacy/demo routes — see `docs/AUTH_MIGRATION.md` for the full rationale and per-endpoint authorization rules).
+All routes require `Authorization: Bearer <access_token>` **except** the ones marked 🔓 below (register/login/refresh/logout/forgot/reset-password, the public user lookup, and the demo routes — see `docs/AUTH_MIGRATION.md` for the full rationale and per-endpoint authorization rules).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -241,8 +240,6 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/auth/user?id=&email=` 🔓 | Get user by ID or email |
 | POST | `/api/v1/auth/forgot-password` 🔓 | Request a password reset OTP code by email |
 | POST | `/api/v1/auth/reset-password` 🔓 | Reset password using the OTP code sent by email |
-| GET | `/user/:user_id` 🔓 | Get user by ID (legacy, deprecated) |
-| POST | `/user` 🔓 | Create user (legacy, deprecated) |
 | GET | `/example/weather` 🔓 | Get weather from Open-Meteo (demo) |
 | GET | `/user/:user_id/weather` 🔓 | Get user with weather data (demo) |
 | GET | `/swagger` 🔓 | Swagger UI |
