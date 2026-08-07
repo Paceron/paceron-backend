@@ -18,6 +18,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// bankAliasRegex valida el formato de bank_alias — compartido con user_role_service.go
+// (activación de entrenador también exige un alias bancario válido).
+var bankAliasRegex = regexp.MustCompile(`^[a-zA-Z0-9.\-]{6,20}$`)
+
+const bankAliasFormatError = "bank_alias debe tener entre 6 y 20 caracteres (letras, números, puntos o guiones)"
+
 type UserServiceInterface interface {
 	GetUser(ctx *gin.Context, userID int64) (user.User, error)
 	CreateUser(ctx *gin.Context, name, password string) (user.User, error)
@@ -349,9 +355,8 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 		}
 	}
 	if req.BankAlias != nil && *req.BankAlias != "" {
-		bankAliasRegex := regexp.MustCompile(`^[a-zA-Z0-9.\-]{6,20}$`)
 		if !bankAliasRegex.MatchString(*req.BankAlias) {
-			return "bank_alias debe tener entre 6 y 20 caracteres (letras, números, puntos o guiones)"
+			return bankAliasFormatError
 		}
 	}
 	return ""

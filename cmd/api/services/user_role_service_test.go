@@ -7,10 +7,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/bcrypt"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/userrole"
 )
+
+// entrenadorTestPasswordHash es el hash bcrypt de "CorrectPass123" — compartido por los
+// tests de ActivateEntrenador que necesitan simular una contraseña real guardada.
+var entrenadorTestPasswordHash = func() string {
+	hashed, err := bcrypt.GenerateFromPassword([]byte("CorrectPass123"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return string(hashed)
+}()
 
 type mockUserRoleDao struct {
 	createFn            func(ctx *gin.Context, ur *dbs.UserRole) error
@@ -49,6 +60,7 @@ func (m *mockUserRoleDao) SoftDelete(ctx *gin.Context, id int64) error {
 
 type mockUserDaoForUserRole struct {
 	findByIDFn func(ctx *gin.Context, userID int64) (*dbs.User, error)
+	updateFn   func(ctx *gin.Context, user *dbs.User) error
 }
 
 func (m *mockUserDaoForUserRole) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -71,6 +83,9 @@ func (m *mockUserDaoForUserRole) FindByEmail(ctx *gin.Context, email string) (*d
 }
 
 func (m *mockUserDaoForUserRole) Update(ctx *gin.Context, user *dbs.User) error {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, user)
+	}
 	return nil
 }
 
@@ -107,7 +122,7 @@ func TestUserRoleService_AssignRole_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	resp, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -127,7 +142,7 @@ func TestUserRoleService_AssignRole_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 999, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -148,7 +163,7 @@ func TestUserRoleService_AssignRole_RoleNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 999,
 	})
@@ -174,7 +189,7 @@ func TestUserRoleService_AssignRole_AlreadyAssigned(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -205,7 +220,7 @@ func TestUserRoleService_AssignRole_DefaultTierNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -237,7 +252,7 @@ func TestUserRoleService_AssignRole_TierNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 999,
@@ -269,7 +284,7 @@ func TestUserRoleService_AssignRole_TierNotBelongToRole(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -305,7 +320,7 @@ func TestUserRoleService_AssignRole_SuccessWithDefaultTier(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	resp, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -341,7 +356,7 @@ func TestUserRoleService_AssignRole_CreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -358,7 +373,7 @@ func TestUserRoleService_AssignRole_UserFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -379,7 +394,7 @@ func TestUserRoleService_AssignRole_RoleFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -405,7 +420,7 @@ func TestUserRoleService_AssignRole_FindByUserAndRoleError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -437,7 +452,7 @@ func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -453,7 +468,7 @@ func TestUserRoleService_RemoveRole_ProtectedRole(t *testing.T) {
 			return &dbs.Role{ID: id, Name: "corredor"}, nil
 		},
 	}
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -467,7 +482,7 @@ func TestUserRoleService_RemoveRole_RoleFindByIDError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -487,7 +502,7 @@ func TestUserRoleService_RemoveRole_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -501,7 +516,7 @@ func TestUserRoleService_RemoveRole_NotAssigned(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -515,7 +530,7 @@ func TestUserRoleService_RemoveRole_FindError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -532,7 +547,7 @@ func TestUserRoleService_RemoveRole_SoftDeleteError(t *testing.T) {
 			return errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -562,7 +577,7 @@ func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -570,4 +585,348 @@ func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al asignar rol")
+}
+
+func ptrStr(s string) *string { return &s }
+
+func TestUserRoleService_ActivateEntrenador_Success(t *testing.T) {
+	bankAlias := "mi.alias-1"
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John", Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base", RoleID: roleID}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, ur *dbs.UserRole) error {
+			ur.ID = 1
+			return nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: &bankAlias,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, int64(2), resp.RoleID)
+}
+
+func TestUserRoleService_ActivateEntrenador_UsesExistingBankAlias(t *testing.T) {
+	existingAlias := "ya.guardado"
+	updateCalled := false
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John", Password: entrenadorTestPasswordHash, BankAlias: &existingAlias}, nil
+		},
+		updateFn: func(ctx *gin.Context, user *dbs.User) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base", RoleID: roleID}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, ur *dbs.UserRole) error {
+			ur.ID = 1
+			return nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password: "CorrectPass123",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.False(t, updateCalled)
+}
+
+func TestUserRoleService_ActivateEntrenador_UserNotFound(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 999, &userrole.ActivateEntrenadorRequest{Password: "x"})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "usuario no encontrado")
+}
+
+func TestUserRoleService_ActivateEntrenador_UserFindByIDError(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "x"})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al activar rol entrenador")
+}
+
+func TestUserRoleService_ActivateEntrenador_WrongPassword(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "WrongPass"})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "contraseña actual incorrecta")
+}
+
+func TestUserRoleService_ActivateEntrenador_MissingBankAlias(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "CorrectPass123"})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "se requiere un alias bancario")
+}
+
+func TestUserRoleService_ActivateEntrenador_InvalidBankAliasFormat(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: ptrStr("a"),
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "bank_alias debe tener entre 6 y 20 caracteres")
+}
+
+func TestUserRoleService_ActivateEntrenador_RoleNotFoundInCatalog(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: ptrStr("alias-valido"),
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al activar rol entrenador")
+}
+
+func TestUserRoleService_ActivateEntrenador_RoleFindByNameError(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: ptrStr("alias-valido"),
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al activar rol entrenador")
+}
+
+func TestUserRoleService_ActivateEntrenador_UpdateBankAliasError(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+		},
+		updateFn: func(ctx *gin.Context, user *dbs.User) error {
+			return errors.New("db error")
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: ptrStr("alias-valido"),
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al activar rol entrenador")
+}
+
+func TestUserRoleService_DeactivateEntrenador_Success(t *testing.T) {
+	softDeleteCalled := false
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTeamUserDao := &mockTeamUserDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+			return []dbs.TeamUser{{TeamID: 1, UserID: userID, RoleInTeam: "corredor"}}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{ID: 5, UserID: userID, RoleID: roleID}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			softDeleteCalled = true
+			return nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.NoError(t, err)
+	assert.True(t, softDeleteCalled)
+}
+
+func TestUserRoleService_DeactivateEntrenador_BlockedByActiveTeam(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTeamUserDao := &mockTeamUserDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+			return []dbs.TeamUser{{TeamID: 1, UserID: userID, RoleInTeam: "entrenador"}}, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no podés desactivar el rol entrenador mientras lideres equipos activos")
+}
+
+func TestUserRoleService_DeactivateEntrenador_RoleNotFoundInCatalog(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al desactivar rol entrenador")
+}
+
+func TestUserRoleService_DeactivateEntrenador_RoleFindByNameError(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al desactivar rol entrenador")
+}
+
+func TestUserRoleService_DeactivateEntrenador_TeamCheckError(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTeamUserDao := &mockTeamUserDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al desactivar rol entrenador")
+}
+
+func TestUserRoleService_DeactivateEntrenador_NotAssigned(t *testing.T) {
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	err := svc.DeactivateEntrenador(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el usuario no tiene asignado este rol")
 }
