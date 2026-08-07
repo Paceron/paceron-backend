@@ -53,8 +53,8 @@ func TestLoadDBConfigDB(t *testing.T) {
 }
 
 func TestLoadValues_WithDatabaseURL(t *testing.T) {
-	os.Setenv("DATABASE_URL", "postgresql://urluser:urlpass@urlhost:5555/urldb")
-	defer os.Unsetenv("DATABASE_URL")
+	os.Setenv("SUPABASE_TESTING_DATABASE_URL", "postgresql://urluser:urlpass@urlhost:5555/urldb")
+	defer os.Unsetenv("SUPABASE_TESTING_DATABASE_URL")
 
 	loadDBConfig()
 
@@ -67,7 +67,8 @@ func TestLoadValues_WithDatabaseURL(t *testing.T) {
 }
 
 func TestLoadValues_WithIndividualVars(t *testing.T) {
-	os.Unsetenv("DATABASE_URL")
+	os.Unsetenv("SUPABASE_TESTING_DATABASE_URL")
+	os.Unsetenv("SUPABASE_PRODUCTION_DATABASE_URL")
 	os.Setenv("db_host", "indhost")
 	os.Setenv("db_port", "7777")
 	os.Setenv("db_user", "induser")
@@ -88,6 +89,51 @@ func TestLoadValues_WithIndividualVars(t *testing.T) {
 	assert.Equal(t, "indhost", MyDB.Host)
 	assert.Equal(t, "7777", MyDB.Port)
 	assert.Equal(t, "inddb", MyDB.Name)
+}
+
+func TestIsProductionStage_DefaultFalse(t *testing.T) {
+	assert.False(t, IsProductionStage())
+}
+
+func TestIsProductionStage_WithFlag(t *testing.T) {
+	original := os.Args
+	os.Args = []string{"paceron-backend", "--stage=production"}
+	defer func() { os.Args = original }()
+
+	assert.True(t, IsProductionStage())
+}
+
+func TestIsProductionStage_WithUnrelatedFlags(t *testing.T) {
+	original := os.Args
+	os.Args = []string{"paceron-backend", "-test.run=TestFoo", "-test.v"}
+	defer func() { os.Args = original }()
+
+	assert.False(t, IsProductionStage())
+}
+
+func TestStagedDatabaseURL_DefaultsToTesting(t *testing.T) {
+	os.Setenv("SUPABASE_TESTING_DATABASE_URL", "postgresql://t:t@testhost:5432/testdb")
+	os.Setenv("SUPABASE_PRODUCTION_DATABASE_URL", "postgresql://p:p@prodhost:5432/proddb")
+	defer func() {
+		os.Unsetenv("SUPABASE_TESTING_DATABASE_URL")
+		os.Unsetenv("SUPABASE_PRODUCTION_DATABASE_URL")
+	}()
+
+	assert.Equal(t, "postgresql://t:t@testhost:5432/testdb", stagedDatabaseURL())
+}
+
+func TestStagedDatabaseURL_ProductionWithFlag(t *testing.T) {
+	os.Setenv("SUPABASE_TESTING_DATABASE_URL", "postgresql://t:t@testhost:5432/testdb")
+	os.Setenv("SUPABASE_PRODUCTION_DATABASE_URL", "postgresql://p:p@prodhost:5432/proddb")
+	defer func() {
+		os.Unsetenv("SUPABASE_TESTING_DATABASE_URL")
+		os.Unsetenv("SUPABASE_PRODUCTION_DATABASE_URL")
+	}()
+	original := os.Args
+	os.Args = []string{"paceron-backend", "--stage=production"}
+	defer func() { os.Args = original }()
+
+	assert.Equal(t, "postgresql://p:p@prodhost:5432/proddb", stagedDatabaseURL())
 }
 
 func TestLoadSMTPConfig(t *testing.T) {
