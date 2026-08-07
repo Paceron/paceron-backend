@@ -2,10 +2,20 @@ package mailer
 
 import (
 	"context"
+	"embed"
 	"fmt"
 
 	mail "github.com/wneessen/go-mail"
 )
+
+//go:embed assets/paceron-logo.png
+var logoAssets embed.FS
+
+// logoContentID es el Content-ID con el que los templates referencian el logo
+// embebido (`<img src="cid:paceron-logo">`). CID embebido en vez de imagen
+// remota o base64 inline: es el mecanismo que los clientes de correo
+// (Gmail, Outlook, Apple Mail) cargan de forma confiable.
+const logoContentID = "paceron-logo"
 
 // Logger define el contrato de logging que Client usa, mismo shape que
 // infrastructure/httpclient.Logger para poder reusar el mismo adapter.
@@ -95,6 +105,11 @@ func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 	}
 	msg.Subject(subject)
 	msg.SetBodyString(mail.TypeTextHTML, htmlBody)
+
+	if err := msg.EmbedFromEmbedFS("assets/paceron-logo.png", &logoAssets, mail.WithFileContentID(logoContentID)); err != nil {
+		c.logError(ctx, "error embebiendo logo", err)
+		return fmt.Errorf("mailer: error embebiendo logo: %w", err)
+	}
 
 	if err := c.smtpClient.DialAndSendWithContext(ctx, msg); err != nil {
 		c.logError(ctx, "error enviando email", err)
