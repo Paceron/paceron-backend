@@ -56,6 +56,8 @@ go test ./...
 go test -v ./cmd/api/...
 ```
 
+Los tests de `daos` que necesitan Postgres real se skipean solos sin Docker. Para correrlos localmente, ver [`docs/TESTING.md`](docs/TESTING.md) (`make test-db-up` + `make test-with-db`).
+
 ## OpenSpec — Spec-Driven Development
 
 Este proyecto usa OpenSpec para spec-driven development.
