@@ -396,6 +396,27 @@ func TestInvitationService_InviteRunner_TeamDaoError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al enviar invitación")
 }
 
+func TestInvitationService_InviteRunner_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
+		Email: "juan@test.com",
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al enviar invitación")
+}
+
 func TestInvitationService_InviteRunner_UserFindByEmailError(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
@@ -489,6 +510,25 @@ func TestInvitationService_ListPendingInvitations_TeamNotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "equipo no encontrado")
+}
+
+func TestInvitationService_ListPendingInvitations_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{})
+	_, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al listar invitaciones")
 }
 
 func TestInvitationService_ListPendingInvitations_NotEntrenador(t *testing.T) {

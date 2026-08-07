@@ -691,6 +691,45 @@ func TestTeamService_Update_FindByIDError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al actualizar equipo")
 }
 
+func TestTeamService_Update_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Old"}, nil
+		},
+	}
+	mockTU := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{})
+	newName := "New"
+	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al actualizar equipo")
+}
+
+func TestTeamService_UpdateAddress_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	mockTU := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{})
+	_, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "Argentina"})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al actualizar dirección")
+}
+
 func TestTeamService_Update_DAOUpdateError(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {

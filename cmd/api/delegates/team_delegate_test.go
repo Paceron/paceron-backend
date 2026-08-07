@@ -79,6 +79,7 @@ func TestTeamDelegate_CreateTeam_CreatesDefaultGroupWhenFlagOmitted(t *testing.T
 	assert.NoError(t, err)
 	assert.True(t, groupSvc.createCalled)
 	assert.True(t, groupSvc.lastCreateReq.IsMain)
+	assert.Equal(t, int64(1), groupSvc.lastCreateOwner)
 }
 
 func TestTeamDelegate_CreateTeam_CreatesDefaultGroupWhenTrue(t *testing.T) {

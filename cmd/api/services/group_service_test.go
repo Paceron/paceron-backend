@@ -190,6 +190,48 @@ func TestGroupService_Create_TeamNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "el equipo no existe")
 }
 
+func TestGroupService_Create_CallerRoleCheckError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+	}
+	mockTU := &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewGroupService(&mockGroupDao{}, mockTeamDao, mockTU)
+	_, err := svc.Create(nil, 1, &group.CreateGroupRequest{
+		Name:   "Grupo 1",
+		TeamID: 1,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al crear grupo")
+}
+
+func TestGroupService_Update_CallerRoleCheckError(t *testing.T) {
+	mockGroupDao := &mockGroupDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+			return &dbs.Group{ID: 1, Name: "Old", TeamID: 1}, nil
+		},
+	}
+	mockTU := &mockTeamUserDaoGroup{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewGroupService(mockGroupDao, &mockTeamDao{}, mockTU)
+	newName := "New"
+	_, err := svc.Update(nil, 1, 1, &group.UpdateGroupRequest{Name: &newName})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al actualizar grupo")
+}
+
 func TestGroupService_Update_Success(t *testing.T) {
 	mockGroupDao := &mockGroupDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
