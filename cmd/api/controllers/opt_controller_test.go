@@ -20,6 +20,7 @@ type mockUserService struct {
 	mockChangeStatus   func(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
 	mockChangePassword func(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 	mockSearch         func(ctx *gin.Context, query string) (*user.SearchResponse, error)
+	mockBatchLookup    func(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error)
 }
 
 func (m mockUserService) GetUser(ctx *gin.Context, userID int64) (user.User, error) {
@@ -44,6 +45,10 @@ func (m mockUserService) ChangePassword(ctx *gin.Context, id int64, currentPassw
 
 func (m mockUserService) Search(ctx *gin.Context, query string) (*user.SearchResponse, error) {
 	return m.mockSearch(ctx, query)
+}
+
+func (m mockUserService) BatchLookup(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
+	return m.mockBatchLookup(ctx, userIDs)
 }
 
 func TestGetUser_Success(t *testing.T) {
@@ -193,6 +198,93 @@ func TestUserController_Search_InternalError(t *testing.T) {
 	c.Request.URL.RawQuery = "q=ana"
 
 	controller.Search(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestUserController_BatchLookup_Success(t *testing.T) {
+	mockService := mockUserService{
+		mockBatchLookup: func(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
+			assert.Equal(t, []int64{1, 2}, userIDs)
+			return &user.BatchLookupResponse{
+				Results: []user.SearchResultItem{
+					{UserID: 1, Name: "Ana", Surname: "Gomez", Email: "ana@test.com"},
+					{UserID: 2, Name: "Bob", Surname: "Perez", Email: "bob@test.com"},
+				},
+			}, nil
+		},
+	}
+
+	controller := NewUserController(mockService)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	c.Request.URL.RawQuery = "ids=1,2"
+
+	controller.BatchLookup(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+
+	var result user.BatchLookupResponse
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Len(t, result.Results, 2)
+}
+
+func TestUserController_BatchLookup_MissingIDs(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+
+	controller.BatchLookup(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserController_BatchLookup_InvalidID(t *testing.T) {
+	controller := NewUserController(mockUserService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	c.Request.URL.RawQuery = "ids=1,abc"
+
+	controller.BatchLookup(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserController_BatchLookup_ServiceValidationError(t *testing.T) {
+	mockService := mockUserService{
+		mockBatchLookup: func(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
+			return nil, errors.New("no se pueden consultar más de 50 usuarios a la vez")
+		},
+	}
+
+	controller := NewUserController(mockService)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	c.Request.URL.RawQuery = "ids=1"
+
+	controller.BatchLookup(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserController_BatchLookup_InternalError(t *testing.T) {
+	mockService := mockUserService{
+		mockBatchLookup: func(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
+			return nil, errors.New("error al consultar usuarios")
+		},
+	}
+
+	controller := NewUserController(mockService)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	c.Request.URL.RawQuery = "ids=1"
+
+	controller.BatchLookup(c)
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }

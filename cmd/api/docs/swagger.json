@@ -2618,6 +2618,47 @@
                 }
             }
         },
+        "/api/v1/users": {
+            "get": {
+                "description": "Resuelve nombre/apellido/email para varios user_id de una sola consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere login, sin restricción adicional de rol. Hasta 50 ids.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Batch user lookup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Ids de usuario separados por coma, ej. 1,2,3",
+                        "name": "ids",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.BatchLookupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/search": {
             "get": {
                 "description": "Busca usuarios activos por coincidencia parcial de nombre, apellido o email (autocompletar al invitar). Requiere login, sin restricción adicional de rol. Mínimo 3 caracteres, hasta 5 resultados.",
@@ -4119,6 +4160,17 @@
                 "tier_id": {
                     "description": "ID del tier",
                     "type": "integer"
+                }
+            }
+        },
+        "user.BatchLookupResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user.SearchResultItem"
+                    }
                 }
             }
         },
