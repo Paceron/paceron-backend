@@ -248,6 +248,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/swagger` 🔓 | Swagger UI |
 | GET | `/api/v1/auth/permissions?user_id=` | Get user permissions with roles and tiers |
 | GET | `/api/v1/users/search?q=` | Search active users by partial name/surname/email (any logged-in user; min 3 chars, up to 5 results, no role restriction) |
+| GET | `/api/v1/users?ids=1,2,3` | Batch lookup by user id, up to 50 (any logged-in user; resolves name/surname/email for a roster without N+1) |
 | PUT | `/api/v1/users/:id` | Update user attributes (self only; email change requires X-Current-Password header) |
 | PATCH | `/api/v1/users/:id/status` | Change user status (self only; active/inactive/pause/blocked/suspended) |
 | PATCH | `/api/v1/users/:id/password` | Change password while authenticated (self only; verifies current password) |

@@ -666,6 +666,13 @@ definitions:
         description: ID del tier
         type: integer
     type: object
+  user.BatchLookupResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/user.SearchResultItem'
+        type: array
+    type: object
   user.ChangePasswordRequest:
     properties:
       confirm_password:
@@ -2579,6 +2586,35 @@ paths:
       summary: Get tier by name
       tags:
       - tiers
+  /api/v1/users:
+    get:
+      description: Resuelve nombre/apellido/email para varios user_id de una sola
+        consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere
+        login, sin restricción adicional de rol. Hasta 50 ids.
+      parameters:
+      - description: Ids de usuario separados por coma, ej. 1,2,3
+        in: query
+        name: ids
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.BatchLookupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Batch user lookup
+      tags:
+      - users
   /api/v1/users/{id}:
     put:
       consumes:
