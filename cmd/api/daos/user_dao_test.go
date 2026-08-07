@@ -23,3 +23,9 @@ func TestUserDao_NoPanic(t *testing.T) {
 		_ = NewUserDao(&gorm.DB{})
 	})
 }
+
+func TestUserDao_SearchActive_ImplementsInterface(t *testing.T) {
+	dao := NewUserDao(&gorm.DB{})
+	var iface UserDaoInterface = dao
+	assert.NotNil(t, iface.SearchActive)
+}

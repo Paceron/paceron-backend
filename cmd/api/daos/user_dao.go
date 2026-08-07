@@ -16,6 +16,7 @@ type UserDaoInterface interface {
 	FindByEmail(ctx *gin.Context, email string) (*dbs.User, error)
 	Update(ctx *gin.Context, user *dbs.User) error
 	UpdateStatus(ctx *gin.Context, userID int64, status string) error
+	SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
 }
 
 type userDao struct {
@@ -78,6 +79,23 @@ func (ud *userDao) UpdateStatus(ctx *gin.Context, userID int64, status string) e
 		return fmt.Errorf("error updating user status: %w", err)
 	}
 	return nil
+}
+
+// SearchActive busca usuarios activos por coincidencia parcial (case-insensitive) en
+// nombre, apellido o email — pensado para autocompletar al invitar a un equipo.
+func (ud *userDao) SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+	var users []*dbs.User
+	pattern := "%" + query + "%"
+	err := ud.DB.
+		Where("status = ?", "active").
+		Where("name ILIKE ? OR surname ILIKE ? OR email ILIKE ?", pattern, pattern, pattern).
+		Order("name ASC").
+		Limit(limit).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("error searching users: %w", err)
+	}
+	return users, nil
 }
 
 func (ud *userDao) Create(ctx *gin.Context, name, password string) (*dbs.User, error) {
