@@ -50,6 +50,7 @@ type mockUserDao struct {
 	mockFindByEmail  func(ctx *gin.Context, email string) (*dbs.User, error)
 	mockUpdate       func(ctx *gin.Context, user *dbs.User) error
 	mockUpdateStatus func(ctx *gin.Context, userID int64, status string) error
+	mockSearchActive func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
 }
 
 func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -74,6 +75,10 @@ func (m mockUserDao) Update(ctx *gin.Context, user *dbs.User) error {
 
 func (m mockUserDao) UpdateStatus(ctx *gin.Context, userID int64, status string) error {
 	return m.mockUpdateStatus(ctx, userID, status)
+}
+
+func (m mockUserDao) SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+	return m.mockSearchActive(ctx, query, limit)
 }
 
 func TestGetUser_Success(t *testing.T) {
@@ -148,4 +153,69 @@ func TestCreateUser_DaoError(t *testing.T) {
 	_, err := service.CreateUser(nil, "test", "secret")
 
 	assert.Error(t, err)
+}
+
+func TestUserService_Search_Success(t *testing.T) {
+	mockDao := mockUserDao{
+		mockSearchActive: func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+			assert.Equal(t, "ana", query)
+			assert.Equal(t, searchResultsLimit, limit)
+			return []*dbs.User{
+				{ID: 1, Name: "Ana", Surname: "Gomez", Email: "ana@test.com"},
+			}, nil
+		},
+	}
+
+	service := NewUserService(mockDao, nil)
+	result, err := service.Search(nil, "ana")
+
+	assert.NoError(t, err)
+	assert.Len(t, result.Results, 1)
+	assert.Equal(t, int64(1), result.Results[0].UserID)
+	assert.Equal(t, "Ana", result.Results[0].Name)
+	assert.Equal(t, "Gomez", result.Results[0].Surname)
+	assert.Equal(t, "ana@test.com", result.Results[0].Email)
+}
+
+func TestUserService_Search_TrimsQuery(t *testing.T) {
+	mockDao := mockUserDao{
+		mockSearchActive: func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+			assert.Equal(t, "ana", query)
+			return []*dbs.User{}, nil
+		},
+	}
+
+	service := NewUserService(mockDao, nil)
+	_, err := service.Search(nil, "  ana  ")
+
+	assert.NoError(t, err)
+}
+
+func TestUserService_Search_QueryTooShort(t *testing.T) {
+	service := NewUserService(mockUserDao{}, nil)
+	_, err := service.Search(nil, "an")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "al menos")
+}
+
+func TestUserService_Search_BlankQuery(t *testing.T) {
+	service := NewUserService(mockUserDao{}, nil)
+	_, err := service.Search(nil, "   ")
+
+	assert.Error(t, err)
+}
+
+func TestUserService_Search_DaoError(t *testing.T) {
+	mockDao := mockUserDao{
+		mockSearchActive: func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+			return nil, errors.New("dao error")
+		},
+	}
+
+	service := NewUserService(mockDao, nil)
+	_, err := service.Search(nil, "ana")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al buscar usuarios")
 }

@@ -93,6 +93,10 @@ func (m *mockUserDaoForUserRole) UpdateStatus(ctx *gin.Context, userID int64, st
 	return nil
 }
 
+func (m *mockUserDaoForUserRole) SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+	return nil, nil
+}
+
 func TestUserRoleService_AssignRole_Success(t *testing.T) {
 	now := time.Now()
 	_ = now

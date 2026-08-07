@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"simple-arq-golang/cmd/api/domains/apierror"
@@ -20,6 +21,7 @@ type UserController interface {
 	Update(c *gin.Context)
 	ChangeStatus(c *gin.Context)
 	ChangePassword(c *gin.Context)
+	Search(c *gin.Context)
 }
 
 type userController struct {
@@ -356,4 +358,37 @@ func (u *userController) ChangePassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user.ChangePasswordResponse{Message: "Contraseña actualizada correctamente"})
+}
+
+// Search godoc
+// @Summary      Search users
+// @Description  Busca usuarios activos por coincidencia parcial de nombre, apellido o email (autocompletar al invitar). Requiere login, sin restricción adicional de rol. Mínimo 3 caracteres, hasta 5 resultados.
+// @Tags         users
+// @Produce      json
+// @Param        q  query     string  true  "Texto de búsqueda (mínimo 3 caracteres)"
+// @Success      200  {object}  user.SearchResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/users/search [get]
+func (u *userController) Search(c *gin.Context) {
+	query := c.Query("q")
+
+	result, err := u.userService.Search(c, query)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+		if strings.Contains(err.Error(), "la búsqueda requiere al menos") {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }

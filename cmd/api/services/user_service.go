@@ -24,12 +24,18 @@ var bankAliasRegex = regexp.MustCompile(`^[a-zA-Z0-9.\-]{6,20}$`)
 
 const bankAliasFormatError = "bank_alias debe tener entre 6 y 20 caracteres (letras, números, puntos o guiones)"
 
+// searchMinQueryLength y searchResultsLimit acotan /users/search: menos de 3 caracteres
+// dispara demasiados resultados (y consultas ILIKE caras) para un autocompletar.
+const searchMinQueryLength = 3
+const searchResultsLimit = 5
+
 type UserServiceInterface interface {
 	GetUser(ctx *gin.Context, userID int64) (user.User, error)
 	CreateUser(ctx *gin.Context, name, password string) (user.User, error)
 	Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
 	ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
 	ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error
+	Search(ctx *gin.Context, query string) (*user.SearchResponse, error)
 }
 
 type userService struct {
@@ -57,6 +63,32 @@ func (s *userService) GetUser(ctx *gin.Context, userID int64) (user.User, error)
 		ID:   userDB.ID,
 		Name: userDB.Name,
 	}, nil
+}
+
+func (s *userService) Search(ctx *gin.Context, query string) (*user.SearchResponse, error) {
+	trimmed := strings.TrimSpace(query)
+	if len(trimmed) < searchMinQueryLength {
+		return nil, fmt.Errorf("la búsqueda requiere al menos %d caracteres", searchMinQueryLength)
+	}
+
+	usersDB, err := s.userDao.SearchActive(ctx, trimmed, searchResultsLimit)
+	if err != nil {
+		customlogger.Error(ctx, "error searching users", err,
+			customlogger.Tag("query", trimmed))
+		return nil, fmt.Errorf("error al buscar usuarios")
+	}
+
+	results := make([]user.SearchResultItem, 0, len(usersDB))
+	for _, u := range usersDB {
+		results = append(results, user.SearchResultItem{
+			UserID:  u.ID,
+			Name:    u.Name,
+			Surname: u.Surname,
+			Email:   u.Email,
+		})
+	}
+
+	return &user.SearchResponse{Results: results}, nil
 }
 
 func (s *userService) CreateUser(ctx *gin.Context, name, password string) (user.User, error) {
