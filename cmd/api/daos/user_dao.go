@@ -11,7 +11,6 @@ import (
 
 type UserDaoInterface interface {
 	GetByID(ctx *gin.Context, userID int64) (*dbs.User, error)
-	Create(ctx *gin.Context, name, password string) (*dbs.User, error)
 	FindByID(ctx *gin.Context, userID int64) (*dbs.User, error)
 	FindByEmail(ctx *gin.Context, email string) (*dbs.User, error)
 	Update(ctx *gin.Context, user *dbs.User) error
@@ -96,18 +95,4 @@ func (ud *userDao) SearchActive(ctx *gin.Context, query string, limit int) ([]*d
 		return nil, fmt.Errorf("error searching users: %w", err)
 	}
 	return users, nil
-}
-
-func (ud *userDao) Create(ctx *gin.Context, name, password string) (*dbs.User, error) {
-	user := dbs.User{
-		Name:     name,
-		Password: password,
-	}
-
-	err := ud.DB.Create(&user).Error
-	if err != nil {
-		return nil, fmt.Errorf("error creating user: %w", err)
-	}
-
-	return &user, nil
 }

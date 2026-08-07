@@ -16,8 +16,6 @@ import (
 )
 
 type UserController interface {
-	GetUser(c *gin.Context)
-	CreateUser(c *gin.Context)
 	Update(c *gin.Context)
 	ChangeStatus(c *gin.Context)
 	ChangePassword(c *gin.Context)
@@ -32,55 +30,6 @@ func NewUserController(userService services.UserServiceInterface) UserController
 	return &userController{
 		userService: userService,
 	}
-}
-
-func (u *userController) GetUser(c *gin.Context) {
-	userIDStr := c.Param("user_id")
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "Invalid user ID",
-		})
-		return
-	}
-
-	userResult, err := u.userService.GetUser(c, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, apierror.APIError{
-			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal Server Error",
-			Message:    err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, userResult)
-}
-
-func (u *userController) CreateUser(c *gin.Context) {
-	var req user.CreateUserRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, apierror.APIError{
-			StatusCode: http.StatusBadRequest,
-			Code:       "Bad request",
-			Message:    "Invalid request body",
-		})
-		return
-	}
-
-	createdUser, err := u.userService.CreateUser(c, req.Name, req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, apierror.APIError{
-			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal Server Error",
-			Message:    err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusCreated, createdUser)
 }
 
 // Update godoc

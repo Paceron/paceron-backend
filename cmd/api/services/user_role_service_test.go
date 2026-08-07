@@ -67,10 +67,6 @@ func (m *mockUserDaoForUserRole) GetByID(ctx *gin.Context, userID int64) (*dbs.U
 	return nil, nil
 }
 
-func (m *mockUserDaoForUserRole) Create(ctx *gin.Context, name, password string) (*dbs.User, error) {
-	return nil, nil
-}
-
 func (m *mockUserDaoForUserRole) FindByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(ctx, userID)

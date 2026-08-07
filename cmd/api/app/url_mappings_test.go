@@ -20,8 +20,8 @@ func TestPingRouteExists(t *testing.T) {
 	}
 
 	assert.True(t, routes[http.MethodGet+":"+"/ping"], "GET /ping route should exist")
-	assert.True(t, routes[http.MethodGet+":"+"/user/:user_id"], "GET /user/:user_id route should exist")
-	assert.True(t, routes[http.MethodPost+":"+"/user"], "POST /user route should exist")
+	assert.False(t, routes[http.MethodGet+":"+"/user/:user_id"], "legacy GET /user/:user_id route should have been removed")
+	assert.False(t, routes[http.MethodPost+":"+"/user"], "legacy POST /user route should have been removed")
 	assert.True(t, routes[http.MethodGet+":"+"/example/weather"], "GET /example/weather route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/user/:user_id/weather"], "GET /user/:user_id/weather route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/swagger/index.html"], "GET /swagger/index.html route should exist")

@@ -31,7 +31,6 @@ const searchResultsLimit = 5
 
 type UserServiceInterface interface {
 	GetUser(ctx *gin.Context, userID int64) (user.User, error)
-	CreateUser(ctx *gin.Context, name, password string) (user.User, error)
 	Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
 	ChangeStatus(ctx *gin.Context, id int64, status string) (*user.UserUpdateResponse, error)
 	ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error
@@ -89,19 +88,6 @@ func (s *userService) Search(ctx *gin.Context, query string) (*user.SearchRespon
 	}
 
 	return &user.SearchResponse{Results: results}, nil
-}
-
-func (s *userService) CreateUser(ctx *gin.Context, name, password string) (user.User, error) {
-	userDB, err := s.userDao.Create(ctx, name, password)
-
-	if err != nil {
-		return user.User{}, fmt.Errorf("error creating user: %w", err)
-	}
-
-	return user.User{
-		ID:   userDB.ID,
-		Name: userDB.Name,
-	}, nil
 }
 
 func (s *userService) Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error) {
