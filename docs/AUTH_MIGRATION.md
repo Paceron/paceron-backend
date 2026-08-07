@@ -108,6 +108,14 @@ Nuevo `code` en las respuestas de error para estos casos: `"Forbidden"`, `status
 - `POST /api/v1/users/:id/trainer-role` — activa el rol. Self-only. Body: `{"password": "...", "bank_alias": "..."}`. `password` confirma que es una acción deliberada del dueño de la cuenta (mismo patrón que cambiar email). `bank_alias` es obligatorio si el usuario no tiene uno ya guardado en el perfil; si lo manda, también actualiza el perfil. `400` si falta el alias o tiene formato inválido, `401` si la contraseña no coincide, `409` si ya es entrenador.
 - `DELETE /api/v1/users/:id/trainer-role` — desactiva el rol. Self-only. Bloqueado con `409 Conflict` mientras el usuario siga siendo entrenador (`RoleInTeam`) de algún equipo activo — primero hay que transferir o eliminar esos equipos.
 
-## 6. Limitación conocida (no resuelta en esta iniciativa)
+## 6. Búsqueda de usuarios (nuevo)
+
+`GET /api/v1/users/search?q=<texto>` — resuelve el gap 1 de `paceron-frontend/docs/BACKEND_API_GAPS.md` (autocompletar al invitar). Cualquier usuario logueado puede usarlo, sin restricción de rol adicional.
+
+- `q` mínimo 3 caracteres (recortando espacios) → `400` si no llega al mínimo.
+- Busca coincidencia parcial case-insensitive en nombre, apellido o email, solo entre usuarios con `status = active`.
+- Devuelve hasta 5 resultados, cada uno con `user_id`, `name`, `surname`, `email` — deliberadamente acotado (sin DNI, teléfono, dirección ni otros datos sensibles). Si más adelante hace falta un dato extra para el flujo de invitación, se suma al mismo DTO.
+
+## 7. Limitación conocida (no resuelta en esta iniciativa)
 
 Los endpoints de catálogo (`/api/v1/roles`, `/api/v1/tiers`, `/api/v1/permissions`, `/api/v1/auth/permissions`) ahora exigen estar logueado, pero **cualquier usuario autenticado puede gestionarlos** — no hay chequeo de rol especial tipo "admin", porque ese concepto no existe hoy en el dominio (uno está planeado a futuro, fuera del MVP, para moderación tipo baneos/soporte — no reemplaza esto). Documentado como deuda conocida, no como bug.

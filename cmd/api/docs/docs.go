@@ -2624,6 +2624,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/search": {
+            "get": {
+                "description": "Busca usuarios activos por coincidencia parcial de nombre, apellido o email (autocompletar al invitar). Requiere login, sin restricción adicional de rol. Mínimo 3 caracteres, hasta 5 resultados.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Search users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Texto de búsqueda (mínimo 3 caracteres)",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.SearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}": {
             "put": {
                 "description": "Update user attributes (all fields except id, status). Email change requires X-Current-Password header. Only the user itself can update its own data.",
@@ -4111,6 +4152,34 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "user.SearchResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/user.SearchResultItem"
+                    }
+                }
+            }
+        },
+        "user.SearchResultItem": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "surname": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
                 }
             }
         },
