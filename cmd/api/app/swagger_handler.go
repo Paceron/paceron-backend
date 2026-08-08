@@ -24,6 +24,10 @@ func mapSwagger(r *gin.Engine) {
 	r.GET("/swagger/swagger.json", serveSwaggerJSON)
 }
 
+// serveSwaggerJSON reescribe el "host" del spec con el host real del request
+// entrante (c.Request.Host), en vez de una lista fija de entornos conocidos —
+// así funciona igual en local, cualquier deploy de Render (producción, staging,
+// futuros), o cualquier otro dominio, sin tener que agregar cada uno a mano acá.
 func serveSwaggerJSON(c *gin.Context) {
 	data, err := os.ReadFile("cmd/api/docs/swagger.json")
 	if err != nil {
@@ -31,20 +35,13 @@ func serveSwaggerJSON(c *gin.Context) {
 		return
 	}
 
-	env := c.DefaultQuery("env", "local")
-
 	var spec map[string]interface{}
 	if err := json.Unmarshal(data, &spec); err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	switch env {
-	case "production":
-		spec["host"] = "paceron-backend.onrender.com"
-	default:
-		spec["host"] = "localhost:8080"
-	}
+	spec["host"] = c.Request.Host
 
 	modified, _ := json.MarshalIndent(spec, "", "    ")
 	c.Data(http.StatusOK, "application/json; charset=utf-8", modified)

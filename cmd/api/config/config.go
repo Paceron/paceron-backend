@@ -27,6 +27,25 @@ const (
 	_localScope    = "LOCAL"
 )
 
+// stageFlag es el mecanismo explícito para pegarle a la base/storage de producción
+// de Supabase. Todo lo demás (nada, cualquier otro valor, CI, go test) usa testing
+// stage por default — a propósito, para que un Render mal configurado o un `go run`
+// suelto nunca toquen producción por accidente. No es lo mismo que Environment/
+// GetEnvironment(): eso gobierna cómo se carga la config (local/test/prod), esto
+// gobierna A CUÁL proyecto de Supabase apunta.
+const stageFlag = "--stage=production"
+
+// IsProductionStage indica si el proceso arrancó explícitamente con --stage=production.
+// Sin ese flag exacto, siempre es testing stage.
+func IsProductionStage() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == stageFlag {
+			return true
+		}
+	}
+	return false
+}
+
 type DB struct {
 	Username           string
 	Password           string
@@ -124,7 +143,7 @@ func initTest() {
 }
 
 func loadDBConfig() {
-	dbURL := os.Getenv("DATABASE_URL")
+	dbURL := stagedDatabaseURL()
 	if dbURL != "" {
 		MyDB = parseDatabaseURL(dbURL)
 	} else {
@@ -140,6 +159,15 @@ func loadDBConfig() {
 	JWTAudience = getEnvOrDefault("JWT_AUDIENCE", "paceron-app")
 	AccessTokenDuration = getDurationOrDefault("ACCESS_TOKEN_DURATION", 15*time.Minute)
 	RefreshTokenDuration = getDurationOrDefault("REFRESH_TOKEN_DURATION", 30*24*time.Hour)
+}
+
+// stagedDatabaseURL resuelve qué proyecto de Supabase usar según IsProductionStage.
+// Default siempre testing — production exige el flag explícito.
+func stagedDatabaseURL() string {
+	if IsProductionStage() {
+		return os.Getenv("SUPABASE_PRODUCTION_DATABASE_URL")
+	}
+	return os.Getenv("SUPABASE_TESTING_DATABASE_URL")
 }
 
 func getEnvOrDefault(key, fallback string) string {

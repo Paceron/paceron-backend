@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
 
@@ -18,6 +19,12 @@ const banner = `
 func StartApp() {
 	fmt.Print(banner)
 	customlogger.CustomConfig(customlogger.DebugLevel, true, true, true)
+
+	stage := "testing"
+	if config.IsProductionStage() {
+		stage = "PRODUCTION"
+	}
+	customlogger.Info(nil, "supabase stage resolved", customlogger.Tag("stage", stage))
 
 	router := gin.Default()
 	app := NewApplication()
