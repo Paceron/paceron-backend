@@ -20,6 +20,14 @@ services:
         value: release
       - key: CORS_ALLOWED_ORIGINS
         value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+      - key: JWT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
 
   # Preview de develop, contra testing stage (default, sin flag). Mismo repo,
   # otro branch — sirve para probar develop desplegado sin tocar producción.
@@ -41,3 +49,11 @@ services:
         value: release
       - key: CORS_ALLOWED_ORIGINS
         value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,https://paceron-frontend-git-develop-paceron.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+      - key: JWT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false

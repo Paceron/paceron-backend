@@ -33,17 +33,19 @@ Dos services (`render.yaml`), mismo repo:
 
 **Antes de este cambio**, el único service existente en Render desplegaba `develop` pero estaba etiquetado/tratado como "producción" — mismo quirk que ya estaba documentado en `CLAUDE.md`. Esto lo corrige: `master` pasa a ser la producción real, `develop` queda como preview separado.
 
-### Checklist manual en el dashboard de Render (esto no lo puede hacer `render.yaml` solo — las secrets no viven en git)
+### ¿Cómo se activan los dos services en Render?
 
-1. **Service existente** (el que hoy despliega `develop` y se muestra como prod):
-   - Cambiar su branch a `master`.
-   - Agregar `--stage=production` al Start Command (o confirmar que tome el de `render.yaml` en el próximo sync).
-   - Renombrar su variable `DATABASE_URL` a `SUPABASE_PRODUCTION_DATABASE_URL`, con el valor de producción (el `.env.backend` que ya tenés armado).
-   - Confirmar que están seteadas: `JWT_SECRET`, `SMTP_HOST`, `GMAIL_USER`, `GMAIL_APP_PASSWORD` (no se tocan, pero verificar que sigan ahí después del cambio).
-2. **Service nuevo** (`paceron-backend-develop`, desde `render.yaml` o creado a mano):
-   - Branch `develop`, sin flag de stage.
-   - `SUPABASE_TESTING_DATABASE_URL` con el valor de testing.
-   - Mismas `JWT_SECRET`/`SMTP_*`/`GMAIL_*` que el de producción (o propias, si se quiere aislar el envío de mail también — no resuelto acá, mismo criterio que se use hoy).
+`render.yaml` es un Blueprint — solo se aplica solo si el service está linkeado a un Blueprint en Render. Dos casos:
+
+- **Si el service actual ya es Blueprint** (dashboard → pestaña Blueprints): sync manual, Render muestra el diff (branch nueva, service `paceron-backend-develop` nuevo, env vars nuevas declaradas) y se aplica con un click. Sigue pidiendo los valores de las vars con `sync: false` que no tengan valor todavía.
+- **Si el service actual se creó a mano** (probable, dado que hoy despliega `develop` sin que `render.yaml` lo dijera nunca): `render.yaml` no se autoaplica. Hay que crear el Blueprint desde cero (`New +` → `Blueprint`, apuntar al repo) — Render va a detectar que ya existe un service con el mismo `name: paceron-backend` y ofrece adoptarlo en vez de duplicarlo; o si se prefiere no arriesgar eso, editar el service actual a mano y crear el segundo también a mano, usando `render.yaml` como referencia de qué valores va cada uno.
+
+`render.yaml` ahora declara **todas** las keys con `sync: false` que necesita el binario para arrancar (`SUPABASE_*_DATABASE_URL`, `JWT_SECRET`, `SMTP_HOST`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`) — el valor nunca viaja por git (Render no puede leer un `.env` local, ni debería), pero declarar la clave hace que Render la pida al sincronizar en vez de depender de acordarse a mano.
+
+### Checklist de valores a cargar (una vez por service, vía dashboard)
+
+1. **`paceron-backend`** (master, producción): `SUPABASE_PRODUCTION_DATABASE_URL` con el valor de producción, más `JWT_SECRET`/`SMTP_HOST`/`GMAIL_USER`/`GMAIL_APP_PASSWORD`.
+2. **`paceron-backend-develop`** (develop, testing): `SUPABASE_TESTING_DATABASE_URL` con el valor de testing, más los mismos `JWT_SECRET`/`SMTP_*`/`GMAIL_*` (compartidos, no dependen del stage) o propios si se quiere aislar también el envío de mail — no resuelto acá, mismo criterio que se use hoy.
 
 ## Local / CI
 
