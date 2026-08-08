@@ -19,8 +19,16 @@
 
 - [x] 4.1 `docs/ENVIRONMENTS.md` nuevo — mecanismo + checklist manual de Render
 - [x] 4.2 `CLAUDE.md`: sección nueva, quirk de `render.yaml`/`branch: main` removido (ya no aplica)
+- [x] 4.3 `render.yaml`: declarar todas las keys secretas necesarias (`JWT_SECRET`/`SMTP_HOST`/`GMAIL_USER`/`GMAIL_APP_PASSWORD`) con `sync: false`, para que Render las pida al sincronizar
+- [x] 4.4 `render.yaml`: alinear `buildCommand`/`startCommand` (`-o app`/`./app`) con la config real que el usuario armó a mano en Render (sin Blueprint existente)
 
 ## 5. Verificación
 
 - [x] 5.1 `go run cmd/api/main.go` sin flag → log confirma `stage=testing`, conecta OK contra el proyecto de testing real
 - [x] 5.2 No se probó `--stage=production` contra la DB de producción real (innecesario y riesgoso para un smoke test — la lógica ya está cubierta por tests unitarios)
+
+## 6. Bug encontrado al verificar el deploy de staging (addendum)
+
+- [x] 6.1 `swagger_handler.go`: `serveSwaggerJSON` tenía un switch `?env=local|production` que hardcodeaba `paceron-backend.onrender.com` como "producción" — staging (`paceron-backend-as9c.onrender.com`) caía en ese mismo bucket y mostraba la URL base incorrecta. Reemplazado por `spec["host"] = c.Request.Host`, refleja el dominio real del request, sin lista fija de entornos.
+- [x] 6.2 `swagger_custom.html`: mismo problema en el botón "Export as cURL" (mapa `hosts` hardcodeado + detección `localhost` vs todo-lo-demás). Reemplazado por `window.location.origin`.
+- [x] 6.3 Verificado local: `curl .../swagger/doc.json -H "Host: paceron-backend-as9c.onrender.com"` → `host` en la respuesta refleja ese valor, no el hardcodeado
