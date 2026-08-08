@@ -126,16 +126,8 @@
   </div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
-    const hosts = {
-      local: 'http://localhost:8080',
-      production: 'https://paceron-backend.onrender.com',
-    };
-
-    const env = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'local' : 'production';
-    let currentEnv = env;
-
     SwaggerUIBundle({
-      url: '/swagger/doc.json?env=' + env,
+      url: '/swagger/doc.json',
       dom_id: '#swagger-ui',
       presets: [SwaggerUIBundle.presets.apis],
       deepLinking: true,
@@ -146,10 +138,9 @@
     const bodylessMethods = ['get', 'delete', 'options', 'head'];
 
     async function openCurlModal() {
-      const env = currentEnv;
-      const resp = await fetch('/swagger/doc.json?env=' + env);
+      const resp = await fetch('/swagger/doc.json');
       const spec = await resp.json();
-      const baseUrl = hosts[env] || 'http://localhost:8080';
+      const baseUrl = window.location.origin;
       const container = document.getElementById('curl-modal-body');
       container.innerHTML = '';
       container._allCurl = '';
