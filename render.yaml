@@ -8,8 +8,8 @@ services:
     repo: https://github.com/Paceron/paceron-backend
     branch: master
     plan: free
-    buildCommand: go build -o main ./cmd/api
-    startCommand: ./main --stage=production
+    buildCommand: go build -o app ./cmd/api
+    startCommand: ./app --stage=production
     healthCheckPath: /ping
     envVars:
       - key: SUPABASE_PRODUCTION_DATABASE_URL
@@ -37,8 +37,8 @@ services:
     repo: https://github.com/Paceron/paceron-backend
     branch: develop
     plan: free
-    buildCommand: go build -o main ./cmd/api
-    startCommand: ./main
+    buildCommand: go build -o app ./cmd/api
+    startCommand: ./app
     healthCheckPath: /ping
     envVars:
       - key: SUPABASE_TESTING_DATABASE_URL
