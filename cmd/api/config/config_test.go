@@ -136,32 +136,26 @@ func TestStagedDatabaseURL_ProductionWithFlag(t *testing.T) {
 	assert.Equal(t, "postgresql://p:p@prodhost:5432/proddb", stagedDatabaseURL())
 }
 
-func TestLoadSMTPConfig(t *testing.T) {
-	os.Setenv("SMTP_HOST", "smtp.gmail.com")
-	os.Setenv("SMTP_PORT", "587")
-	os.Setenv("GMAIL_USER", "test@gmail.com")
-	os.Setenv("GMAIL_APP_PASSWORD", "app-password-value")
+func TestLoadMailerConfig(t *testing.T) {
+	os.Setenv("RESEND_API_KEY", "re_test_key")
+	os.Setenv("RESEND_FROM_ADDRESS", "Paceron <no-reply@paceron.com>")
 	defer func() {
-		os.Unsetenv("SMTP_HOST")
-		os.Unsetenv("SMTP_PORT")
-		os.Unsetenv("GMAIL_USER")
-		os.Unsetenv("GMAIL_APP_PASSWORD")
+		os.Unsetenv("RESEND_API_KEY")
+		os.Unsetenv("RESEND_FROM_ADDRESS")
 	}()
 
-	loadSMTPConfig()
+	loadMailerConfig()
 
-	assert.Equal(t, "smtp.gmail.com", MySMTP.Host)
-	assert.Equal(t, 587, MySMTP.Port)
-	assert.Equal(t, "test@gmail.com", MySMTP.User)
-	assert.Equal(t, "app-password-value", MySMTP.AppPassword)
+	assert.Equal(t, "re_test_key", MyMailer.APIKey)
+	assert.Equal(t, "Paceron <no-reply@paceron.com>", MyMailer.From)
 }
 
-func TestLoadSMTPConfig_DefaultPort(t *testing.T) {
-	os.Unsetenv("SMTP_PORT")
-	os.Setenv("SMTP_HOST", "smtp.gmail.com")
-	defer os.Unsetenv("SMTP_HOST")
+func TestLoadMailerConfig_Empty(t *testing.T) {
+	os.Unsetenv("RESEND_API_KEY")
+	os.Unsetenv("RESEND_FROM_ADDRESS")
 
-	loadSMTPConfig()
+	loadMailerConfig()
 
-	assert.Equal(t, 587, MySMTP.Port)
+	assert.Equal(t, "", MyMailer.APIKey)
+	assert.Equal(t, "", MyMailer.From)
 }

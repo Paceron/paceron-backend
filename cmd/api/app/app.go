@@ -47,16 +47,15 @@ func NewApplication() *Application {
 	// que los chequeos `mailer != nil` de los services sigan funcionando.
 	var mailerClient mailer.MailerInterface
 	mailerLogger := customlogger.NewHTTPClientLogger()
-	smtpClient, err := mailer.New(
-		mailer.WithHost(config.MySMTP.Host),
-		mailer.WithPort(config.MySMTP.Port),
-		mailer.WithCredentials(config.MySMTP.User, config.MySMTP.AppPassword),
+	resendClient, err := mailer.New(
+		mailer.WithAPIKey(config.MyMailer.APIKey),
+		mailer.WithFrom(config.MyMailer.From),
 		mailer.WithLogger(mailerLogger),
 	)
 	if err != nil {
 		customlogger.Error(nil, "error initializing mailer", err)
 	} else {
-		mailerClient = smtpClient
+		mailerClient = resendClient
 	}
 
 	// User flow

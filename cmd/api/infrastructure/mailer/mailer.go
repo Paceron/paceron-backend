@@ -3,9 +3,11 @@ package mailer
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"fmt"
+	"time"
 
-	mail "github.com/wneessen/go-mail"
+	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 )
 
 //go:embed assets/paceron-logo.png
@@ -16,29 +18,10 @@ var logoAssets embed.FS
 // remota o base64 inline: es el mecanismo que los clientes de correo
 // (Gmail, Outlook, Apple Mail) cargan de forma confiable.
 const logoContentID = "paceron-logo"
+const logoAssetPath = "assets/paceron-logo.png"
 
-// Logger define el contrato de logging que Client usa, mismo shape que
-// infrastructure/httpclient.Logger para poder reusar el mismo adapter.
-type Logger interface {
-	Info(
-		ctx context.Context,
-		message string,
-		fields map[string]any,
-	)
-
-	Warn(
-		ctx context.Context,
-		message string,
-		fields map[string]any,
-	)
-
-	Error(
-		ctx context.Context,
-		message string,
-		err error,
-		fields map[string]any,
-	)
-}
+const resendBaseURL = "https://api.resend.com"
+const resendSendPath = "/emails"
 
 // MailerInterface permite mockear el envío de correos en los consumidores.
 type MailerInterface interface {
@@ -46,72 +29,90 @@ type MailerInterface interface {
 	SendEmail(ctx context.Context, to string, emailType EmailType, data EmailData) error
 }
 
-// Client envía correos electrónicos vía SMTP.
+// Client envía correos electrónicos vía la API HTTP de Resend.
+//
+// Antes usaba SMTP crudo contra Gmail — se migró porque el egress compartido de
+// Render tenía timeouts de conexión TCP intermitentes contra el puerto 587, sin
+// retry. Al ser HTTP, el envío es una llamada más contra infrastructure/httpclient,
+// que ya trae retry/timeout/circuit-breaker sin escribir resiliencia nueva acá.
 type Client struct {
-	host     string
-	port     int
-	username string
-	password string
+	apiKey string
+	from   string
+	logger httpclient.Logger
 
-	logger Logger
-
-	// smtpClient es la única instancia del cliente SMTP, compartida por todos
-	// los envíos. Ver New para el detalle de por qué es seguro reutilizarla.
-	smtpClient *mail.Client
+	httpClient *httpclient.Client
 }
 
 // New construye un Client de mailer aplicando las opciones dadas.
-//
-// El cliente SMTP subyacente se construye una sola vez acá y se reutiliza en
-// cada envío, en lugar de instanciarse por correo. Es seguro compartirlo entre
-// goroutines: go-mail abre y cierra una conexión propia dentro de cada
-// DialAndSendWithContext (no guarda la conexión en el struct) y protege el
-// acceso a su configuración con un RWMutex interno.
 func New(opts ...Option) (*Client, error) {
-	client := &Client{
-		port: 587,
-	}
+	client := &Client{}
 
 	for _, opt := range opts {
 		opt(client)
 	}
 
-	smtpClient, err := mail.NewClient(
-		client.host,
-		mail.WithPort(client.port),
-		mail.WithSMTPAuth(mail.SMTPAuthPlain),
-		mail.WithUsername(client.username),
-		mail.WithPassword(client.password),
-		mail.WithTLSPolicy(mail.TLSMandatory),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("mailer: error creando smtp client: %w", err)
+	if client.apiKey == "" {
+		return nil, fmt.Errorf("mailer: RESEND_API_KEY requerida")
 	}
-	client.smtpClient = smtpClient
+	if client.from == "" {
+		return nil, fmt.Errorf("mailer: from address requerido")
+	}
+
+	httpOpts := []httpclient.Option{
+		httpclient.WithBaseURL(resendBaseURL),
+		httpclient.WithHeader("Authorization", "Bearer "+client.apiKey),
+		httpclient.WithTimeout(8 * time.Second),
+		httpclient.WithRetry(2, 500*time.Millisecond),
+	}
+	if client.logger != nil {
+		httpOpts = append(httpOpts, httpclient.WithLogger(client.logger))
+	}
+	client.httpClient = httpclient.New(httpOpts...)
 
 	return client, nil
 }
 
-// Send envía un correo HTML ya renderizado a un único destinatario.
+type resendAttachment struct {
+	Filename    string `json:"filename"`
+	Content     string `json:"content"`
+	ContentID   string `json:"content_id,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+}
+
+type resendEmailRequest struct {
+	From        string             `json:"from"`
+	To          []string           `json:"to"`
+	Subject     string             `json:"subject"`
+	HTML        string             `json:"html"`
+	Attachments []resendAttachment `json:"attachments,omitempty"`
+}
+
+// Send envía un correo HTML ya renderizado a un único destinatario, con el logo
+// de Paceron embebido como attachment inline (referenciado por content_id desde
+// el HTML vía `cid:paceron-logo`).
 func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
-	msg := mail.NewMsg()
-	if err := msg.From(c.username); err != nil {
-		c.logError(ctx, "error seteando remitente", err)
-		return fmt.Errorf("mailer: error seteando remitente: %w", err)
-	}
-	if err := msg.To(to); err != nil {
-		c.logError(ctx, "error seteando destinatario", err)
-		return fmt.Errorf("mailer: error seteando destinatario: %w", err)
-	}
-	msg.Subject(subject)
-	msg.SetBodyString(mail.TypeTextHTML, htmlBody)
-
-	if err := msg.EmbedFromEmbedFS("assets/paceron-logo.png", &logoAssets, mail.WithFileContentID(logoContentID)); err != nil {
-		c.logError(ctx, "error embebiendo logo", err)
-		return fmt.Errorf("mailer: error embebiendo logo: %w", err)
+	logoBytes, err := logoAssets.ReadFile(logoAssetPath)
+	if err != nil {
+		c.logError(ctx, "error leyendo logo embebido", err)
+		return fmt.Errorf("mailer: error leyendo logo embebido: %w", err)
 	}
 
-	if err := c.smtpClient.DialAndSendWithContext(ctx, msg); err != nil {
+	body := resendEmailRequest{
+		From:    c.from,
+		To:      []string{to},
+		Subject: subject,
+		HTML:    htmlBody,
+		Attachments: []resendAttachment{
+			{
+				Filename:    "paceron-logo.png",
+				Content:     base64.StdEncoding.EncodeToString(logoBytes),
+				ContentID:   logoContentID,
+				ContentType: "image/png",
+			},
+		},
+	}
+
+	if err := c.httpClient.Post(ctx, resendSendPath, body, nil); err != nil {
 		c.logError(ctx, "error enviando email", err)
 		return fmt.Errorf("mailer: error enviando email: %w", err)
 	}

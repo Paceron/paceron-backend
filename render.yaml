@@ -22,11 +22,9 @@ services:
         value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
       - key: JWT_SECRET
         sync: false
-      - key: SMTP_HOST
+      - key: RESEND_API_KEY
         sync: false
-      - key: GMAIL_USER
-        sync: false
-      - key: GMAIL_APP_PASSWORD
+      - key: RESEND_FROM_ADDRESS
         sync: false
 
   # Preview de develop, contra testing stage (default, sin flag). Mismo repo,
@@ -51,9 +49,7 @@ services:
         value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,https://paceron-frontend-git-develop-paceron.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
       - key: JWT_SECRET
         sync: false
-      - key: SMTP_HOST
+      - key: RESEND_API_KEY
         sync: false
-      - key: GMAIL_USER
-        sync: false
-      - key: GMAIL_APP_PASSWORD
+      - key: RESEND_FROM_ADDRESS
         sync: false

@@ -156,59 +156,39 @@ func TestEmailTemplates_AllTypesRegistered(t *testing.T) {
 
 // --- Construcción del cliente ---
 
-func TestNew_BuildsSingleSMTPClient(t *testing.T) {
+func TestNew_BuildsClient(t *testing.T) {
 	client, err := New(
-		WithHost("smtp.gmail.com"),
-		WithPort(587),
-		WithCredentials("user@gmail.com", "app-password"),
+		WithAPIKey("re_test_key"),
+		WithFrom("Paceron <no-reply@paceron.com>"),
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, client)
-	assert.NotNil(t, client.smtpClient, "el cliente SMTP debe construirse una sola vez en New")
-	assert.Equal(t, "smtp.gmail.com", client.host)
-	assert.Equal(t, 587, client.port)
+	assert.NotNil(t, client.httpClient, "el httpClient de Resend debe construirse en New")
+	assert.Equal(t, "re_test_key", client.apiKey)
+	assert.Equal(t, "Paceron <no-reply@paceron.com>", client.from)
 }
 
-func TestNew_DefaultPortIs587(t *testing.T) {
-	client, err := New(WithHost("smtp.gmail.com"))
-
-	require.NoError(t, err)
-	assert.Equal(t, 587, client.port)
-}
-
-// TestNew_ReusesSameSMTPClientAcrossSends verifica el punto central del refactor:
-// la instancia SMTP es única y no se reconstruye por envío.
-func TestNew_ReusesSameSMTPClientAcrossSends(t *testing.T) {
-	client, err := New(
-		WithHost("smtp.gmail.com"),
-		WithCredentials("user@gmail.com", "app-password"),
-	)
-	require.NoError(t, err)
-
-	first := client.smtpClient
-	_ = client.Send(context.Background(), "dest@test.com", "asunto", "<p>cuerpo</p>")
-
-	assert.Same(t, first, client.smtpClient, "Send no debe reemplazar la instancia SMTP compartida")
-}
-
-func TestNew_InvalidPortReturnsError(t *testing.T) {
-	_, err := New(
-		WithHost("smtp.gmail.com"),
-		WithPort(-1),
-		WithCredentials("user@gmail.com", "app-password"),
-	)
+func TestNew_MissingAPIKeyReturnsError(t *testing.T) {
+	_, err := New(WithFrom("Paceron <no-reply@paceron.com>"))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error creando smtp client")
+	assert.Contains(t, err.Error(), "RESEND_API_KEY")
+}
+
+func TestNew_MissingFromReturnsError(t *testing.T) {
+	_, err := New(WithAPIKey("re_test_key"))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "from address")
 }
 
 // TestSendEmail_UnknownTypeDoesNotSend verifica que un tipo inválido falle en el
-// renderizado, sin intentar abrir una conexión SMTP.
+// renderizado, sin intentar llamar a la API de Resend.
 func TestSendEmail_UnknownTypeDoesNotSend(t *testing.T) {
 	client, err := New(
-		WithHost("smtp.gmail.com"),
-		WithCredentials("user@gmail.com", "app-password"),
+		WithAPIKey("re_test_key"),
+		WithFrom("Paceron <no-reply@paceron.com>"),
 	)
 	require.NoError(t, err)
 
@@ -218,33 +198,32 @@ func TestSendEmail_UnknownTypeDoesNotSend(t *testing.T) {
 	assert.Contains(t, err.Error(), "tipo de email desconocido")
 }
 
-// --- Envío real (requiere credenciales SMTP) ---
+// --- Envío real (requiere RESEND_API_KEY) ---
 
-// TestSendEmail_RealEmail_Integration envía correos reales usando las
-// credenciales SMTP configuradas en el entorno. Se skipea automáticamente si
-// las variables de entorno SMTP no están seteadas, para que `go test ./...`
-// siga funcionando en máquinas sin credenciales configuradas.
+// TestSendEmail_RealEmail_Integration envía correos reales vía la API de Resend
+// usando las credenciales configuradas en el entorno. Se skipea automáticamente
+// si RESEND_API_KEY no está seteada, para que `go test ./...` siga funcionando en
+// máquinas sin credenciales configuradas.
 //
 // Para ejecutar este test manualmente:
-//  1. Completar GMAIL_USER, GMAIL_APP_PASSWORD, SMTP_HOST, SMTP_PORT en .env
+//  1. Completar RESEND_API_KEY y RESEND_FROM_ADDRESS en .env (dominio verificado en Resend)
 //  2. go test ./cmd/api/infrastructure/mailer/... -run Integration -v
-//  3. Verificar la bandeja de entrada de GMAIL_USER
+//  3. Verificar la bandeja de entrada del address configurado como from
 func TestSendEmail_RealEmail_Integration(t *testing.T) {
-	if config.MySMTP.User == "" || config.MySMTP.AppPassword == "" {
-		t.Skip("SMTP env vars no configuradas, saltando test de integración")
+	if config.MyMailer.APIKey == "" {
+		t.Skip("RESEND_API_KEY no configurada, saltando test de integración")
 	}
 
 	client, err := New(
-		WithHost(config.MySMTP.Host),
-		WithPort(config.MySMTP.Port),
-		WithCredentials(config.MySMTP.User, config.MySMTP.AppPassword),
+		WithAPIKey(config.MyMailer.APIKey),
+		WithFrom(config.MyMailer.From),
 	)
 	require.NoError(t, err)
 
 	data := EmailData{Name: "Juan", Code: "123456", TeamName: "Los Pumas"}
 	for _, emailType := range allEmailTypes {
 		t.Run(string(emailType), func(t *testing.T) {
-			err := client.SendEmail(context.Background(), config.MySMTP.User, emailType, data)
+			err := client.SendEmail(context.Background(), config.MyMailer.From, emailType, data)
 			assert.NoError(t, err)
 		})
 	}
