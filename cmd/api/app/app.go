@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/controllers"
@@ -12,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
+	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/services"
 )
 
@@ -33,6 +35,7 @@ type Application struct {
 	teamUserController         controllers.TeamUserController
 	groupUserController        controllers.GroupUserController
 	invitationController       controllers.InvitationController
+	pushTokenController        controllers.PushTokenController
 }
 
 func NewApplication() *Application {
@@ -58,9 +61,21 @@ func NewApplication() *Application {
 		mailerClient = resendClient
 	}
 
+	// Push notifications: cliente HTTP plano contra la API pública de Expo, sin SDK
+	// (mismo patrón que exampleWeatherClient). pushTokenDao se comparte entre todos
+	// los services que disparan notificaciones (user, team_user, invitation).
+	pushTokenDao := daos.NewPushTokenDao(db)
+	expoPushHTTPClient := httpclient.New(
+		httpclient.WithBaseURL("https://exp.host"),
+		httpclient.WithTimeout(8*time.Second),
+		httpclient.WithRetry(2, 500*time.Millisecond),
+		httpclient.WithLogger(customlogger.NewHTTPClientLogger()),
+	)
+	expoPushClient := expopushclient.New(expoPushHTTPClient)
+
 	// User flow
 	userDao := daos.NewUserDao(db)
-	userService := services.NewUserService(userDao, mailerClient)
+	userService := services.NewUserService(userDao, mailerClient, pushTokenDao, expoPushClient)
 	userController := controllers.NewUserController(userService)
 
 	// Role flow (roleDao/userRoleDao también los necesita authService para los claims
@@ -152,7 +167,7 @@ func NewApplication() *Application {
 	teamController := controllers.NewTeamController(teamService, teamDelegate)
 	groupController := controllers.NewGroupController(groupService)
 
-	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao, groupDao, groupUserDao)
+	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient)
 	teamUserController := controllers.NewTeamUserController(teamUserService)
 
 	// Group User flow
@@ -160,8 +175,12 @@ func NewApplication() *Application {
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow
-	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient)
+	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient)
 	invitationController := controllers.NewInvitationController(invitationService)
+
+	// Push token flow
+	pushTokenService := services.NewPushTokenService(pushTokenDao)
+	pushTokenController := controllers.NewPushTokenController(pushTokenService)
 
 	return &Application{
 		pingController:             controllers.NewPingController(),
@@ -181,5 +200,6 @@ func NewApplication() *Application {
 		teamUserController:         teamUserController,
 		groupUserController:        groupUserController,
 		invitationController:       invitationController,
+		pushTokenController:        pushTokenController,
 	}
 }
