@@ -12,6 +12,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/invitation"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
+	"simple-arq-golang/cmd/api/restclients/expopushclient"
 )
 
 // invitationExpiryDuration es el vencimiento informativo de una invitación pendiente.
@@ -39,6 +40,8 @@ type invitationService struct {
 	groupDao      daos.GroupDaoInterface
 	groupUserDao  daos.GroupUserDaoInterface
 	mailer        mailer.MailerInterface
+	pushTokenDao  daos.PushTokenDaoInterface
+	pushClient    expopushclient.ExpoPushClientInterface
 }
 
 // NewInvitationService crea una nueva instancia de InvitationService.
@@ -50,6 +53,8 @@ func NewInvitationService(
 	groupDao daos.GroupDaoInterface,
 	groupUserDao daos.GroupUserDaoInterface,
 	mailerClient mailer.MailerInterface,
+	pushTokenDao daos.PushTokenDaoInterface,
+	pushClient expopushclient.ExpoPushClientInterface,
 ) InvitationServiceInterface {
 	return &invitationService{
 		userDao:       userDao,
@@ -59,6 +64,8 @@ func NewInvitationService(
 		groupDao:      groupDao,
 		groupUserDao:  groupUserDao,
 		mailer:        mailerClient,
+		pushTokenDao:  pushTokenDao,
+		pushClient:    pushClient,
 	}
 }
 
@@ -164,6 +171,18 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, callerI
 		customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
 		customlogger.Tag("email", user.Email),
 		customlogger.TagMethod("InviteRunner"))
+
+	if s.pushClient != nil {
+		inviter, err := s.userDao.FindByID(ctx, callerID)
+		if err != nil || inviter == nil {
+			customlogger.Warn(ctx, "no se pudo notificar invitación por push: entrenador no encontrado",
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)))
+		} else {
+			title := "Nueva invitación"
+			body := fmt.Sprintf("%s te invitó a unirte a %s", inviter.Name, teamDB.Name)
+			sendPushToUser(ctx, s.pushTokenDao, s.pushClient, user.ID, title, body, "invitation_received", "/invitations")
+		}
+	}
 
 	return &invitation.InviteRunnerResponse{
 		Message: fmt.Sprintf("Invitación enviada exitosamente a %s", user.Email),
@@ -377,7 +396,51 @@ func (s *invitationService) AcceptInvitation(ctx *gin.Context, invitationID, use
 		customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
 		customlogger.TagMethod("AcceptInvitation"))
 
+	s.notifyInvitationResponse(ctx, inv, userID, "aceptó")
+
 	return &invitation.RespondInvitationResponse{Message: "Invitación aceptada"}, nil
+}
+
+// notifyInvitationResponse avisa al entrenador (inviter) que su invitación fue
+// respondida, por mail y push. Best-effort: cualquier fallo se loguea y nunca
+// bloquea accept/reject, que ya completaron la operación principal.
+func (s *invitationService) notifyInvitationResponse(ctx *gin.Context, inv *dbs.Invitation, userID int64, status string) {
+	inviter, err := s.userDao.FindByID(ctx, inv.InviterID)
+	if err != nil || inviter == nil {
+		customlogger.Warn(ctx, "no se pudo notificar respuesta de invitación: entrenador no encontrado",
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)))
+		return
+	}
+	invitee, err := s.userDao.FindByID(ctx, userID)
+	if err != nil || invitee == nil {
+		customlogger.Warn(ctx, "no se pudo notificar respuesta de invitación: invitado no encontrado",
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)))
+		return
+	}
+	teamDB, err := s.teamDao.FindByID(ctx, inv.TeamID)
+	if err != nil || teamDB == nil {
+		customlogger.Warn(ctx, "no se pudo notificar respuesta de invitación: equipo no encontrado",
+			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)))
+		return
+	}
+
+	if s.mailer != nil {
+		if err := s.mailer.SendEmail(ctx, inviter.Email, mailer.EmailTypeInvitationResponse, mailer.EmailData{
+			Name:            inviter.Name,
+			TeamName:        teamDB.Name,
+			RelatedUserName: invitee.Name,
+			ResponseStatus:  status,
+		}); err != nil {
+			customlogger.Error(ctx, "error sending invitation response email", err,
+				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)))
+		}
+	}
+
+	if s.pushClient != nil {
+		title := "Respuesta a tu invitación"
+		body := fmt.Sprintf("%s %s tu invitación a %s", invitee.Name, status, teamDB.Name)
+		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, inviter.ID, title, body, "invitation_response", fmt.Sprintf("/teams/%d", teamDB.ID))
+	}
 }
 
 // assignInviteeToGroup da de alta al invitado en el grupo elegido al invitar, o en el
@@ -451,6 +514,8 @@ func (s *invitationService) RejectInvitation(ctx *gin.Context, invitationID, use
 	customlogger.Info(ctx, "invitation rejected successfully",
 		customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
 		customlogger.TagMethod("RejectInvitation"))
+
+	s.notifyInvitationResponse(ctx, inv, userID, "rechazó")
 
 	return &invitation.RespondInvitationResponse{Message: "Invitación rechazada"}, nil
 }
