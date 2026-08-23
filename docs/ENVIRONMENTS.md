@@ -40,12 +40,12 @@ Dos services (`render.yaml`), mismo repo:
 - **Si el service actual ya es Blueprint** (dashboard → pestaña Blueprints): sync manual, Render muestra el diff (branch nueva, service `paceron-backend-develop` nuevo, env vars nuevas declaradas) y se aplica con un click. Sigue pidiendo los valores de las vars con `sync: false` que no tengan valor todavía.
 - **Si el service actual se creó a mano** (probable, dado que hoy despliega `develop` sin que `render.yaml` lo dijera nunca): `render.yaml` no se autoaplica. Hay que crear el Blueprint desde cero (`New +` → `Blueprint`, apuntar al repo) — Render va a detectar que ya existe un service con el mismo `name: paceron-backend` y ofrece adoptarlo en vez de duplicarlo; o si se prefiere no arriesgar eso, editar el service actual a mano y crear el segundo también a mano, usando `render.yaml` como referencia de qué valores va cada uno.
 
-`render.yaml` ahora declara **todas** las keys con `sync: false` que necesita el binario para arrancar (`SUPABASE_*_DATABASE_URL`, `JWT_SECRET`, `SMTP_HOST`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`) — el valor nunca viaja por git (Render no puede leer un `.env` local, ni debería), pero declarar la clave hace que Render la pida al sincronizar en vez de depender de acordarse a mano.
+`render.yaml` ahora declara **todas** las keys con `sync: false` que necesita el binario para arrancar (`SUPABASE_*_DATABASE_URL`, `JWT_SECRET`, `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`) — el valor nunca viaja por git (Render no puede leer un `.env` local, ni debería), pero declarar la clave hace que Render la pida al sincronizar en vez de depender de acordarse a mano.
 
 ### Checklist de valores a cargar (una vez por service, vía dashboard)
 
-1. **`paceron-backend`** (master, producción): `SUPABASE_PRODUCTION_DATABASE_URL` con el valor de producción, más `JWT_SECRET`/`SMTP_HOST`/`GMAIL_USER`/`GMAIL_APP_PASSWORD`.
-2. **`paceron-backend-develop`** (develop, testing): `SUPABASE_TESTING_DATABASE_URL` con el valor de testing, más los mismos `JWT_SECRET`/`SMTP_*`/`GMAIL_*` (compartidos, no dependen del stage) o propios si se quiere aislar también el envío de mail — no resuelto acá, mismo criterio que se use hoy.
+1. **`paceron-backend`** (master, producción): `SUPABASE_PRODUCTION_DATABASE_URL` con el valor de producción, más `JWT_SECRET`/`RESEND_API_KEY`/`RESEND_FROM_ADDRESS`.
+2. **`paceron-backend-develop`** (develop, testing): `SUPABASE_TESTING_DATABASE_URL` con el valor de testing, más los mismos `JWT_SECRET`/`RESEND_*` (compartidos, no dependen del stage — un proveedor de mail no maneja datos que requieran aislamiento como la DB) o propios si más adelante se prefiere aislar también el envío de mail — no resuelto acá, mismo criterio que se use hoy.
 
 ## Local / CI
 

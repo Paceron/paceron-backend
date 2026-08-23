@@ -4,28 +4,23 @@
 
 package mailer
 
+import "simple-arq-golang/cmd/api/infrastructure/httpclient"
+
 type Option func(*Client)
 
-func WithHost(host string) Option {
+func WithAPIKey(apiKey string) Option {
 	return func(c *Client) {
-		c.host = host
+		c.apiKey = apiKey
 	}
 }
 
-func WithPort(port int) Option {
+func WithFrom(from string) Option {
 	return func(c *Client) {
-		c.port = port
+		c.from = from
 	}
 }
 
-func WithCredentials(username, password string) Option {
-	return func(c *Client) {
-		c.username = username
-		c.password = password
-	}
-}
-
-func WithLogger(logger Logger) Option {
+func WithLogger(logger httpclient.Logger) Option {
 	return func(c *Client) {
 		c.logger = logger
 	}

@@ -4,7 +4,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -57,11 +56,9 @@ type DB struct {
 	ConnMaxLifetime    time.Duration
 }
 
-type SMTP struct {
-	Host        string
-	Port        int
-	User        string
-	AppPassword string
+type MailerConfig struct {
+	APIKey string
+	From   string
 }
 
 var (
@@ -71,7 +68,7 @@ var (
 	JWTAudience          string
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
-	MySMTP               SMTP
+	MyMailer             MailerConfig
 )
 
 func (d Environment) String() string {
@@ -129,17 +126,17 @@ func LoadValues() {
 
 func initLocal() {
 	loadDBConfig()
-	loadSMTPConfig()
+	loadMailerConfig()
 }
 
 func initProd() {
 	loadDBConfig()
-	loadSMTPConfig()
+	loadMailerConfig()
 }
 
 func initTest() {
 	loadDBConfig()
-	loadSMTPConfig()
+	loadMailerConfig()
 }
 
 func loadDBConfig() {
@@ -186,16 +183,9 @@ func getDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	return fallback
 }
 
-func loadSMTPConfig() {
-	MySMTP.Host = os.Getenv("SMTP_HOST")
-	MySMTP.User = os.Getenv("GMAIL_USER")
-	MySMTP.AppPassword = os.Getenv("GMAIL_APP_PASSWORD")
-
-	port, err := strconv.Atoi(os.Getenv("SMTP_PORT"))
-	if err != nil || port == 0 {
-		port = 587
-	}
-	MySMTP.Port = port
+func loadMailerConfig() {
+	MyMailer.APIKey = os.Getenv("RESEND_API_KEY")
+	MyMailer.From = os.Getenv("RESEND_FROM_ADDRESS")
 }
 
 func parseDatabaseURL(dbURL string) DB {
