@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
@@ -36,7 +37,7 @@ func TestUserUpdate_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	newName := "John Updated"
 	req := &user.UserUpdateRequest{
 		Name: &newName,
@@ -71,7 +72,7 @@ func TestUserUpdate_BankAliasSuccess(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	bankAlias := "mi-banco-123"
 	req := &user.UserUpdateRequest{
 		BankAlias: &bankAlias,
@@ -91,7 +92,7 @@ func TestUserUpdate_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	name := "John"
 	req := &user.UserUpdateRequest{
 		Name: &name,
@@ -116,7 +117,7 @@ func TestUserUpdate_EmailChangeRequiresPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -142,7 +143,7 @@ func TestUserUpdate_EmailChangeWrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -171,7 +172,7 @@ func TestUserUpdate_EmailChangeDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	newEmail := "existing@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -196,7 +197,7 @@ func TestUserUpdate_InvalidBirthDate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	invalidDate := "2024/01/01"
 	req := &user.UserUpdateRequest{
 		BirthDate: &invalidDate,
@@ -226,7 +227,7 @@ func TestChangeStatus_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 	assert.NoError(t, err)
 	assert.Equal(t, "pause", resp.Status)
@@ -239,7 +240,7 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.ChangeStatus(nil, 999, "pause")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -260,7 +261,7 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.ChangeStatus(nil, 1, "invalid-status")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "estado inválido")
@@ -287,7 +288,7 @@ func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock)
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -322,7 +323,7 @@ func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, mailerMock)
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -350,7 +351,7 @@ func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock)
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 
 	assert.NoError(t, err)
@@ -378,7 +379,7 @@ func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock)
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -404,7 +405,7 @@ func TestChangeStatus_NilMailerDoesNotPanic(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 
 	assert.NotPanics(t, func() {
 		resp, err := svc.ChangeStatus(nil, 1, "inactive")
@@ -523,11 +524,43 @@ func TestChangePassword_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.NoError(t, err)
 	assert.True(t, updateCalled)
+}
+
+// TestChangePassword_SendsNotifications cubre el trigger nuevo: mail + push al
+// propio usuario cuando cambia su contraseña.
+func TestChangePassword_SendsNotifications(t *testing.T) {
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("OldPass123"), bcrypt.DefaultCost)
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Name: "Juan", Email: "juan@test.com", Password: string(hashedPassword)}, nil
+		},
+		mockUpdate: func(ctx *gin.Context, u *dbs.User) error { return nil },
+	}
+	mailerMock := &mockMailer{}
+	pushClient := &mockExpoPushClient{}
+	pushTokenDao := mockPushTokenDao{
+		mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+			return []dbs.PushToken{{UserID: userID, Token: "ExponentPushToken[juan]"}}, nil
+		},
+	}
+
+	svc := NewUserService(mockDao, mailerMock, pushTokenDao, pushClient)
+	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
+
+	require.NoError(t, err)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "juan@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypePasswordChanged, mailerMock.lastEmailType)
+	assert.Equal(t, 1, pushClient.sendCallCount)
+	assert.Equal(t, "ExponentPushToken[juan]", pushClient.lastToken)
+	assert.Equal(t, "password_changed", pushClient.lastData["type"])
+	_, hasRoute := pushClient.lastData["route"]
+	assert.False(t, hasRoute)
 }
 
 func TestChangePassword_UserNotFound(t *testing.T) {
@@ -537,7 +570,7 @@ func TestChangePassword_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)
@@ -551,7 +584,7 @@ func TestChangePassword_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)
@@ -565,7 +598,7 @@ func TestChangePassword_WrongCurrentPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "WrongPassword", "NewPass456")
 
 	assert.Error(t, err)
@@ -580,7 +613,7 @@ func TestChangePassword_NewPasswordSameAsCurrent(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "OldPass123", "OldPass123")
 
 	assert.Error(t, err)
@@ -598,7 +631,7 @@ func TestChangePassword_UpdateError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil)
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)

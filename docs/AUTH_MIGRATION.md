@@ -127,6 +127,20 @@ Nuevo `code` en las respuestas de error para estos casos: `"Forbidden"`, `status
 
 `GET /user/:user_id` y `POST /user` (sin prefijo `/api/v1`, sin `Authorization`) se eliminaron — eran leftovers de la plantilla original del proyecto, duplicaban `GET /api/v1/auth/user` y `POST /api/v1/auth/register`, y `POST /user` además guardaba la contraseña en texto plano. Confirmado con el frontend que no estaban en uso. Si algún cliente viejo les pegaba, ahora recibe `404`.
 
-## 9. Limitación conocida (no resuelta en esta iniciativa)
+## 9. Push notifications (nuevo)
+
+Notificaciones push nativas (Android, vía Expo Push Service) para 5 eventos que le pasan a un usuario sin que él mismo lo haya disparado — coordinado con `paceron-frontend/docs/BACKEND_NOTIFICATIONS_REQUIREMENTS.md`.
+
+- `POST /api/v1/push-tokens` — registra/actualiza el token de push de un dispositivo. Self-only (`user_id` sale del token de sesión). Body: `{"token": "ExponentPushToken[...]", "platform": "android"|"web"}`. Upsert por `token`, no por `user_id`: si el mismo dispositivo se loguea con otra cuenta, el registro siguiente reescribe el dueño solo — no hace falta ningún endpoint de "desvincular" en logout.
+- Triggers que disparan push (y su `data.type`/`data.route`, que el front usa para navegar al tocar la notificación):
+  - Invitación recibida → `invitation_received` / `/invitations`
+  - Respuesta a invitación (aceptada/rechazada) → `invitation_response` / `/teams/{teamId}`
+  - Expulsión de equipo → `team_removed` / `/teams`
+  - Un corredor deja el equipo → `team_member_left` / `/teams/{teamId}`
+  - Cambio de contraseña exitoso → `password_changed` (sin ruta, informativo)
+- Los últimos 4 triggers también suman mail nuevo (antes no existía ningún mail para esos eventos) — mismo criterio best-effort que el resto: un fallo de mail o push nunca bloquea la operación principal, solo se loguea.
+- Fuera de alcance: web push (pila distinta, Push API del navegador + Service Worker + VAPID), iOS, triggers de pago (reservados para cuando existan features A/B).
+
+## 10. Limitación conocida (no resuelta en esta iniciativa)
 
 Los endpoints de catálogo (`/api/v1/roles`, `/api/v1/tiers`, `/api/v1/permissions`, `/api/v1/auth/permissions`) ahora exigen estar logueado, pero **cualquier usuario autenticado puede gestionarlos** — no hay chequeo de rol especial tipo "admin", porque ese concepto no existe hoy en el dominio (uno está planeado a futuro, fuera del MVP, para moderación tipo baneos/soporte — no reemplaza esto). Documentado como deuda conocida, no como bug.

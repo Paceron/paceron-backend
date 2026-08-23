@@ -41,6 +41,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.DELETE("/api/v1/users/:id/roles/:role_id", app.userRoleController.RemoveRole)
 	r.POST("/api/v1/users/:id/trainer-role", app.userRoleController.ActivateEntrenador)
 	r.DELETE("/api/v1/users/:id/trainer-role", app.userRoleController.DeactivateEntrenador)
+	r.POST("/api/v1/push-tokens", app.pushTokenController.RegisterToken)
 	r.GET("/api/v1/permissions", app.permissionController.GetAll)
 	r.GET("/api/v1/permissions/by-name", app.permissionController.GetByName)
 	r.GET("/api/v1/permissions/:id", app.permissionController.GetByID)

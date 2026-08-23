@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/user"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
+	"simple-arq-golang/cmd/api/restclients/expopushclient"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,14 +44,23 @@ type UserServiceInterface interface {
 }
 
 type userService struct {
-	userDao daos.UserDaoInterface
-	mailer  mailer.MailerInterface
+	userDao      daos.UserDaoInterface
+	mailer       mailer.MailerInterface
+	pushTokenDao daos.PushTokenDaoInterface
+	pushClient   expopushclient.ExpoPushClientInterface
 }
 
-func NewUserService(userDao daos.UserDaoInterface, mailerClient mailer.MailerInterface) UserServiceInterface {
+func NewUserService(
+	userDao daos.UserDaoInterface,
+	mailerClient mailer.MailerInterface,
+	pushTokenDao daos.PushTokenDaoInterface,
+	pushClient expopushclient.ExpoPushClientInterface,
+) UserServiceInterface {
 	return &userService{
-		userDao: userDao,
-		mailer:  mailerClient,
+		userDao:      userDao,
+		mailer:       mailerClient,
+		pushTokenDao: pushTokenDao,
+		pushClient:   pushClient,
 	}
 }
 
@@ -313,6 +323,18 @@ func (s *userService) ChangePassword(ctx *gin.Context, id int64, currentPassword
 	customlogger.Info(ctx, "password changed successfully",
 		customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
 		customlogger.TagMethod("ChangePassword"))
+
+	if s.mailer != nil {
+		if err := s.mailer.SendEmail(ctx, userDB.Email, mailer.EmailTypePasswordChanged, mailer.EmailData{Name: userDB.Name}); err != nil {
+			customlogger.Error(ctx, "error sending password changed email", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", id)))
+		}
+	}
+
+	if s.pushClient != nil {
+		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, id,
+			"Contraseña actualizada", "Tu contraseña se actualizó correctamente", "password_changed", "")
+	}
 
 	return nil
 }

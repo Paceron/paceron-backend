@@ -6,9 +6,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/teamuser"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
 
 // callerID usado en los tests de AddUser/RemoveUser cuando el llamante es el entrenador
@@ -126,7 +128,7 @@ func TestTeamUserService_AddUser_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -150,7 +152,7 @@ func TestTeamUserService_AddUser_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, 2, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -193,7 +195,7 @@ func TestTeamUserService_AddUser_AssignsToMainGroup(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, mockGroup, mockGroupUser)
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, mockGroup, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -227,7 +229,7 @@ func TestTeamUserService_AddUser_NoMainGroup_StillSucceeds(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, mockGroup, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -244,7 +246,7 @@ func TestTeamUserService_AddUser_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 999, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -269,7 +271,7 @@ func TestTeamUserService_AddUser_InvalidRole(t *testing.T) {
 		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil),
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "entrenador",
@@ -294,7 +296,7 @@ func TestTeamUserService_AddUser_UserNotFound(t *testing.T) {
 		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil),
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     999,
 		RoleInTeam: "corredor",
@@ -321,7 +323,7 @@ func TestTeamUserService_AddUser_AlreadyMember(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -349,7 +351,7 @@ func TestTeamUserService_AddUser_MaxMembersReached(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -376,7 +378,7 @@ func TestTeamUserService_RemoveUser_Self(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.NoError(t, err)
@@ -400,11 +402,97 @@ func TestTeamUserService_RemoveUser_EntrenadorRemovesOther(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, testEntrenadorCallerID, 1)
 
 	assert.NoError(t, err)
 	assert.True(t, softDeleteCalled)
+}
+
+// TestTeamUserService_RemoveUser_NotifiesRemovedUser cubre el trigger de expulsión:
+// el corredor removido recibe mail + push cuando el entrenador lo saca del equipo.
+func TestTeamUserService_RemoveUser_NotifiesRemovedUser(t *testing.T) {
+	mockTeamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{ID: 1, RoleInTeam: "corredor"}, nil
+		}),
+		softDeleteFn: func(ctx *gin.Context, id int64) error { return nil },
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Los Pumas", OwnerID: testEntrenadorCallerID}, nil
+		},
+	}
+	userDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Name: "Juan", Email: "juan@test.com"}, nil
+		},
+	}
+	mailerMock := &mockMailer{}
+	pushClient := &mockExpoPushClient{}
+	pushTokenDao := mockPushTokenDao{
+		mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+			return []dbs.PushToken{{UserID: userID, Token: "ExponentPushToken[juan]"}}, nil
+		},
+	}
+
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient)
+	err := svc.RemoveUser(nil, 1, testEntrenadorCallerID, 7)
+
+	require.NoError(t, err)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "juan@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeTeamRemoved, mailerMock.lastEmailType)
+	assert.Equal(t, "Los Pumas", mailerMock.lastData.TeamName)
+	assert.Equal(t, 1, pushClient.sendCallCount)
+	assert.Equal(t, "ExponentPushToken[juan]", pushClient.lastToken)
+	assert.Equal(t, "team_removed", pushClient.lastData["type"])
+	assert.Equal(t, "/teams", pushClient.lastData["route"])
+}
+
+// TestTeamUserService_RemoveUser_NotifiesOwnerOnSelfLeave cubre el trigger de
+// "corredor deja el equipo": el entrenador recibe mail + push cuando un corredor
+// se saca a sí mismo.
+func TestTeamUserService_RemoveUser_NotifiesOwnerOnSelfLeave(t *testing.T) {
+	mockTeamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{ID: 1, RoleInTeam: "corredor"}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error { return nil },
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Los Pumas", OwnerID: 99}, nil
+		},
+	}
+	userDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			if userID == 99 {
+				return &dbs.User{ID: 99, Name: "Coach", Email: "coach@test.com"}, nil
+			}
+			return &dbs.User{ID: userID, Name: "Juan", Email: "juan@test.com"}, nil
+		},
+	}
+	mailerMock := &mockMailer{}
+	pushClient := &mockExpoPushClient{}
+	pushTokenDao := mockPushTokenDao{
+		mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+			return []dbs.PushToken{{UserID: 99, Token: "ExponentPushToken[coach]"}}, nil
+		},
+	}
+
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient)
+	err := svc.RemoveUser(nil, 1, 7, 7)
+
+	require.NoError(t, err)
+	assert.True(t, mailerMock.sendEmailCalled)
+	assert.Equal(t, "coach@test.com", mailerMock.lastTo)
+	assert.Equal(t, mailer.EmailTypeTeamMemberLeft, mailerMock.lastEmailType)
+	assert.Equal(t, "Juan", mailerMock.lastData.RelatedUserName)
+	assert.Equal(t, 1, pushClient.sendCallCount)
+	assert.Equal(t, "ExponentPushToken[coach]", pushClient.lastToken)
+	assert.Equal(t, "team_member_left", pushClient.lastData["type"])
+	assert.Equal(t, "/teams/1", pushClient.lastData["route"])
 }
 
 func TestTeamUserService_RemoveUser_NotSelfNotEntrenador(t *testing.T) {
@@ -419,7 +507,7 @@ func TestTeamUserService_RemoveUser_NotSelfNotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 2, 1)
 
 	assert.Error(t, err)
@@ -433,7 +521,7 @@ func TestTeamUserService_RemoveUser_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 999, 1, 1)
 
 	assert.Error(t, err)
@@ -452,7 +540,7 @@ func TestTeamUserService_RemoveUser_NotMember(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 999, 999)
 
 	assert.Error(t, err)
@@ -471,7 +559,7 @@ func TestTeamUserService_RemoveUser_CannotRemoveOwner(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.Error(t, err)
@@ -485,7 +573,7 @@ func TestTeamUserService_AddUser_TeamFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -507,7 +595,7 @@ func TestTeamUserService_AddUser_CallerRoleCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -532,7 +620,7 @@ func TestTeamUserService_AddUser_UserFindByIDError(t *testing.T) {
 		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil),
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -559,7 +647,7 @@ func TestTeamUserService_AddUser_FindByTeamAndUserError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -590,7 +678,7 @@ func TestTeamUserService_AddUser_CreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -607,7 +695,7 @@ func TestTeamUserService_RemoveUser_TeamFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.Error(t, err)
@@ -626,7 +714,7 @@ func TestTeamUserService_RemoveUser_FindByTeamAndUserError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.Error(t, err)
@@ -648,7 +736,7 @@ func TestTeamUserService_RemoveUser_SoftDeleteError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.Error(t, err)
@@ -673,7 +761,7 @@ func TestTeamUserService_AddUser_CountError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, mockUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.AddUser(nil, 1, testEntrenadorCallerID, &teamuser.AddTeamUserRequest{
 		UserID:     1,
 		RoleInTeam: "corredor",
@@ -701,7 +789,7 @@ func TestTeamUserService_GetUsersByTeam_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.NoError(t, err)
@@ -717,7 +805,7 @@ func TestTeamUserService_GetUsersByTeam_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.GetUsersByTeam(nil, 999, 1)
 
 	assert.Error(t, err)
@@ -731,7 +819,7 @@ func TestTeamUserService_GetUsersByTeam_TeamFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -745,7 +833,7 @@ func TestTeamUserService_GetUsersByTeam_NotMember(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(&mockTeamUserDao{}, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.GetUsersByTeam(nil, 1, 99)
 
 	assert.Error(t, err)
@@ -764,7 +852,7 @@ func TestTeamUserService_GetUsersByTeam_CallerRoleCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -786,7 +874,7 @@ func TestTeamUserService_GetUsersByTeam_FindByTeamIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	_, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -808,7 +896,7 @@ func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{})
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
 	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.NoError(t, err)

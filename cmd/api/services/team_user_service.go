@@ -11,6 +11,8 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/teamuser"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/infrastructure/mailer"
+	"simple-arq-golang/cmd/api/restclients/expopushclient"
 )
 
 // TeamUserServiceInterface define las operaciones de negocio para la asociación usuario-equipo.
@@ -26,6 +28,9 @@ type teamUserService struct {
 	userDao      daos.UserDaoInterface
 	groupDao     daos.GroupDaoInterface
 	groupUserDao daos.GroupUserDaoInterface
+	mailer       mailer.MailerInterface
+	pushTokenDao daos.PushTokenDaoInterface
+	pushClient   expopushclient.ExpoPushClientInterface
 }
 
 // NewTeamUserService crea una nueva instancia de TeamUserService.
@@ -35,6 +40,9 @@ func NewTeamUserService(
 	userDao daos.UserDaoInterface,
 	groupDao daos.GroupDaoInterface,
 	groupUserDao daos.GroupUserDaoInterface,
+	mailerClient mailer.MailerInterface,
+	pushTokenDao daos.PushTokenDaoInterface,
+	pushClient expopushclient.ExpoPushClientInterface,
 ) TeamUserServiceInterface {
 	return &teamUserService{
 		teamUserDao:  teamUserDao,
@@ -42,6 +50,9 @@ func NewTeamUserService(
 		userDao:      userDao,
 		groupDao:     groupDao,
 		groupUserDao: groupUserDao,
+		mailer:       mailerClient,
+		pushTokenDao: pushTokenDao,
+		pushClient:   pushClient,
 	}
 }
 
@@ -255,7 +266,78 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 		customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
 		customlogger.TagMethod("RemoveUser"))
 
+	if callerID != targetUserID {
+		s.notifyTeamRemoval(ctx, teamDB, targetUserID)
+	} else {
+		s.notifyTeamMemberLeft(ctx, teamDB, targetUserID)
+	}
+
 	return nil
+}
+
+// notifyTeamRemoval avisa al corredor expulsado, por mail y push. Best-effort:
+// un fallo se loguea y nunca vuelve a bloquear RemoveUser, que ya completó la
+// operación principal (soft-delete de la asociación).
+func (s *teamUserService) notifyTeamRemoval(ctx *gin.Context, teamDB *dbs.Team, removedUserID int64) {
+	removedUser, err := s.userDao.FindByID(ctx, removedUserID)
+	if err != nil || removedUser == nil {
+		customlogger.Warn(ctx, "no se pudo notificar expulsión de equipo: usuario no encontrado",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
+			customlogger.Tag("user_id", fmt.Sprintf("%d", removedUserID)))
+		return
+	}
+
+	if s.mailer != nil {
+		if err := s.mailer.SendEmail(ctx, removedUser.Email, mailer.EmailTypeTeamRemoved, mailer.EmailData{
+			Name:     removedUser.Name,
+			TeamName: teamDB.Name,
+		}); err != nil {
+			customlogger.Error(ctx, "error sending team removal email", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
+				customlogger.Tag("user_id", fmt.Sprintf("%d", removedUserID)))
+		}
+	}
+
+	if s.pushClient != nil {
+		title := "Saliste del equipo"
+		body := fmt.Sprintf("Ya no formás parte de %s", teamDB.Name)
+		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, removedUserID, title, body, "team_removed", "/teams")
+	}
+}
+
+// notifyTeamMemberLeft avisa al entrenador (owner) que un corredor dejó el equipo
+// por su cuenta, por mail y push. Mismo criterio best-effort que notifyTeamRemoval.
+func (s *teamUserService) notifyTeamMemberLeft(ctx *gin.Context, teamDB *dbs.Team, leftUserID int64) {
+	owner, err := s.userDao.FindByID(ctx, teamDB.OwnerID)
+	if err != nil || owner == nil {
+		customlogger.Warn(ctx, "no se pudo notificar salida de equipo: entrenador no encontrado",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)))
+		return
+	}
+	leftUser, err := s.userDao.FindByID(ctx, leftUserID)
+	if err != nil || leftUser == nil {
+		customlogger.Warn(ctx, "no se pudo notificar salida de equipo: usuario no encontrado",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)),
+			customlogger.Tag("user_id", fmt.Sprintf("%d", leftUserID)))
+		return
+	}
+
+	if s.mailer != nil {
+		if err := s.mailer.SendEmail(ctx, owner.Email, mailer.EmailTypeTeamMemberLeft, mailer.EmailData{
+			Name:            owner.Name,
+			TeamName:        teamDB.Name,
+			RelatedUserName: leftUser.Name,
+		}); err != nil {
+			customlogger.Error(ctx, "error sending team member left email", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamDB.ID)))
+		}
+	}
+
+	if s.pushClient != nil {
+		title := "Un corredor dejó tu equipo"
+		body := fmt.Sprintf("%s dejó %s", leftUser.Name, teamDB.Name)
+		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, owner.ID, title, body, "team_member_left", fmt.Sprintf("/teams/%d", teamDB.ID))
+	}
 }
 
 // GetUsersByTeam retorna todos los miembros activos de un equipo. Solo otro miembro

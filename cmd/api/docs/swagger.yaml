@@ -353,6 +353,21 @@ definitions:
         description: Nuevo nombre del permiso (opcional)
         type: string
     type: object
+  pushtoken.RegisterPushTokenRequest:
+    properties:
+      platform:
+        type: string
+      token:
+        type: string
+    required:
+    - platform
+    - token
+    type: object
+  pushtoken.RegisterPushTokenResponse:
+    properties:
+      message:
+        type: string
+    type: object
   role.CreateRoleRequest:
     properties:
       description:
@@ -1675,6 +1690,38 @@ paths:
       summary: Get permission by name
       tags:
       - permissions
+  /api/v1/push-tokens:
+    post:
+      consumes:
+      - application/json
+      description: 'Registra o actualiza el token de push de un dispositivo para el
+        usuario autenticado. Upsert por token: si el dispositivo cambia de cuenta,
+        el siguiente registro reescribe el dueño.'
+      parameters:
+      - description: Token de push y plataforma
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pushtoken.RegisterPushTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/pushtoken.RegisterPushTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apierror.APIError'
+      summary: Register push token
+      tags:
+      - push-tokens
   /api/v1/roles:
     get:
       description: Get all active roles

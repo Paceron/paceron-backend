@@ -20,14 +20,30 @@ var resetTemplateHTML string
 //go:embed templates/invitation.html
 var invitationTemplateHTML string
 
+//go:embed templates/invitation_response.html
+var invitationResponseTemplateHTML string
+
+//go:embed templates/team_removed.html
+var teamRemovedTemplateHTML string
+
+//go:embed templates/team_member_left.html
+var teamMemberLeftTemplateHTML string
+
+//go:embed templates/password_changed.html
+var passwordChangedTemplateHTML string
+
 // EmailType identifica cada tipo de correo que el sistema sabe enviar.
 type EmailType string
 
 const (
-	EmailTypeWelcome       EmailType = "welcome"
-	EmailTypeFarewell      EmailType = "farewell"
-	EmailTypePasswordReset EmailType = "password_reset"
-	EmailTypeInvitation    EmailType = "invitation"
+	EmailTypeWelcome            EmailType = "welcome"
+	EmailTypeFarewell           EmailType = "farewell"
+	EmailTypePasswordReset      EmailType = "password_reset"
+	EmailTypeInvitation         EmailType = "invitation"
+	EmailTypeInvitationResponse EmailType = "invitation_response"
+	EmailTypeTeamRemoved        EmailType = "team_removed"
+	EmailTypeTeamMemberLeft     EmailType = "team_member_left"
+	EmailTypePasswordChanged    EmailType = "password_changed"
 )
 
 // EmailData contiene las variables disponibles en los templates de correo.
@@ -36,6 +52,12 @@ type EmailData struct {
 	Name     string
 	Code     string
 	TeamName string
+
+	// RelatedUserName es el otro usuario relevante al evento: quien respondió una
+	// invitación, o quien dejó el equipo. ResponseStatus es "aceptada"/"rechazada",
+	// usado solo por EmailTypeInvitationResponse.
+	RelatedUserName string
+	ResponseStatus  string
 }
 
 // emailTemplate asocia un tipo de correo con su asunto y su cuerpo, ambos ya parseados.
@@ -67,6 +89,22 @@ var emailTemplates = map[EmailType]emailTemplate{
 	EmailTypeInvitation: {
 		subject: mustParseSubject(EmailTypeInvitation, "Invitación a equipo {{.TeamName}} - Paceron"),
 		body:    mustParseBody(EmailTypeInvitation, invitationTemplateHTML),
+	},
+	EmailTypeInvitationResponse: {
+		subject: mustParseSubject(EmailTypeInvitationResponse, "Respuesta a tu invitación de {{.TeamName}} - Paceron"),
+		body:    mustParseBody(EmailTypeInvitationResponse, invitationResponseTemplateHTML),
+	},
+	EmailTypeTeamRemoved: {
+		subject: mustParseSubject(EmailTypeTeamRemoved, "Saliste del equipo {{.TeamName}} - Paceron"),
+		body:    mustParseBody(EmailTypeTeamRemoved, teamRemovedTemplateHTML),
+	},
+	EmailTypeTeamMemberLeft: {
+		subject: mustParseSubject(EmailTypeTeamMemberLeft, "Un corredor dejó {{.TeamName}} - Paceron"),
+		body:    mustParseBody(EmailTypeTeamMemberLeft, teamMemberLeftTemplateHTML),
+	},
+	EmailTypePasswordChanged: {
+		subject: mustParseSubject(EmailTypePasswordChanged, "Tu contraseña fue actualizada - Paceron"),
+		body:    mustParseBody(EmailTypePasswordChanged, passwordChangedTemplateHTML),
 	},
 }
 

@@ -16,6 +16,10 @@ var allEmailTypes = []EmailType{
 	EmailTypeFarewell,
 	EmailTypePasswordReset,
 	EmailTypeInvitation,
+	EmailTypeInvitationResponse,
+	EmailTypeTeamRemoved,
+	EmailTypeTeamMemberLeft,
+	EmailTypePasswordChanged,
 }
 
 // --- Renderizado de templates (no requieren SMTP, corren en cualquier entorno) ---
@@ -59,6 +63,53 @@ func TestRenderEmail_Invitation(t *testing.T) {
 	assert.Contains(t, html, "Paceron")
 }
 
+func TestRenderEmail_InvitationResponse(t *testing.T) {
+	subject, html, err := RenderEmail(EmailTypeInvitationResponse, EmailData{
+		Name:            "Coach",
+		TeamName:        "Los Pumas",
+		RelatedUserName: "Juan",
+		ResponseStatus:  "aceptó",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Respuesta a tu invitación de Los Pumas - Paceron", subject)
+	assert.Contains(t, html, "Coach")
+	assert.Contains(t, html, "Juan")
+	assert.Contains(t, html, "aceptó")
+	assert.Contains(t, html, "Los Pumas")
+}
+
+func TestRenderEmail_TeamRemoved(t *testing.T) {
+	subject, html, err := RenderEmail(EmailTypeTeamRemoved, EmailData{Name: "Juan", TeamName: "Los Pumas"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Saliste del equipo Los Pumas - Paceron", subject)
+	assert.Contains(t, html, "Juan")
+	assert.Contains(t, html, "Los Pumas")
+}
+
+func TestRenderEmail_TeamMemberLeft(t *testing.T) {
+	subject, html, err := RenderEmail(EmailTypeTeamMemberLeft, EmailData{
+		Name:            "Coach",
+		TeamName:        "Los Pumas",
+		RelatedUserName: "Juan",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Un corredor dejó Los Pumas - Paceron", subject)
+	assert.Contains(t, html, "Coach")
+	assert.Contains(t, html, "Juan")
+	assert.Contains(t, html, "Los Pumas")
+}
+
+func TestRenderEmail_PasswordChanged(t *testing.T) {
+	subject, html, err := RenderEmail(EmailTypePasswordChanged, EmailData{Name: "Juan"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Tu contraseña fue actualizada - Paceron", subject)
+	assert.Contains(t, html, "Juan")
+}
+
 // TestRenderEmail_InvitationSubjectIsDynamic cubre el único asunto parametrizado:
 // se renderiza como template, no es un string fijo.
 func TestRenderEmail_InvitationSubjectIsDynamic(t *testing.T) {
@@ -94,9 +145,11 @@ func TestRenderEmail_AutoEscaping(t *testing.T) {
 	for _, emailType := range allEmailTypes {
 		t.Run(string(emailType), func(t *testing.T) {
 			_, html, err := RenderEmail(emailType, EmailData{
-				Name:     "<script>alert('xss')</script>",
-				Code:     "<script>alert('xss')</script>",
-				TeamName: "<script>alert('xss')</script>",
+				Name:            "<script>alert('xss')</script>",
+				Code:            "<script>alert('xss')</script>",
+				TeamName:        "<script>alert('xss')</script>",
+				RelatedUserName: "<script>alert('xss')</script>",
+				ResponseStatus:  "<script>alert('xss')</script>",
 			})
 
 			require.NoError(t, err)

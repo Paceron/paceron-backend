@@ -1258,6 +1258,52 @@
                 }
             }
         },
+        "/api/v1/push-tokens": {
+            "post": {
+                "description": "Registra o actualiza el token de push de un dispositivo para el usuario autenticado. Upsert por token: si el dispositivo cambia de cuenta, el siguiente registro reescribe el dueño.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "push-tokens"
+                ],
+                "summary": "Register push token",
+                "parameters": [
+                    {
+                        "description": "Token de push y plataforma",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/pushtoken.RegisterPushTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/pushtoken.RegisterPushTokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/roles": {
             "get": {
                 "description": "Get all active roles",
@@ -3720,6 +3766,29 @@
                 },
                 "name": {
                     "description": "Nuevo nombre del permiso (opcional)",
+                    "type": "string"
+                }
+            }
+        },
+        "pushtoken.RegisterPushTokenRequest": {
+            "type": "object",
+            "required": [
+                "platform",
+                "token"
+            ],
+            "properties": {
+                "platform": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "pushtoken.RegisterPushTokenResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }
