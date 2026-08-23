@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
@@ -89,27 +90,75 @@ type resendEmailRequest struct {
 
 // Send envía un correo HTML ya renderizado a un único destinatario, con el logo
 // de Paceron embebido como attachment inline (referenciado por content_id desde
-// el HTML vía `cid:paceron-logo`).
+// el HTML vía `cid:paceron-logo`). Sin ícono de evento — eso es exclusivo de
+// SendEmail, que conoce el EmailType.
 func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
+	return c.send(ctx, to, subject, htmlBody, nil)
+}
+
+// SendEmail renderiza el template del tipo de correo indicado y lo envía, con el
+// ícono de acento correspondiente (ver eventIconPaths en render.go) además del
+// logo. Es el único punto de entrada para mandar correos con template: para sumar
+// un tipo nuevo alcanza con registrarlo en emailTemplates y (opcionalmente)
+// eventIconPaths, sin tocar esta función.
+func (c *Client) SendEmail(ctx context.Context, to string, emailType EmailType, data EmailData) error {
+	subject, htmlBody, err := RenderEmail(emailType, data)
+	if err != nil {
+		c.logError(ctx, "error renderizando email", err)
+		return err
+	}
+
+	return c.send(ctx, to, subject, htmlBody, c.eventIconAttachment(ctx, emailType))
+}
+
+// eventIconAttachment resuelve el attachment del ícono de acento para un tipo de
+// correo. nil si el tipo no tiene ícono registrado o si falla la lectura — un
+// ícono faltante no debe impedir el envío del correo.
+func (c *Client) eventIconAttachment(ctx context.Context, emailType EmailType) *resendAttachment {
+	path, ok := eventIconPaths[emailType]
+	if !ok {
+		return nil
+	}
+	iconBytes, err := iconAssets.ReadFile(path)
+	if err != nil {
+		c.logError(ctx, "error leyendo ícono de evento embebido", err)
+		return nil
+	}
+	return &resendAttachment{
+		Filename:    filepath.Base(path),
+		Content:     base64.StdEncoding.EncodeToString(iconBytes),
+		ContentID:   eventIconContentID,
+		ContentType: "image/png",
+	}
+}
+
+// send arma y envía el email vía la API de Resend, con el logo de Paceron siempre
+// embebido y, opcionalmente, el ícono de acento del tipo de correo.
+func (c *Client) send(ctx context.Context, to, subject, htmlBody string, eventIcon *resendAttachment) error {
 	logoBytes, err := logoAssets.ReadFile(logoAssetPath)
 	if err != nil {
 		c.logError(ctx, "error leyendo logo embebido", err)
 		return fmt.Errorf("mailer: error leyendo logo embebido: %w", err)
 	}
 
-	body := resendEmailRequest{
-		From:    c.from,
-		To:      []string{to},
-		Subject: subject,
-		HTML:    htmlBody,
-		Attachments: []resendAttachment{
-			{
-				Filename:    "paceron-logo.png",
-				Content:     base64.StdEncoding.EncodeToString(logoBytes),
-				ContentID:   logoContentID,
-				ContentType: "image/png",
-			},
+	attachments := []resendAttachment{
+		{
+			Filename:    "paceron-logo.png",
+			Content:     base64.StdEncoding.EncodeToString(logoBytes),
+			ContentID:   logoContentID,
+			ContentType: "image/png",
 		},
+	}
+	if eventIcon != nil {
+		attachments = append(attachments, *eventIcon)
+	}
+
+	body := resendEmailRequest{
+		From:        c.from,
+		To:          []string{to},
+		Subject:     subject,
+		HTML:        htmlBody,
+		Attachments: attachments,
 	}
 
 	if err := c.httpClient.Post(ctx, resendSendPath, body, nil); err != nil {
@@ -119,20 +168,6 @@ func (c *Client) Send(ctx context.Context, to, subject, htmlBody string) error {
 
 	c.logInfo(ctx, "email enviado exitosamente", to)
 	return nil
-}
-
-// SendEmail renderiza el template del tipo de correo indicado y lo envía.
-// Es el único punto de entrada para mandar correos con template: para sumar un
-// tipo nuevo alcanza con registrarlo en emailTemplates (ver render.go), sin
-// tocar esta función.
-func (c *Client) SendEmail(ctx context.Context, to string, emailType EmailType, data EmailData) error {
-	subject, htmlBody, err := RenderEmail(emailType, data)
-	if err != nil {
-		c.logError(ctx, "error renderizando email", err)
-		return err
-	}
-
-	return c.Send(ctx, to, subject, htmlBody)
 }
 
 func (c *Client) logInfo(ctx context.Context, message, to string) {

@@ -2,7 +2,7 @@ package mailer
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"fmt"
 	"html/template"
 	texttemplate "text/template"
@@ -31,6 +31,18 @@ var teamMemberLeftTemplateHTML string
 
 //go:embed templates/password_changed.html
 var passwordChangedTemplateHTML string
+
+// iconAssets embebe los 8 íconos de acento (uno por tipo de correo, ver eventIcons
+// más abajo) — badges circulares rasterizados desde Material Community Icons con
+// ImageMagick, mismo mecanismo que el logo (mailer.go).
+//
+//go:embed assets/icon-welcome.png assets/icon-farewell.png assets/icon-password-reset.png assets/icon-password-changed.png assets/icon-invitation.png assets/icon-invitation-response.png assets/icon-team-removed.png assets/icon-team-member-left.png
+var iconAssets embed.FS
+
+// eventIconContentID es el Content-ID compartido por el ícono de acento en todos
+// los templates — no colisiona con logoContentID (el logo) porque cada envío
+// adjunta como máximo un ícono de evento a la vez.
+const eventIconContentID = "event-icon"
 
 // EmailType identifica cada tipo de correo que el sistema sabe enviar.
 type EmailType string
@@ -106,6 +118,19 @@ var emailTemplates = map[EmailType]emailTemplate{
 		subject: mustParseSubject(EmailTypePasswordChanged, "Tu contraseña fue actualizada - Paceron"),
 		body:    mustParseBody(EmailTypePasswordChanged, passwordChangedTemplateHTML),
 	},
+}
+
+// eventIconPaths asocia cada tipo de correo con su ícono de acento embebido
+// (dentro de iconAssets). Todos comparten eventIconContentID como Content-ID.
+var eventIconPaths = map[EmailType]string{
+	EmailTypeWelcome:            "assets/icon-welcome.png",
+	EmailTypeFarewell:           "assets/icon-farewell.png",
+	EmailTypePasswordReset:      "assets/icon-password-reset.png",
+	EmailTypePasswordChanged:    "assets/icon-password-changed.png",
+	EmailTypeInvitation:         "assets/icon-invitation.png",
+	EmailTypeInvitationResponse: "assets/icon-invitation-response.png",
+	EmailTypeTeamRemoved:        "assets/icon-team-removed.png",
+	EmailTypeTeamMemberLeft:     "assets/icon-team-member-left.png",
 }
 
 func mustParseSubject(emailType EmailType, subject string) *texttemplate.Template {
