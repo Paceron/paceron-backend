@@ -253,6 +253,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | DELETE | `/api/v1/users/:id/roles/:role_id` | Remove one of your own roles (self only; list roles via `GET /api/v1/auth/permissions?user_id=`) |
 | POST | `/api/v1/users/:id/trainer-role` | Activate your own entrenador role (self only; requires current password + a valid bank alias, own or provided) |
 | DELETE | `/api/v1/users/:id/trainer-role` | Deactivate your own entrenador role (self only; blocked while you still lead an active team) |
+| POST | `/api/v1/push-tokens` | Register/update a device's push token (self only, upsert by token — same device can switch accounts) |
 | GET | `/api/v1/permissions` | List all permissions |
 | GET | `/api/v1/permissions/:id` | Get permission by ID |
 | GET | `/api/v1/permissions/by-name?name=` | Get permission by unique name |
