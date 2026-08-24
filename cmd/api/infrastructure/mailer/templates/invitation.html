@@ -3,42 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <style>
+    :root { color-scheme: light only; supported-color-schemes: light; }
+  </style>
   <title>Invitación a Paceron</title>
 </head>
-<body style="margin:0; padding:0; background-color:#ffffff; font-family: Arial, Helvetica, sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;">
+<body style="margin:0; padding:0; background-color:#f0f0f0; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f0f0;">
     <tr>
-      <td align="center" style="padding: 24px 16px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px; background-color:#f0f0f0; border-radius:8px; overflow:hidden;">
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px; background-color:#ffffff; border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 4px 16px rgba(17,21,24,0.08); overflow:hidden;">
 
-          <!-- Header / branding -->
+          <!-- Header: logo apaisado (pill con borde verde claro, protege en dark mode) + ícono de acento, apilado -->
           <tr>
-            <td align="center" style="background-color:#8cc63e; padding: 32px 24px;">
-              <img src="cid:paceron-logo" alt="Paceron" width="240" height="41" style="display:block; border:0; outline:none; text-decoration:none;" />
+            <td align="center" style="padding: 32px 24px 24px;">
+              <img src="cid:header-mark" alt="Paceron" width="380" height="43" style="display:block; border:0; outline:none; text-decoration:none; margin: 0 auto 20px;" />
+              <img src="cid:event-icon" alt="" width="64" height="64" style="display:block; border:0; outline:none; text-decoration:none; margin: 0 auto;" />
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td style="padding: 32px 24px;">
+            <td style="padding: 8px 32px 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="padding-bottom:16px;">
-                    <span style="font-size:20px; font-weight:bold; color:#111518;">&#161;Hola, {{.Name}}!</span>
+                    <span style="font-size:20px; font-weight:700; color:#111518;">&#161;Hola, {{.Name}}!</span>
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-bottom:16px; font-size:15px; line-height:22px; color:#40484c;">
-                    Fuiste invitado/a a unirte al equipo <strong>{{.TeamName}}</strong> en Paceron.
+                  <td style="padding-bottom:16px; font-size:15px; line-height:23px; color:#40484c;">
+                    Fuiste invitado/a a unirte al equipo <strong style="color:#111518;">{{.TeamName}}</strong> en Paceron.
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-bottom:8px; font-size:15px; line-height:22px; color:#40484c;">
+                  <td style="padding-bottom:8px; font-size:15px; line-height:23px; color:#40484c;">
                     Para aceptar la invitación, ingresá a la aplicación y aceptá la notificación pendiente.
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-bottom:8px; font-size:15px; line-height:22px; color:#40484c;">
+                  <td style="padding-bottom:8px; font-size:15px; line-height:23px; color:#40484c;">
                     Si tenés alguna duda, no dudes en contactarnos.
                   </td>
                 </tr>
@@ -48,7 +54,7 @@
 
           <!-- Footer -->
           <tr>
-            <td align="center" style="padding: 20px 24px; background-color:#ffffff; border-top:1px solid #e0e0e0;">
+            <td align="center" style="padding: 20px 24px; background-color:#fafafa; border-top:1px solid #e2e8f0;">
               <span style="font-size:12px; color:#40484c;">&copy; 2026 Paceron. Todos los derechos reservados.</span>
             </td>
           </tr>

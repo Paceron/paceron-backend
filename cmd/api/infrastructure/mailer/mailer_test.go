@@ -2,12 +2,16 @@ package mailer
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/config"
+	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 )
 
 // allEmailTypes lista los tipos soportados, para recorrerlos en tests genéricos.
@@ -31,7 +35,7 @@ func TestRenderEmail_Welcome(t *testing.T) {
 	assert.Equal(t, "Bienvenido a Paceron", subject)
 	assert.Contains(t, html, "Maria")
 	assert.Contains(t, html, "Paceron")
-	assert.Contains(t, html, "#8cc63e")
+	assert.Contains(t, html, "cid:event-icon")
 }
 
 func TestRenderEmail_Farewell(t *testing.T) {
@@ -41,7 +45,7 @@ func TestRenderEmail_Farewell(t *testing.T) {
 	assert.Equal(t, "Tu cuenta fue desactivada", subject)
 	assert.Contains(t, html, "Maria")
 	assert.Contains(t, html, "Paceron")
-	assert.Contains(t, html, "#8cc63e")
+	assert.Contains(t, html, "cid:event-icon")
 }
 
 func TestRenderEmail_PasswordReset(t *testing.T) {
@@ -249,6 +253,64 @@ func TestSendEmail_UnknownTypeDoesNotSend(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tipo de email desconocido")
+}
+
+// --- Attachments (ícono de evento) ---
+
+func newTestClientAgainstServer(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	return &Client{
+		from:       "Paceron <no-reply@paceron.com>",
+		httpClient: httpclient.New(httpclient.WithBaseURL(server.URL)),
+	}, server
+}
+
+// TestSendEmail_AttachesEventIcon verifica que SendEmail adjunte, además del logo,
+// el ícono de acento correspondiente al EmailType — sin mockear el httpClient,
+// contra un servidor real que inspecciona el body recibido.
+func TestSendEmail_AttachesEventIcon(t *testing.T) {
+	var received map[string]any
+	client, _ := newTestClientAgainstServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"test"}`))
+	})
+
+	err := client.SendEmail(context.Background(), "dest@test.com", EmailTypeWelcome, EmailData{Name: "Juan"})
+
+	require.NoError(t, err)
+	attachments, ok := received["attachments"].([]any)
+	require.True(t, ok)
+	require.Len(t, attachments, 2, "el logo y el ícono de evento deben ir como attachments separados")
+
+	contentIDs := make([]string, 0, 2)
+	for _, a := range attachments {
+		contentIDs = append(contentIDs, a.(map[string]any)["content_id"].(string))
+	}
+	assert.Contains(t, contentIDs, logoContentID)
+	assert.Contains(t, contentIDs, eventIconContentID)
+}
+
+// TestSend_OnlyAttachesLogo verifica que el Send genérico (sin EmailType) no
+// intenta adjuntar ningún ícono de evento — solo lo hace SendEmail, que sabe el tipo.
+func TestSend_OnlyAttachesLogo(t *testing.T) {
+	var received map[string]any
+	client, _ := newTestClientAgainstServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"test"}`))
+	})
+
+	err := client.Send(context.Background(), "dest@test.com", "asunto", "<p>cuerpo</p>")
+
+	require.NoError(t, err)
+	attachments, ok := received["attachments"].([]any)
+	require.True(t, ok)
+	require.Len(t, attachments, 1)
+	assert.Equal(t, logoContentID, attachments[0].(map[string]any)["content_id"])
 }
 
 // --- Envío real (requiere RESEND_API_KEY) ---
