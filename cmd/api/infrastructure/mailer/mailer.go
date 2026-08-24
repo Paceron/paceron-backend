@@ -15,10 +15,12 @@ import (
 var logoAssets embed.FS
 
 // logoContentID es el Content-ID con el que los templates referencian el logo
-// embebido (`<img src="cid:paceron-logo">`). CID embebido en vez de imagen
+// embebido (`<img src="cid:header-mark">`). CID embebido en vez de imagen
 // remota o base64 inline: es el mecanismo que los clientes de correo
-// (Gmail, Outlook, Apple Mail) cargan de forma confiable.
-const logoContentID = "paceron-logo"
+// (Gmail, Outlook, Apple Mail) cargan de forma confiable. Nombre neutro
+// ("header-mark", no "logo") y filename a tono — descartando la hipótesis de que
+// la palabra "logo" en el nombre influye en si Gmail lo trata como adjunto.
+const logoContentID = "header-mark"
 const logoAssetPath = "assets/paceron-logo.png"
 
 const resendBaseURL = "https://api.resend.com"
@@ -143,7 +145,7 @@ func (c *Client) send(ctx context.Context, to, subject, htmlBody string, eventIc
 
 	attachments := []resendAttachment{
 		{
-			Filename:    "paceron-logo.png",
+			Filename:    "header-mark.png",
 			Content:     base64.StdEncoding.EncodeToString(logoBytes),
 			ContentID:   logoContentID,
 			ContentType: "image/png",

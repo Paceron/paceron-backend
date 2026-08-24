@@ -4,7 +4,7 @@ Los 8 templates de mail (`welcome`, `farewell`, `reset`, `invitation`, y los 4 n
 
 ## What Changes
 
-- **Header**: banda verde sólida → fondo blanco, logo apilado (ícono arriba, wordmark abajo, centrado) — mismo lockup que `auth-card-shell.jsx`, sin copiarlo literal (ahí el logo está dentro de una card con botón "Volver"; acá es solo el header).
+- **Header**: banda verde sólida → fondo blanco, logo en línea (símbolo + wordmark, assets de marca reales provistos por el usuario, no recreados) dentro de una banda blanca ancha que ocupa casi todo el ancho de la card — decisión tomada durante la verificación manual (ver `tasks.md` sección 6) como mitigación cosmética a la limitación de dark mode de Gmail Android.
 - **Card contenedora**: fondo de página gris claro (`#f0f0f0`, `surfaceContainerHigh` de la app) por fuera, card blanca con `border` sutil + sombra suave + esquinas de 16px (antes 8px, sin sombra) — patrón "card flotando sobre fondo", no una réplica de un componente específico de la app.
 - **Ícono de acento por tipo de evento**: cada uno de los 8 templates suma un badge circular (fondo verde `#8cc63e`, glifo oscuro `#111518`) debajo del logo, representando el evento — mismo mecanismo de asset que el logo (rasterizado a PNG desde Material Community Icons vía ImageMagick, embebido por Content-ID). Sin sistema semáforo de colores (ningún trigger es un error real, todos usan el mismo verde).
 - **Tipografía y espaciado**: jerarquía más marcada (tamaños/pesos), espaciado alineado a la escala real de la app (4/8/12/16/20/24/32 vía `theme/tokens.js`) en vez de valores sueltos.
