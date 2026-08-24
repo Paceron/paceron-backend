@@ -87,7 +87,7 @@ func TestRenderEmail_TeamRemoved(t *testing.T) {
 	subject, html, err := RenderEmail(EmailTypeTeamRemoved, EmailData{Name: "Juan", TeamName: "Los Pumas"})
 
 	require.NoError(t, err)
-	assert.Equal(t, "Saliste del equipo Los Pumas - Paceron", subject)
+	assert.Equal(t, "Te sacaron del equipo Los Pumas - Paceron", subject)
 	assert.Contains(t, html, "Juan")
 	assert.Contains(t, html, "Los Pumas")
 }
