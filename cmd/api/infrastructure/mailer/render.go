@@ -107,7 +107,7 @@ var emailTemplates = map[EmailType]emailTemplate{
 		body:    mustParseBody(EmailTypeInvitationResponse, invitationResponseTemplateHTML),
 	},
 	EmailTypeTeamRemoved: {
-		subject: mustParseSubject(EmailTypeTeamRemoved, "Saliste del equipo {{.TeamName}} - Paceron"),
+		subject: mustParseSubject(EmailTypeTeamRemoved, "Te sacaron del equipo {{.TeamName}} - Paceron"),
 		body:    mustParseBody(EmailTypeTeamRemoved, teamRemovedTemplateHTML),
 	},
 	EmailTypeTeamMemberLeft: {

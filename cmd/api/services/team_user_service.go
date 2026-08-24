@@ -299,7 +299,7 @@ func (s *teamUserService) notifyTeamRemoval(ctx *gin.Context, teamDB *dbs.Team, 
 	}
 
 	if s.pushClient != nil {
-		title := "Saliste del equipo"
+		title := "Te sacaron del equipo"
 		body := fmt.Sprintf("Ya no formás parte de %s", teamDB.Name)
 		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, removedUserID, title, body, "team_removed", "/teams")
 	}
