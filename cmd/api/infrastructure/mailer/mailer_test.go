@@ -76,7 +76,7 @@ func TestRenderEmail_InvitationResponse(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, "Respuesta a tu invitación de Los Pumas - Paceron", subject)
+	assert.Equal(t, "Respuesta a tu invitación a Los Pumas - Paceron", subject)
 	assert.Contains(t, html, "Coach")
 	assert.Contains(t, html, "Juan")
 	assert.Contains(t, html, "aceptó")
@@ -100,7 +100,7 @@ func TestRenderEmail_TeamMemberLeft(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, "Un corredor dejó Los Pumas - Paceron", subject)
+	assert.Equal(t, "Un corredor dejó el equipo Los Pumas - Paceron", subject)
 	assert.Contains(t, html, "Coach")
 	assert.Contains(t, html, "Juan")
 	assert.Contains(t, html, "Los Pumas")
