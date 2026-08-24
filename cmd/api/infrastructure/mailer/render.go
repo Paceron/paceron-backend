@@ -103,7 +103,7 @@ var emailTemplates = map[EmailType]emailTemplate{
 		body:    mustParseBody(EmailTypeInvitation, invitationTemplateHTML),
 	},
 	EmailTypeInvitationResponse: {
-		subject: mustParseSubject(EmailTypeInvitationResponse, "Respuesta a tu invitación de {{.TeamName}} - Paceron"),
+		subject: mustParseSubject(EmailTypeInvitationResponse, "Respuesta a tu invitación a {{.TeamName}} - Paceron"),
 		body:    mustParseBody(EmailTypeInvitationResponse, invitationResponseTemplateHTML),
 	},
 	EmailTypeTeamRemoved: {
@@ -111,7 +111,7 @@ var emailTemplates = map[EmailType]emailTemplate{
 		body:    mustParseBody(EmailTypeTeamRemoved, teamRemovedTemplateHTML),
 	},
 	EmailTypeTeamMemberLeft: {
-		subject: mustParseSubject(EmailTypeTeamMemberLeft, "Un corredor dejó {{.TeamName}} - Paceron"),
+		subject: mustParseSubject(EmailTypeTeamMemberLeft, "Un corredor dejó el equipo {{.TeamName}} - Paceron"),
 		body:    mustParseBody(EmailTypeTeamMemberLeft, teamMemberLeftTemplateHTML),
 	},
 	EmailTypePasswordChanged: {
