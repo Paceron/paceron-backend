@@ -1,0 +1,21 @@
+info:
+  name: 5 Consultar estado en MP
+  description: |-
+    Devuelve el estado del pago directo contra Mercado Pago.
+    Response completo: id, status, status_detail, operation_type, description,
+    transaction_amount, currency_id, payment_method_id, payment_type_id,
+    installments, live_mode, fee_details, payer, card, transaction_details.
+    Pasar el payment_id que devolvió MP al procesar el pago.
+  type: http
+  seq: 5
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/payments/mp/{{payment_id}}
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

@@ -25,6 +25,10 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.POST("/api/v1/auth/reset-password", app.passwordResetController.ResetPassword)
 	r.GET("/example/weather", app.exampleWeatherController.GetWeather)
 	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
+
+	// Payments - Webhook must be public (Mercado Pago sends notifications without auth)
+	r.POST("/api/v1/payments/webhook", app.paymentController.HandleWebhook)
+
 	mapSwagger(r)
 	mapGuide(r)
 
@@ -95,4 +99,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/invitations/:id", app.invitationController.GetInvitationByID)
 	r.POST("/api/v1/invitations/:id/accept", app.invitationController.AcceptInvitation)
 	r.POST("/api/v1/invitations/:id/reject", app.invitationController.RejectInvitation)
+
+	// Payments (authenticated)
+	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
+	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
+	r.GET("/api/v1/payments/:id", app.paymentController.GetPaymentStatus)
+	r.GET("/api/v1/payments/mp/:id", app.paymentController.GetPaymentStatusFromMP)
+	r.POST("/api/v1/payments/test-card-token", app.paymentController.GenerateTestCardToken)
 }

@@ -1,0 +1,29 @@
+info:
+  name: 4 Procesar pago
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/payments
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "token": "{{card_token}}",
+        "transaction_amount": 1000,
+        "payment_method_id": "master",
+        "installments": 1,
+        "payer_email": "andres.paez.teran@gmail.com",
+        "preference_id":"{{preference}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

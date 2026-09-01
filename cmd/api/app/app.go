@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
+	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
 	"simple-arq-golang/cmd/api/services"
 )
 
@@ -36,6 +37,7 @@ type Application struct {
 	groupUserController        controllers.GroupUserController
 	invitationController       controllers.InvitationController
 	pushTokenController        controllers.PushTokenController
+	paymentController          controllers.PaymentController
 }
 
 func NewApplication() *Application {
@@ -182,6 +184,12 @@ func NewApplication() *Application {
 	pushTokenService := services.NewPushTokenService(pushTokenDao)
 	pushTokenController := controllers.NewPushTokenController(pushTokenService)
 
+	// Payment flow
+	paymentDao := daos.NewPaymentDao(db)
+	mpClient := mercadopagoclient.New()
+	paymentService := services.NewPaymentService(paymentDao, mpClient)
+	paymentController := controllers.NewPaymentController(paymentService)
+
 	return &Application{
 		pingController:             controllers.NewPingController(),
 		userController:             userController,
@@ -201,5 +209,6 @@ func NewApplication() *Application {
 		groupUserController:        groupUserController,
 		invitationController:       invitationController,
 		pushTokenController:        pushTokenController,
+		paymentController:          paymentController,
 	}
 }

@@ -61,6 +61,14 @@ type MailerConfig struct {
 	From   string
 }
 
+type MercadoPago struct {
+	AccessToken   string
+	PublicKey     string
+	WebhookSecret string
+	WebhookURL    string
+	CurrencyID    string
+}
+
 var (
 	MyDB                 DB
 	JWTSecret            string
@@ -69,6 +77,7 @@ var (
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
 	MyMailer             MailerConfig
+	MyMP                 MercadoPago
 )
 
 func (d Environment) String() string {
@@ -127,16 +136,19 @@ func LoadValues() {
 func initLocal() {
 	loadDBConfig()
 	loadMailerConfig()
+	loadMercadoPagoConfig()
 }
 
 func initProd() {
 	loadDBConfig()
 	loadMailerConfig()
+	loadMercadoPagoConfig()
 }
 
 func initTest() {
 	loadDBConfig()
 	loadMailerConfig()
+	loadMercadoPagoConfig()
 }
 
 func loadDBConfig() {
@@ -186,6 +198,14 @@ func getDurationOrDefault(key string, fallback time.Duration) time.Duration {
 func loadMailerConfig() {
 	MyMailer.APIKey = os.Getenv("RESEND_API_KEY")
 	MyMailer.From = os.Getenv("RESEND_FROM_ADDRESS")
+}
+
+func loadMercadoPagoConfig() {
+	MyMP.AccessToken = os.Getenv("MERCADOPAGO_ACCESS_TOKEN")
+	MyMP.PublicKey = os.Getenv("MERCADOPAGO_PUBLIC_KEY")
+	MyMP.WebhookSecret = os.Getenv("MERCADOPAGO_WEBHOOK_SECRET")
+	MyMP.WebhookURL = getEnvOrDefault("MERCADOPAGO_WEBHOOK_URL", "")
+	MyMP.CurrencyID = getEnvOrDefault("MERCADOPAGO_CURRENCY_ID", "ARS")
 }
 
 func parseDatabaseURL(dbURL string) DB {

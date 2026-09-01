@@ -1,0 +1,45 @@
+info:
+  name: 2 Crear preferencia
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/payments/preference
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "concept": "order",
+        "description": "TTest Paceron - payment integration2",
+        "items": [
+          {
+            "title": "Test2Item123",
+            "quantity": 1,
+            "unit_price": 1000
+          }
+        ]
+      }
+
+runtime:
+  scripts:
+    - type: before-request
+      code: console.log("token:", bru.getVar("token"));
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("preference", body.preference_id);
+        console.log("preference:", bru.getVar("preference_id"));
+
+        bru.setVar("public_key", body.public_key);
+        console.log("public_key:", bru.getVar("public_key"));
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
