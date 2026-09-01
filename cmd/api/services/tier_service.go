@@ -63,10 +63,12 @@ func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*ti
 	}
 
 	t := &dbs.Tier{
-		Name:        name,
-		Description: strings.TrimSpace(req.Description),
-		RoleID:      req.RoleID,
-		RoleName:    role.Name,
+		Name:            name,
+		Description:     strings.TrimSpace(req.Description),
+		RoleID:          req.RoleID,
+		RoleName:        role.Name,
+		PaymentRequired: req.PaymentRequired,
+		TierAmount:      req.TierAmount,
 	}
 
 	if err := s.tierDao.Create(ctx, t); err != nil {
@@ -84,13 +86,15 @@ func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*ti
 		customlogger.TagMethod("Create"))
 
 	return &tier.TierResponse{
-		ID:          t.ID,
-		Name:        t.Name,
-		Description: t.Description,
-		RoleID:      t.RoleID,
-		RoleName:    t.RoleName,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
+		ID:              t.ID,
+		Name:            t.Name,
+		Description:     t.Description,
+		RoleID:          t.RoleID,
+		RoleName:        t.RoleName,
+		PaymentRequired: t.PaymentRequired,
+		TierAmount:      t.TierAmount,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
 	}, nil
 }
 
@@ -130,6 +134,14 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 		t.Description = strings.TrimSpace(*req.Description)
 	}
 
+	if req.PaymentRequired != nil {
+		t.PaymentRequired = *req.PaymentRequired
+	}
+
+	if req.TierAmount != nil {
+		t.TierAmount = *req.TierAmount
+	}
+
 	if err := s.tierDao.Update(ctx, t); err != nil {
 		customlogger.Error(ctx, "error updating tier", err,
 			customlogger.Tag("tier_id", fmt.Sprintf("%d", id)),
@@ -143,13 +155,15 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 		customlogger.TagMethod("Update"))
 
 	return &tier.TierResponse{
-		ID:          t.ID,
-		Name:        t.Name,
-		Description: t.Description,
-		RoleID:      t.RoleID,
-		RoleName:    t.RoleName,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
+		ID:              t.ID,
+		Name:            t.Name,
+		Description:     t.Description,
+		RoleID:          t.RoleID,
+		RoleName:        t.RoleName,
+		PaymentRequired: t.PaymentRequired,
+		TierAmount:      t.TierAmount,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
 	}, nil
 }
 
@@ -194,13 +208,15 @@ func (s *tierService) GetByID(ctx *gin.Context, id int64) (*tier.TierResponse, e
 	}
 
 	return &tier.TierResponse{
-		ID:          t.ID,
-		Name:        t.Name,
-		Description: t.Description,
-		RoleID:      t.RoleID,
-		RoleName:    t.RoleName,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
+		ID:              t.ID,
+		Name:            t.Name,
+		Description:     t.Description,
+		RoleID:          t.RoleID,
+		RoleName:        t.RoleName,
+		PaymentRequired: t.PaymentRequired,
+		TierAmount:      t.TierAmount,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
 	}, nil
 }
 
@@ -217,13 +233,15 @@ func (s *tierService) GetByName(ctx *gin.Context, name string) (*tier.TierRespon
 	}
 
 	return &tier.TierResponse{
-		ID:          t.ID,
-		Name:        t.Name,
-		Description: t.Description,
-		RoleID:      t.RoleID,
-		RoleName:    t.RoleName,
-		CreatedAt:   t.CreatedAt,
-		UpdatedAt:   t.UpdatedAt,
+		ID:              t.ID,
+		Name:            t.Name,
+		Description:     t.Description,
+		RoleID:          t.RoleID,
+		RoleName:        t.RoleName,
+		PaymentRequired: t.PaymentRequired,
+		TierAmount:      t.TierAmount,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
 	}, nil
 }
 
@@ -238,13 +256,15 @@ func (s *tierService) GetAll(ctx *gin.Context) ([]tier.TierResponse, error) {
 	var responses []tier.TierResponse
 	for _, t := range tiers {
 		responses = append(responses, tier.TierResponse{
-			ID:          t.ID,
-			Name:        t.Name,
-			Description: t.Description,
-			RoleID:      t.RoleID,
-			RoleName:    t.RoleName,
-			CreatedAt:   t.CreatedAt,
-			UpdatedAt:   t.UpdatedAt,
+			ID:              t.ID,
+			Name:            t.Name,
+			Description:     t.Description,
+			RoleID:          t.RoleID,
+			RoleName:        t.RoleName,
+			PaymentRequired: t.PaymentRequired,
+			TierAmount:      t.TierAmount,
+			CreatedAt:       t.CreatedAt,
+			UpdatedAt:       t.UpdatedAt,
 		})
 	}
 
