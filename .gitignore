@@ -34,3 +34,8 @@ tmp/
 # CI/CD generated artifacts
 ci/test_coverage/
 cmd/api/__debug*
+
+# md-to-pdf tool (node) — deps, cache de mermaid y salidas
+scripts/md-to-pdf/node_modules/
+scripts/md-to-pdf/.cache/
+build/

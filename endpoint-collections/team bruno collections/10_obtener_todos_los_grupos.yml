@@ -5,14 +5,7 @@ info:
 
 http:
   method: GET
-  url: http://localhost:8080/api/v1/groups?team_id=1&user_id=2
-  params:
-    - name: team_id
-      value: "1"
-      type: query
-    - name: user_id
-      value: "2"
-      type: query
+  url: http://localhost:8080/api/v1/groups?team_id=1&user_id=1
   auth: inherit
 
 settings:
