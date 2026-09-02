@@ -1,0 +1,29 @@
+info:
+  name: 1 -Login - Obtener access token
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/auth/login
+  body:
+    type: json
+    data: |-
+      {
+        "email": "pepa@lota.com",
+        "password": "Abcd-12345"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("token", body.access_token);
+        console.log("token:", bru.getVar("token"));
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

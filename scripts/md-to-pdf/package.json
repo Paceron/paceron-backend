@@ -1,0 +1,12 @@
+{
+  "name": "md-to-pdf",
+  "private": true,
+  "type": "module",
+  "description": "Convierte un .md con diagramas mermaid a HTML autocontenido y PDF (misma vista que el preview de VS Code).",
+  "scripts": {
+    "convert": "node convert.mjs"
+  },
+  "dependencies": {
+    "marked": "^12.0.0"
+  }
+}

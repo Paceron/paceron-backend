@@ -12,13 +12,13 @@ import (
 )
 
 type mockTierDao struct {
-	createFn          func(ctx *gin.Context, t *dbs.Tier) error
-	findByIDFn        func(ctx *gin.Context, id int64) (*dbs.Tier, error)
+	createFn            func(ctx *gin.Context, t *dbs.Tier) error
+	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.Tier, error)
 	findByNameAndRoleFn func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error)
-	findByNameFn      func(ctx *gin.Context, name string) (*dbs.Tier, error)
-	getAllFn          func(ctx *gin.Context) ([]dbs.Tier, error)
-	updateFn          func(ctx *gin.Context, t *dbs.Tier) error
-	softDeleteFn      func(ctx *gin.Context, id int64) error
+	findByNameFn        func(ctx *gin.Context, name string) (*dbs.Tier, error)
+	getAllFn            func(ctx *gin.Context) ([]dbs.Tier, error)
+	updateFn            func(ctx *gin.Context, t *dbs.Tier) error
+	softDeleteFn        func(ctx *gin.Context, id int64) error
 }
 
 func (m *mockTierDao) Create(ctx *gin.Context, t *dbs.Tier) error {
@@ -71,11 +71,11 @@ func (m *mockTierDao) SoftDelete(ctx *gin.Context, id int64) error {
 }
 
 type mockRoleDaoForTier struct {
-	createFn    func(ctx *gin.Context, r *dbs.Role) error
-	findByIDFn  func(ctx *gin.Context, id int64) (*dbs.Role, error)
+	createFn     func(ctx *gin.Context, r *dbs.Role) error
+	findByIDFn   func(ctx *gin.Context, id int64) (*dbs.Role, error)
 	findByNameFn func(ctx *gin.Context, name string) (*dbs.Role, error)
-	getAllFn    func(ctx *gin.Context) ([]dbs.Role, error)
-	updateFn    func(ctx *gin.Context, r *dbs.Role) error
+	getAllFn     func(ctx *gin.Context) ([]dbs.Role, error)
+	updateFn     func(ctx *gin.Context, r *dbs.Role) error
 	softDeleteFn func(ctx *gin.Context, id int64) error
 }
 

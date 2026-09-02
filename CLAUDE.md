@@ -106,6 +106,10 @@ Dos proyectos de Supabase separados — `master` en Render pega a producción, `
 - Se comunica vía REST, ver tabla de endpoints en [`README.md`](README.md).
 - Deploy: producción en Vercel (`https://paceron-frontend.vercel.app`), preview de `develop` en `https://paceron-frontend-git-develop-paceron.vercel.app` — ambos dominios deben estar en `CORS_ALLOWED_ORIGINS`.
 
+## Herramientas de conversión de documentación
+
+- `scripts/md-to-pdf/` — convierte un `.md` (con diagramas mermaid) a **HTML autocontenido** y **PDF** renderizado igual que el preview de VS Code (mermaid v11). Es la alternativa al plugin "Markdown PDF" de VS Code, que usa un mermaid viejo y falla con `rect`/`note over`/unicode en sequence diagrams. Uso: `cd scripts/md-to-pdf && npm i && node convert.mjs <archivo.md> --pdf`. Primera corrida baja `mermaid.min.js` a `.cache/` (gitignoreado) para que después sea offline. Requiere Chrome para el PDF (`--html` solo produce el HTML). `.gitignore` cubre `node_modules/`, `.cache/` y `build/`.
+
 ## Quirks conocidos
 
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es un error real si el backend "no responde" al toque.
