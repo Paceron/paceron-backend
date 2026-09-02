@@ -28,7 +28,7 @@ runtime:
       code: |-
         const body = res.getBody();
         bru.setVar("card_token", body.token);
-        console.log("card_token:", bru.getVar("token"));
+        console.log("card_token:", bru.getVar("card_token"));
 
 settings:
   encodeUrl: true
