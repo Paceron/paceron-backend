@@ -121,6 +121,36 @@ func TestTierDao_FindByName_NotFound(t *testing.T) {
 	assert.Nil(t, found)
 }
 
+func TestTierDao_FindLowestByRole_OrderByHierarchy(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	role := testRole(db, "role_for_tier_lowest")
+
+	premium := &dbs.Tier{Name: "premium_bylowest", RoleID: role.ID, RoleName: role.Name, Hierarchy: 3}
+	medium := &dbs.Tier{Name: "medium_bylowest", RoleID: role.ID, RoleName: role.Name, Hierarchy: 2}
+	base := &dbs.Tier{Name: "base_bylowest", RoleID: role.ID, RoleName: role.Name, Hierarchy: 1}
+	require.NoError(t, dao.Create(nil, premium))
+	require.NoError(t, dao.Create(nil, medium))
+	require.NoError(t, dao.Create(nil, base))
+
+	lowest, err := dao.FindLowestByRole(nil, role.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, lowest)
+	assert.Equal(t, base.ID, lowest.ID)
+	assert.Equal(t, 1, lowest.Hierarchy)
+}
+
+func TestTierDao_FindLowestByRole_NotFound(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+
+	found, err := dao.FindLowestByRole(nil, 999999)
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
 func TestTierDao_GetAll_ExcludesSoftDeleted(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTierDao(db)

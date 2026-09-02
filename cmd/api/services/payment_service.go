@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/payment"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
@@ -32,11 +34,13 @@ type paymentService struct {
 	publicKey     string
 	webhookSecret string
 	currencyID    string
+	db            *gorm.DB // para la transacción del webhook de cuotas (D7)
 }
 
 func NewPaymentService(
 	paymentDao daos.PaymentDaoInterface,
 	mpClient mercadopagoclient.MercadoPagoClientInterface,
+	db *gorm.DB,
 ) PaymentServiceInterface {
 	return &paymentService{
 		paymentDao:    paymentDao,
@@ -45,6 +49,7 @@ func NewPaymentService(
 		publicKey:     config.MyMP.PublicKey,
 		webhookSecret: config.MyMP.WebhookSecret,
 		currencyID:    config.MyMP.CurrencyID,
+		db:            db,
 	}
 }
 
@@ -57,13 +62,14 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	}
 
 	paymentRecord := &dbs.Payment{
-		UserID:      req.SellerID,
-		Concept:     req.Concept,
-		Description: req.Description,
-		Amount:      amount,
-		CurrencyID:  s.currencyID,
-		Status:      "pending",
-		PayerEmail:  "",
+		UserID:        req.SellerID,
+		Concept:       req.Concept,
+		Description:   req.Description,
+		Amount:        amount,
+		CurrencyID:    s.currencyID,
+		Status:        "pending",
+		PayerEmail:    "",
+		InstallmentID: req.InstallmentID,
 	}
 
 	if err := s.paymentDao.Create(ctx, paymentRecord); err != nil {
@@ -130,6 +136,7 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		PreferenceID:    req.PreferenceID,
 		PaymentMethodID: req.PaymentMethodID,
 		Installments:    req.Installments,
+		InstallmentID:   req.InstallmentID,
 	}
 
 	if err := s.paymentDao.Create(ctx, paymentRecord); err != nil {
@@ -345,12 +352,104 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 		customlogger.Warn(ctx, "error updating raw response from webhook")
 	}
 
+	// Pago de cuota aprobado: confirmar la cuota y avanzar el ciclo mensual (D6/D7).
+	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
+		if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+			return fmt.Errorf("error confirming installment: %w", err)
+		}
+	}
+
 	customlogger.Info(ctx, "webhook processed successfully",
 		customlogger.Tag("payment_id", fmt.Sprintf("%d", paymentRecord.ID)),
 		customlogger.Tag("status", result.Status),
 	)
 
 	return nil
+}
+
+// applyApprovedInstallment confirma una cuota pagada y genera la siguiente (D6/D7),
+// todo en una transacción GORM. El marcado es condicional (`WHERE status='pending'`,
+// MarkPaidConditional): la doble notificación del webhook no tiene efectos (idempotencia).
+// Solo se aplica a cuotas de suscripción de tier (`subscription_id`); las de equipo
+// (change suscripcion-teams-split) quedan marcadas como paid y el resto del flujo
+// lo completa ese change.
+func (s *paymentService) applyApprovedInstallment(ctx *gin.Context, paymentRecord *dbs.Payment, mpPaymentID string) error {
+	if s.db == nil {
+		return fmt.Errorf("payment service sin db configurada")
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		insDao := daos.NewInstallmentDao(tx)
+		subDao := daos.NewTierSubscriptionDao(tx)
+		urDao := daos.NewUserRoleDao(tx)
+
+		marked, err := insDao.MarkPaidConditional(ctx, *paymentRecord.InstallmentID, &paymentRecord.ID, &mpPaymentID)
+		if err != nil {
+			return err
+		}
+		if !marked {
+			customlogger.Warn(ctx, "installment already paid, webhook is a duplicate",
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("applyApprovedInstallment"))
+			return nil
+		}
+
+		installment, err := insDao.FindByID(ctx, *paymentRecord.InstallmentID)
+		if err != nil {
+			return err
+		}
+		if installment == nil {
+			return fmt.Errorf("installment %d not found after marking paid", *paymentRecord.InstallmentID)
+		}
+		if installment.SubscriptionID == nil {
+			return nil // cuota de equipo: el flujo de split lo completa (change 2)
+		}
+
+		sub, err := subDao.FindByID(ctx, *installment.SubscriptionID)
+		if err != nil {
+			return err
+		}
+		if sub == nil {
+			return fmt.Errorf("subscription %d not found", *installment.SubscriptionID)
+		}
+
+		if err := subDao.IncrementPaidInstallments(ctx, sub.ID); err != nil {
+			return err
+		}
+
+		if installment.InstallmentNumber == 1 {
+			if err := subDao.Activate(ctx, sub.ID); err != nil {
+				return err
+			}
+			if err := urDao.UpdateTier(ctx, sub.UserID, sub.RoleID, sub.TierID); err != nil {
+				return err
+			}
+		}
+
+		return insDao.Create(ctx, nextInstallment(sub, installment))
+	})
+}
+
+// nextInstallment genera la cuota N+1 (D6): amount = init_amount de la sub;
+// due_date = start_date + 1 mes si recién se pagó la #1, si no, due_date de la
+// cuota + 1 mes; blocked_date = due_date + 7 días de gracia.
+func nextInstallment(sub *dbs.UserRoleTierSubscription, paid *dbs.Installment) *dbs.Installment {
+	base := sub.StartDate
+	if paid.InstallmentNumber > 1 && paid.DueDate != nil {
+		base = *paid.DueDate
+	}
+	dueDate := base.AddDate(0, 1, 0)
+	blockedDate := dueDate.AddDate(0, 0, 7)
+
+	return &dbs.Installment{
+		SubscriptionID:    &sub.ID,
+		UserID:            sub.UserID,
+		InstallmentNumber: paid.InstallmentNumber + 1,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            sub.InitAmount,
+		DueDate:           &dueDate,
+		BlockedDate:       &blockedDate,
+	}
 }
 
 func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResponse {

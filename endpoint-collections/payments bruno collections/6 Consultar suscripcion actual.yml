@@ -1,0 +1,18 @@
+info:
+  name: 6 Consultar suscripcion actual
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/users/{{user_id}}/subscriptions/current?role_id={{role_id}}
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

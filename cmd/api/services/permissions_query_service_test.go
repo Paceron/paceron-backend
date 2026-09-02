@@ -68,6 +68,10 @@ func (m *mockUserRoleDaoForQuery) SoftDelete(ctx *gin.Context, id int64) error {
 	return nil
 }
 
+func (m *mockUserRoleDaoForQuery) UpdateTier(ctx *gin.Context, userID, roleID, tierID int64) error {
+	return nil
+}
+
 type mockRoleDaoForQuery struct {
 	findByIDFn func(ctx *gin.Context, id int64) (*dbs.Role, error)
 }
@@ -127,6 +131,10 @@ func (m *mockTierDaoForQuery) SoftDelete(ctx *gin.Context, id int64) error {
 }
 
 func (m *mockTierDaoForQuery) FindByName(ctx *gin.Context, name string) (*dbs.Tier, error) {
+	return nil, nil
+}
+
+func (m *mockTierDaoForQuery) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 	return nil, nil
 }
 

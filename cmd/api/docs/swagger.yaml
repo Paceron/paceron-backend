@@ -315,6 +315,9 @@ definitions:
         type: string
       description:
         type: string
+      installment_id:
+        description: cuota a la que se vincula el pago
+        type: integer
       items:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PreferenceItem'
@@ -499,6 +502,9 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_payment.ProcessPaymentRequest:
     properties:
+      installment_id:
+        description: cuota a la que se vincula el pago
+        type: integer
       installments:
         minimum: 1
         type: integer
@@ -933,6 +939,87 @@ definitions:
       tier_id:
         description: ID del tier
         type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest:
+    properties:
+      tier_id:
+        description: ID del tier target (mismo role_id que la asignación)
+        type: integer
+    required:
+    - tier_id
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse:
+    properties:
+      blocked_date:
+        type: string
+      installment_amount:
+        type: number
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mercadopago:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo'
+      next_due_date:
+        type: string
+      paid_installments:
+        type: integer
+      role:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo'
+      subscription_id:
+        type: integer
+      subscription_status:
+        type: string
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse:
+    properties:
+      blocked_date:
+        type: string
+      installment_amount:
+        type: number
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mercadopago:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo'
+      next_due_date:
+        type: string
+      paid_installments:
+        type: integer
+      role:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo'
+      subscription_id:
+        type: integer
+      subscription_status:
+        type: string
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo:
+    properties:
+      public_key:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo:
+    properties:
+      hierarchy:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      payment_required:
+        type: boolean
     type: object
   simple-arq-golang_cmd_api_domains_user.BatchLookupResponse:
     properties:
@@ -3310,6 +3397,59 @@ paths:
       summary: Remove a role from a user
       tags:
       - user-roles
+  /api/v1/users/{id}/roles/{role_id}/tier:
+    put:
+      consumes:
+      - application/json
+      description: Changes the tier of an assigned role, blocking if there is debt
+        or a pending first payment.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: path
+        name: role_id
+        required: true
+        type: integer
+      - description: Target tier
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Change tier of a role subscription
+      tags:
+      - user-roles
   /api/v1/users/{id}/status:
     patch:
       consumes:
@@ -3354,6 +3494,47 @@ paths:
       summary: Change user status
       tags:
       - users
+  /api/v1/users/{id}/subscriptions/current:
+    get:
+      description: Returns the current subscription and next installment to pay for
+        the role (Bricks checkout data). Free roles return tier/role only.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: query
+        name: role_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get current subscription of a role
+      tags:
+      - user-roles
   /api/v1/users/{id}/trainer-role:
     delete:
       description: Desactiva el rol entrenador del usuario autenticado sobre sí mismo.

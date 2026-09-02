@@ -38,6 +38,7 @@ type Application struct {
 	invitationController       controllers.InvitationController
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
+	tierSubscriptionController controllers.TierSubscriptionController
 }
 
 func NewApplication() *Application {
@@ -145,7 +146,7 @@ func NewApplication() *Application {
 	teamDao := daos.NewTeamDao(db)
 
 	// User Role flow
-	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao, teamUserDao)
+	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao, teamUserDao, db)
 	userRoleController := controllers.NewUserRoleController(userRoleService)
 
 	// Permissions Query flow
@@ -187,8 +188,14 @@ func NewApplication() *Application {
 	// Payment flow
 	paymentDao := daos.NewPaymentDao(db)
 	mpClient := mercadopagoclient.New()
-	paymentService := services.NewPaymentService(paymentDao, mpClient)
+	paymentService := services.NewPaymentService(paymentDao, mpClient, db)
 	paymentController := controllers.NewPaymentController(paymentService)
+
+	// Tier subscription flow (ledger de suscripciones de tier por usuario/rol)
+	tierSubscriptionDao := daos.NewTierSubscriptionDao(db)
+	installmentDao := daos.NewInstallmentDao(db)
+	tierSubscriptionService := services.NewTierSubscriptionService(db, userRoleDao, roleDao, tierDao, tierSubscriptionDao, installmentDao)
+	tierSubscriptionController := controllers.NewTierSubscriptionController(tierSubscriptionService)
 
 	return &Application{
 		pingController:             controllers.NewPingController(),
@@ -210,5 +217,6 @@ func NewApplication() *Application {
 		invitationController:       invitationController,
 		pushTokenController:        pushTokenController,
 		paymentController:          paymentController,
+		tierSubscriptionController: tierSubscriptionController,
 	}
 }

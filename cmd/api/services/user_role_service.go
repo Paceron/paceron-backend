@@ -8,8 +8,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/userrole"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
@@ -34,6 +36,7 @@ type userRoleService struct {
 	tierDao     daos.TierDaoInterface
 	userDao     daos.UserDaoInterface
 	teamUserDao daos.TeamUserDaoInterface
+	db          *gorm.DB // para transacciones del flujo de suscripciones (D2)
 }
 
 func NewUserRoleService(
@@ -42,6 +45,7 @@ func NewUserRoleService(
 	tierDao daos.TierDaoInterface,
 	userDao daos.UserDaoInterface,
 	teamUserDao daos.TeamUserDaoInterface,
+	db *gorm.DB,
 ) UserRoleServiceInterface {
 	return &userRoleService{
 		userRoleDao: userRoleDao,
@@ -49,6 +53,7 @@ func NewUserRoleService(
 		tierDao:     tierDao,
 		userDao:     userDao,
 		teamUserDao: teamUserDao,
+		db:          db,
 	}
 }
 
@@ -87,8 +92,8 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 		return nil, fmt.Errorf("el usuario ya tiene asignado este rol")
 	}
 
-	tierID := req.TierID
-	if tierID == 0 {
+	var resolvedTier *dbs.Tier
+	if req.TierID == 0 {
 		defaultTier, err := s.tierDao.FindByNameAndRole(ctx, defaultTierName, req.RoleID)
 		if err != nil {
 			customlogger.Error(ctx, "error finding default tier", err,
@@ -100,12 +105,12 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 		if defaultTier == nil {
 			return nil, fmt.Errorf("el tier por defecto 'base' no existe para este rol")
 		}
-		tierID = defaultTier.ID
+		resolvedTier = defaultTier
 	} else {
-		tier, err := s.tierDao.FindByID(ctx, tierID)
+		tier, err := s.tierDao.FindByID(ctx, req.TierID)
 		if err != nil {
 			customlogger.Error(ctx, "error finding tier for assignment", err,
-				customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+				customlogger.Tag("tier_id", fmt.Sprintf("%d", req.TierID)),
 				customlogger.TagMethod("AssignRole"))
 			return nil, fmt.Errorf("error al asignar rol")
 		}
@@ -115,28 +120,109 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 		if tier.RoleID != req.RoleID {
 			return nil, fmt.Errorf("el tier no pertenece al rol especificado")
 		}
+		resolvedTier = tier
+	}
+
+	// Tier gratis: comportamiento actual (asignación directa, sin suscripción).
+	if !resolvedTier.PaymentRequired {
+		ur := &dbs.UserRole{
+			UserID:         userID,
+			RoleID:         req.RoleID,
+			TierID:         resolvedTier.ID,
+			AssignmentDate: time.Now(),
+			Status:         "active",
+		}
+
+		if err := s.userRoleDao.Create(ctx, ur); err != nil {
+			customlogger.Error(ctx, "error assigning role to user", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
+				customlogger.TagMethod("AssignRole"))
+			return nil, fmt.Errorf("error al asignar rol")
+		}
+
+		customlogger.Info(ctx, "role assigned to user successfully",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", ur.TierID)),
+			customlogger.TagMethod("AssignRole"))
+
+		return &userrole.UserRoleResponse{
+			ID:             ur.ID,
+			UserID:         ur.UserID,
+			RoleID:         ur.RoleID,
+			TierID:         ur.TierID,
+			AssignmentDate: ur.AssignmentDate,
+			Status:         ur.Status,
+		}, nil
+	}
+
+	// Tier pago (D2): el usuario arranca con el tier de menor jerarquía (base) del
+	// rol y deja el acceso al tier pago para cuando pague la cuota #1. Todo se crea
+	// en una transacción GORM: user_roles + suscripción first_payment_pending +
+	// cuota #1 (sin due_date/blocked_date, la cuota #1 nunca genera deuda).
+	baseTier, err := s.tierDao.FindLowestByRole(ctx, req.RoleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding base tier for paid assignment", err,
+			customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
+			customlogger.TagMethod("AssignRole"))
+		return nil, fmt.Errorf("error al asignar rol")
+	}
+	if baseTier == nil {
+		return nil, fmt.Errorf("el rol no tiene un tier base para asignar acceso inicial")
 	}
 
 	ur := &dbs.UserRole{
 		UserID:         userID,
 		RoleID:         req.RoleID,
-		TierID:         tierID,
+		TierID:         baseTier.ID,
 		AssignmentDate: time.Now(),
 		Status:         "active",
 	}
 
-	if err := s.userRoleDao.Create(ctx, ur); err != nil {
-		customlogger.Error(ctx, "error assigning role to user", err,
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		urDao := daos.NewUserRoleDao(tx)
+		subDao := daos.NewTierSubscriptionDao(tx)
+		insDao := daos.NewInstallmentDao(tx)
+
+		if err := urDao.Create(ctx, ur); err != nil {
+			return err
+		}
+
+		sub := &dbs.UserRoleTierSubscription{
+			UserID:     userID,
+			RoleID:     req.RoleID,
+			TierID:     resolvedTier.ID,
+			Status:     string(constants.SubscriptionStatusFirstPaymentPending),
+			InitAmount: resolvedTier.TierAmount,
+			StartDate:  time.Now(),
+		}
+		if err := subDao.Create(ctx, sub); err != nil {
+			return err
+		}
+
+		installment := &dbs.Installment{
+			SubscriptionID:    &sub.ID,
+			UserID:            userID,
+			InstallmentNumber: 1,
+			Status:            string(constants.InstallmentStatusPending),
+			Amount:            resolvedTier.TierAmount,
+		}
+		return insDao.Create(ctx, installment)
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error creating role with pending subscription", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 			customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
 			customlogger.TagMethod("AssignRole"))
 		return nil, fmt.Errorf("error al asignar rol")
 	}
 
-	customlogger.Info(ctx, "role assigned to user successfully",
+	customlogger.Info(ctx, "paid role assigned with pending first payment",
 		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 		customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
-		customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+		customlogger.Tag("base_tier_id", fmt.Sprintf("%d", ur.TierID)),
+		customlogger.Tag("paid_tier_id", fmt.Sprintf("%d", resolvedTier.ID)),
 		customlogger.TagMethod("AssignRole"))
 
 	return &userrole.UserRoleResponse{

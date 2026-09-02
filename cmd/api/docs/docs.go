@@ -3309,6 +3309,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/roles/{role_id}/tier": {
+            "put": {
+                "description": "Changes the tier of an assigned role, blocking if there is debt or a pending first payment.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Change tier of a role subscription",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "role_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target tier",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/status": {
             "patch": {
                 "description": "Change the status of a user. Valid statuses: active, inactive, pause, blocked, suspended. Only the user itself can change its own status.",
@@ -3345,6 +3423,66 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_user.UserUpdateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/subscriptions/current": {
+            "get": {
+                "description": "Returns the current subscription and next installment to pay for the role (Bricks checkout data). Free roles return tier/role only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Get current subscription of a role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "role_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse"
                         }
                     },
                     "400": {
@@ -3995,6 +4133,10 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "installment_id": {
+                    "description": "cuota a la que se vincula el pago",
+                    "type": "integer"
+                },
                 "items": {
                     "type": "array",
                     "items": {
@@ -4277,6 +4419,10 @@ const docTemplate = `{
                 "transaction_amount"
             ],
             "properties": {
+                "installment_id": {
+                    "description": "cuota a la que se vincula el pago",
+                    "type": "integer"
+                },
                 "installments": {
                     "type": "integer",
                     "minimum": 1
@@ -4879,6 +5025,130 @@ const docTemplate = `{
                 "tier_id": {
                     "description": "ID del tier",
                     "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest": {
+            "type": "object",
+            "required": [
+                "tier_id"
+            ],
+            "properties": {
+                "tier_id": {
+                    "description": "ID del tier target (mismo role_id que la asignación)",
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse": {
+            "type": "object",
+            "properties": {
+                "blocked_date": {
+                    "type": "string"
+                },
+                "installment_amount": {
+                    "type": "number"
+                },
+                "installment_id": {
+                    "type": "integer"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "mercadopago": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo"
+                },
+                "next_due_date": {
+                    "type": "string"
+                },
+                "paid_installments": {
+                    "type": "integer"
+                },
+                "role": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo"
+                },
+                "subscription_id": {
+                    "type": "integer"
+                },
+                "subscription_status": {
+                    "type": "string"
+                },
+                "tier": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "blocked_date": {
+                    "type": "string"
+                },
+                "installment_amount": {
+                    "type": "number"
+                },
+                "installment_id": {
+                    "type": "integer"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "mercadopago": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo"
+                },
+                "next_due_date": {
+                    "type": "string"
+                },
+                "paid_installments": {
+                    "type": "integer"
+                },
+                "role": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo"
+                },
+                "subscription_id": {
+                    "type": "integer"
+                },
+                "subscription_status": {
+                    "type": "string"
+                },
+                "tier": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo": {
+            "type": "object",
+            "properties": {
+                "public_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo": {
+            "type": "object",
+            "properties": {
+                "hierarchy": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "payment_required": {
+                    "type": "boolean"
                 }
             }
         },

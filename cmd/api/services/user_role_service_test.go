@@ -7,10 +7,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
+	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/userrole"
+	"simple-arq-golang/cmd/api/testutils"
 )
 
 // entrenadorTestPasswordHash es el hash bcrypt de "CorrectPass123" — compartido por los
@@ -27,7 +31,8 @@ type mockUserRoleDao struct {
 	createFn            func(ctx *gin.Context, ur *dbs.UserRole) error
 	findByUserAndRoleFn func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error)
 	findByUserIDFn      func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error)
-	softDeleteFn        func(ctx *gin.Context, id int64) error
+softDeleteFn func(ctx *gin.Context, id int64) error
+	updateTierFn func(ctx *gin.Context, userID, roleID, tierID int64) error
 }
 
 func (m *mockUserRoleDao) Create(ctx *gin.Context, ur *dbs.UserRole) error {
@@ -54,6 +59,13 @@ func (m *mockUserRoleDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.Us
 func (m *mockUserRoleDao) SoftDelete(ctx *gin.Context, id int64) error {
 	if m.softDeleteFn != nil {
 		return m.softDeleteFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockUserRoleDao) UpdateTier(ctx *gin.Context, userID, roleID, tierID int64) error {
+	if m.updateTierFn != nil {
+		return m.updateTierFn(ctx, userID, roleID, tierID)
 	}
 	return nil
 }
@@ -126,7 +138,7 @@ func TestUserRoleService_AssignRole_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	resp, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -146,7 +158,7 @@ func TestUserRoleService_AssignRole_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 999, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -167,7 +179,7 @@ func TestUserRoleService_AssignRole_RoleNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 999,
 	})
@@ -193,7 +205,7 @@ func TestUserRoleService_AssignRole_AlreadyAssigned(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -224,7 +236,7 @@ func TestUserRoleService_AssignRole_DefaultTierNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -256,7 +268,7 @@ func TestUserRoleService_AssignRole_TierNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 999,
@@ -288,7 +300,7 @@ func TestUserRoleService_AssignRole_TierNotBelongToRole(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -324,7 +336,7 @@ func TestUserRoleService_AssignRole_SuccessWithDefaultTier(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	resp, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -360,7 +372,7 @@ func TestUserRoleService_AssignRole_CreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -377,7 +389,7 @@ func TestUserRoleService_AssignRole_UserFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -398,7 +410,7 @@ func TestUserRoleService_AssignRole_RoleFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 	})
@@ -424,7 +436,7 @@ func TestUserRoleService_AssignRole_FindByUserAndRoleError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -456,7 +468,7 @@ func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 0,
@@ -472,7 +484,7 @@ func TestUserRoleService_RemoveRole_ProtectedRole(t *testing.T) {
 			return &dbs.Role{ID: id, Name: "corredor"}, nil
 		},
 	}
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -486,7 +498,7 @@ func TestUserRoleService_RemoveRole_RoleFindByIDError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -506,7 +518,7 @@ func TestUserRoleService_RemoveRole_Success(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -520,7 +532,7 @@ func TestUserRoleService_RemoveRole_NotAssigned(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -534,7 +546,7 @@ func TestUserRoleService_RemoveRole_FindError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -551,7 +563,7 @@ func TestUserRoleService_RemoveRole_SoftDeleteError(t *testing.T) {
 			return errors.New("db error")
 		},
 	}
-	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, &mockRoleDao{}, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 
 	err := svc.RemoveRole(nil, 1, 2)
 
@@ -581,7 +593,7 @@ func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
 		RoleID: 1,
 		TierID: 1,
@@ -623,7 +635,7 @@ func TestUserRoleService_ActivateEntrenador_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password:  "CorrectPass123",
 		BankAlias: &bankAlias,
@@ -669,7 +681,7 @@ func TestUserRoleService_ActivateEntrenador_UsesExistingBankAlias(t *testing.T) 
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
 	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password: "CorrectPass123",
 	})
@@ -686,7 +698,7 @@ func TestUserRoleService_ActivateEntrenador_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 999, &userrole.ActivateEntrenadorRequest{Password: "x"})
 
 	assert.Error(t, err)
@@ -700,7 +712,7 @@ func TestUserRoleService_ActivateEntrenador_UserFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "x"})
 
 	assert.Error(t, err)
@@ -714,7 +726,7 @@ func TestUserRoleService_ActivateEntrenador_WrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "WrongPass"})
 
 	assert.Error(t, err)
@@ -728,7 +740,7 @@ func TestUserRoleService_ActivateEntrenador_MissingBankAlias(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "CorrectPass123"})
 
 	assert.Error(t, err)
@@ -742,7 +754,7 @@ func TestUserRoleService_ActivateEntrenador_InvalidBankAliasFormat(t *testing.T)
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password:  "CorrectPass123",
 		BankAlias: ptrStr("a"),
@@ -764,7 +776,7 @@ func TestUserRoleService_ActivateEntrenador_RoleNotFoundInCatalog(t *testing.T) 
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password:  "CorrectPass123",
 		BankAlias: ptrStr("alias-valido"),
@@ -786,7 +798,7 @@ func TestUserRoleService_ActivateEntrenador_RoleFindByNameError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password:  "CorrectPass123",
 		BankAlias: ptrStr("alias-valido"),
@@ -811,7 +823,7 @@ func TestUserRoleService_ActivateEntrenador_UpdateBankAliasError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
 	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
 		Password:  "CorrectPass123",
 		BankAlias: ptrStr("alias-valido"),
@@ -843,7 +855,7 @@ func TestUserRoleService_DeactivateEntrenador_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.NoError(t, err)
@@ -862,7 +874,7 @@ func TestUserRoleService_DeactivateEntrenador_BlockedByActiveTeam(t *testing.T) 
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.Error(t, err)
@@ -876,7 +888,7 @@ func TestUserRoleService_DeactivateEntrenador_RoleNotFoundInCatalog(t *testing.T
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.Error(t, err)
@@ -890,7 +902,7 @@ func TestUserRoleService_DeactivateEntrenador_RoleFindByNameError(t *testing.T) 
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.Error(t, err)
@@ -909,7 +921,7 @@ func TestUserRoleService_DeactivateEntrenador_TeamCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao)
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, mockTeamUserDao, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.Error(t, err)
@@ -928,9 +940,99 @@ func TestUserRoleService_DeactivateEntrenador_NotAssigned(t *testing.T) {
 		},
 	}
 
-	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{})
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, &mockTierDao{}, &mockUserDaoForUserRole{}, &mockTeamUserDao{}, nil)
 	err := svc.DeactivateEntrenador(nil, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "el usuario no tiene asignado este rol")
+}
+
+func TestUserRoleService_AssignRole_PaidTier_NoBaseTier(t *testing.T) {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 20, Name: "premium", RoleID: 2, PaymentRequired: true}, nil
+		},
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+	}
+
+	svc := NewUserRoleService(&mockUserRoleDao{}, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
+	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{RoleID: 2, TierID: 20})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol no tiene un tier base para asignar acceso inicial")
+}
+
+// TestUserRoleService_AssignRole_PaidTier_RequiresPostgres verifica el flujo pago de
+// AssignRole contra Postgres real (se skipea si no hay TEST_DB_HOST, ver docs/TESTING.md):
+// user_roles apunta al tier base del rol, y se crean la suscripción en
+// first_payment_pending y la cuota #1 (sin due_date/blocked_date, la primera cuota
+// nunca genera deuda).
+func TestUserRoleService_AssignRole_PaidTier_RequiresPostgres(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	user := &dbs.User{
+		Name:      "Test",
+		Surname:   "User",
+		Email:     "paid-assign@test.com",
+		DNI:       "20000001",
+		BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		Password:  "hashed",
+	}
+	require.NoError(t, db.Create(user).Error)
+
+	role := &dbs.Role{Name: "entrenador"}
+	require.NoError(t, db.Create(role).Error)
+
+	base := &dbs.Tier{Name: "base", RoleID: role.ID, RoleName: role.Name, Hierarchy: 1, PaymentRequired: false}
+	require.NoError(t, db.Create(base).Error)
+	premium := &dbs.Tier{Name: "premium", RoleID: role.ID, RoleName: role.Name, Hierarchy: 2, PaymentRequired: true, TierAmount: 1500}
+	require.NoError(t, db.Create(premium).Error)
+
+	svc := NewUserRoleService(
+		daos.NewUserRoleDao(db),
+		daos.NewRoleDao(db),
+		daos.NewTierDao(db),
+		daos.NewUserDao(db),
+		daos.NewTeamUserDao(db),
+		db,
+	)
+	resp, err := svc.AssignRole(nil, user.ID, &userrole.AssignRoleRequest{RoleID: role.ID, TierID: premium.ID})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	urDao := daos.NewUserRoleDao(db)
+	ur, err := urDao.FindByUserAndRole(nil, user.ID, role.ID)
+	require.NoError(t, err)
+	require.NotNil(t, ur)
+	assert.Equal(t, base.ID, ur.TierID)
+
+	subDao := daos.NewTierSubscriptionDao(db)
+	sub, err := subDao.FindLatestByUserRole(nil, user.ID, role.ID)
+	require.NoError(t, err)
+	require.NotNil(t, sub)
+	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), sub.Status)
+	assert.Equal(t, premium.ID, sub.TierID)
+	assert.Equal(t, premium.TierAmount, sub.InitAmount)
+
+	insDao := daos.NewInstallmentDao(db)
+	ins, err := insDao.FindNext(nil, sub.ID)
+	require.NoError(t, err)
+	require.NotNil(t, ins)
+	assert.Equal(t, 1, ins.InstallmentNumber)
+	assert.Equal(t, string(constants.InstallmentStatusPending), ins.Status)
+	assert.Equal(t, premium.TierAmount, ins.Amount)
+	assert.Nil(t, ins.DueDate)
+	assert.Nil(t, ins.BlockedDate)
 }
