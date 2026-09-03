@@ -430,6 +430,8 @@ func (tc *teamController) UploadIcon(c *gin.Context) {
 		} else if errors.Is(err, services.ErrPhotoInvalidType) {
 			statusCode = http.StatusBadRequest
 			code = "PHOTO_INVALID_TYPE"
+		} else if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
 		} else if errMsg == "solo el entrenador dueño del equipo puede cambiar el ícono" {
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
@@ -476,6 +478,8 @@ func (tc *teamController) DeleteIcon(c *gin.Context) {
 		if errMsg == "solo el entrenador dueño del equipo puede cambiar el ícono" {
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
+		} else if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

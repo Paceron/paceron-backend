@@ -73,6 +73,10 @@ func NewUserService(
 // UploadPhoto valida y sube la foto de perfil del usuario, pisando la key
 // determinística existente (D3 del design) y devuelve la URL pública recalculada.
 func (s *userService) UploadPhoto(ctx *gin.Context, userID int64, content []byte) (*string, error) {
+	if err := requireStorageClient(s.storageClient); err != nil {
+		return nil, err
+	}
+
 	contentType, ext, err := validatePhotoContent(content)
 	if err != nil {
 		return nil, err
@@ -99,6 +103,10 @@ func (s *userService) UploadPhoto(ctx *gin.Context, userID int64, content []byte
 // DeletePhoto borra la foto de perfil del bucket y limpia photo_key/photo_updated_at.
 // Idempotente: si el usuario no tiene foto cargada, no hace nada.
 func (s *userService) DeletePhoto(ctx *gin.Context, userID int64) error {
+	if err := requireStorageClient(s.storageClient); err != nil {
+		return err
+	}
+
 	userDB, err := s.userDao.FindByID(ctx, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding user for photo delete", err,

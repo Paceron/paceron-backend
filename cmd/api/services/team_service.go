@@ -79,6 +79,10 @@ func (s *teamService) UploadIcon(ctx *gin.Context, id int64, callerID int64, con
 		return nil, fmt.Errorf("solo el entrenador dueño del equipo puede cambiar el ícono")
 	}
 
+	if err := requireStorageClient(s.storageClient); err != nil {
+		return nil, err
+	}
+
 	contentType, ext, err := validatePhotoContent(content)
 	if err != nil {
 		return nil, err
@@ -115,6 +119,10 @@ func (s *teamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64) err
 	}
 	if !isEntrenador {
 		return fmt.Errorf("solo el entrenador dueño del equipo puede cambiar el ícono")
+	}
+
+	if err := requireStorageClient(s.storageClient); err != nil {
+		return err
 	}
 
 	teamDB, err := s.teamDao.FindByID(ctx, id)

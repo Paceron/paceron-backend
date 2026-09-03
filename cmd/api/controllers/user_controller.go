@@ -432,6 +432,8 @@ func (u *userController) UploadPhoto(c *gin.Context) {
 		} else if errors.Is(err, services.ErrPhotoInvalidType) {
 			statusCode = http.StatusBadRequest
 			code = "PHOTO_INVALID_TYPE"
+		} else if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -476,9 +478,13 @@ func (u *userController) DeletePhoto(c *gin.Context) {
 	}
 
 	if err := u.userService.DeletePhoto(c, userID); err != nil {
+		code := "Internal Server Error"
+		if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
+		}
 		c.JSON(http.StatusInternalServerError, apierror.APIError{
 			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal Server Error",
+			Code:       code,
 			Message:    err.Error(),
 		})
 		return

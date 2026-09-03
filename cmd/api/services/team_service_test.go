@@ -1037,6 +1037,30 @@ func nonEntrenadorMockTeamUserDao() *mockTeamUserDao {
 	}
 }
 
+func TestTeamService_UploadIcon_NilStorageClient_NoPanic(t *testing.T) {
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+
+	var url *string
+	var err error
+	assert.NotPanics(t, func() {
+		url, err = svc.UploadIcon(nil, 1, 1, validPNGContent)
+	})
+
+	assert.Nil(t, url)
+	assert.ErrorIs(t, err, ErrStorageUnavailable)
+}
+
+func TestTeamService_DeleteIcon_NilStorageClient_NoPanic(t *testing.T) {
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+
+	var err error
+	assert.NotPanics(t, func() {
+		err = svc.DeleteIcon(nil, 1, 1)
+	})
+
+	assert.ErrorIs(t, err, ErrStorageUnavailable)
+}
+
 func TestTeamService_UploadIcon_Success(t *testing.T) {
 	storage := &mockStorageClient{}
 	updateIconCalled := false

@@ -41,9 +41,20 @@ var allowedPhotoTypes = map[string]string{
 }
 
 var (
-	ErrPhotoTooLarge    = errors.New("el archivo supera el tamaño máximo permitido (5MB)")
-	ErrPhotoInvalidType = errors.New("tipo de archivo no permitido, solo se aceptan imágenes JPEG, PNG o WEBP")
+	ErrPhotoTooLarge      = errors.New("el archivo supera el tamaño máximo permitido (5MB)")
+	ErrPhotoInvalidType   = errors.New("tipo de archivo no permitido, solo se aceptan imágenes JPEG, PNG o WEBP")
+	ErrStorageUnavailable = errors.New("el servicio de almacenamiento no está disponible")
 )
+
+// requireStorageClient devuelve ErrStorageUnavailable si el cliente de storage
+// no se pudo inicializar en el arranque (ver app.go) — evita panic por interfaz
+// nil al primer Upload/Delete en vez de dejar que se propague sin control.
+func requireStorageClient(client storageclient.StorageClientInterface) error {
+	if client == nil {
+		return ErrStorageUnavailable
+	}
+	return nil
+}
 
 // validatePhotoContent valida tamaño y tipo real (magic bytes) de una foto de
 // perfil/ícono de equipo, y devuelve el content-type detectado y la extensión

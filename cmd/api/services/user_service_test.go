@@ -665,6 +665,30 @@ func TestUserService_UploadPhoto_Success(t *testing.T) {
 	assert.Equal(t, "image/png", storage.lastUploadContentType)
 }
 
+func TestUserService_UploadPhoto_NilStorageClient_NoPanic(t *testing.T) {
+	svc := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+
+	var url *string
+	var err error
+	assert.NotPanics(t, func() {
+		url, err = svc.UploadPhoto(nil, 1, validPNGContent)
+	})
+
+	assert.Nil(t, url)
+	assert.ErrorIs(t, err, ErrStorageUnavailable)
+}
+
+func TestUserService_DeletePhoto_NilStorageClient_NoPanic(t *testing.T) {
+	svc := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+
+	var err error
+	assert.NotPanics(t, func() {
+		err = svc.DeletePhoto(nil, 1)
+	})
+
+	assert.ErrorIs(t, err, ErrStorageUnavailable)
+}
+
 func TestUserService_UploadPhoto_TooLarge(t *testing.T) {
 	storage := &mockStorageClient{}
 	svc := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
