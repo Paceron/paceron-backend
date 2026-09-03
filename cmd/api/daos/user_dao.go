@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,6 +18,8 @@ type UserDaoInterface interface {
 	UpdateStatus(ctx *gin.Context, userID int64, status string) error
 	SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
 	FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error
+	ClearPhoto(ctx *gin.Context, userID int64) error
 }
 
 type userDao struct {
@@ -77,6 +80,28 @@ func (ud *userDao) UpdateStatus(ctx *gin.Context, userID int64, status string) e
 	err := ud.DB.Model(&dbs.User{}).Where("id = ?", userID).Update("status", status).Error
 	if err != nil {
 		return fmt.Errorf("error updating user status: %w", err)
+	}
+	return nil
+}
+
+func (ud *userDao) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	err := ud.DB.Model(&dbs.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"photo_key":        key,
+		"photo_updated_at": updatedAt,
+	}).Error
+	if err != nil {
+		return fmt.Errorf("error updating user photo: %w", err)
+	}
+	return nil
+}
+
+func (ud *userDao) ClearPhoto(ctx *gin.Context, userID int64) error {
+	err := ud.DB.Model(&dbs.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"photo_key":        nil,
+		"photo_updated_at": nil,
+	}).Error
+	if err != nil {
+		return fmt.Errorf("error clearing user photo: %w", err)
 	}
 	return nil
 }

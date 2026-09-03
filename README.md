@@ -249,6 +249,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | PUT | `/api/v1/users/:id` | Update user attributes (self only; email change requires X-Current-Password header) |
 | PATCH | `/api/v1/users/:id/status` | Change user status (self only; active/inactive/pause/blocked/suspended) |
 | PATCH | `/api/v1/users/:id/password` | Change password while authenticated (self only; verifies current password) |
+| PUT | `/api/v1/users/:id/photo` | Upload/replace your own profile photo (self only; max 5MB, JPEG/PNG/WEBP, validated by content) |
+| DELETE | `/api/v1/users/:id/photo` | Delete your own profile photo (self only; idempotent) |
 | POST | `/api/v1/users/:id/roles` | Assign a role to yourself (self only; optional tier, default "base") |
 | DELETE | `/api/v1/users/:id/roles/:role_id` | Remove one of your own roles (self only; list roles via `GET /api/v1/auth/permissions?user_id=`) |
 | POST | `/api/v1/users/:id/trainer-role` | Activate your own entrenador role (self only; requires current password + a valid bank alias, own or provided) |
@@ -280,6 +282,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only) |
 | DELETE | `/api/v1/teams/:id` | Soft delete team (entrenador only) |
 | PUT | `/api/v1/teams/:id/address` | Update team address (entrenador of the team only) |
+| PUT | `/api/v1/teams/:id/icon` | Upload/replace the team icon (entrenador owner of the team only; max 5MB, JPEG/PNG/WEBP) |
+| DELETE | `/api/v1/teams/:id/icon` | Delete the team icon (entrenador owner of the team only; idempotent) |
 | POST | `/api/v1/teams/:id/users` | Add user to team with role (entrenador of the team only) |
 | GET | `/api/v1/teams/:id/users` | List members of a team (any member of the team only) |
 | DELETE | `/api/v1/teams/:id/users/:user_id` | Remove user from team (self, or entrenador of the team) |

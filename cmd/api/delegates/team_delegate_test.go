@@ -36,6 +36,14 @@ func (m *mockTeamServiceForDelegate) UpdateAddress(ctx *gin.Context, id int64, c
 	return nil, nil
 }
 
+func (m *mockTeamServiceForDelegate) UploadIcon(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+	return nil, nil
+}
+
+func (m *mockTeamServiceForDelegate) DeleteIcon(ctx *gin.Context, id int64, callerID int64) error {
+	return nil
+}
+
 type mockGroupServiceForDelegate struct {
 	createFn        func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error)
 	createCalled    bool

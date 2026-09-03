@@ -1,7 +1,9 @@
 package daos
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -178,4 +180,37 @@ func TestUserDao_FindByIDs_EmptyResult(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, results)
+}
+
+func TestUserDao_UpdatePhoto_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewUserDao(db)
+	user := persistUser(db, "ud-updatephoto@test.com", "11100013")
+	updatedAt := time.Now().UTC().Truncate(time.Second)
+	key := fmt.Sprintf("avatars/user-%d.jpg", user.ID)
+
+	err := dao.UpdatePhoto(nil, user.ID, key, updatedAt)
+
+	require.NoError(t, err)
+	found, findErr := dao.FindByID(nil, user.ID)
+	require.NoError(t, findErr)
+	require.NotNil(t, found.PhotoKey)
+	assert.Equal(t, key, *found.PhotoKey)
+	require.NotNil(t, found.PhotoUpdatedAt)
+	assert.WithinDuration(t, updatedAt, *found.PhotoUpdatedAt, time.Second)
+}
+
+func TestUserDao_ClearPhoto_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewUserDao(db)
+	user := persistUser(db, "ud-clearphoto@test.com", "11100014")
+	require.NoError(t, dao.UpdatePhoto(nil, user.ID, "avatars/user-x.jpg", time.Now()))
+
+	err := dao.ClearPhoto(nil, user.ID)
+
+	require.NoError(t, err)
+	found, findErr := dao.FindByID(nil, user.ID)
+	require.NoError(t, findErr)
+	assert.Nil(t, found.PhotoKey)
+	assert.Nil(t, found.PhotoUpdatedAt)
 }

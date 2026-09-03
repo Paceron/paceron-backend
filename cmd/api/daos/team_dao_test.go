@@ -2,6 +2,7 @@ package daos
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,4 +184,39 @@ func TestTeamDao_SoftDelete_Success(t *testing.T) {
 	require.NoError(t, err)
 	found, _ := dao.FindByID(nil, team.ID)
 	assert.Nil(t, found)
+}
+
+func TestTeamDao_UpdateIcon_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-updateicon-owner@test.com", "20000013")
+	team := testTeam(db, "equipo_icono_test", owner.ID)
+	updatedAt := time.Now().UTC().Truncate(time.Second)
+	key := "teams/team-icon.png"
+
+	err := dao.UpdateIcon(nil, team.ID, key, updatedAt)
+
+	require.NoError(t, err)
+	found, findErr := dao.FindByID(nil, team.ID)
+	require.NoError(t, findErr)
+	require.NotNil(t, found.IconKey)
+	assert.Equal(t, key, *found.IconKey)
+	require.NotNil(t, found.IconUpdatedAt)
+	assert.WithinDuration(t, updatedAt, *found.IconUpdatedAt, time.Second)
+}
+
+func TestTeamDao_ClearIcon_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-clearicon-owner@test.com", "20000014")
+	team := testTeam(db, "equipo_icono_borrar_test", owner.ID)
+	require.NoError(t, dao.UpdateIcon(nil, team.ID, "teams/team-icon.png", time.Now()))
+
+	err := dao.ClearIcon(nil, team.ID)
+
+	require.NoError(t, err)
+	found, findErr := dao.FindByID(nil, team.ID)
+	require.NoError(t, findErr)
+	assert.Nil(t, found.IconKey)
+	assert.Nil(t, found.IconUpdatedAt)
 }

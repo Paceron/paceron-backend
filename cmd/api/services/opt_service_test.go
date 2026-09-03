@@ -4,12 +4,45 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
+
+// mockStorageClient es el doble de prueba compartido por todos los tests de
+// services que dependen de storageclient.StorageClientInterface (foto de
+// usuario, ícono de equipo). Sin mockUpload/mockDelete seteados, ambos son
+// no-op exitosos.
+type mockStorageClient struct {
+	lastUploadKey         string
+	lastUploadContent     []byte
+	lastUploadContentType string
+	lastDeleteKey         string
+
+	mockUpload func(ctx context.Context, key string, content []byte, contentType string) error
+	mockDelete func(ctx context.Context, key string) error
+}
+
+func (m *mockStorageClient) Upload(ctx context.Context, key string, content []byte, contentType string) error {
+	m.lastUploadKey = key
+	m.lastUploadContent = content
+	m.lastUploadContentType = contentType
+	if m.mockUpload != nil {
+		return m.mockUpload(ctx, key, content, contentType)
+	}
+	return nil
+}
+
+func (m *mockStorageClient) Delete(ctx context.Context, key string) error {
+	m.lastDeleteKey = key
+	if m.mockDelete != nil {
+		return m.mockDelete(ctx, key)
+	}
+	return nil
+}
 
 // mockExpoPushClient es el doble de prueba compartido por todos los tests de
 // services que dependen de expopushclient.ExpoPushClientInterface. Sin mockSend
@@ -77,6 +110,8 @@ type mockUserDao struct {
 	mockUpdateStatus func(ctx *gin.Context, userID int64, status string) error
 	mockSearchActive func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
 	mockFindByIDs    func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	mockUpdatePhoto  func(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error
+	mockClearPhoto   func(ctx *gin.Context, userID int64) error
 }
 
 func (m mockUserDao) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -107,6 +142,20 @@ func (m mockUserDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, 
 	return m.mockFindByIDs(ctx, userIDs)
 }
 
+func (m mockUserDao) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	if m.mockUpdatePhoto != nil {
+		return m.mockUpdatePhoto(ctx, userID, key, updatedAt)
+	}
+	return nil
+}
+
+func (m mockUserDao) ClearPhoto(ctx *gin.Context, userID int64) error {
+	if m.mockClearPhoto != nil {
+		return m.mockClearPhoto(ctx, userID)
+	}
+	return nil
+}
+
 func TestGetUser_Success(t *testing.T) {
 	expectedUser := &dbs.User{ID: 1, Name: "test"}
 
@@ -116,7 +165,7 @@ func TestGetUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	result, err := service.GetUser(nil, 1)
 
 	assert.NoError(t, err)
@@ -131,7 +180,7 @@ func TestGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.GetUser(nil, 999)
 
 	assert.Error(t, err)
@@ -145,7 +194,7 @@ func TestGetUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.GetUser(nil, 1)
 
 	assert.Error(t, err)
@@ -162,7 +211,7 @@ func TestUserService_Search_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	result, err := service.Search(nil, "ana")
 
 	assert.NoError(t, err)
@@ -181,14 +230,14 @@ func TestUserService_Search_TrimsQuery(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "  ana  ")
 
 	assert.NoError(t, err)
 }
 
 func TestUserService_Search_QueryTooShort(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "an")
 
 	assert.Error(t, err)
@@ -196,7 +245,7 @@ func TestUserService_Search_QueryTooShort(t *testing.T) {
 }
 
 func TestUserService_Search_BlankQuery(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "   ")
 
 	assert.Error(t, err)
@@ -209,7 +258,7 @@ func TestUserService_Search_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "ana")
 
 	assert.Error(t, err)
@@ -227,7 +276,7 @@ func TestUserService_BatchLookup_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	result, err := service.BatchLookup(nil, []int64{1, 2})
 
 	assert.NoError(t, err)
@@ -237,7 +286,7 @@ func TestUserService_BatchLookup_Success(t *testing.T) {
 }
 
 func TestUserService_BatchLookup_EmptyIDs(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, []int64{})
 
 	assert.Error(t, err)
@@ -250,7 +299,7 @@ func TestUserService_BatchLookup_TooManyIDs(t *testing.T) {
 		ids[i] = int64(i + 1)
 	}
 
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, ids)
 
 	assert.Error(t, err)
@@ -264,7 +313,7 @@ func TestUserService_BatchLookup_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, []int64{1})
 
 	assert.Error(t, err)

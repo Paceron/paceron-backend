@@ -57,6 +57,14 @@ func (m *mockUserDaoForInvitation) FindByIDs(ctx *gin.Context, userIDs []int64) 
 	return nil, nil
 }
 
+func (m *mockUserDaoForInvitation) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	return nil
+}
+
+func (m *mockUserDaoForInvitation) ClearPhoto(ctx *gin.Context, userID int64) error {
+	return nil
+}
+
 type mockInvitationDao struct {
 	createFn                      func(ctx *gin.Context, inv *dbs.Invitation) error
 	findByIDFn                    func(ctx *gin.Context, id int64) (*dbs.Invitation, error)
