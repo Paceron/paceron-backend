@@ -1,0 +1,32 @@
+info:
+  name: 9 - Verificar upgrade
+  type: http
+  seq: 9
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/users/{{user_id}}/subscriptions/current?role_id={{role_id}}
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        console.log("subscription_status:", body && body.subscription_status);
+        console.log("paid_installments:", body && body.paid_installments);
+        console.log("tier:", body && body.tier && body.tier.name);
+        if (body && body.installment_id) {
+          bru.setVar("installment_id", body.installment_id);
+          bru.setVar("installment_amount", body.installment_amount);
+          console.log("proxima cuota installment_id:", body.installment_id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

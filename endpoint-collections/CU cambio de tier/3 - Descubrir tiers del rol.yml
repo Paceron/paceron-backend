@@ -1,0 +1,37 @@
+info:
+  name: 3 - Descubrir tiers del rol
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/tiers
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        const role_id = Number(bru.getVar("role_id"));
+        const list = Array.isArray(body) ? body : (body && body.tiers ? body.tiers : []);
+        // Filtro: tiers del rol elegido que sean pagos.
+        const target = list.find(t => t.role_id === role_id && t.payment_required);
+        if (target) {
+          bru.setVar("tier_id", target.id);
+          bru.setVar("tier_amount", target.tier_amount);
+          console.log("tier_id:", bru.getVar("tier_id"));
+          console.log("tier_amount:", bru.getVar("tier_amount"));
+          console.log("target tier name:", target.name);
+        } else {
+          console.log("sin tier pago para el role_id", role_id);
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

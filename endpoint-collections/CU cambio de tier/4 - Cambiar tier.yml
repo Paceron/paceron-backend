@@ -1,0 +1,42 @@
+info:
+  name: 4 - Cambiar tier
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: http://localhost:8080/api/v1/users/{{user_id}}/roles/{{role_id}}/tier
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "tier_id": {{tier_id}}
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.installment_id) {
+          bru.setVar("installment_id", body.installment_id);
+          bru.setVar("installment_amount", body.installment_amount);
+          if (body.mercadopago) {
+            bru.setVar("public_key", body.mercadopago.public_key);
+          }
+          console.log("subscription_status:", body.subscription_status);
+          console.log("installment_id:", bru.getVar("installment_id"));
+          console.log("installment_amount:", bru.getVar("installment_amount"));
+        } else {
+          console.log("target gratis o sin cuota (revisar respuesta)");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
