@@ -41,6 +41,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PUT("/api/v1/users/:id", app.userController.Update)
 	r.PATCH("/api/v1/users/:id/status", app.userController.ChangeStatus)
 	r.PATCH("/api/v1/users/:id/password", app.userController.ChangePassword)
+	r.PUT("/api/v1/users/:id/photo", app.userController.UploadPhoto)
+	r.DELETE("/api/v1/users/:id/photo", app.userController.DeletePhoto)
 	r.POST("/api/v1/users/:id/roles", app.userRoleController.AssignRole)
 	r.DELETE("/api/v1/users/:id/roles/:role_id", app.userRoleController.RemoveRole)
 	r.POST("/api/v1/users/:id/trainer-role", app.userRoleController.ActivateEntrenador)
@@ -74,6 +76,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PUT("/api/v1/teams/:id", app.teamController.Update)
 	r.DELETE("/api/v1/teams/:id", app.teamController.Delete)
 	r.PUT("/api/v1/teams/:id/address", app.teamController.UpdateAddress)
+	r.PUT("/api/v1/teams/:id/icon", app.teamController.UploadIcon)
+	r.DELETE("/api/v1/teams/:id/icon", app.teamController.DeleteIcon)
 
 	// Team Users
 	r.POST("/api/v1/teams/:id/users", app.teamUserController.AddUser)

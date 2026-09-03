@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,6 +23,8 @@ type UserController interface {
 	ChangePassword(c *gin.Context)
 	Search(c *gin.Context)
 	BatchLookup(c *gin.Context)
+	UploadPhoto(c *gin.Context)
+	DeletePhoto(c *gin.Context)
 }
 
 type userController struct {
@@ -353,6 +357,136 @@ func (u *userController) Search(c *gin.Context) {
 // @Failure      400  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/users [get]
+// UploadPhoto godoc
+// @Summary      Upload profile photo
+// @Description  Uploads or replaces the authenticated user's own profile photo (self only). Max 5MB, JPEG/PNG/WEBP only (validated by content, not filename)
+// @Tags         users
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        id     path      int   true  "User ID"
+// @Param        photo  formData  file  true  "Photo file"
+// @Success      200    {object}  map[string]string
+// @Failure      400    {object}  apierror.APIError
+// @Failure      403    {object}  apierror.APIError
+// @Failure      500    {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/photo [put]
+func (u *userController) UploadPhoto(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "solo podés modificar tu propio usuario",
+		})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, services.MaxPhotoSizeBytes+1024)
+	fileHeader, err := c.FormFile("photo")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "PHOTO_TOO_LARGE",
+			Message:    "Archivo inválido o demasiado grande (máximo 5MB)",
+		})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "No se pudo leer el archivo",
+		})
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "No se pudo leer el archivo",
+		})
+		return
+	}
+
+	photoURL, err := u.userService.UploadPhoto(c, userID, content)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+		if errors.Is(err, services.ErrPhotoTooLarge) {
+			statusCode = http.StatusBadRequest
+			code = "PHOTO_TOO_LARGE"
+		} else if errors.Is(err, services.ErrPhotoInvalidType) {
+			statusCode = http.StatusBadRequest
+			code = "PHOTO_INVALID_TYPE"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"photo_url": photoURL})
+}
+
+// DeletePhoto godoc
+// @Summary      Delete profile photo
+// @Description  Deletes the authenticated user's own profile photo (self only). Idempotent
+// @Tags         users
+// @Param        id  path  int  true  "User ID"
+// @Success      204
+// @Failure      400  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/photo [delete]
+func (u *userController) DeletePhoto(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "ID de usuario inválido",
+		})
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "solo podés modificar tu propio usuario",
+		})
+		return
+	}
+
+	if err := u.userService.DeletePhoto(c, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, apierror.APIError{
+			StatusCode: http.StatusInternalServerError,
+			Code:       "Internal Server Error",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (u *userController) BatchLookup(c *gin.Context) {
 	idsParam := c.Query("ids")
 	if strings.TrimSpace(idsParam) == "" {

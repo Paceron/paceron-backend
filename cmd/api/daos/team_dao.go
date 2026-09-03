@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -18,6 +19,8 @@ type TeamDaoInterface interface {
 	GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
 	Update(ctx *gin.Context, team *dbs.Team) error
 	SoftDelete(ctx *gin.Context, id int64) error
+	UpdateIcon(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
+	ClearIcon(ctx *gin.Context, teamID int64) error
 }
 
 type teamDao struct {
@@ -91,4 +94,26 @@ func (d *teamDao) Update(ctx *gin.Context, team *dbs.Team) error {
 // SoftDelete marca un equipo como eliminado lógicamente.
 func (d *teamDao) SoftDelete(ctx *gin.Context, id int64) error {
 	return d.DB.Model(&dbs.Team{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+func (d *teamDao) UpdateIcon(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error {
+	err := d.DB.Model(&dbs.Team{}).Where("id = ?", teamID).Updates(map[string]interface{}{
+		"icon_key":        key,
+		"icon_updated_at": updatedAt,
+	}).Error
+	if err != nil {
+		return fmt.Errorf("error updating team icon: %w", err)
+	}
+	return nil
+}
+
+func (d *teamDao) ClearIcon(ctx *gin.Context, teamID int64) error {
+	err := d.DB.Model(&dbs.Team{}).Where("id = ?", teamID).Updates(map[string]interface{}{
+		"icon_key":        nil,
+		"icon_updated_at": nil,
+	}).Error
+	if err != nil {
+		return fmt.Errorf("error clearing team icon: %w", err)
+	}
+	return nil
 }

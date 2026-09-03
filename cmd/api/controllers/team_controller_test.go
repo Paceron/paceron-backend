@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"simple-arq-golang/cmd/api/domains/team"
+	"simple-arq-golang/cmd/api/services"
 )
 
 type mockTeamService struct {
@@ -21,6 +22,8 @@ type mockTeamService struct {
 	getByIDFn       func(ctx *gin.Context, id int64) (*team.TeamResponse, error)
 	getAllFn        func(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
 	updateAddressFn func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
+	uploadIconFn    func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error)
+	deleteIconFn    func(ctx *gin.Context, id int64, callerID int64) error
 }
 
 func (m *mockTeamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
@@ -63,6 +66,20 @@ func (m *mockTeamService) UpdateAddress(ctx *gin.Context, id int64, callerID int
 		return m.updateAddressFn(ctx, id, callerID, req)
 	}
 	return nil, nil
+}
+
+func (m *mockTeamService) UploadIcon(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+	if m.uploadIconFn != nil {
+		return m.uploadIconFn(ctx, id, callerID, content)
+	}
+	return nil, nil
+}
+
+func (m *mockTeamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64) error {
+	if m.deleteIconFn != nil {
+		return m.deleteIconFn(ctx, id, callerID)
+	}
+	return nil
 }
 
 type mockTeamDelegate struct {
@@ -584,6 +601,108 @@ func TestTeamController_UpdateAddress_Forbidden(t *testing.T) {
 	setAuthUserID(c, 2)
 
 	controller.UpdateAddress(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestTeamController_UploadIcon_Success(t *testing.T) {
+	expectedURL := "https://bucket.example.com/teams/team-1-icon.png?v=123"
+	mockSvc := &mockTeamService{
+		uploadIconFn: func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+			assert.Equal(t, int64(1), id)
+			assert.Equal(t, int64(1), callerID)
+			return &expectedURL, nil
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/teams/1/icon", "icon.png", validPNGContentForTest)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UploadIcon(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	var result map[string]string
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, expectedURL, result["icon_url"])
+}
+
+func TestTeamController_UploadIcon_Forbidden(t *testing.T) {
+	mockSvc := &mockTeamService{
+		uploadIconFn: func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+			return nil, errors.New("solo el entrenador dueño del equipo puede cambiar el ícono")
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/teams/1/icon", "icon.png", validPNGContentForTest)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.UploadIcon(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestTeamController_UploadIcon_InvalidType(t *testing.T) {
+	mockSvc := &mockTeamService{
+		uploadIconFn: func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+			return nil, services.ErrPhotoInvalidType
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/teams/1/icon", "icon.txt", []byte("not an image"))
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UploadIcon(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestTeamController_DeleteIcon_Success(t *testing.T) {
+	deleteCalled := false
+	mockSvc := &mockTeamService{
+		deleteIconFn: func(ctx *gin.Context, id int64, callerID int64) error {
+			deleteCalled = true
+			assert.Equal(t, int64(1), id)
+			assert.Equal(t, int64(1), callerID)
+			return nil
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1/icon", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.DeleteIcon(c)
+	c.Writer.WriteHeaderNow()
+
+	assert.Equal(t, http.StatusNoContent, response.Code)
+	assert.True(t, deleteCalled)
+}
+
+func TestTeamController_DeleteIcon_Forbidden(t *testing.T) {
+	mockSvc := &mockTeamService{
+		deleteIconFn: func(ctx *gin.Context, id int64, callerID int64) error {
+			return errors.New("solo el entrenador dueño del equipo puede cambiar el ícono")
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1/icon", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.DeleteIcon(c)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
 }

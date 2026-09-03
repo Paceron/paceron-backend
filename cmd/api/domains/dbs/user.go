@@ -20,6 +20,8 @@ type User struct {
 	Status            string     `gorm:"column:status;not null;default:active"`
 	BankAlias         *string    `gorm:"column:bank_alias"`
 	PasswordChangedAt *time.Time `gorm:"column:password_changed_at"`
+	PhotoKey          *string    `gorm:"column:photo_key"`
+	PhotoUpdatedAt    *time.Time `gorm:"column:photo_updated_at"`
 	CreatedAt         time.Time  `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt         time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 }

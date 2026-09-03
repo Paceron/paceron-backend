@@ -15,6 +15,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
+	"simple-arq-golang/cmd/api/restclients/storageclient"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,13 +42,16 @@ type UserServiceInterface interface {
 	ChangePassword(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 	Search(ctx *gin.Context, query string) (*user.SearchResponse, error)
 	BatchLookup(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error)
+	UploadPhoto(ctx *gin.Context, userID int64, content []byte) (*string, error)
+	DeletePhoto(ctx *gin.Context, userID int64) error
 }
 
 type userService struct {
-	userDao      daos.UserDaoInterface
-	mailer       mailer.MailerInterface
-	pushTokenDao daos.PushTokenDaoInterface
-	pushClient   expopushclient.ExpoPushClientInterface
+	userDao       daos.UserDaoInterface
+	mailer        mailer.MailerInterface
+	pushTokenDao  daos.PushTokenDaoInterface
+	pushClient    expopushclient.ExpoPushClientInterface
+	storageClient storageclient.StorageClientInterface
 }
 
 func NewUserService(
@@ -55,13 +59,72 @@ func NewUserService(
 	mailerClient mailer.MailerInterface,
 	pushTokenDao daos.PushTokenDaoInterface,
 	pushClient expopushclient.ExpoPushClientInterface,
+	storageClient storageclient.StorageClientInterface,
 ) UserServiceInterface {
 	return &userService{
-		userDao:      userDao,
-		mailer:       mailerClient,
-		pushTokenDao: pushTokenDao,
-		pushClient:   pushClient,
+		userDao:       userDao,
+		mailer:        mailerClient,
+		pushTokenDao:  pushTokenDao,
+		pushClient:    pushClient,
+		storageClient: storageClient,
 	}
+}
+
+// UploadPhoto valida y sube la foto de perfil del usuario, pisando la key
+// determinística existente (D3 del design) y devuelve la URL pública recalculada.
+func (s *userService) UploadPhoto(ctx *gin.Context, userID int64, content []byte) (*string, error) {
+	contentType, ext, err := validatePhotoContent(content)
+	if err != nil {
+		return nil, err
+	}
+
+	key := fmt.Sprintf("avatars/user-%d.%s", userID, ext)
+	if err := s.storageClient.Upload(ctx, key, content, contentType); err != nil {
+		customlogger.Error(ctx, "error uploading user photo", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("UploadPhoto"))
+		return nil, fmt.Errorf("error al subir la foto")
+	}
+
+	updatedAt := time.Now().UTC()
+	if err := s.userDao.UpdatePhoto(ctx, userID, key, updatedAt); err != nil {
+		customlogger.Error(ctx, "error persisting user photo key", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("UploadPhoto"))
+	}
+
+	return buildMediaURL(&key, &updatedAt), nil
+}
+
+// DeletePhoto borra la foto de perfil del bucket y limpia photo_key/photo_updated_at.
+// Idempotente: si el usuario no tiene foto cargada, no hace nada.
+func (s *userService) DeletePhoto(ctx *gin.Context, userID int64) error {
+	userDB, err := s.userDao.FindByID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding user for photo delete", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("DeletePhoto"))
+		return fmt.Errorf("error al borrar la foto")
+	}
+	if userDB == nil || userDB.PhotoKey == nil {
+		return nil
+	}
+
+	if err := s.storageClient.Delete(ctx, *userDB.PhotoKey); err != nil {
+		customlogger.Error(ctx, "error deleting user photo from storage", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("DeletePhoto"))
+		return fmt.Errorf("error al borrar la foto")
+	}
+
+	if err := s.userDao.ClearPhoto(ctx, userID); err != nil {
+		customlogger.Error(ctx, "error clearing user photo key", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("DeletePhoto"))
+		return fmt.Errorf("error al borrar la foto")
+	}
+
+	return nil
 }
 
 func (s *userService) GetUser(ctx *gin.Context, userID int64) (user.User, error) {

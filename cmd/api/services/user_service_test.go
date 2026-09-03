@@ -37,7 +37,7 @@ func TestUserUpdate_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	newName := "John Updated"
 	req := &user.UserUpdateRequest{
 		Name: &newName,
@@ -72,7 +72,7 @@ func TestUserUpdate_BankAliasSuccess(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	bankAlias := "mi-banco-123"
 	req := &user.UserUpdateRequest{
 		BankAlias: &bankAlias,
@@ -92,7 +92,7 @@ func TestUserUpdate_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	name := "John"
 	req := &user.UserUpdateRequest{
 		Name: &name,
@@ -117,7 +117,7 @@ func TestUserUpdate_EmailChangeRequiresPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -143,7 +143,7 @@ func TestUserUpdate_EmailChangeWrongPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	newEmail := "newemail@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -172,7 +172,7 @@ func TestUserUpdate_EmailChangeDuplicate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	newEmail := "existing@test.com"
 	req := &user.UserUpdateRequest{
 		Email: &newEmail,
@@ -197,7 +197,7 @@ func TestUserUpdate_InvalidBirthDate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	invalidDate := "2024/01/01"
 	req := &user.UserUpdateRequest{
 		BirthDate: &invalidDate,
@@ -227,7 +227,7 @@ func TestChangeStatus_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 	assert.NoError(t, err)
 	assert.Equal(t, "pause", resp.Status)
@@ -240,7 +240,7 @@ func TestChangeStatus_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := svc.ChangeStatus(nil, 999, "pause")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "usuario no encontrado")
@@ -261,7 +261,7 @@ func TestChangeStatus_InvalidStatus(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	_, err := svc.ChangeStatus(nil, 1, "invalid-status")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "estado inválido")
@@ -288,7 +288,7 @@ func TestChangeStatus_InactiveSendsFarewellEmail(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -323,7 +323,7 @@ func TestChangeStatus_InactiveMailerErrorDoesNotBlock(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -351,7 +351,7 @@ func TestChangeStatus_NonInactiveStatusDoesNotSendEmail(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "pause")
 
 	assert.NoError(t, err)
@@ -379,7 +379,7 @@ func TestChangeStatus_RedundantInactiveDoesNotResend(t *testing.T) {
 
 	mailerMock := &mockMailer{}
 
-	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	resp, err := svc.ChangeStatus(nil, 1, "inactive")
 
 	assert.NoError(t, err)
@@ -405,7 +405,7 @@ func TestChangeStatus_NilMailerDoesNotPanic(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 
 	assert.NotPanics(t, func() {
 		resp, err := svc.ChangeStatus(nil, 1, "inactive")
@@ -524,7 +524,7 @@ func TestChangePassword_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.NoError(t, err)
@@ -549,7 +549,7 @@ func TestChangePassword_SendsNotifications(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, mailerMock, pushTokenDao, pushClient)
+	svc := NewUserService(mockDao, mailerMock, pushTokenDao, pushClient, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	require.NoError(t, err)
@@ -570,7 +570,7 @@ func TestChangePassword_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)
@@ -584,7 +584,7 @@ func TestChangePassword_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)
@@ -598,7 +598,7 @@ func TestChangePassword_WrongCurrentPassword(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "WrongPassword", "NewPass456")
 
 	assert.Error(t, err)
@@ -613,7 +613,7 @@ func TestChangePassword_NewPasswordSameAsCurrent(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "OldPass123")
 
 	assert.Error(t, err)
@@ -631,9 +631,143 @@ func TestChangePassword_UpdateError(t *testing.T) {
 		},
 	}
 
-	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
 	err := svc.ChangePassword(nil, 1, "OldPass123", "NewPass456")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al cambiar la contraseña")
+}
+
+// validPNGContent es el prefijo mínimo que http.DetectContentType reconoce
+// como image/png (8 bytes de firma) — alcanza para las pruebas de validación,
+// no necesita ser un PNG completo.
+var validPNGContent = []byte("\x89PNG\r\n\x1a\n")
+
+func TestUserService_UploadPhoto_Success(t *testing.T) {
+	storage := &mockStorageClient{}
+	updatePhotoCalled := false
+	mockDao := mockUserDao{
+		mockUpdatePhoto: func(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+			updatePhotoCalled = true
+			assert.Equal(t, "avatars/user-1.png", key)
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+	url, err := svc.UploadPhoto(nil, 1, validPNGContent)
+
+	require.NoError(t, err)
+	require.NotNil(t, url)
+	assert.Contains(t, *url, "avatars/user-1.png")
+	assert.True(t, updatePhotoCalled)
+	assert.Equal(t, "avatars/user-1.png", storage.lastUploadKey)
+	assert.Equal(t, "image/png", storage.lastUploadContentType)
+}
+
+func TestUserService_UploadPhoto_TooLarge(t *testing.T) {
+	storage := &mockStorageClient{}
+	svc := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+
+	oversized := make([]byte, MaxPhotoSizeBytes+1)
+	url, err := svc.UploadPhoto(nil, 1, oversized)
+
+	assert.Nil(t, url)
+	assert.ErrorIs(t, err, ErrPhotoTooLarge)
+	assert.Empty(t, storage.lastUploadKey)
+}
+
+func TestUserService_UploadPhoto_InvalidType(t *testing.T) {
+	storage := &mockStorageClient{}
+	svc := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+
+	url, err := svc.UploadPhoto(nil, 1, []byte("this is not an image"))
+
+	assert.Nil(t, url)
+	assert.ErrorIs(t, err, ErrPhotoInvalidType)
+	assert.Empty(t, storage.lastUploadKey)
+}
+
+func TestUserService_UploadPhoto_StorageUploadFails(t *testing.T) {
+	storage := &mockStorageClient{
+		mockUpload: func(ctx context.Context, key string, content []byte, contentType string) error {
+			return errors.New("s3 down")
+		},
+	}
+	photoUpdated := false
+	mockDao := mockUserDao{
+		mockUpdatePhoto: func(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+			photoUpdated = true
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+	url, err := svc.UploadPhoto(nil, 1, validPNGContent)
+
+	assert.Nil(t, url)
+	assert.Error(t, err)
+	assert.False(t, photoUpdated, "no debe actualizar la DB si falla el upload a S3")
+}
+
+func TestUserService_DeletePhoto_Success(t *testing.T) {
+	storage := &mockStorageClient{}
+	clearPhotoCalled := false
+	key := "avatars/user-1.png"
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, PhotoKey: &key}, nil
+		},
+		mockClearPhoto: func(ctx *gin.Context, userID int64) error {
+			clearPhotoCalled = true
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+	err := svc.DeletePhoto(nil, 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, key, storage.lastDeleteKey)
+	assert.True(t, clearPhotoCalled)
+}
+
+func TestUserService_DeletePhoto_NoPhoto_Idempotent(t *testing.T) {
+	storage := &mockStorageClient{}
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, PhotoKey: nil}, nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+	err := svc.DeletePhoto(nil, 1)
+
+	require.NoError(t, err)
+	assert.Empty(t, storage.lastDeleteKey)
+}
+
+func TestUserService_DeletePhoto_StorageDeleteFails(t *testing.T) {
+	storage := &mockStorageClient{
+		mockDelete: func(ctx context.Context, key string) error {
+			return errors.New("s3 down")
+		},
+	}
+	key := "avatars/user-1.png"
+	clearPhotoCalled := false
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, PhotoKey: &key}, nil
+		},
+		mockClearPhoto: func(ctx *gin.Context, userID int64) error {
+			clearPhotoCalled = true
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, storage)
+	err := svc.DeletePhoto(nil, 1)
+
+	assert.Error(t, err)
+	assert.False(t, clearPhotoCalled, "no debe limpiar la key en DB si falla el borrado en S3")
 }

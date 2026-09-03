@@ -69,6 +69,14 @@ type MercadoPago struct {
 	CurrencyID    string
 }
 
+type StorageConfig struct {
+	Endpoint        string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	Bucket          string
+}
+
 var (
 	MyDB                 DB
 	JWTSecret            string
@@ -78,6 +86,7 @@ var (
 	RefreshTokenDuration time.Duration
 	MyMailer             MailerConfig
 	MyMP                 MercadoPago
+	MyStorage            StorageConfig
 )
 
 func (d Environment) String() string {
@@ -137,18 +146,21 @@ func initLocal() {
 	loadDBConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
+	loadStorageConfig()
 }
 
 func initProd() {
 	loadDBConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
+	loadStorageConfig()
 }
 
 func initTest() {
 	loadDBConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
+	loadStorageConfig()
 }
 
 func loadDBConfig() {
@@ -206,6 +218,24 @@ func loadMercadoPagoConfig() {
 	MyMP.WebhookSecret = os.Getenv("MERCADOPAGO_WEBHOOK_SECRET")
 	MyMP.WebhookURL = getEnvOrDefault("MERCADOPAGO_WEBHOOK_URL", "")
 	MyMP.CurrencyID = getEnvOrDefault("MERCADOPAGO_CURRENCY_ID", "ARS")
+}
+
+// stagedStorageEnvPrefix resuelve qué proyecto de storage de Supabase usar según
+// IsProductionStage, mismo mecanismo que stagedDatabaseURL — default siempre testing.
+func stagedStorageEnvPrefix() string {
+	if IsProductionStage() {
+		return "SUPABASE_PRODUCTION_S3_"
+	}
+	return "SUPABASE_TESTING_S3_"
+}
+
+func loadStorageConfig() {
+	prefix := stagedStorageEnvPrefix()
+	MyStorage.Endpoint = os.Getenv(prefix + "ENDPOINT")
+	MyStorage.Region = os.Getenv(prefix + "REGION")
+	MyStorage.AccessKeyID = os.Getenv(prefix + "ACCESS_ID")
+	MyStorage.SecretAccessKey = os.Getenv(prefix + "SECRET_KEY")
+	MyStorage.Bucket = os.Getenv(prefix + "BUCKET")
 }
 
 func parseDatabaseURL(dbURL string) DB {

@@ -149,6 +149,8 @@ definitions:
         type: string
       phone_contact:
         type: string
+      photo_url:
+        type: string
       province:
         type: string
       status:
@@ -717,6 +719,9 @@ definitions:
         type: string
       description:
         description: Descripción del equipo
+        type: string
+      icon_url:
+        description: URL pública del ícono del equipo (nil = sin ícono)
         type: string
       id:
         description: ID del equipo
@@ -2619,6 +2624,74 @@ paths:
       summary: Agregar usuario a grupo
       tags:
       - group-users
+  /api/v1/teams/{id}/icon:
+    delete:
+      description: Borra el ícono del equipo. Solo el entrenador dueño puede hacerlo.
+        Idempotente
+      parameters:
+      - description: Team ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Borrar ícono del equipo
+      tags:
+      - teams
+    put:
+      consumes:
+      - multipart/form-data
+      description: Sube o reemplaza el ícono del equipo. Solo el entrenador dueño
+        puede hacerlo. Max 5MB, JPEG/PNG/WEBP
+      parameters:
+      - description: Team ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Icon file
+        in: formData
+        name: photo
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Subir ícono del equipo
+      tags:
+      - teams
   /api/v1/teams/{id}/invitations:
     get:
       description: Devuelve las invitaciones pendientes (no vencidas) de un equipo.
@@ -3086,32 +3159,47 @@ paths:
       - tiers
   /api/v1/users:
     get:
-      description: Resuelve nombre/apellido/email para varios user_id de una sola
-        consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere
-        login, sin restricción adicional de rol. Hasta 50 ids.
+      consumes:
+      - multipart/form-data
+      description: |-
+        Resuelve nombre/apellido/email para varios user_id de una sola consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere login, sin restricción adicional de rol. Hasta 50 ids.
+        Uploads or replaces the authenticated user's own profile photo (self only). Max 5MB, JPEG/PNG/WEBP only (validated by content, not filename)
       parameters:
       - description: Ids de usuario separados por coma, ej. 1,2,3
         in: query
         name: ids
         required: true
         type: string
+      - description: Photo file
+        in: formData
+        name: photo
+        required: true
+        type: file
       produces:
+      - application/json
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_user.BatchLookupResponse'
+            additionalProperties:
+              type: string
+            type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Batch user lookup
+      summary: Upload profile photo
       tags:
+      - users
       - users
   /api/v1/users/{id}:
     put:
@@ -3218,6 +3306,82 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Change password while authenticated
       tags:
+      - users
+  /api/v1/users/{id}/photo:
+    delete:
+      description: Deletes the authenticated user's own profile photo (self only).
+        Idempotent
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Delete profile photo
+      tags:
+      - users
+    put:
+      consumes:
+      - multipart/form-data
+      description: |-
+        Resuelve nombre/apellido/email para varios user_id de una sola consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere login, sin restricción adicional de rol. Hasta 50 ids.
+        Uploads or replaces the authenticated user's own profile photo (self only). Max 5MB, JPEG/PNG/WEBP only (validated by content, not filename)
+      parameters:
+      - description: Ids de usuario separados por coma, ej. 1,2,3
+        in: query
+        name: ids
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Photo file
+        in: formData
+        name: photo
+        required: true
+        type: file
+      produces:
+      - application/json
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Upload profile photo
+      tags:
+      - users
       - users
   /api/v1/users/{id}/roles:
     post:

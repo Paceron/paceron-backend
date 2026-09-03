@@ -10,6 +10,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/team"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/restclients/storageclient"
 )
 
 // teamOwnerRoleName es el rol que debe tener un usuario para poder ser owner de un equipo.
@@ -23,6 +24,8 @@ type TeamServiceInterface interface {
 	GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, error)
 	GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error)
 	UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
+	UploadIcon(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error)
+	DeleteIcon(ctx *gin.Context, id int64, callerID int64) error
 }
 
 type teamService struct {
@@ -34,6 +37,7 @@ type teamService struct {
 	groupDao      daos.GroupDaoInterface
 	groupUserDao  daos.GroupUserDaoInterface
 	invitationDao daos.InvitationDaoInterface
+	storageClient storageclient.StorageClientInterface
 }
 
 // NewTeamService crea una nueva instancia de TeamService.
@@ -46,6 +50,7 @@ func NewTeamService(
 	groupDao daos.GroupDaoInterface,
 	groupUserDao daos.GroupUserDaoInterface,
 	invitationDao daos.InvitationDaoInterface,
+	storageClient storageclient.StorageClientInterface,
 ) TeamServiceInterface {
 	return &teamService{
 		teamDao:       teamDao,
@@ -56,7 +61,88 @@ func NewTeamService(
 		groupDao:      groupDao,
 		groupUserDao:  groupUserDao,
 		invitationDao: invitationDao,
+		storageClient: storageClient,
 	}
+}
+
+// UploadIcon valida y sube el ícono del equipo. Solo el entrenador dueño del
+// equipo puede hacerlo.
+func (s *teamService) UploadIcon(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error) {
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, id, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for team icon upload", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("UploadIcon"))
+		return nil, fmt.Errorf("error al subir el ícono")
+	}
+	if !isEntrenador {
+		return nil, fmt.Errorf("solo el entrenador dueño del equipo puede cambiar el ícono")
+	}
+
+	contentType, ext, err := validatePhotoContent(content)
+	if err != nil {
+		return nil, err
+	}
+
+	key := fmt.Sprintf("teams/team-%d-icon.%s", id, ext)
+	if err := s.storageClient.Upload(ctx, key, content, contentType); err != nil {
+		customlogger.Error(ctx, "error uploading team icon", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("UploadIcon"))
+		return nil, fmt.Errorf("error al subir el ícono")
+	}
+
+	updatedAt := time.Now().UTC()
+	if err := s.teamDao.UpdateIcon(ctx, id, key, updatedAt); err != nil {
+		customlogger.Error(ctx, "error persisting team icon key", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("UploadIcon"))
+	}
+
+	return buildMediaURL(&key, &updatedAt), nil
+}
+
+// DeleteIcon borra el ícono del equipo del bucket y limpia icon_key/icon_updated_at.
+// Solo el entrenador dueño del equipo puede hacerlo. Idempotente: si el equipo no
+// tiene ícono cargado, no hace nada.
+func (s *teamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64) error {
+	isEntrenador, err := s.isEntrenadorOfTeam(ctx, id, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking caller role for team icon delete", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("DeleteIcon"))
+		return fmt.Errorf("error al borrar el ícono")
+	}
+	if !isEntrenador {
+		return fmt.Errorf("solo el entrenador dueño del equipo puede cambiar el ícono")
+	}
+
+	teamDB, err := s.teamDao.FindByID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for icon delete", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("DeleteIcon"))
+		return fmt.Errorf("error al borrar el ícono")
+	}
+	if teamDB == nil || teamDB.IconKey == nil {
+		return nil
+	}
+
+	if err := s.storageClient.Delete(ctx, *teamDB.IconKey); err != nil {
+		customlogger.Error(ctx, "error deleting team icon from storage", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("DeleteIcon"))
+		return fmt.Errorf("error al borrar el ícono")
+	}
+
+	if err := s.teamDao.ClearIcon(ctx, id); err != nil {
+		customlogger.Error(ctx, "error clearing team icon key", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("DeleteIcon"))
+		return fmt.Errorf("error al borrar el ícono")
+	}
+
+	return nil
 }
 
 // Create crea un nuevo equipo a nombre del usuario autenticado, que pasa a ser el owner.
@@ -414,6 +500,7 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		Street:              t.Street,
 		Number:              t.Number,
 		ShowGroupsToRunners: t.ShowGroupsToRunners,
+		IconURL:             buildMediaURL(t.IconKey, t.IconUpdatedAt),
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,
 	}

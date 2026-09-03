@@ -438,6 +438,7 @@ func toResponse(userDB *dbs.User) *auth.UserResponse {
 		Dni:          userDB.DNI,
 		BirthDate:    userDB.BirthDate.Format("02/01/2006"),
 		Status:       userDB.Status,
+		PhotoURL:     buildMediaURL(userDB.PhotoKey, userDB.PhotoUpdatedAt),
 	}
 }
 

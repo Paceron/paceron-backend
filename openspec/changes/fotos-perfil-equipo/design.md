@@ -43,7 +43,7 @@ Para el tamaño real del caso (fotos de perfil/ícono, tope 5MB, tráfico bajo d
 | `icon_key` | string, nullable | ej. `teams/team-7-icon.png` |
 | `icon_updated_at` | timestamp, nullable | |
 
-La URL pública **no se guarda** — se calcula al serializar la respuesta: `{public_base_url}/{key}?v={unix(updated_at)}`. Si cambia el bucket o el dominio público, alcanza con cambiar `MyStorage.PublicBaseURL` en config, sin backfill de filas. `photo_key`/`icon_key` nulos → `photo_url`/`icon_url` nulos en la respuesta (sin foto cargada).
+La URL pública **no se guarda** — se calcula al serializar la respuesta: `{public_base_url}/{key}?v={unix(updated_at)}`, donde `public_base_url` se **deriva** de `MyStorage.Endpoint` + `MyStorage.Bucket` (`storageclient.PublicBaseURL`, parsea el project-ref del endpoint S3 y arma `https://<project-ref>.supabase.co/storage/v1/object/public/<bucket>`) — no hay env var `_PUBLIC_BASE_URL` (desvío del diseño original: se eliminó tras confirmar en la prueba manual que el project-ref ya está en el endpoint, una env var aparte era redundante). `photo_key`/`icon_key` nulos → `photo_url`/`icon_url` nulos en la respuesta (sin foto cargada).
 
 ### D3. Key fija por entidad, resubir pisa el archivo
 
@@ -64,7 +64,7 @@ Trade-off asumido: la URL no cambia entre uploads, por eso el cache-busting de D
 
 Sigue `Controllers → Services → DAOs/RestClients → Infrastructure` (`.agentics/CONVENTIONS.md`):
 
-- **`restclients/storageclient`** (nuevo, mismo patrón que `restclients/mercadopagoclient` — es un cliente de API externa, no infra transversal): interfaz `StorageClientInterface` con `Upload(ctx, key string, content io.Reader, contentType string) error` y `Delete(ctx, key string) error`. Sin lógica de negocio, sin conocer `user`/`team`.
+- **`restclients/storageclient`** (nuevo, mismo patrón que `restclients/mercadopagoclient` — es un cliente de API externa, no infra transversal): interfaz `StorageClientInterface` con `Upload(ctx, key string, content []byte, contentType string) error` y `Delete(ctx, key string) error`, sobre `aws-sdk-go-v2/service/s3` (path-style, endpoint custom). `[]byte` en vez de `io.Reader`: el service ya lee el archivo completo para validar magic bytes (D4), acotado a 5MB — sidestep de cualquier caso borde de streams no-seekable con firmado SigV4. Sin lógica de negocio, sin conocer `user`/`team`.
 - **Config**: `StorageConfig`/`MyStorage` en `config/config.go`, cargado igual que `MyMP`/`MyMailer` — resuelve testing/producción vía `config.IsProductionStage()` (reusa el flag existente, no inventa uno nuevo).
 - **DAOs**: `daos/user_dao.go` gana `UpdatePhoto(ctx, userID, key, updatedAt)` / `ClearPhoto(ctx, userID)`; `daos/team_dao.go` gana `UpdateIcon(ctx, teamID, key, updatedAt)` / `ClearIcon(ctx, teamID)`.
 - **Services**: se extienden `services/user_service.go` (`UploadPhoto`, `DeletePhoto`) y `services/team_service.go` (`UploadIcon`, `DeleteIcon` — valida que el caller sea el entrenador dueño del equipo, mismo patrón de autorización que ya usan otras operaciones de equipo). No se crean servicios nuevos: el alcance (2 entidades, 4 operaciones) no justifica un `PhotoService` separado — si documentos (Non-Goals) se agrega después y el caso crece, ahí se evalúa extraer.
