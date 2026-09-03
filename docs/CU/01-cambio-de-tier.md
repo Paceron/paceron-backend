@@ -392,6 +392,18 @@ Authorization: Bearer {token}
 | `payment.id` | `999` (id local del pago, útil para verificar estado) |
 | `payment.payment_id` | `200000001234` (id de Mercado Pago) |
 
+> **El `installment_id` debe ser del usuario autenticado.** El backend valida que
+> la cuota exista y que ese id pertenezca a quien hace el pago (el front siempre
+> lo cumple, porque lo obtuvo de `subscriptions/current` del propio usuario).
+
+**Errores esperados** (el backend valida la propiedad de la cuota antes de cobrar):
+
+| Código | Status | Significado | Acción del front |
+|---|---|---|---|
+| `PAYMENT_INSTALLMENT_NOT_FOUND` | 404 | la cuota no existe | recargar / no pagar una cuota inválida |
+| `PAYMENT_INSTALLMENT_FORBIDDEN` | 403 | la cuota es de otro usuario | no debería pasar (id vino de su propia suscripción); reportar |
+| `Unauthorized` | 401 | no hay usuario autenticado en el contexto | pedir login / renovar session |
+
 > `payer_email` debe ser un **test user** válido de Mercado Pago en sandbox, si no
 > la API de MP rechaza el pago.
 
@@ -476,7 +488,7 @@ Authorization: Bearer {token}
 | 5 | `GET` | `/api/v1/users/{id}/subscriptions/current?role_id=` | sí | leer cuota a pagar + `public_key` (presencia Bricks) |
 | 6 | `POST` | `/api/v1/payments/preference` | sí | crear preferencia de la cuota |
 | 7 | `POST` | `/api/v1/payments/test-card-token` | sí | token de tarjeta de prueba (sandbox) |
-| 8 | `POST` | `/api/v1/payments` | sí | procesar el pago de la cuota |
+| 8 | `POST` | `/api/v1/payments` | sí | procesar el pago de la cuota (valida que la cuota exista y sea del usuario) |
 | 9 | `POST` | `/api/v1/payments/webhook` | no | lo invoca MP (confirmación/activación) |
 | 10 | `GET` | `/api/v1/users/{id}/subscriptions/current?role_id=` | sí | verificar upgrade (active + premium + cuota #2) |
 
