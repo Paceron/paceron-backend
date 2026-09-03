@@ -71,7 +71,7 @@ func (c *teamSubscriptionController) GetTeamSubscription(ctx *gin.Context) {
 	}
 
 	var resp *teambio.TeamSubscriptionResponse
-	resp, err = c.service.GetTeamSubscription(ctx, teamID, userID)
+	resp, err = c.service.GetTeamSubscription(ctx, userID, teamID)
 	if err != nil {
 		statusCode, code := mapTeamSubscriptionError(err)
 		ctx.JSON(statusCode, apierror.APIError{
