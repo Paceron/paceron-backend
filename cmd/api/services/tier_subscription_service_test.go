@@ -80,6 +80,7 @@ type mockInstallmentDao struct {
 	findPendingBySubFn  func(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
 	findNextFn          func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
 	findPendingByTeamFn func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
+	findNextByTeamFn    func(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
 }
 
 func (m *mockInstallmentDao) Create(ctx *gin.Context, ins *dbs.Installment) error {
@@ -126,6 +127,9 @@ func (m *mockInstallmentDao) FindPendingByUserTeam(ctx *gin.Context, teamID, use
 }
 
 func (m *mockInstallmentDao) FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error) {
+	if m.findNextByTeamFn != nil {
+		return m.findNextByTeamFn(ctx, teamID, userID)
+	}
 	return nil, nil
 }
 
