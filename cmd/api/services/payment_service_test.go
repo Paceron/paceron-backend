@@ -567,7 +567,9 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, db, nil, nil, nil, nil, nil, nil)
+	// installDao lo necesita HandleWebhook (línea 439) para discriminar cuota de
+	// tier vs equipo; en el CI corre contra Postgres real (mismo db del setup).
+	svc := NewPaymentService(dao, client, db, nil, nil, nil, nil, daos.NewInstallmentDao(db), nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{
