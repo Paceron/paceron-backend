@@ -15,13 +15,13 @@ Que un usuario pueda pagar desde la app (Expo/React Native + React Native Web) u
 El modelo contempla desde el inicio **dos tipos de pago**, diferenciados por el campo `concept` en `payments`:
 
 | `concept` | ¿Quién cobra? | ¿Quién paga? | Ejemplos |
-|---|---|---|---|
+|---|---|---|--|
 | `order` | Paceron (la app) | Usuario | Orden de pago (compra de un producto/servicio de la app) |
-| `subscription` | Paceron (la app) | Usuario | Cuota de suscripción |
-| `session` | Entrenador (su cuenta MP) | Usuario | Sesión de entrenamiento; Paceron cobra su comisión (`marketplace_fee`) |
+| `subscription` | Paceron (la app) | Usuario | Cuota de suscripción (tier) |
+| `team_subscription` | Entrenador (su cuenta MP) | Usuario (corredor) | Cuota de membresía al equipo; Paceron cobra su comisión (`marketplace_fee`) |
 
 - **Sin split** (`order` / `subscription`): el caso más simple — un solo vendedor (Paceron) y el importe completo entra a la cuenta MP de Paceron. `marketplace_fee` y `seller_user_id` quedan `null`.
-- **Con split** (`session`): el importe entra a la cuenta MP del entrenador y Paceron retiene su comisión. Ver [Split payments (marketplace)](#split-payments-marketplace).
+- **Con split** (`team_subscription`): el importe entra a la cuenta MP del entrenador y Paceron retiene su comisión. Ver [Split payments (marketplace)](#split-payments-marketplace).
 
 Todo respetando la arquitectura en capas del repo: `Controllers → Delegates → Services → DAOs/RestClients → Infrastructure`.
 

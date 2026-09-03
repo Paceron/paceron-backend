@@ -201,13 +201,7 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 			return err
 		}
 
-		installment := &dbs.Installment{
-			SubscriptionID:    &sub.ID,
-			UserID:            userID,
-			InstallmentNumber: 1,
-			Status:            string(constants.InstallmentStatusPending),
-			Amount:            resolvedTier.TierAmount,
-		}
+		installment := FirstInstallment(&sub.ID, nil, userID, resolvedTier.TierAmount)
 		return insDao.Create(ctx, installment)
 	})
 	if err != nil {

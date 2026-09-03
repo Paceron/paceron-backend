@@ -125,6 +125,10 @@ func (m *mockInstallmentDao) FindPendingByUserTeam(ctx *gin.Context, teamID, use
 	return nil, nil
 }
 
+func (m *mockInstallmentDao) FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error) {
+	return nil, nil
+}
+
 func newTierSubscriptionService(ur *mockUserRoleDao, role *mockRoleDao, tier *mockTierDao, sub *mockTierSubscriptionDao, ins *mockInstallmentDao) TierSubscriptionServiceInterface {
 	return NewTierSubscriptionService(nil, ur, role, tier, sub, ins)
 }

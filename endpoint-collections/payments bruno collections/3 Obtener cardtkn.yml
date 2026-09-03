@@ -1,7 +1,7 @@
 info:
   name: 3 Obtener cardtkn
   type: http
-  seq: 3
+  seq: 2
 
 http:
   method: POST
@@ -28,7 +28,7 @@ runtime:
       code: |-
         const body = res.getBody();
         bru.setVar("card_token", body.token);
-        console.log("card_token:", bru.getVar("card_token"));
+        console.log("card_token:", bru.getVar("token"));
 
 settings:
   encodeUrl: true

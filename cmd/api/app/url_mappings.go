@@ -29,6 +29,9 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Payments - Webhook must be public (Mercado Pago sends notifications without auth)
 	r.POST("/api/v1/payments/webhook", app.paymentController.HandleWebhook)
 
+	// MP Connect deauthorization webhook - public (Mercado Pago sends it without auth)
+	r.POST("/api/v1/mercadopago/webhook/connect", app.mpConnectController.HandleDeauthWebhook)
+
 	mapSwagger(r)
 	mapGuide(r)
 
@@ -110,4 +113,16 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/payments/:id", app.paymentController.GetPaymentStatus)
 	r.GET("/api/v1/payments/mp/:id", app.paymentController.GetPaymentStatusFromMP)
 	r.POST("/api/v1/payments/test-card-token", app.paymentController.GenerateTestCardToken)
+
+	// MP Connect (suscripcion-teams-split D7)
+	r.GET("/api/v1/mercadopago/connect", app.mpConnectController.GetAuthURL)
+	r.GET("/api/v1/mercadopago/connect/callback", app.mpConnectController.HandleCallback)
+	r.GET("/api/v1/mercadopago/connect/status", app.mpConnectController.GetStatus)
+
+	// Platform Settings (suscripcion-teams-split D8)
+	r.GET("/api/v1/platform-settings/marketplace-fee", app.platformSettingController.GetMarketplaceFee)
+	r.PUT("/api/v1/platform-settings/marketplace-fee", app.platformSettingController.UpdateMarketplaceFee)
+
+	// Team Subscription (suscripcion-teams-split D3)
+	r.GET("/api/v1/users/:id/teams/:team_id/subscription", app.teamSubscriptionController.GetTeamSubscription)
 }

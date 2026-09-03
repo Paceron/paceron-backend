@@ -140,13 +140,7 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 			if err := subDao.Create(ctx, newSub); err != nil {
 				return nil, fmt.Errorf("error al cambiar de tier")
 			}
-			installment := &dbs.Installment{
-				SubscriptionID:    &newSub.ID,
-				UserID:            userID,
-				InstallmentNumber: 1,
-				Status:            string(constants.InstallmentStatusPending),
-				Amount:            target.TierAmount,
-			}
+			installment := FirstInstallment(&newSub.ID, nil, userID, target.TierAmount)
 			if err := insDao.Create(ctx, installment); err != nil {
 				return nil, fmt.Errorf("error al cambiar de tier")
 			}

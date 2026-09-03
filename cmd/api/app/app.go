@@ -8,6 +8,7 @@ import (
 	"simple-arq-golang/cmd/api/controllers"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/delegates"
+	"simple-arq-golang/cmd/api/infrastructure/crypto"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
@@ -39,6 +40,10 @@ type Application struct {
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
 	tierSubscriptionController controllers.TierSubscriptionController
+	// suscripcion-teams-split
+	mpConnectController       controllers.MPConnectControllerInterface
+	platformSettingController controllers.PlatformSettingControllerInterface
+	teamSubscriptionController controllers.TeamSubscriptionControllerInterface
 }
 
 func NewApplication() *Application {
@@ -144,6 +149,7 @@ func NewApplication() *Application {
 	// entrenador activation/deactivation)
 	teamUserDao := daos.NewTeamUserDao(db)
 	teamDao := daos.NewTeamDao(db)
+	installmentDao := daos.NewInstallmentDao(db) // ledger compartido tier/equipo (change suscripcion-teams-split)
 
 	// User Role flow
 	userRoleService := services.NewUserRoleService(userRoleDao, roleDao, tierDao, userDao, teamUserDao, db)
@@ -170,7 +176,7 @@ func NewApplication() *Application {
 	teamController := controllers.NewTeamController(teamService, teamDelegate)
 	groupController := controllers.NewGroupController(groupService)
 
-	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient)
+	teamUserService := services.NewTeamUserService(teamUserDao, teamDao, userDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient, installmentDao, db)
 	teamUserController := controllers.NewTeamUserController(teamUserService)
 
 	// Group User flow
@@ -178,24 +184,42 @@ func NewApplication() *Application {
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow
-	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient)
+	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient, installmentDao, db)
 	invitationController := controllers.NewInvitationController(invitationService)
 
 	// Push token flow
 	pushTokenService := services.NewPushTokenService(pushTokenDao)
 	pushTokenController := controllers.NewPushTokenController(pushTokenService)
 
-	// Payment flow
-	paymentDao := daos.NewPaymentDao(db)
+	// DAOs para split de equipos
+	sellerConnDao := daos.NewSellerConnectionDao(db)
+	settingDao := daos.NewPlatformSettingDao(db)
+	encryptor := crypto.NewAESGCMEncryptor(config.TokenEncryptionKey)
 	mpClient := mercadopagoclient.New()
-	paymentService := services.NewPaymentService(paymentDao, mpClient, db)
+
+	// MP Connect flow
+	mpConnectService := services.NewMPConnectService(sellerConnDao, mpClient, encryptor,
+		config.MyMP.OAuthClientID, config.MyMP.OAuthClientSecret, config.MyMP.OAuthRedirectURI)
+	mpConnectController := controllers.NewMPConnectController(mpConnectService)
+
+	// Platform Settings flow
+	platformSettingService := services.NewPlatformSettingService(settingDao, userDao)
+	platformSettingController := controllers.NewPlatformSettingController(platformSettingService)
+
+	// Payment flow (con dependencias para split de equipos)
+	paymentDao := daos.NewPaymentDao(db)
+	paymentService := services.NewPaymentService(paymentDao, mpClient, db,
+		sellerConnDao, teamDao, teamUserDao, settingDao, installmentDao, encryptor)
 	paymentController := controllers.NewPaymentController(paymentService)
 
 	// Tier subscription flow (ledger de suscripciones de tier por usuario/rol)
 	tierSubscriptionDao := daos.NewTierSubscriptionDao(db)
-	installmentDao := daos.NewInstallmentDao(db)
 	tierSubscriptionService := services.NewTierSubscriptionService(db, userRoleDao, roleDao, tierDao, tierSubscriptionDao, installmentDao)
 	tierSubscriptionController := controllers.NewTierSubscriptionController(tierSubscriptionService)
+
+	// Team Subscription flow (D3: GET /api/v1/users/:id/teams/:team_id/subscription)
+	teamSubscriptionService := services.NewTeamSubscriptionService(teamDao, teamUserDao, installmentDao)
+	teamSubscriptionController := controllers.NewTeamSubscriptionController(teamSubscriptionService)
 
 	return &Application{
 		pingController:             controllers.NewPingController(),
@@ -218,5 +242,8 @@ func NewApplication() *Application {
 		pushTokenController:        pushTokenController,
 		paymentController:          paymentController,
 		tierSubscriptionController: tierSubscriptionController,
+		mpConnectController:        mpConnectController,
+		platformSettingController:  platformSettingController,
+		teamSubscriptionController: teamSubscriptionController,
 	}
 }

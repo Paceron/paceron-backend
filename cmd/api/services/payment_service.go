@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/payment"
+	"simple-arq-golang/cmd/api/infrastructure/crypto"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
 )
@@ -28,19 +29,32 @@ type PaymentServiceInterface interface {
 }
 
 type paymentService struct {
-	paymentDao    daos.PaymentDaoInterface
-	mpClient      mercadopagoclient.MercadoPagoClientInterface
-	accessToken   string
-	publicKey     string
-	webhookSecret string
-	currencyID    string
-	db            *gorm.DB // para la transacción del webhook de cuotas (D7)
+	paymentDao       daos.PaymentDaoInterface
+	mpClient         mercadopagoclient.MercadoPagoClientInterface
+	accessToken      string
+	publicKey        string
+	webhookSecret    string
+	currencyID       string
+	db               *gorm.DB
+	// split team subscriptions
+	sellerConnDao    daos.SellerConnectionDaoInterface
+	teamDao          daos.TeamDaoInterface
+	teamUserDao      daos.TeamUserDaoInterface
+	settingDao       daos.PlatformSettingDaoInterface
+	installDao       daos.InstallmentDaoInterface
+	encryptor        crypto.EncryptorInterface
 }
 
 func NewPaymentService(
 	paymentDao daos.PaymentDaoInterface,
 	mpClient mercadopagoclient.MercadoPagoClientInterface,
 	db *gorm.DB,
+	sellerConnDao daos.SellerConnectionDaoInterface,
+	teamDao daos.TeamDaoInterface,
+	teamUserDao daos.TeamUserDaoInterface,
+	settingDao daos.PlatformSettingDaoInterface,
+	installDao daos.InstallmentDaoInterface,
+	encryptor crypto.EncryptorInterface,
 ) PaymentServiceInterface {
 	return &paymentService{
 		paymentDao:    paymentDao,
@@ -50,6 +64,12 @@ func NewPaymentService(
 		webhookSecret: config.MyMP.WebhookSecret,
 		currencyID:    config.MyMP.CurrencyID,
 		db:            db,
+		sellerConnDao: sellerConnDao,
+		teamDao:       teamDao,
+		teamUserDao:   teamUserDao,
+		settingDao:    settingDao,
+		installDao:    installDao,
+		encryptor:     encryptor,
 	}
 }
 
@@ -61,15 +81,43 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 		amount += item.UnitPrice * float64(item.Quantity)
 	}
 
+	var mpAccessToken string
+	var marketplaceFee float64
+	var sellerUserID int64
+
+	// Si es suscripción de equipo (team_subscription), usar token del dueño y aplicar split
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
+		var err error
+		mpAccessToken, marketplaceFee, sellerUserID, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		mpAccessToken = s.accessToken
+		marketplaceFee = 0
+		sellerUserID = 0
+	}
+
+	var sellerUserIDPtr *int64
+	var marketplaceFeePtr *float64
+	if sellerUserID != 0 {
+		sellerUserIDPtr = &sellerUserID
+	}
+	if marketplaceFee > 0 {
+		marketplaceFeePtr = &marketplaceFee
+	}
+
 	paymentRecord := &dbs.Payment{
-		UserID:        req.SellerID,
-		Concept:       req.Concept,
-		Description:   req.Description,
-		Amount:        amount,
-		CurrencyID:    s.currencyID,
-		Status:        "pending",
-		PayerEmail:    "",
-		InstallmentID: req.InstallmentID,
+		UserID:         req.SellerID,
+		Concept:        req.Concept,
+		Description:    req.Description,
+		Amount:         amount,
+		CurrencyID:     s.currencyID,
+		Status:         "pending",
+		PayerEmail:     "",
+		InstallmentID:  req.InstallmentID,
+		SellerUserID:   sellerUserIDPtr,
+		MarketplaceFee: marketplaceFeePtr,
 	}
 
 	if err := s.paymentDao.Create(ctx, paymentRecord); err != nil {
@@ -92,7 +140,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	}
 
 	notificationURL := config.MyMP.WebhookURL
-	preferenceID, err := s.mpClient.CreatePreference(ctx, s.accessToken, items, externalRef, notificationURL, "", s.currencyID)
+	preferenceID, err := s.mpClient.CreatePreference(ctx, mpAccessToken, items, externalRef, notificationURL, fmt.Sprintf("%.2f", marketplaceFee), s.currencyID)
 	if err != nil {
 		customlogger.Error(ctx, "error creating MP preference", err)
 		return nil, fmt.Errorf("error creating MP preference: %w", err)
@@ -111,6 +159,23 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPaymentRequest) (*payment.PaymentResponse, error) {
 	customlogger.Info(ctx, "processing MP payment", customlogger.TagMethod("ProcessPayment"))
 
+	var mpAccessToken string
+	var marketplaceFee float64
+	var sellerUserID int64
+
+	// Resolver configuración de split si es team_subscription
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) && req.InstallmentID != nil {
+		var err error
+		mpAccessToken, marketplaceFee, sellerUserID, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		mpAccessToken = s.accessToken
+		marketplaceFee = 0
+		sellerUserID = 0
+	}
+
 	if req.PreferenceID != "" {
 		existing, err := s.paymentDao.FindByExternalReference(ctx, req.PreferenceID)
 		if err != nil {
@@ -126,9 +191,23 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		}
 	}
 
+	concept := req.Concept
+	if concept == "" {
+		concept = "order"
+	}
+
+	var sellerUserIDPtr *int64
+	var marketplaceFeePtr *float64
+	if sellerUserID != 0 {
+		sellerUserIDPtr = &sellerUserID
+	}
+	if marketplaceFee > 0 {
+		marketplaceFeePtr = &marketplaceFee
+	}
+
 	paymentRecord := &dbs.Payment{
-		Concept:         "order",
-		Description:     "Pago con tarjeta",
+		Concept:         concept,
+		Description:     req.Description,
 		Amount:          req.TransactionAmount,
 		CurrencyID:      s.currencyID,
 		Status:          "in_process",
@@ -137,6 +216,8 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		PaymentMethodID: req.PaymentMethodID,
 		Installments:    req.Installments,
 		InstallmentID:   req.InstallmentID,
+		SellerUserID:    sellerUserIDPtr,
+		MarketplaceFee:  marketplaceFeePtr,
 	}
 
 	if err := s.paymentDao.Create(ctx, paymentRecord); err != nil {
@@ -158,7 +239,7 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		ThreeDSecureMode:  "optional",
 	}
 
-	result, err := s.mpClient.CreatePayment(ctx, s.accessToken, mpReq)
+	result, err := s.mpClient.CreatePayment(ctx, mpAccessToken, mpReq)
 	if err != nil {
 		customlogger.Error(ctx, "error creating MP payment", err)
 		return nil, fmt.Errorf("error creating MP payment: %w", err)
@@ -354,8 +435,20 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 
 	// Pago de cuota aprobado: confirmar la cuota y avanzar el ciclo mensual (D6/D7).
 	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
-		if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
-			return fmt.Errorf("error confirming installment: %w", err)
+		// Determinar si es cuota de tier o de equipo
+		installment, err := s.installDao.FindByID(ctx, *paymentRecord.InstallmentID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding installment for webhook", err)
+		} else if installment != nil && installment.TeamID != nil {
+			// Cuota de equipo (change suscripcion-teams-split D10)
+			if err := s.applyApprovedTeamInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+				return fmt.Errorf("error confirming team installment: %w", err)
+			}
+		} else {
+			// Cuota de tier (D6/D7)
+			if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+				return fmt.Errorf("error confirming installment: %w", err)
+			}
 		}
 	}
 
@@ -426,30 +519,71 @@ func (s *paymentService) applyApprovedInstallment(ctx *gin.Context, paymentRecor
 			}
 		}
 
-		return insDao.Create(ctx, nextInstallment(sub, installment))
+		return insDao.Create(ctx, NextTierInstallment(sub, installment))
 	})
 }
 
-// nextInstallment genera la cuota N+1 (D6): amount = init_amount de la sub;
-// due_date = start_date + 1 mes si recién se pagó la #1, si no, due_date de la
-// cuota + 1 mes; blocked_date = due_date + 7 días de gracia.
-func nextInstallment(sub *dbs.UserRoleTierSubscription, paid *dbs.Installment) *dbs.Installment {
-	base := sub.StartDate
-	if paid.InstallmentNumber > 1 && paid.DueDate != nil {
-		base = *paid.DueDate
+// applyApprovedTeamInstallment confirma una cuota de equipo pagada (D10):
+// - Marca la cuota paid idempotentemente
+// - Incrementa paid_installments del team_user
+// - Si era la cuota #1, activa la membresía (subscription_status = active)
+// - Genera la siguiente cuota con NextTeamInstallment
+func (s *paymentService) applyApprovedTeamInstallment(ctx *gin.Context, paymentRecord *dbs.Payment, mpPaymentID string) error {
+	if s.db == nil {
+		return fmt.Errorf("payment service sin db configurada")
 	}
-	dueDate := base.AddDate(0, 1, 0)
-	blockedDate := dueDate.AddDate(0, 0, 7)
 
-	return &dbs.Installment{
-		SubscriptionID:    &sub.ID,
-		UserID:            sub.UserID,
-		InstallmentNumber: paid.InstallmentNumber + 1,
-		Status:            string(constants.InstallmentStatusPending),
-		Amount:            sub.InitAmount,
-		DueDate:           &dueDate,
-		BlockedDate:       &blockedDate,
-	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		insDao := daos.NewInstallmentDao(tx)
+		tuDao := daos.NewTeamUserDao(tx)
+
+		marked, err := insDao.MarkPaidConditional(ctx, *paymentRecord.InstallmentID, &paymentRecord.ID, &mpPaymentID)
+		if err != nil {
+			return err
+		}
+		if !marked {
+			customlogger.Warn(ctx, "team installment already paid, webhook is a duplicate",
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("applyApprovedTeamInstallment"))
+			return nil
+		}
+
+		installment, err := insDao.FindByID(ctx, *paymentRecord.InstallmentID)
+		if err != nil {
+			return err
+		}
+		if installment == nil {
+			return fmt.Errorf("installment %d not found after marking paid", *paymentRecord.InstallmentID)
+		}
+		if installment.TeamID == nil || installment.UserID == 0 {
+			return fmt.Errorf("installment %d missing team_id or user_id", *paymentRecord.InstallmentID)
+		}
+
+		// Buscar el team_user para obtener su ID
+		teamUser, err := tuDao.FindByTeamAndUser(ctx, *installment.TeamID, installment.UserID)
+		if err != nil {
+			return err
+		}
+		if teamUser == nil {
+			return fmt.Errorf("team_user not found for team_id=%d user_id=%d", *installment.TeamID, installment.UserID)
+		}
+
+		// Incrementar paid_installments del team_user
+		if err := tuDao.IncrementPaidInstallments(ctx, teamUser.ID); err != nil {
+			return err
+		}
+
+		// Si era la cuota #1, activar membresía
+		if installment.InstallmentNumber == 1 {
+			if err := tuDao.ActivateSubscription(ctx, teamUser.ID); err != nil {
+				return err
+			}
+		}
+
+		// Generar siguiente cuota de equipo
+		nextIns := NextTeamInstallment(teamUser, installment)
+		return insDao.Create(ctx, nextIns)
+	})
 }
 
 func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResponse {
@@ -473,6 +607,80 @@ func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResp
 		PayerEmail:      p.PayerEmail,
 		CreatedAt:       p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// resolveTeamSplitConfig obtiene el token del dueño del equipo y calcula la comisión
+// marketplace_fee. Debe llamarse con un installment_id válido de tipo team_subscription.
+func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64) (accessToken string, marketplaceFee float64, sellerUserID int64, err error) {
+	if installmentID == nil {
+		return "", 0, 0, fmt.Errorf("installment_id requerido para team_subscription")
+	}
+
+	installment, err := s.installDao.FindByID(ctx, *installmentID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding installment for split", err,
+			customlogger.Tag("installment_id", fmt.Sprintf("%d", *installmentID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, fmt.Errorf("error consultando cuota")
+	}
+	if installment == nil {
+		return "", 0, 0, fmt.Errorf("cuota no encontrada")
+	}
+	if installment.TeamID == nil {
+		return "", 0, 0, fmt.Errorf("la cuota no pertenece a un equipo")
+	}
+
+	team, err := s.teamDao.FindByID(ctx, *installment.TeamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for split", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", *installment.TeamID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, fmt.Errorf("error consultando equipo")
+	}
+	if team == nil {
+		return "", 0, 0, fmt.Errorf("equipo no encontrado")
+	}
+
+	ownerID := team.OwnerID
+	conn, err := s.sellerConnDao.FindByUser(ctx, ownerID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding seller connection", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, fmt.Errorf("error consultando conexión del entrenador")
+	}
+	if conn == nil || conn.Status != string(constants.SellerConnectionStatusAuthorized) {
+		customlogger.Warn(ctx, "team owner not connected to MP",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", team.ID)),
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, fmt.Errorf("el entrenador debe conectar su cuenta de Mercado Pago")
+	}
+
+	// Descifrar access_token
+	decrypted, err := s.encryptor.Decrypt(conn.AccessToken)
+	if err != nil {
+		customlogger.Error(ctx, "error decrypting access token", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, fmt.Errorf("error descifrando token del entrenador")
+	}
+
+	// Obtener marketplace_fee_percent (default 5%)
+	feePercent, setting, err := s.settingDao.Get(ctx, "marketplace_fee_percent", 5.0)
+	if err != nil {
+		customlogger.Error(ctx, "error getting marketplace fee", err,
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		feePercent = 5.0
+	}
+	if setting == nil {
+		feePercent = 5.0
+	}
+
+	// Calcular fee redondeado (moneda local, 2 decimales)
+	marketplaceFee = float64(int(installment.Amount*feePercent/100*100+0.5)) / 100
+
+	return decrypted, marketplaceFee, ownerID, nil
 }
 
 func (s *paymentService) GenerateTestCardToken(ctx *gin.Context, req payment.TestCardTokenRequest) (*payment.TestCardTokenResponse, error) {

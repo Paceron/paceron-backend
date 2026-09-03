@@ -19,6 +19,7 @@ type InstallmentDaoInterface interface {
 	FindPendingBySubscription(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
 	FindNext(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
 	FindPendingByUserTeam(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
+	FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
 }
 
 type installmentDao struct {
@@ -109,4 +110,22 @@ func (d *installmentDao) FindPendingByUserTeam(ctx *gin.Context, teamID, userID 
 		return nil, fmt.Errorf("error finding pending installments by user team: %w", err)
 	}
 	return installments, nil
+}
+
+// FindNextByUserTeam devuelve la próxima cuota a pagar de la membresía de un
+// usuario a un equipo (la pendiente de menor número). Cuotas de equipo (change
+// suscripcion-teams-split).
+func (d *installmentDao) FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error) {
+	var installment dbs.Installment
+	err := d.DB.
+		Where("team_id = ? AND user_id = ? AND status = ?", teamID, userID, string(constants.InstallmentStatusPending)).
+		Order("installment_number ASC").
+		First(&installment).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding next installment by user team: %w", err)
+	}
+	return &installment, nil
 }

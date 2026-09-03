@@ -299,6 +299,12 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/invitations/:id` | Get invitation detail (must be the invitee) |
 | POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
+| GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
+| GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
+| GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |
+| GET | `/api/v1/mercadopago/connect/status` | Mercado Pago connection status of the authenticated user |
+| GET | `/api/v1/platform-settings/marketplace-fee` | Get Paceron marketplace fee percentage |
+| PUT | `/api/v1/platform-settings/marketplace-fee` | Update Paceron marketplace fee percentage (app owner only) |
 
 ## Run
 

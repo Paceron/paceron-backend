@@ -27,6 +27,8 @@ type ProcessPaymentRequest struct {
 	PayerEmail        string  `json:"payer_email" binding:"required,email"`
 	PreferenceID      string  `json:"preference_id"`
 	InstallmentID     *int64  `json:"installment_id"` // cuota a la que se vincula el pago
+	Concept           string  `json:"concept"`         // team_subscription | order
+	Description       string  `json:"description"`
 }
 
 type PaymentResponse struct {

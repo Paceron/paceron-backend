@@ -139,7 +139,7 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 	mailerMock := &mockMailer{}
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -180,7 +180,7 @@ func TestInvitationService_InviteRunner_SendsPushToInvitee(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, pushTokenDao, pushClient)
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, pushTokenDao, pushClient, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -200,7 +200,7 @@ func TestInvitationService_InviteRunner_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 999, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -222,7 +222,7 @@ func TestInvitationService_InviteRunner_UserNotFound(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "noexiste@test.com",
 	})
@@ -243,7 +243,7 @@ func TestInvitationService_InviteRunner_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, 2, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -269,7 +269,7 @@ func TestInvitationService_InviteRunner_UserAlreadyMember(t *testing.T) {
 		}),
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -296,7 +296,7 @@ func TestInvitationService_InviteRunner_DuplicatePendingInvitation(t *testing.T)
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -332,7 +332,7 @@ func TestInvitationService_InviteRunner_WithValidGroupID(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	groupID := int64(3)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email:   "juan@test.com",
@@ -360,7 +360,7 @@ func TestInvitationService_InviteRunner_GroupNotInTeam(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	groupID := int64(999)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email:   "juan@test.com",
@@ -389,7 +389,7 @@ func TestInvitationService_InviteRunner_InvitationDaoCreateError(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -416,7 +416,7 @@ func TestInvitationService_InviteRunner_MailerError(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -432,7 +432,7 @@ func TestInvitationService_InviteRunner_TeamDaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -453,7 +453,7 @@ func TestInvitationService_InviteRunner_CallerRoleCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -475,7 +475,7 @@ func TestInvitationService_InviteRunner_UserFindByEmailError(t *testing.T) {
 	}
 
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
@@ -503,7 +503,7 @@ func TestInvitationService_ListPendingInvitations_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
@@ -534,7 +534,7 @@ func TestInvitationService_ListPendingInvitations_IncludesInviterInfo(t *testing
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
@@ -550,7 +550,7 @@ func TestInvitationService_ListPendingInvitations_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.ListPendingInvitations(nil, 999, testEntrenadorCallerID)
 
 	assert.Error(t, err)
@@ -569,7 +569,7 @@ func TestInvitationService_ListPendingInvitations_CallerRoleCheckError(t *testin
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.Error(t, err)
@@ -588,7 +588,7 @@ func TestInvitationService_ListPendingInvitations_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, &mockInvitationDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.ListPendingInvitations(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -609,7 +609,7 @@ func TestInvitationService_ListPendingInvitations_FiltersExpired(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.NoError(t, err)
@@ -628,7 +628,7 @@ func TestInvitationService_ListPendingInvitations_DaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
 
 	assert.Error(t, err)
@@ -655,7 +655,7 @@ func TestInvitationService_ListPendingInvitationsForUser_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.ListPendingInvitationsForUser(nil, 2)
 
 	assert.NoError(t, err)
@@ -672,7 +672,7 @@ func TestInvitationService_ListPendingInvitationsForUser_FiltersExpired(t *testi
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.ListPendingInvitationsForUser(nil, 2)
 
 	assert.NoError(t, err)
@@ -686,7 +686,7 @@ func TestInvitationService_ListPendingInvitationsForUser_DaoError(t *testing.T) 
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.ListPendingInvitationsForUser(nil, 2)
 
 	assert.Error(t, err)
@@ -705,7 +705,7 @@ func TestInvitationService_GetInvitationDetail_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.GetInvitationDetail(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -720,7 +720,7 @@ func TestInvitationService_GetInvitationDetail_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.GetInvitationDetail(nil, 999, 2)
 
 	assert.Error(t, err)
@@ -734,11 +734,22 @@ func TestInvitationService_GetInvitationDetail_WrongUser(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.GetInvitationDetail(nil, 1, 999)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no pertenece a este usuario")
+}
+
+// freeMockTeamDao devuelve un mockTeamDao cuyo FindByID responde un equipo
+// gratis (membership_fee = 0), como requiere el gate de membresía (D2) al
+// aceptar una invitación.
+func freeMockTeamDao() *mockTeamDao {
+	return &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, Name: "Los Pumas"}, nil
+		},
+	}
 }
 
 func TestInvitationService_AcceptInvitation_Success(t *testing.T) {
@@ -767,7 +778,7 @@ func TestInvitationService_AcceptInvitation_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -810,7 +821,7 @@ func TestInvitationService_AcceptInvitation_NotifiesInviter(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(userDao, teamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient)
+	svc := NewInvitationService(userDao, teamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	require.NoError(t, err)
@@ -850,7 +861,7 @@ func TestInvitationService_RejectInvitation_NotifiesInviter(t *testing.T) {
 	}
 	mailerMock := &mockMailer{}
 
-	svc := NewInvitationService(userDao, teamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDao, teamDao, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.RejectInvitation(nil, 1, 2)
 
 	require.NoError(t, err)
@@ -893,7 +904,7 @@ func TestInvitationService_AcceptInvitation_NotificationFailureDoesNotBlock(t *t
 		},
 	}
 
-	svc := NewInvitationService(userDao, teamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient)
+	svc := NewInvitationService(userDao, teamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, mailerMock, pushTokenDao, pushClient, nil, nil)
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	require.NoError(t, err)
@@ -907,7 +918,7 @@ func TestInvitationService_AcceptInvitation_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 999, 2)
 
 	assert.Error(t, err)
@@ -921,7 +932,7 @@ func TestInvitationService_AcceptInvitation_WrongUser(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 999)
 
 	assert.Error(t, err)
@@ -935,7 +946,7 @@ func TestInvitationService_AcceptInvitation_AlreadyResponded(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -949,7 +960,7 @@ func TestInvitationService_AcceptInvitation_Expired(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -973,7 +984,7 @@ func TestInvitationService_AcceptInvitation_AlreadyMember_MarksAcceptedWithoutDu
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -996,7 +1007,7 @@ func TestInvitationService_AcceptInvitation_TeamUserCreateError(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -1018,7 +1029,7 @@ func TestInvitationService_AcceptInvitation_UpdateStatusErrorAfterTeamUserCreate
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -1050,7 +1061,7 @@ func TestInvitationService_AcceptInvitation_AssignsToInvitationGroup(t *testing.
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -1085,7 +1096,7 @@ func TestInvitationService_AcceptInvitation_AssignsToTeamMainGroup_WhenNoGroupID
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, mockGroup, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, mockGroup, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -1109,7 +1120,7 @@ func TestInvitationService_AcceptInvitation_NoMainGroup_StillSucceeds(t *testing
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, mockGroup, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -1139,7 +1150,7 @@ func TestInvitationService_AcceptInvitation_AlreadyGroupMember_DoesNotDuplicate(
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, teamUserDao, &mockGroupDao{}, mockGroupUser, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.AcceptInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -1159,7 +1170,7 @@ func TestInvitationService_RejectInvitation_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.RejectInvitation(nil, 1, 2)
 
 	assert.NoError(t, err)
@@ -1174,7 +1185,7 @@ func TestInvitationService_RejectInvitation_NotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.RejectInvitation(nil, 999, 2)
 
 	assert.Error(t, err)
@@ -1188,7 +1199,7 @@ func TestInvitationService_RejectInvitation_WrongUser(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.RejectInvitation(nil, 1, 999)
 
 	assert.Error(t, err)
@@ -1202,7 +1213,7 @@ func TestInvitationService_RejectInvitation_AlreadyResponded(t *testing.T) {
 		},
 	}
 
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, &mockTeamDao{}, invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	_, err := svc.RejectInvitation(nil, 1, 2)
 
 	assert.Error(t, err)

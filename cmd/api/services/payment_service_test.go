@@ -116,17 +116,38 @@ func (m *mockMercadoPagoClient) GenerateCardToken(ctx context.Context, accessTok
 	return args.String(0), args.Error(1)
 }
 
+func (m *mockMercadoPagoClient) GetAuthURL(redirectURI string, state string) string {
+	args := m.Called(redirectURI, state)
+	return args.String(0)
+}
+
+func (m *mockMercadoPagoClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*mercadopagoclient.OAuthTokenResponse, error) {
+	args := m.Called(ctx, clientID, clientSecret, redirectURI, code)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*mercadopagoclient.OAuthTokenResponse), args.Error(1)
+}
+
+func (m *mockMercadoPagoClient) GetUserInfo(ctx context.Context, accessToken string) (*mercadopagoclient.UserInfoResponse, error) {
+	args := m.Called(ctx, accessToken)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*mercadopagoclient.UserInfoResponse), args.Error(1)
+}
+
 func TestNewPaymentService(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 	assert.NotNil(t, svc)
 }
 
 func TestPaymentService_ImplementsInterface(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 	var iface PaymentServiceInterface = svc
 	_ = iface
 }
@@ -134,7 +155,7 @@ func TestPaymentService_ImplementsInterface(t *testing.T) {
 func TestCreatePreference_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	req := payment.CreatePreferenceRequest{
@@ -148,7 +169,7 @@ func TestCreatePreference_Success(t *testing.T) {
 	dao.On("Create", ctx, mock.AnythingOfType("*dbs.Payment")).Return(nil)
 	dao.On("UpdateExternalRef", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
-	client.On("CreatePreference", ctx, "test-access-token", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "", "ARS").Return("pref-123", nil)
+	client.On("CreatePreference", ctx, "test-access-token", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "0.00", "ARS").Return("pref-123", nil)
 
 	resp, err := svc.CreatePreference(ctx, req)
 
@@ -163,7 +184,7 @@ func TestCreatePreference_Success(t *testing.T) {
 func TestCreatePreference_DaoError(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	req := payment.CreatePreferenceRequest{
@@ -186,7 +207,7 @@ func TestCreatePreference_DaoError(t *testing.T) {
 func TestCreatePreference_MPClientError(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	req := payment.CreatePreferenceRequest{
@@ -200,7 +221,7 @@ func TestCreatePreference_MPClientError(t *testing.T) {
 	dao.On("Create", ctx, mock.Anything).Return(nil)
 	dao.On("UpdateExternalRef", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
-	client.On("CreatePreference", ctx, "test-access-token", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "", "ARS").Return("", fmt.Errorf("mp error"))
+	client.On("CreatePreference", ctx, "test-access-token", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "0.00", "ARS").Return("", fmt.Errorf("mp error"))
 
 	resp, err := svc.CreatePreference(ctx, req)
 
@@ -212,7 +233,7 @@ func TestCreatePreference_MPClientError(t *testing.T) {
 func TestProcessPayment_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	req := payment.ProcessPaymentRequest{
@@ -247,7 +268,7 @@ func TestProcessPayment_Success(t *testing.T) {
 func TestProcessPayment_CreatePaymentError(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	req := payment.ProcessPaymentRequest{
@@ -272,7 +293,7 @@ func TestProcessPayment_CreatePaymentError(t *testing.T) {
 func TestGetPaymentStatus_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	paymentRecord := &dbs.Payment{
@@ -305,7 +326,7 @@ func TestGetPaymentStatus_Success(t *testing.T) {
 func TestGetPaymentStatus_NotFound(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 
@@ -321,7 +342,7 @@ func TestGetPaymentStatus_NotFound(t *testing.T) {
 func TestGetPaymentStatusFromMP_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 
@@ -383,7 +404,7 @@ func TestGetPaymentStatusFromMP_Success(t *testing.T) {
 func TestGetPaymentStatusFromMP_InvalidID(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 
@@ -397,7 +418,7 @@ func TestGetPaymentStatusFromMP_InvalidID(t *testing.T) {
 func TestHandleWebhook_IgnoresNonPaymentType(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{
@@ -416,7 +437,7 @@ func TestHandleWebhook_IgnoresNonPaymentType(t *testing.T) {
 func TestHandleWebhook_MissingDataID(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{
@@ -435,7 +456,7 @@ func TestHandleWebhook_MissingDataID(t *testing.T) {
 func TestHandleWebhook_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{
@@ -469,7 +490,7 @@ func TestHandleWebhook_Success(t *testing.T) {
 func TestHandleWebhook_PaymentNotFoundLocally(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, nil)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{
@@ -546,7 +567,7 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
-	svc := NewPaymentService(dao, client, db)
+	svc := NewPaymentService(dao, client, db, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
 	notification := payment.WebhookNotification{

@@ -41,6 +41,15 @@ func (m *mockTeamUserDaoGroup) SoftDelete(ctx *gin.Context, id int64) error { re
 func (m *mockTeamUserDaoGroup) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
 	return nil
 }
+func (m *mockTeamUserDaoGroup) IncrementPaidInstallments(ctx *gin.Context, teamUserID int64) error {
+	return nil
+}
+func (m *mockTeamUserDaoGroup) ActivateSubscription(ctx *gin.Context, teamUserID int64) error {
+	return nil
+}
+func (m *mockTeamUserDaoGroup) SetSubscriptionStatus(ctx *gin.Context, teamUserID int64, status string) error {
+	return nil
+}
 
 // entrenadorMockTU devuelve un TeamUserDao mock que reporta a cualquier (team, user)
 // como miembro con rol "entrenador" — atajo para los tests que no ejercitan la
