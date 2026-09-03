@@ -17,6 +17,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/crypto"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 type PaymentServiceInterface interface {
@@ -158,6 +159,15 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 
 func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPaymentRequest) (*payment.PaymentResponse, error) {
 	customlogger.Info(ctx, "processing MP payment", customlogger.TagMethod("ProcessPayment"))
+
+	// Validación de propiedad de la cuota (D6): si el pago está vinculado a una
+	// cuota de suscripción (tier o equipo), la cuota debe existir y pertenecer
+	// al usuario autenticado ANTES de contactar a Mercado Pago.
+	if req.InstallmentID != nil {
+		if err := s.validateOwnedInstallment(ctx, *req.InstallmentID); err != nil {
+			return nil, err
+		}
+	}
 
 	var mpAccessToken string
 	var marketplaceFee float64
@@ -456,6 +466,31 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 		customlogger.Tag("payment_id", fmt.Sprintf("%d", paymentRecord.ID)),
 		customlogger.Tag("status", result.Status),
 	)
+
+	return nil
+}
+
+// validateOwnedInstallment valida que la cuota a pagar exista y pertenezca al
+// usuario autenticado. Aplica por igual a cuotas de suscripción de tier
+// (`subscription_id`) y de membresía de equipo (`team_id`), ya que `Installment`
+// guarda el dueño en `user_id` en ambos casos. Se ejecuta antes de contactar a
+// Mercado Pago para evitar pagos de cuotas inexistentes o ajenas (IDOR).
+func (s *paymentService) validateOwnedInstallment(ctx *gin.Context, installmentID int64) error {
+	installment, err := s.installDao.FindByID(ctx, installmentID)
+	if err != nil {
+		return fmt.Errorf("error finding installment: %w", err)
+	}
+	if installment == nil {
+		return fmt.Errorf("cuota de suscripcion no encontrada")
+	}
+
+	authUserID, ok := utils.GetAuthUserID(ctx)
+	if !ok {
+		return fmt.Errorf("usuario autenticado no encontrado en el contexto")
+	}
+	if installment.UserID != authUserID {
+		return fmt.Errorf("la cuota no pertenece al usuario autenticado")
+	}
 
 	return nil
 }

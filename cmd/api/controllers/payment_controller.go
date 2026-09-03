@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/payment"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/services"
@@ -126,6 +127,9 @@ func (pc *paymentController) CreatePreference(c *gin.Context) {
 // @Produce      json
 // @Param        body body      payment.ProcessPaymentRequest true "Payment data"
 // @Success      200  {object}  payment.PaymentResponse
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
 // @Failure      400  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/payments [post]
@@ -189,10 +193,13 @@ func (pc *paymentController) ProcessPayment(c *gin.Context) {
 
 	resp, err := pc.paymentService.ProcessPayment(c, req)
 	if err != nil {
-		customlogger.Error(c, "error processing payment", err)
-		c.JSON(http.StatusInternalServerError, apierror.APIError{
-			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal server error",
+		statusCode, code := mapPaymentError(err)
+		if statusCode == http.StatusInternalServerError {
+			customlogger.Error(c, "error processing payment", err)
+		}
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
 			Message:    "Error al procesar el pago",
 		})
 		return
@@ -365,4 +372,20 @@ func (pc *paymentController) GenerateTestCardToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// mapPaymentError traduce los errores de dominio del pago al status y custom
+// code del DTO apierror.APIError. Los códigos tipificados están en
+// domains/constants/error_code.go.
+func mapPaymentError(err error) (statusCode int, code string) {
+	switch err.Error() {
+	case "cuota de suscripcion no encontrada":
+		return http.StatusNotFound, constants.ErrorCodePaymentInstallmentNotFound
+	case "la cuota no pertenece al usuario autenticado":
+		return http.StatusForbidden, constants.ErrorCodePaymentInstallmentForbidden
+	case "usuario autenticado no encontrado en el contexto":
+		return http.StatusUnauthorized, "Unauthorized"
+	default:
+		return http.StatusInternalServerError, "Internal server error"
+	}
 }

@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"simple-arq-golang/cmd/api/domains/apierror"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/payment"
 )
 
@@ -222,6 +225,68 @@ func TestProcessPayment_MissingToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	service.AssertNotCalled(t, "ProcessPayment")
+}
+
+func TestProcessPayment_InstallmentNotFound(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments", controller.ProcessPayment)
+
+	insID := int64(501)
+	reqBody := payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		InstallmentID:     &insID,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("ProcessPayment", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, fmt.Errorf("cuota de suscripcion no encontrada"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var apiErr apierror.APIError
+	json.Unmarshal(w.Body.Bytes(), &apiErr)
+	assert.Equal(t, constants.ErrorCodePaymentInstallmentNotFound, apiErr.Code)
+}
+
+func TestProcessPayment_InstallmentForbidden(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments", controller.ProcessPayment)
+
+	insID := int64(501)
+	reqBody := payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		InstallmentID:     &insID,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("ProcessPayment", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, fmt.Errorf("la cuota no pertenece al usuario autenticado"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var apiErr apierror.APIError
+	json.Unmarshal(w.Body.Bytes(), &apiErr)
+	assert.Equal(t, constants.ErrorCodePaymentInstallmentForbidden, apiErr.Code)
 }
 
 func TestGetPaymentStatus_Success(t *testing.T) {

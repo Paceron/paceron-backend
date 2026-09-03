@@ -10,4 +10,6 @@ const (
 	ErrorCodeSellerNotConnected            = "SELLER_NOT_CONNECTED"
 	ErrorCodeTeamDebtBlocksOperation       = "TEAM_DEBT_BLOCKS_OPERATION"
 	ErrorCodeNotAppOwner                   = "NOT_APP_OWNER"
+	ErrorCodePaymentInstallmentNotFound    = "PAYMENT_INSTALLMENT_NOT_FOUND"
+	ErrorCodePaymentInstallmentForbidden   = "PAYMENT_INSTALLMENT_FORBIDDEN"
 )
