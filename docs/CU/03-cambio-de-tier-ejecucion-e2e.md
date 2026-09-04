@@ -407,6 +407,9 @@ Tras el fix, la **re-corrida completa salió verde** (la de este documento).
   `subscriptions/current`), no reintentar el cambio a ciegas.
 - El `payment_id` del pago ahora se persiste, con lo que el **polling**
   (`GET /payments/{id}`) y el **webhook** pueden confirmar y activar el tier.
-- Quirk conocido: en la respuesta de `POST /payments`, el `concept` devuelve `"order"`
-  y `description` `""` aunque el request mande `subscription`/descripción (se persiste
-  correcto para el webhook, pero el objeto de respuesta los muestra vacíos).
+- En la respuesta de `POST /payments`, el `concept` viene como `"order"` y `description`
+  como `""`. **Es comportamiento esperado**: el request del paso 8 no envía esos campos
+  (el MD tampoco los manda), así que el backend default a `"order"`/vacío. La vinculación
+  real del pago con la suscripción se hace por `installment_id` (que sí se envía y es lo
+  que el webhook usa para confirmar la cuota y activar el tier) — el `concept` es
+  cosmético y no afecta el flujo.
