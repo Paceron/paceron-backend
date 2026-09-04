@@ -156,6 +156,38 @@ func TestPaymentDao_UpdateStatus_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "payment not found")
 }
 
+func TestPaymentDao_UpdatePaymentID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentDao(db)
+
+	payment := &dbs.Payment{
+		Concept:    "subscription",
+		Description: "Payment id update test",
+		Amount:     500,
+		CurrencyID: "ARS",
+		Status:     "in_process",
+		PayerEmail: "pid@example.com",
+	}
+	require.NoError(t, dao.Create(nil, payment))
+
+	err := dao.UpdatePaymentID(nil, payment.ID, "83746512")
+	require.NoError(t, err)
+
+	found, err := dao.FindByID(nil, payment.ID)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, "83746512", found.PaymentID)
+}
+
+func TestPaymentDao_UpdatePaymentID_NotFound(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentDao(db)
+
+	err := dao.UpdatePaymentID(nil, 999999, "83746512")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment not found")
+}
+
 func TestPaymentDao_UpdateRawResponse(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewPaymentDao(db)

@@ -12,6 +12,7 @@ import (
 type PaymentDaoInterface interface {
 	Create(ctx *gin.Context, payment *dbs.Payment) error
 	UpdateStatus(ctx *gin.Context, paymentID int64, status, statusDetail string) error
+	UpdatePaymentID(ctx *gin.Context, paymentID int64, mpPaymentID string) error
 	UpdateRawResponse(ctx *gin.Context, paymentID int64, rawResponse string) error
 	UpdateExternalRef(ctx *gin.Context, paymentID int64, externalRef string) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Payment, error)
@@ -43,6 +44,17 @@ func (d *paymentDao) UpdateStatus(ctx *gin.Context, paymentID int64, status, sta
 	})
 	if result.Error != nil {
 		return fmt.Errorf("error updating payment status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("payment not found")
+	}
+	return nil
+}
+
+func (d *paymentDao) UpdatePaymentID(ctx *gin.Context, paymentID int64, mpPaymentID string) error {
+	result := d.DB.Model(&dbs.Payment{}).Where("id = ?", paymentID).Update("payment_id", mpPaymentID)
+	if result.Error != nil {
+		return fmt.Errorf("error updating payment id: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("payment not found")

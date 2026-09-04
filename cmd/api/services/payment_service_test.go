@@ -52,6 +52,11 @@ func (m *mockPaymentDao) UpdateStatus(ctx *gin.Context, paymentID int64, status,
 	return args.Error(0)
 }
 
+func (m *mockPaymentDao) UpdatePaymentID(ctx *gin.Context, paymentID int64, mpPaymentID string) error {
+	args := m.Called(ctx, paymentID, mpPaymentID)
+	return args.Error(0)
+}
+
 func (m *mockPaymentDao) UpdateRawResponse(ctx *gin.Context, paymentID int64, rawResponse string) error {
 	args := m.Called(ctx, paymentID, rawResponse)
 	return args.Error(0)
@@ -257,6 +262,7 @@ func TestProcessPayment_Success(t *testing.T) {
 		Status:       "approved",
 		StatusDetail: "accredited",
 	}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "12345").Return(nil)
 	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 
@@ -386,6 +392,7 @@ func TestProcessPayment_InstallmentOfOwnUser_Tier(t *testing.T) {
 		Status:       "approved",
 		StatusDetail: "accredited",
 	}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "12345").Return(nil)
 	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 
@@ -426,6 +433,7 @@ func TestProcessPayment_InstallmentOfOwnUser_Team(t *testing.T) {
 		Status:       "approved",
 		StatusDetail: "accredited",
 	}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "12346").Return(nil)
 	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 
@@ -459,6 +467,7 @@ func TestProcessPayment_OrderWithoutInstallment_DoesNotValidateOwnership(t *test
 		Status:       "approved",
 		StatusDetail: "accredited",
 	}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "12347").Return(nil)
 	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
 	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
 

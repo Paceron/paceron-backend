@@ -256,6 +256,16 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	}
 
 	mpPaymentID := fmt.Sprintf("%d", result.ID)
+	// Persistir el payment_id de MP: el registro se insertó antes de crear el
+	// pago en MP (Create en línea previa), así que el id vuelto por MP hay que
+	// grabarlo explícitamente. Sin esto, el webhook no puede vincular la
+	// notificación al pago local y la cuota nunca se confirma (bug detectado en
+	// la prueba end-to-end del CU cambio de tier).
+	if err := s.paymentDao.UpdatePaymentID(ctx, paymentRecord.ID, mpPaymentID); err != nil {
+		customlogger.Error(ctx, "error updating payment id", err)
+		return nil, fmt.Errorf("error updating payment id: %w", err)
+	}
+
 	if err := s.paymentDao.UpdateStatus(ctx, paymentRecord.ID, result.Status, result.StatusDetail); err != nil {
 		customlogger.Error(ctx, "error updating payment status", err)
 	}
