@@ -120,3 +120,19 @@ func TestUserRoleDao_SoftDelete_Success(t *testing.T) {
 	found, _ := dao.FindByUserAndRole(nil, user.ID, role.ID)
 	assert.Nil(t, found)
 }
+
+func TestUserRoleDao_UpdateTier_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewUserRoleDao(db)
+	user := persistUser(db, "ur-updatetier@test.com", "90000006")
+	role := testRole(db, "role_for_ur_updatetier")
+	ur := &dbs.UserRole{UserID: user.ID, RoleID: role.ID, TierID: 1, AssignmentDate: time.Now()}
+	require.NoError(t, dao.Create(nil, ur))
+
+	err := dao.UpdateTier(nil, user.ID, role.ID, 42)
+
+	require.NoError(t, err)
+	found, _ := dao.FindByUserAndRole(nil, user.ID, role.ID)
+	assert.NotNil(t, found)
+	assert.Equal(t, int64(42), found.TierID)
+}

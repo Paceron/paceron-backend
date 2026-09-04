@@ -14,6 +14,7 @@ type TierDaoInterface interface {
 	FindByID(ctx *gin.Context, id int64) (*dbs.Tier, error)
 	FindByNameAndRole(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error)
 	FindByName(ctx *gin.Context, name string) (*dbs.Tier, error)
+	FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error)
 	GetAll(ctx *gin.Context) ([]dbs.Tier, error)
 	Update(ctx *gin.Context, tier *dbs.Tier) error
 	SoftDelete(ctx *gin.Context, id int64) error
@@ -65,6 +66,23 @@ func (d *tierDao) FindByName(ctx *gin.Context, name string) (*dbs.Tier, error) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("error finding tier by name: %w", err)
+	}
+	return &tier, nil
+}
+
+// FindLowestByRole devuelve el tier de menor jerarquía (base) de un rol — sirve
+// como tier de acceso inicial cuando se asigna un rol con tier pago (D2).
+func (d *tierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+	var tier dbs.Tier
+	err := d.DB.
+		Where("role_id = ? AND deleted_at IS NULL", roleID).
+		Order("hierarchy ASC, id ASC").
+		First(&tier).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding lowest tier by role: %w", err)
 	}
 	return &tier, nil
 }

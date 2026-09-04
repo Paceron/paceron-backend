@@ -255,6 +255,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | DELETE | `/api/v1/users/:id/roles/:role_id` | Remove one of your own roles (self only; list roles via `GET /api/v1/auth/permissions?user_id=`) |
 | POST | `/api/v1/users/:id/trainer-role` | Activate your own entrenador role (self only; requires current password + a valid bank alias, own or provided) |
 | DELETE | `/api/v1/users/:id/trainer-role` | Deactivate your own entrenador role (self only; blocked while you still lead an active team) |
+| PUT | `/api/v1/users/:id/roles/:role_id/tier` | Change the tier of one of your role subscriptions (self only; body `{ "tier_id": int }`; blocked by debt or a pending first payment) |
+| GET | `/api/v1/users/:id/subscriptions/current?role_id=` | Current tier subscription / next installment to pay, with Mercado Pago `public_key` for Bricks (paid tiers; free roles return tier/role only) |
 | POST | `/api/v1/push-tokens` | Register/update a device's push token (self only, upsert by token — same device can switch accounts) |
 | GET | `/api/v1/permissions` | List all permissions |
 | GET | `/api/v1/permissions/:id` | Get permission by ID |
@@ -301,6 +303,12 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/invitations/:id` | Get invitation detail (must be the invitee) |
 | POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
+| GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
+| GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
+| GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |
+| GET | `/api/v1/mercadopago/connect/status` | Mercado Pago connection status of the authenticated user |
+| GET | `/api/v1/platform-settings/marketplace-fee` | Get Paceron marketplace fee percentage |
+| PUT | `/api/v1/platform-settings/marketplace-fee` | Update Paceron marketplace fee percentage (app owner only) |
 
 ## Run
 

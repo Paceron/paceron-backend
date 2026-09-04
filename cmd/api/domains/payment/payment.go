@@ -1,10 +1,11 @@
 package payment
 
 type CreatePreferenceRequest struct {
-	Items       []PreferenceItem `json:"items" binding:"required"`
-	Concept     string           `json:"concept" binding:"required"`
-	SellerID    *int64           `json:"seller_id"`
-	Description string           `json:"description"`
+	Items          []PreferenceItem `json:"items" binding:"required"`
+	Concept        string           `json:"concept" binding:"required"`
+	SellerID       *int64           `json:"seller_id"`
+	Description    string           `json:"description"`
+	InstallmentID  *int64           `json:"installment_id"` // cuota a la que se vincula el pago
 }
 
 type PreferenceItem struct {
@@ -25,6 +26,9 @@ type ProcessPaymentRequest struct {
 	Installments      int     `json:"installments" binding:"required,min=1"`
 	PayerEmail        string  `json:"payer_email" binding:"required,email"`
 	PreferenceID      string  `json:"preference_id"`
+	InstallmentID     *int64  `json:"installment_id"` // cuota a la que se vincula el pago
+	Concept           string  `json:"concept"`         // team_subscription | order
+	Description       string  `json:"description"`
 }
 
 type PaymentResponse struct {

@@ -14,6 +14,7 @@ type UserRoleDaoInterface interface {
 	FindByUserAndRole(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.UserRole, error)
 	SoftDelete(ctx *gin.Context, id int64) error
+	UpdateTier(ctx *gin.Context, userID, roleID, tierID int64) error
 }
 
 type userRoleDao struct {
@@ -53,4 +54,13 @@ func (d *userRoleDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.UserRo
 
 func (d *userRoleDao) SoftDelete(ctx *gin.Context, id int64) error {
 	return d.DB.Model(&dbs.UserRole{}).Where("id = ?", id).Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// UpdateTier actualiza el tier de la asignación vigente de (user_id, role_id).
+// Se usa para la sincronización del acceso: tier pago al confirmarse la cuota #1
+// (D3) y tier gratis inmediato al cambiar (D4).
+func (d *userRoleDao) UpdateTier(ctx *gin.Context, userID, roleID, tierID int64) error {
+	return d.DB.Model(&dbs.UserRole{}).
+		Where("user_id = ? AND role_id = ? AND deleted_at IS NULL", userID, roleID).
+		Update("tier_id", tierID).Error
 }

@@ -62,11 +62,14 @@ type MailerConfig struct {
 }
 
 type MercadoPago struct {
-	AccessToken   string
-	PublicKey     string
-	WebhookSecret string
-	WebhookURL    string
-	CurrencyID    string
+	AccessToken       string
+	PublicKey         string
+	WebhookSecret     string
+	WebhookURL        string
+	CurrencyID        string
+	OAuthClientID     string
+	OAuthClientSecret string
+	OAuthRedirectURI  string
 }
 
 type StorageConfig struct {
@@ -86,6 +89,7 @@ var (
 	RefreshTokenDuration time.Duration
 	MyMailer             MailerConfig
 	MyMP                 MercadoPago
+	TokenEncryptionKey   string
 	MyStorage            StorageConfig
 )
 
@@ -218,6 +222,10 @@ func loadMercadoPagoConfig() {
 	MyMP.WebhookSecret = os.Getenv("MERCADOPAGO_WEBHOOK_SECRET")
 	MyMP.WebhookURL = getEnvOrDefault("MERCADOPAGO_WEBHOOK_URL", "")
 	MyMP.CurrencyID = getEnvOrDefault("MERCADOPAGO_CURRENCY_ID", "ARS")
+	MyMP.OAuthClientID = os.Getenv("MP_OAUTH_CLIENT_ID")
+	MyMP.OAuthClientSecret = os.Getenv("MP_OAUTH_CLIENT_SECRET")
+	MyMP.OAuthRedirectURI = os.Getenv("MP_OAUTH_REDIRECT_URI")
+	TokenEncryptionKey = os.Getenv("TOKEN_ENCRYPTION_KEY")
 }
 
 // stagedStorageEnvPrefix resuelve qué proyecto de storage de Supabase usar según

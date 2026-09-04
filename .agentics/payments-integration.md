@@ -15,13 +15,13 @@ Que un usuario pueda pagar desde la app (Expo/React Native + React Native Web) u
 El modelo contempla desde el inicio **dos tipos de pago**, diferenciados por el campo `concept` en `payments`:
 
 | `concept` | ¿Quién cobra? | ¿Quién paga? | Ejemplos |
-|---|---|---|---|
+|---|---|---|--|
 | `order` | Paceron (la app) | Usuario | Orden de pago (compra de un producto/servicio de la app) |
-| `subscription` | Paceron (la app) | Usuario | Cuota de suscripción |
-| `session` | Entrenador (su cuenta MP) | Usuario | Sesión de entrenamiento; Paceron cobra su comisión (`marketplace_fee`) |
+| `subscription` | Paceron (la app) | Usuario | Cuota de suscripción (tier) |
+| `team_subscription` | Entrenador (su cuenta MP) | Usuario (corredor) | Cuota de membresía al equipo; Paceron cobra su comisión (`marketplace_fee`) |
 
 - **Sin split** (`order` / `subscription`): el caso más simple — un solo vendedor (Paceron) y el importe completo entra a la cuenta MP de Paceron. `marketplace_fee` y `seller_user_id` quedan `null`.
-- **Con split** (`session`): el importe entra a la cuenta MP del entrenador y Paceron retiene su comisión. Ver [Split payments (marketplace)](#split-payments-marketplace).
+- **Con split** (`team_subscription`): el importe entra a la cuenta MP del entrenador y Paceron retiene su comisión. Ver [Split payments (marketplace)](#split-payments-marketplace).
 
 Todo respetando la arquitectura en capas del repo: `Controllers → Delegates → Services → DAOs/RestClients → Infrastructure`.
 
@@ -582,3 +582,60 @@ Todas con **CVV `123`** y **vencimiento `11/30`**:
 2. Validar webhook (apuntando `MERCADOPAGO_WEBHOOK_URL` a la URL de staging de Render) y conciliación de estados.
 3. Mover a staging/producción con URL real de webhook.
 4. **Split (iteración 2):** OAuth mp-connect + `seller_connections`, preferencia con `access_token` del entrenador + `marketplace_fee` desde `platform_settings`, pruebas con cuenta de prueba rol vendedor.
+
+---
+
+## Flujo de suscripción de tier (ledger de cuotas) — implementado
+
+> Este flujo ya está implementado (change `cambio-tier-suscripciones`). Es el caso `subscription` del pago simple, pero con un **ledger de cuotas** detrás (`user_role_tier_subscriptions` + `installments`): cada cuota se paga con su propio `preference` + `payments` + webhook, y el webhook avanza el ciclo mensual automáticamente.
+
+### Ciclo de pago de una cuota
+
+```
+Frontend                          Backend                          Mercado Pago
+   |  GET /users/:id/subscriptions/current?role_id=X (próxima cuota + public_key)
+   |---------------------------------------------------------------->|
+   |<-- { subscription, installment (id, amount, due), tier, role,  |
+   |      mercadopago.public_key }                                   |
+   |  POST /api/v1/payments/preference { installment_id, ... }       |
+   |--------------------------------------------------------------->|
+   |<------------------------------------------ { preference_id, public_key }
+   |  Renderiza Payment Brick (amount, preferenceId)
+   |  POST /api/v1/payments { preference_id, installment_id, token,...}
+   |--------------------------------------------------------------->|
+   |<---------------------------------------------- { payment_id, status }
+   |  [MP dispara webhook payment]                                  |
+   |   POST /api/v1/payments/webhook (firma validada)  |            |
+   |<--------------------------------------------------|------------|
+   |                                                   |-> get payment
+   |                    actualiza cuota a paid (idempotente),
+   |                    sub activa + tier sync (cuota #1),
+   |                    crea cuota N+1 con due=+1 mes, blocked=+7d
+```
+
+### Endpoints clave
+
+- `GET /api/v1/users/:id/subscriptions/current?role_id=X` — próxima cuota a pagar (D9). Si el rol es gratis devuelve solo `tier`/`role`; si es pago incluye `installment_id`, `installment_amount`, `next_due_date`, `blocked_date` y `mercadopago.public_key`.
+- `PUT /api/v1/users/:id/roles/:role_id/tier` — cambia de tier (body `{ "tier_id": int }`). Validaciones D4: asignación previa, mismo rol, **sin deuda** (`DEBT_BLOCKS_OPERATION`), **sin primer pago impago** (`SUBSCRIPTION_PENDING_FIRST_PAYMENT`). Target pago → sub `first_payment_pending` + cuota #1; target gratis → sub `active` + sync inmediato de `user_roles.tier_id`.
+- `POST /api/v1/payments/preference` y `POST /api/v1/payments` — aceptan `installment_id` opcional. Cuando viene, el pago queda ligado a la cuota (`payments.installment_id`).
+- `POST /api/v1/payments/webhook` — al confirmarse `approved` con `installment_id`: marca la cuota `paid` (condicional `WHERE status='pending'`, **idempotente ante doble notificación**), incrementa `paid_installments`, y si fue la cuota #1 activa la suscripción y sincroniza `user_roles.tier_id` → tier pago (D3); luego crea la cuota N+1 en el mismo commit (D6).
+
+### Tipos de cuota
+
+| Caso | `due_date` / `blocked_date` |
+|---|---|
+| Cuota #1 (asignación paga o cambio a tier pago) | `null` — el primer pago nunca genera deuda |
+| Cuota N+1 | `due` = cuota anterior + 1 mes (o `start_date` + 1 mes si la anterior era #1); `blocked` = `due` + 7 días de gracia |
+
+### Errores tipificados (D11)
+
+| Mensaje | Status | `code` |
+|---|---|---|
+| `el tier no pertenece al rol especificado` | 400 | `TIER_ROLE_MISMATCH` |
+| `no podés cambiar de tier con deuda pendiente` | 409 | `DEBT_BLOCKS_OPERATION` |
+| `no podés cambiar de tier con el primer pago pendiente` | 409 | `SUBSCRIPTION_PENDING_FIRST_PAYMENT` |
+| `tier no encontrado` | 404 | `TIER_NOT_FOUND` |
+
+### Pendiente (cambio siguiente)
+
+El pago **con split a entrenador** (`seller` + `marketplace_fee`) sigue pendiente; las cuotas de equipo (`installments.team_id`) se crean en el modelado pero el flujo webhook solo las marca `paid`, lo completa `suscipcion-teams-split`.

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -42,6 +43,8 @@ type invitationService struct {
 	mailer        mailer.MailerInterface
 	pushTokenDao  daos.PushTokenDaoInterface
 	pushClient    expopushclient.ExpoPushClientInterface
+	installDao    daos.InstallmentDaoInterface
+	db            *gorm.DB // para la transacción del gate de membresía (D2)
 }
 
 // NewInvitationService crea una nueva instancia de InvitationService.
@@ -55,6 +58,8 @@ func NewInvitationService(
 	mailerClient mailer.MailerInterface,
 	pushTokenDao daos.PushTokenDaoInterface,
 	pushClient expopushclient.ExpoPushClientInterface,
+	installDao daos.InstallmentDaoInterface,
+	db *gorm.DB,
 ) InvitationServiceInterface {
 	return &invitationService{
 		userDao:       userDao,
@@ -66,6 +71,8 @@ func NewInvitationService(
 		mailer:        mailerClient,
 		pushTokenDao:  pushTokenDao,
 		pushClient:    pushClient,
+		installDao:    installDao,
+		db:            db,
 	}
 }
 
@@ -374,7 +381,22 @@ func (s *invitationService) AcceptInvitation(ctx *gin.Context, invitationID, use
 			Status:         "active",
 			AssignmentDate: time.Now(),
 		}
-		if err := s.teamUserDao.Create(ctx, teamUser); err != nil {
+
+		// Gate D2 (igual que AddUser): unirse a un equipo con mensualidad exige
+		// el primer pago — team_user first_payment_pending + cuota #1; gratis →
+		// active sin cuotas.
+		teamDB, err := s.teamDao.FindByID(ctx, inv.TeamID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding team on accept invitation", err,
+				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
+				customlogger.TagMethod("AcceptInvitation"))
+			return nil, fmt.Errorf("error al procesar la invitación")
+		}
+		if teamDB == nil {
+			return nil, fmt.Errorf("equipo no encontrado")
+		}
+
+		if err := ApplyTeamMembershipGate(ctx, s.db, s.teamUserDao, s.installDao, teamUser, teamDB.MembershipFee); err != nil {
 			customlogger.Error(ctx, "error creating team_user on accept invitation", err,
 				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
 				customlogger.TagMethod("AcceptInvitation"))

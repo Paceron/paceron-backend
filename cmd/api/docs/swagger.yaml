@@ -315,12 +315,42 @@ definitions:
         description: Mensaje de confirmación
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_mpconnect.AuthURLResponse:
+    properties:
+      auth_url:
+        type: string
+      state:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_mpconnect.CallbackResponse:
+    properties:
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  simple-arq-golang_cmd_api_domains_mpconnect.DeauthWebhookRequest:
+    properties:
+      user_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_mpconnect.StatusResponse:
+    properties:
+      account_status:
+        description: authorized | deauthorized
+        type: string
+      connected:
+        type: boolean
+    type: object
   simple-arq-golang_cmd_api_domains_payment.CreatePreferenceRequest:
     properties:
       concept:
         type: string
       description:
         type: string
+      installment_id:
+        description: cuota a la que se vincula el pago
+        type: integer
       items:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PreferenceItem'
@@ -505,6 +535,14 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_payment.ProcessPaymentRequest:
     properties:
+      concept:
+        description: team_subscription | order
+        type: string
+      description:
+        type: string
+      installment_id:
+        description: cuota a la que se vincula el pago
+        type: integer
       installments:
         minimum: 1
         type: integer
@@ -615,6 +653,22 @@ definitions:
       name:
         description: Nuevo nombre del permiso (opcional)
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_platformsettings.MarketplaceFeeResponse:
+    properties:
+      marketplace_fee_percent:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_platformsettings.UpdateMarketplaceFeeRequest:
+    properties:
+      marketplace_fee_percent:
+        maximum: 100
+        minimum: 0
+        type: number
+    required:
+    - marketplace_fee_percent
     type: object
   simple-arq-golang_cmd_api_domains_pushtoken.RegisterPushTokenRequest:
     properties:
@@ -803,6 +857,61 @@ definitions:
         description: Si los corredores ven a qué grupo pertenece cada compañero (opcional)
         type: boolean
     type: object
+  simple-arq-golang_cmd_api_domains_teambio.MembershipInfo:
+    properties:
+      init_amount:
+        type: number
+      paid_installments:
+        type: integer
+      start_date:
+        type: string
+      subscription_status:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_teambio.MercadoPagoCheckout:
+    properties:
+      concept:
+        type: string
+      marketplace:
+        type: boolean
+      public_key:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_teambio.NextInstallmentInfo:
+    properties:
+      blocked_date:
+        type: string
+      installment_amount:
+        type: number
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      next_due_date:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_teambio.TeamInfo:
+    properties:
+      id:
+        type: integer
+      membership_fee:
+        type: number
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionResponse:
+    properties:
+      has_debt:
+        type: boolean
+      membership:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.MembershipInfo'
+      mercadopago:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.MercadoPagoCheckout'
+      next_installment:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.NextInstallmentInfo'
+      team:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo'
+    type: object
   simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
     properties:
       role_in_team:
@@ -877,6 +986,9 @@ definitions:
       description:
         description: Descripción del tier
         type: string
+      hierarchy:
+        description: Orden jerárquico (base=1, medium=2, premium=3)
+        type: integer
       id:
         description: ID del tier
         type: integer
@@ -942,6 +1054,87 @@ definitions:
       tier_id:
         description: ID del tier
         type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest:
+    properties:
+      tier_id:
+        description: ID del tier target (mismo role_id que la asignación)
+        type: integer
+    required:
+    - tier_id
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse:
+    properties:
+      blocked_date:
+        type: string
+      installment_amount:
+        type: number
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mercadopago:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo'
+      next_due_date:
+        type: string
+      paid_installments:
+        type: integer
+      role:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo'
+      subscription_id:
+        type: integer
+      subscription_status:
+        type: string
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse:
+    properties:
+      blocked_date:
+        type: string
+      installment_amount:
+        type: number
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mercadopago:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo'
+      next_due_date:
+        type: string
+      paid_installments:
+        type: integer
+      role:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo'
+      subscription_id:
+        type: integer
+      subscription_status:
+        type: string
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.MercadoPagoInfo:
+    properties:
+      public_key:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.RoleInfo:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.TierInfo:
+    properties:
+      hierarchy:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+      payment_required:
+        type: boolean
     type: object
   simple-arq-golang_cmd_api_domains_user.BatchLookupResponse:
     properties:
@@ -1810,6 +2003,122 @@ paths:
       summary: Rechazar invitación
       tags:
       - invitations
+  /api/v1/mercadopago/connect:
+    get:
+      consumes:
+      - application/json
+      description: Returns the authorization URL to connect a Mercado Pago account
+        for split payments.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.AuthURLResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get Mercado Pago OAuth authorization URL
+      tags:
+      - mercadopago-connect
+  /api/v1/mercadopago/connect/callback:
+    get:
+      consumes:
+      - application/json
+      description: Processes the OAuth callback from Mercado Pago, exchanges code
+        for tokens, and stores the connection.
+      parameters:
+      - description: Authorization code
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: CSRF state
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.CallbackResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Handle Mercado Pago OAuth callback
+      tags:
+      - mercadopago-connect
+  /api/v1/mercadopago/connect/status:
+    get:
+      consumes:
+      - application/json
+      description: Returns whether the authenticated user has a connected Mercado
+        Pago account.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get Mercado Pago connection status
+      tags:
+      - mercadopago-connect
+  /api/v1/mercadopago/webhook/connect:
+    post:
+      consumes:
+      - application/json
+      description: Marks the seller connection as deauthorized when MP notifies the
+        seller disconnected the app. Idempotent (MP re-sends).
+      parameters:
+      - description: Deauthorization notification
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.DeauthWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Handle Mercado Pago deauthorization webhook
+      tags:
+      - mercadopago-connect
   /api/v1/payments:
     post:
       consumes:
@@ -1831,6 +2140,18 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
@@ -2160,6 +2481,62 @@ paths:
       summary: Get permission by name
       tags:
       - permissions
+  /api/v1/platform-settings/marketplace-fee:
+    get:
+      consumes:
+      - application/json
+      description: Returns the current marketplace fee percentage.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_platformsettings.MarketplaceFeeResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get marketplace fee
+      tags:
+      - platform-settings
+    put:
+      consumes:
+      - application/json
+      description: Updates the marketplace fee percentage (admin/owner only).
+      parameters:
+      - description: New fee percentage
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_platformsettings.UpdateMarketplaceFeeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_platformsettings.MarketplaceFeeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Update marketplace fee
+      tags:
+      - platform-settings
   /api/v1/push-tokens:
     post:
       consumes:
@@ -2920,7 +3297,13 @@ paths:
       - team-users
   /api/v1/tiers:
     get:
-      description: Get all active tiers
+      description: Get all active tiers. Si se pasa role_id, devuelve solo los tiers
+        de ese rol
+      parameters:
+      - description: Filtrar por rol (opcional)
+        in: query
+        name: role_id
+        type: integer
       produces:
       - application/json
       responses:
@@ -2930,6 +3313,10 @@ paths:
             items:
               $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -3488,6 +3875,59 @@ paths:
       summary: Remove a role from a user
       tags:
       - user-roles
+  /api/v1/users/{id}/roles/{role_id}/tier:
+    put:
+      consumes:
+      - application/json
+      description: Changes the tier of an assigned role, blocking if there is debt
+        or a pending first payment.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: path
+        name: role_id
+        required: true
+        type: integer
+      - description: Target tier
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Change tier of a role subscription
+      tags:
+      - user-roles
   /api/v1/users/{id}/status:
     patch:
       consumes:
@@ -3532,6 +3972,86 @@ paths:
       summary: Change user status
       tags:
       - users
+  /api/v1/users/{id}/subscriptions/current:
+    get:
+      description: Returns the current subscription and next installment to pay for
+        the role (Bricks checkout data). Free roles return tier/role only.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: query
+        name: role_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.CurrentSubscriptionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get current subscription of a role
+      tags:
+      - user-roles
+  /api/v1/users/{id}/teams/{team_id}/subscription:
+    get:
+      consumes:
+      - application/json
+      description: Returns the subscription status for a user in a team (membership,
+        next installment, debt status, checkout data).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Team ID
+        in: path
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get team subscription status
+      tags:
+      - team-subscriptions
   /api/v1/users/{id}/trainer-role:
     delete:
       description: Desactiva el rol entrenador del usuario autenticado sobre sí mismo.

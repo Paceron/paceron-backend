@@ -1,0 +1,32 @@
+info:
+  name: 1 - Login
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/auth/login
+  body:
+    type: json
+    data: |-
+      {
+        "email": "corredor@example.com",
+        "password": "Abcd-12345"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        bru.setVar("token", body.access_token);
+        bru.setVar("user_id", body.user.user_id);
+        console.log("token:", bru.getVar("token"));
+        console.log("user_id:", bru.getVar("user_id"));
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

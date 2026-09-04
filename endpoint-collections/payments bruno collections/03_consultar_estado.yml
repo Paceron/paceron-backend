@@ -5,14 +5,10 @@ info:
 
 http:
   method: GET
-  url: http://localhost:8080/api/v1/payments/1?Authorization=Bearer {{token}}
+  url: http://localhost:8080/api/v1/payments/1
   headers:
     - name: Authorization
       value: Bearer {{token}}
-  params:
-    - name: Authorization
-      value: Bearer {{token}}
-      type: query
 
 settings:
   encodeUrl: true

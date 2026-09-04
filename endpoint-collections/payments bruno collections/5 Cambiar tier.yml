@@ -1,0 +1,24 @@
+info:
+  name: 5 Cambiar tier
+  type: http
+  seq: 5
+
+http:
+  method: PUT
+  url: http://localhost:8080/api/v1/users/{{user_id}}/roles/{{role_id}}/tier
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "tier_id": {{tier_id}}
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

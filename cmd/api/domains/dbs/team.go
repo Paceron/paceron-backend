@@ -13,6 +13,7 @@ type Team struct {
 	MaxMembers          int64      `gorm:"column:max_members;not null"`                          // Cantidad máxima de integrantes permitidos
 	Requirements        string     `gorm:"column:requirements"`                                  // Requerimientos para entrar al equipo
 	OwnerID             int64      `gorm:"column:owner_id;not null"`                             // ID del usuario owner (debe tener rol "entrenador")
+	MembershipFee       float64    `gorm:"column:membership_fee;not null;default:0"`             // Mensualidad que paga cada corredor al entrenador (0 = gratis)
 	Status              string     `gorm:"column:status;not null;default:active"`                // Estado del equipo (active, inactive, archived)
 	ShowGroupsToRunners bool       `gorm:"column:show_groups_to_runners;not null;default:false"` // Si los corredores ven a qué grupo pertenece cada compañero
 	Country             string     `gorm:"column:country"`                                       // Dirección: país

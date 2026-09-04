@@ -25,6 +25,9 @@ type MercadoPagoClientInterface interface {
 	GetPayment(ctx context.Context, accessToken string, paymentID int) (*payment.Response, error)
 	ValidateWebhookSignature(xSignature, xRequestID, dataID, secret string) error
 	GenerateCardToken(ctx context.Context, accessToken string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error)
+	GetAuthURL(redirectURI string, state string) string
+	ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error)
+	GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error)
 }
 
 type PreferenceItem struct {
@@ -50,6 +53,20 @@ type PaymentResult struct {
 	Status        string
 	StatusDetail  string
 	FeeDetailsRaw json.RawMessage
+}
+
+type OAuthTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+	UserID       int64  `json:"user_id"`
+}
+
+type UserInfoResponse struct {
+	ID   int64  `json:"id"`
+	Nick string `json:"nickname"`
 }
 
 type mpClient struct{}
@@ -232,4 +249,75 @@ func (c *mpClient) GenerateCardToken(ctx context.Context, accessToken string, ca
 	}
 
 	return tokenResp.ID, nil
+}
+
+func (c *mpClient) GetAuthURL(redirectURI string, state string) string {
+	clientID := appconfig.MyMP.OAuthClientID
+	if clientID == "" {
+		customlogger.Error(nil, "MP OAuth client ID not configured", fmt.Errorf("missing client ID"))
+		return ""
+	}
+	return fmt.Sprintf("https://auth.mercadopago.com/authorization?client_id=%s&response_type=code&redirect_uri=%s&state=%s", clientID, redirectURI, state)
+}
+
+func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error) {
+	url := "https://api.mercadopago.com/oauth/token"
+	body := fmt.Sprintf("client_id=%s&client_secret=%s&grant_type=authorization_code&redirect_uri=%s&code=%s", clientID, clientSecret, redirectURI, code)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("error creating token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error exchanging code: HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var tokenResp OAuthTokenResponse
+	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+		return nil, fmt.Errorf("error parsing token response: %w", err)
+	}
+
+	return &tokenResp, nil
+}
+
+func (c *mpClient) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error) {
+	url := fmt.Sprintf("https://api.mercadopago.com/users/me?access_token=%s", accessToken)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating user info request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending user info request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error getting user info: HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var userResp UserInfoResponse
+	if err := json.Unmarshal(respBody, &userResp); err != nil {
+		return nil, fmt.Errorf("error parsing user info response: %w", err)
+	}
+
+	return &userResp, nil
 }

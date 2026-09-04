@@ -31,8 +31,8 @@ runtime:
     - type: after-response
       code: |-
         const body = res.getBody();
-        bru.setVar("preference", body.preference_id);
-        console.log("preference:", bru.getVar("preference_id"));
+        bru.setVar("preference_id", body.preference_id);
+        console.log("preference_id:", bru.getVar("preference_id"));
 
         bru.setVar("public_key", body.public_key);
         console.log("public_key:", bru.getVar("public_key"));

@@ -238,19 +238,44 @@ func (tc *tierController) GetByName(c *gin.Context) {
 
 // GetAll godoc
 // @Summary      Get all tiers
-// @Description  Get all active tiers
+// @Description  Get all active tiers. Si se pasa role_id, devuelve solo los tiers de ese rol
 // @Tags         tiers
 // @Produce      json
+// @Param        role_id  query     int  false  "Filtrar por rol (opcional)"
 // @Success      200  {array}   tier.TierResponse
+// @Failure      400  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/tiers [get]
 func (tc *tierController) GetAll(c *gin.Context) {
-	response, err := tc.tierService.GetAll(c)
+	var roleID *int64
+	if roleIDStr := c.Query("role_id"); roleIDStr != "" {
+		parsed, err := strconv.ParseInt(roleIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apierror.APIError{
+				StatusCode: http.StatusBadRequest,
+				Code:       "Bad request",
+				Message:    "role_id debe ser un número válido",
+			})
+			return
+		}
+		roleID = &parsed
+	}
+
+	response, err := tc.tierService.GetAll(c, roleID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, apierror.APIError{
-			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal Server Error",
-			Message:    err.Error(),
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errMsg == "rol no encontrado" {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
 		})
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -31,6 +32,8 @@ type teamUserService struct {
 	mailer       mailer.MailerInterface
 	pushTokenDao daos.PushTokenDaoInterface
 	pushClient   expopushclient.ExpoPushClientInterface
+	installDao   daos.InstallmentDaoInterface
+	db           *gorm.DB // para la transacción del gate de membresía (D2)
 }
 
 // NewTeamUserService crea una nueva instancia de TeamUserService.
@@ -43,6 +46,8 @@ func NewTeamUserService(
 	mailerClient mailer.MailerInterface,
 	pushTokenDao daos.PushTokenDaoInterface,
 	pushClient expopushclient.ExpoPushClientInterface,
+	installDao daos.InstallmentDaoInterface,
+	db *gorm.DB,
 ) TeamUserServiceInterface {
 	return &teamUserService{
 		teamUserDao:  teamUserDao,
@@ -53,6 +58,8 @@ func NewTeamUserService(
 		mailer:       mailerClient,
 		pushTokenDao: pushTokenDao,
 		pushClient:   pushClient,
+		installDao:   installDao,
+		db:           db,
 	}
 }
 
@@ -128,7 +135,11 @@ func (s *teamUserService) AddUser(ctx *gin.Context, teamID int64, callerID int64
 		AssignmentDate: time.Now(),
 	}
 
-	if err := s.teamUserDao.Create(ctx, teamUser); err != nil {
+	// Gate D2: unirse a un equipo con mensualidad exige el primer pago. Si el
+	// equipo es gratis (membership_fee = 0), el team_user se crea directamente
+	// active. En equipos pago se crea first_payment_pending + cuota #1 (en
+	// transacción) y el acceso pleno llega recién al pagarla.
+	if err := ApplyTeamMembershipGate(ctx, s.db, s.teamUserDao, s.installDao, teamUser, teamDB.MembershipFee); err != nil {
 		customlogger.Error(ctx, "error adding user to team", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
 			customlogger.Tag("user_id", fmt.Sprintf("%d", req.UserID)),
@@ -251,6 +262,28 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 
 	if existing.RoleInTeam == "entrenador" {
 		return fmt.Errorf("no se puede quitar al entrenador del equipo")
+	}
+
+	// Gate D4: si el equipo cobra mensualidad, no se puede dejar el equipo con
+	// deuda (cuota pending pasada su blocked_date/due_date de la membresía
+	// vigente). La cuota #1 nunca es deuda. Sin deuda se permite la baja y el
+	// historial financiero queda en installments.
+	if teamDB.MembershipFee > 0 {
+		pending, err := s.installDao.FindPendingByUserTeam(ctx, teamID, targetUserID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking membership debt for removal", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
+				customlogger.TagMethod("RemoveUser"))
+			return fmt.Errorf("error al quitar usuario del equipo")
+		}
+		if HasPendingDebt(pending) {
+			customlogger.Warn(ctx, "blocking team user removal: membership has pending debt",
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
+				customlogger.TagMethod("RemoveUser"))
+			return fmt.Errorf("no podés dejar el equipo con deuda pendiente")
+		}
 	}
 
 	if err := s.teamUserDao.SoftDelete(ctx, existing.ID); err != nil {

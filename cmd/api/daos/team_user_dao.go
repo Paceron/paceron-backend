@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -20,6 +21,9 @@ type TeamUserDaoInterface interface {
 	HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, error)
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 	SoftDelete(ctx *gin.Context, id int64) error
+	IncrementPaidInstallments(ctx *gin.Context, teamUserID int64) error
+	ActivateSubscription(ctx *gin.Context, teamUserID int64) error
+	SetSubscriptionStatus(ctx *gin.Context, teamUserID int64, status string) error
 }
 
 type teamUserDao struct {
@@ -116,4 +120,26 @@ func (d *teamUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
 	return d.DB.Model(&dbs.TeamUser{}).
 		Where("team_id = ? AND deleted_at IS NULL", teamID).
 		Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// IncrementPaidInstallments incrementa el contador denormalizado de cuotas
+// pagadas de una membresía de equipo (D10).
+func (d *teamUserDao) IncrementPaidInstallments(ctx *gin.Context, teamUserID int64) error {
+	return d.DB.Model(&dbs.TeamUser{}).
+		Where("id = ? AND deleted_at IS NULL", teamUserID).
+		UpdateColumn("paid_installments", gorm.Expr("paid_installments + 1")).Error
+}
+
+// ActivateSubscription pasa una membresía de equipo a active (cuota #1 pagada).
+func (d *teamUserDao) ActivateSubscription(ctx *gin.Context, teamUserID int64) error {
+	return d.DB.Model(&dbs.TeamUser{}).
+		Where("id = ?", teamUserID).
+		Update("subscription_status", string(constants.SubscriptionStatusActive)).Error
+}
+
+// SetSubscriptionStatus setea el estado de suscripción de una membresía de equipo.
+func (d *teamUserDao) SetSubscriptionStatus(ctx *gin.Context, teamUserID int64, status string) error {
+	return d.DB.Model(&dbs.TeamUser{}).
+		Where("id = ?", teamUserID).
+		Update("subscription_status", status).Error
 }
