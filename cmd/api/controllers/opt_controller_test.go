@@ -19,6 +19,8 @@ type mockUserService struct {
 	mockChangePassword func(ctx *gin.Context, id int64, currentPassword, newPassword string) error
 	mockSearch         func(ctx *gin.Context, query string) (*user.SearchResponse, error)
 	mockBatchLookup    func(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error)
+	mockUploadPhoto    func(ctx *gin.Context, userID int64, content []byte) (*string, error)
+	mockDeletePhoto    func(ctx *gin.Context, userID int64) error
 }
 
 func (m mockUserService) GetUser(ctx *gin.Context, userID int64) (user.User, error) {
@@ -43,6 +45,20 @@ func (m mockUserService) Search(ctx *gin.Context, query string) (*user.SearchRes
 
 func (m mockUserService) BatchLookup(ctx *gin.Context, userIDs []int64) (*user.BatchLookupResponse, error) {
 	return m.mockBatchLookup(ctx, userIDs)
+}
+
+func (m mockUserService) UploadPhoto(ctx *gin.Context, userID int64, content []byte) (*string, error) {
+	if m.mockUploadPhoto != nil {
+		return m.mockUploadPhoto(ctx, userID, content)
+	}
+	return nil, nil
+}
+
+func (m mockUserService) DeletePhoto(ctx *gin.Context, userID int64) error {
+	if m.mockDeletePhoto != nil {
+		return m.mockDeletePhoto(ctx, userID)
+	}
+	return nil
 }
 
 func TestUserController_Search_Success(t *testing.T) {

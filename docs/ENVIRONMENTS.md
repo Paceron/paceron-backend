@@ -1,6 +1,6 @@
 # Stages de Supabase: testing vs. production
 
-Dos proyectos de Supabase separados (DB por ahora — storage S3 queda para cuando arranque esa iniciativa, ver `openspec/changes/postgres-ci-dao-tests/design.md` y memoria de sesión). **Default siempre testing, producción exige un flag explícito** — a propósito, para que un deploy mal configurado nunca termine pegándole a datos reales por accidente.
+Dos proyectos de Supabase separados — DB y storage S3, mismo split. **Default siempre testing, producción exige un flag explícito** — a propósito, para que un deploy mal configurado nunca termine pegándole a datos reales por accidente.
 
 ## Cómo se elige el stage
 
@@ -46,6 +46,29 @@ Dos services (`render.yaml`), mismo repo:
 
 1. **`paceron-backend`** (master, producción): `SUPABASE_PRODUCTION_DATABASE_URL` con el valor de producción, más `JWT_SECRET`/`RESEND_API_KEY`/`RESEND_FROM_ADDRESS`.
 2. **`paceron-backend-develop`** (develop, testing): `SUPABASE_TESTING_DATABASE_URL` con el valor de testing, más los mismos `JWT_SECRET`/`RESEND_*` (compartidos, no dependen del stage — un proveedor de mail no maneja datos que requieran aislamiento como la DB) o propios si más adelante se prefiere aislar también el envío de mail — no resuelto acá, mismo criterio que se use hoy.
+
+## Storage (Supabase Buckets)
+
+Mismo split testing/producción que la DB — **buckets en proyectos separados** (`testing_stage_bucket` / `production_stage_bucket`), no un solo bucket con dos prefijos.
+
+| Variable | Stage |
+|---|---|
+| `SUPABASE_TESTING_S3_*` | testing (default) — bucket `testing_stage_bucket` |
+| `SUPABASE_PRODUCTION_S3_*` | production (`--stage=production`) — bucket `production_stage_bucket` |
+
+### Bucket público (avatares e íconos de equipo)
+
+Ambos buckets están marcados **`public = true`** (toggle "Public bucket" del dashboard de Supabase, aplicado en los dos proyectos). Sirven foto de perfil de usuario (`avatars/user-{id}.{ext}`, `cmd/api/services/user_service.go`) e ícono de equipo (`teams/team-{id}-icon.{ext}`, `cmd/api/services/team_service.go`) vía URL pública directa, sin pasar por el backend.
+
+**Por qué no RLS scopeada por prefijo** (evaluado y descartado): la URL pública de Supabase Storage (`/storage/v1/object/public/<bucket>/<path>`, la que usa un `<img src>` sin headers) **ignora RLS por completo** — depende únicamente del flag `public` del bucket, todo-o-nada. Confirmado por un colaborador de Supabase: ["You have to decide if you want the entire bucket public or not. It can't be done on a folder basis."](https://github.com/orgs/supabase/discussions/18415) No hay término medio en ningún sentido — ni RLS scopeada sobre bucket privado, ni bucket público con RLS "reprivatizando" una carpeta.
+
+**Aceptado como suficiente para este proyecto** (tesis, no producto de mercado con datos de terceros en juego): las fotos no son información sensible. Documentos privados (certificados médicos, diplomas, certificaciones) quedan pendientes — cuando se necesiten, van a un **bucket nuevo y separado**, privado, con RLS real (ahí sí cumple su función, porque nunca se sirve por la URL pública). Nunca comparte bucket con las fotos.
+
+El `PUT`/upload no depende de este flag — corre con la `service_role` key del backend, que bypasea cualquier RLS/ACL igual.
+
+### Lectura: directo a Supabase, no proxy por backend
+
+El frontend consume las URLs públicas (`photo_url`/`icon_url`) directo contra Supabase, no a través del backend — decisión ya tomada en el diseño de la feature (`openspec/changes/fotos-perfil-equipo/design.md`, D9). Solo el upload pasa por el backend (proxy, ver mismo doc D1). Razón: una lectura ocurre muchas más veces que un upload (cada render de un avatar en el front), proxyear eso metería ese volumen por Render sin necesidad y perdería el cacheo de navegador/CDN que da servir directo desde Supabase.
 
 ## Local / CI
 

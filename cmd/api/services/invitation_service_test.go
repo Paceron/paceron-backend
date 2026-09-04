@@ -57,6 +57,14 @@ func (m *mockUserDaoForInvitation) FindByIDs(ctx *gin.Context, userIDs []int64) 
 	return nil, nil
 }
 
+func (m *mockUserDaoForInvitation) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	return nil
+}
+
+func (m *mockUserDaoForInvitation) ClearPhoto(ctx *gin.Context, userID int64) error {
+	return nil
+}
+
 type mockInvitationDao struct {
 	createFn                      func(ctx *gin.Context, inv *dbs.Invitation) error
 	findByIDFn                    func(ctx *gin.Context, id int64) (*dbs.Invitation, error)
@@ -124,7 +132,7 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	invDao := &mockInvitationDao{
@@ -153,6 +161,36 @@ func TestInvitationService_InviteRunner_Success(t *testing.T) {
 	assert.Contains(t, resp.Message, "juan@test.com")
 }
 
+// TestInvitationService_InviteRunner_UserDoesNotAllowInvitations cubre el gate anti-spam
+// nuevo: allow_team_invitations=false rechaza la invitación antes de crear nada.
+func TestInvitationService_InviteRunner_UserDoesNotAllowInvitations(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Equipo Alpha", OwnerID: 5}, nil
+		},
+	}
+	userDaoForInvitation := &mockUserDaoForInvitation{
+		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: false}, nil
+		},
+	}
+	invDao := &mockInvitationDao{
+		createFn: func(ctx *gin.Context, inv *dbs.Invitation) error {
+			t.Fatal("no debería crear invitación si el usuario no las acepta")
+			return nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
+
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	resp, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
+		Email: "juan@test.com",
+	})
+
+	assert.Nil(t, resp)
+	assert.EqualError(t, err, "el usuario no acepta invitaciones a equipos")
+}
+
 // TestInvitationService_InviteRunner_SendsPushToInvitee cubre el trigger nuevo:
 // el invitado recibe un push cuando lo invitan (el mail ya existía antes de esta rama).
 func TestInvitationService_InviteRunner_SendsPushToInvitee(t *testing.T) {
@@ -163,7 +201,7 @@ func TestInvitationService_InviteRunner_SendsPushToInvitee(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
 			return &dbs.User{ID: testEntrenadorCallerID, Name: "Coach"}, nil
@@ -260,7 +298,7 @@ func TestInvitationService_InviteRunner_UserAlreadyMember(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	teamUserDao := &mockTeamUserDao{
@@ -286,7 +324,7 @@ func TestInvitationService_InviteRunner_DuplicatePendingInvitation(t *testing.T)
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	invDao := &mockInvitationDao{
@@ -313,7 +351,7 @@ func TestInvitationService_InviteRunner_WithValidGroupID(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	mockGroup := &mockGroupDao{
@@ -350,7 +388,7 @@ func TestInvitationService_InviteRunner_GroupNotInTeam(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	mockGroup := &mockGroupDao{
@@ -379,7 +417,7 @@ func TestInvitationService_InviteRunner_InvitationDaoCreateError(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	invDao := &mockInvitationDao{
@@ -406,7 +444,7 @@ func TestInvitationService_InviteRunner_MailerError(t *testing.T) {
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
 		findByEmailFn: func(ctx *gin.Context, email string) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com"}, nil
+			return &dbs.User{ID: 1, Name: "Juan", Email: "juan@test.com", AllowTeamInvitations: true}, nil
 		},
 	}
 	mailerMock := &mockMailer{

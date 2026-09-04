@@ -109,6 +109,14 @@ func (m *mockUserDaoForUserRole) FindByIDs(ctx *gin.Context, userIDs []int64) ([
 	return nil, nil
 }
 
+func (m *mockUserDaoForUserRole) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	return nil
+}
+
+func (m *mockUserDaoForUserRole) ClearPhoto(ctx *gin.Context, userID int64) error {
+	return nil
+}
+
 func TestUserRoleService_AssignRole_Success(t *testing.T) {
 	now := time.Now()
 	_ = now

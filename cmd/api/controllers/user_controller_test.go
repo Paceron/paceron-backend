@@ -1,8 +1,10 @@
 package controllers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +15,39 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/user"
+	"simple-arq-golang/cmd/api/services"
 )
+
+// newMultipartPhotoRequest arma un request multipart/form-data con un único
+// campo de archivo "photo" — compartido por los tests de upload de foto de
+// usuario e ícono de equipo (mismo shape de endpoint).
+func newMultipartPhotoRequest(t *testing.T, method, url, filename string, content []byte) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("photo", filename)
+	if err != nil {
+		t.Fatalf("error creating form file: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("error writing form file content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("error closing multipart writer: %v", err)
+	}
+
+	req, err := http.NewRequest(method, url, &buf)
+	if err != nil {
+		t.Fatalf("error creating request: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+// validPNGContentForTest es el prefijo mínimo que http.DetectContentType
+// reconoce como image/png — alcanza para los tests de validación, no
+// necesita ser un PNG completo.
+var validPNGContentForTest = []byte("\x89PNG\r\n\x1a\n")
 
 func TestUserUpdate_Success(t *testing.T) {
 	mockSvc := mockUserService{
@@ -554,4 +588,114 @@ func TestChangePassword_InternalError(t *testing.T) {
 	controller.ChangePassword(c)
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestUserController_UploadPhoto_Success(t *testing.T) {
+	expectedURL := "https://bucket.example.com/avatars/user-1.png?v=123"
+	mockSvc := mockUserService{
+		mockUploadPhoto: func(ctx *gin.Context, userID int64, content []byte) (*string, error) {
+			assert.Equal(t, int64(1), userID)
+			return &expectedURL, nil
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/users/1/photo", "photo.png", validPNGContentForTest)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UploadPhoto(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	var result map[string]string
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, expectedURL, result["photo_url"])
+}
+
+func TestUserController_UploadPhoto_Forbidden_NotSelf(t *testing.T) {
+	mockSvc := mockUserService{}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/users/1/photo", "photo.png", validPNGContentForTest)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.UploadPhoto(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestUserController_UploadPhoto_MissingFile(t *testing.T) {
+	mockSvc := mockUserService{}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1/photo", strings.NewReader(""))
+	c.Request.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UploadPhoto(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestUserController_UploadPhoto_ServiceInvalidType(t *testing.T) {
+	mockSvc := mockUserService{
+		mockUploadPhoto: func(ctx *gin.Context, userID int64, content []byte) (*string, error) {
+			return nil, services.ErrPhotoInvalidType
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = newMultipartPhotoRequest(t, http.MethodPut, "/api/v1/users/1/photo", "photo.txt", []byte("not an image"))
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UploadPhoto(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	var apiErr apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &apiErr)
+	assert.Equal(t, "PHOTO_INVALID_TYPE", apiErr.Code)
+}
+
+func TestUserController_DeletePhoto_Success(t *testing.T) {
+	deleteCalled := false
+	mockSvc := mockUserService{
+		mockDeletePhoto: func(ctx *gin.Context, userID int64) error {
+			deleteCalled = true
+			assert.Equal(t, int64(1), userID)
+			return nil
+		},
+	}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/photo", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.DeletePhoto(c)
+	c.Writer.WriteHeaderNow() // gin.CreateTestContext no pasa por engine.ServeHTTP, que normalmente hace este flush
+
+	assert.Equal(t, http.StatusNoContent, response.Code)
+	assert.True(t, deleteCalled)
+}
+
+func TestUserController_DeletePhoto_Forbidden_NotSelf(t *testing.T) {
+	mockSvc := mockUserService{}
+	controller := NewUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/users/1/photo", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	controller.DeletePhoto(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
 }

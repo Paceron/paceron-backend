@@ -83,7 +83,7 @@ func (ic *invitationController) InviteRunner(c *gin.Context) {
 		case "el usuario ya pertenece a este equipo", "ya existe una invitación pendiente para este usuario en este equipo":
 			statusCode = http.StatusConflict
 			code = "Conflict"
-		case "solo el entrenador puede invitar usuarios al equipo":
+		case "solo el entrenador puede invitar usuarios al equipo", "el usuario no acepta invitaciones a equipos":
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
 		}

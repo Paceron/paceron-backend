@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -43,6 +44,14 @@ func (m *mockUserDaoForQuery) SearchActive(ctx *gin.Context, query string, limit
 
 func (m *mockUserDaoForQuery) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
 	return nil, nil
+}
+
+func (m *mockUserDaoForQuery) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
+	return nil
+}
+
+func (m *mockUserDaoForQuery) ClearPhoto(ctx *gin.Context, userID int64) error {
+	return nil
 }
 
 type mockUserRoleDaoForQuery struct {

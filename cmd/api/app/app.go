@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
+	"simple-arq-golang/cmd/api/restclients/storageclient"
 	"simple-arq-golang/cmd/api/services"
 )
 
@@ -81,9 +83,22 @@ func NewApplication() *Application {
 	)
 	expoPushClient := expopushclient.New(expoPushHTTPClient)
 
+	// Storage: fotos de perfil de usuario e ícono de equipo, S3-compatible contra
+	// Supabase Storage (testing/producción resuelto por config.IsProductionStage()).
+	storageClientInstance, err := storageclient.New(context.Background(), storageclient.Options{
+		Endpoint:        config.MyStorage.Endpoint,
+		Region:          config.MyStorage.Region,
+		AccessKeyID:     config.MyStorage.AccessKeyID,
+		SecretAccessKey: config.MyStorage.SecretAccessKey,
+		Bucket:          config.MyStorage.Bucket,
+	})
+	if err != nil {
+		customlogger.Error(nil, "error initializing storage client", err)
+	}
+
 	// User flow
 	userDao := daos.NewUserDao(db)
-	userService := services.NewUserService(userDao, mailerClient, pushTokenDao, expoPushClient)
+	userService := services.NewUserService(userDao, mailerClient, pushTokenDao, expoPushClient, storageClientInstance)
 	userController := controllers.NewUserController(userService)
 
 	// Role flow (roleDao/userRoleDao también los necesita authService para los claims
@@ -169,7 +184,7 @@ func NewApplication() *Application {
 	invitationDao := daos.NewInvitationDao(db)
 
 	// Team flow
-	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao)
+	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao, storageClientInstance)
 
 	// Team Delegate (coordina team + group)
 	teamDelegate := delegates.NewTeamDelegate(teamService, groupService)

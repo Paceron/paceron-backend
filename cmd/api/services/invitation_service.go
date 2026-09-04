@@ -112,6 +112,9 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, callerI
 	if user == nil {
 		return nil, fmt.Errorf("no se encontró un usuario con el email proporcionado")
 	}
+	if !user.AllowTeamInvitations {
+		return nil, fmt.Errorf("el usuario no acepta invitaciones a equipos")
+	}
 
 	existingMember, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, user.ID)
 	if err != nil {

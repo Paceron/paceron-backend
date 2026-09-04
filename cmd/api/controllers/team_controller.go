@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -21,6 +23,8 @@ type TeamController interface {
 	GetByID(c *gin.Context)
 	GetAll(c *gin.Context)
 	UpdateAddress(c *gin.Context)
+	UploadIcon(c *gin.Context)
+	DeleteIcon(c *gin.Context)
 }
 
 type teamController struct {
@@ -355,4 +359,136 @@ func (tc *teamController) UpdateAddress(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// UploadIcon godoc
+// @Summary      Subir ícono del equipo
+// @Description  Sube o reemplaza el ícono del equipo. Solo el entrenador dueño puede hacerlo. Max 5MB, JPEG/PNG/WEBP
+// @Tags         teams
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        id     path      int   true  "Team ID"
+// @Param        photo  formData  file  true  "Icon file"
+// @Success      200    {object}  map[string]string
+// @Failure      400    {object}  apierror.APIError
+// @Failure      403    {object}  apierror.APIError
+// @Failure      500    {object}  apierror.APIError
+// @Router       /api/v1/teams/{id}/icon [put]
+func (tc *teamController) UploadIcon(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "team id debe ser un número válido",
+		})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, services.MaxPhotoSizeBytes+1024)
+	fileHeader, err := c.FormFile("photo")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "PHOTO_TOO_LARGE",
+			Message:    "Archivo inválido o demasiado grande (máximo 5MB)",
+		})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "No se pudo leer el archivo",
+		})
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "No se pudo leer el archivo",
+		})
+		return
+	}
+
+	callerID, _ := utils.GetAuthUserID(c)
+	iconURL, err := tc.teamService.UploadIcon(c, id, callerID, content)
+	if err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errors.Is(err, services.ErrPhotoTooLarge) {
+			statusCode = http.StatusBadRequest
+			code = "PHOTO_TOO_LARGE"
+		} else if errors.Is(err, services.ErrPhotoInvalidType) {
+			statusCode = http.StatusBadRequest
+			code = "PHOTO_INVALID_TYPE"
+		} else if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
+		} else if errMsg == "solo el entrenador dueño del equipo puede cambiar el ícono" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"icon_url": iconURL})
+}
+
+// DeleteIcon godoc
+// @Summary      Borrar ícono del equipo
+// @Description  Borra el ícono del equipo. Solo el entrenador dueño puede hacerlo. Idempotente
+// @Tags         teams
+// @Param        id  path  int  true  "Team ID"
+// @Success      204
+// @Failure      400  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/teams/{id}/icon [delete]
+func (tc *teamController) DeleteIcon(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "team id debe ser un número válido",
+		})
+		return
+	}
+
+	callerID, _ := utils.GetAuthUserID(c)
+	if err := tc.teamService.DeleteIcon(c, id, callerID); err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errMsg == "solo el entrenador dueño del equipo puede cambiar el ícono" {
+			statusCode = http.StatusForbidden
+			code = "Forbidden"
+		} else if errors.Is(err, services.ErrStorageUnavailable) {
+			code = "STORAGE_UNAVAILABLE"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
