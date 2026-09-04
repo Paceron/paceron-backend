@@ -1,0 +1,36 @@
+info:
+  name: 8 - Verificar membresia activa
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/users/{{user_id}}/teams/{{team_id}}/subscription
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.membership) {
+          console.log("subscription_status:", body.membership.subscription_status);
+          console.log("paid_installments:", body.membership.paid_installments);
+          if (body.membership.subscription_status === "active") {
+            console.log("OK: membresia activa");
+          } else {
+            console.log("AUN NO activa: revisar que el webhook se haya procesado", body.membership.subscription_status);
+          }
+          if (body.next_installment) {
+            console.log("proxima cuota:", body.next_installment.installment_id, body.next_installment.installment_amount);
+          }
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

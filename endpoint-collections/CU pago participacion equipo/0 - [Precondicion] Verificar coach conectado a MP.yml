@@ -1,0 +1,29 @@
+info:
+  name: 0 - [Precondicion] Verificar coach conectado a MP
+  type: http
+  seq: 0
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/mercadopago/connect/status
+  headers:
+    - name: Authorization
+      value: Bearer {{coach_token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        console.log("connected:", body && body.connected);
+        console.log("account_status:", body && body.account_status);
+        if (!body || !body.connected) {
+          console.log("ADVERTENCIA: el coach no conecto Mercado Pago. Hacer GET /api/v1/mercadopago/connect en el navegador y completar el OAuth.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

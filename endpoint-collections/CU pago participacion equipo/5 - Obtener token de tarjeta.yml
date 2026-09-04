@@ -1,0 +1,42 @@
+info:
+  name: 5 - Obtener token de tarjeta
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/payments/test-card-token
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "card_number": "5031755734530604",
+        "expiration_month": "11",
+        "expiration_year": "2030",
+        "security_code": "123",
+        "cardholder_name": "APRO Test User",
+        "identification_type": "DNI",
+        "identification_number": "12345678"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.token) {
+          bru.setVar("card_token", body.token);
+          console.log("card_token:", bru.getVar("card_token"));
+        } else {
+          console.log("no se obtuvo card_token");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

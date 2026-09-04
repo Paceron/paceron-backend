@@ -1,0 +1,46 @@
+info:
+  name: 6 - Procesar pago
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/payments
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "token": "{{card_token}}",
+        "transaction_amount": {{installment_amount}},
+        "payment_method_id": "master",
+        "installments": 1,
+        "payer_email": "{{payer_email}}",
+        "preference_id": "{{preference}}",
+        "installment_id": {{installment_id}},
+        "concept": "team_subscription"
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.payment_id) {
+          bru.setVar("payment_id", body.payment_id);
+          bru.setVar("local_payment_id", body.id);
+          console.log("status:", body.status);
+          console.log("payment_id (MP):", bru.getVar("payment_id"));
+          console.log("local_payment_id:", bru.getVar("local_payment_id"));
+        } else {
+          console.log("sin payment_id en la respuesta. Revisar payer_email (debe ser un test user del miembro).");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

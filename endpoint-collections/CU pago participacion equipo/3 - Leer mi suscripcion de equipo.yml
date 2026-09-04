@@ -1,0 +1,40 @@
+info:
+  name: 3 - Leer mi suscripcion de equipo
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/users/{{user_id}}/teams/{{team_id}}/subscription
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.next_installment && body.next_installment.installment_id) {
+          bru.setVar("installment_id", body.next_installment.installment_id);
+          bru.setVar("installment_amount", body.next_installment.installment_amount);
+          if (body.mercadopago) {
+            bru.setVar("public_key", body.mercadopago.public_key);
+          }
+          console.log("subscription_status:", body.membership && body.membership.subscription_status);
+          console.log("installment_id:", bru.getVar("installment_id"));
+          console.log("installment_amount:", bru.getVar("installment_amount"));
+          console.log("marketplace:", body.mercadopago && body.mercadopago.marketplace);
+          if (body.mercadopago && body.mercadopago.marketplace !== true) {
+            console.log("ADVERTENCIA: mercadopago.marketplace no es true, verificar config del equipo");
+          }
+        } else {
+          console.log("sin cuota pendiente: el equipo puede ser gratis (membership_fee=0) o la membresia no tiene cuotas");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true

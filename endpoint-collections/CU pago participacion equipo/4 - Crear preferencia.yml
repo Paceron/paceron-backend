@@ -1,0 +1,48 @@
+info:
+  name: 4 - Crear preferencia
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: http://localhost:8080/api/v1/payments/preference
+  headers:
+    - name: Authorization
+      value: Bearer {{token}}
+  body:
+    type: json
+    data: |-
+      {
+        "concept": "team_subscription",
+        "description": "Cuota de participacion en el equipo",
+        "items": [
+          {
+            "title": "Participacion mensual en el equipo",
+            "quantity": 1,
+            "unit_price": {{installment_amount}}
+          }
+        ],
+        "installment_id": {{installment_id}}
+      }
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        if (body && body.preference_id) {
+          bru.setVar("preference", body.preference_id);
+          if (body.public_key) {
+            bru.setVar("public_key", body.public_key);
+          }
+          console.log("preference:", bru.getVar("preference"));
+        } else {
+          console.log("no se obtuvo preference_id. Posibles causas: SELLER_NOT_CONNECTED (coach sin MP), installment_id invalido o no es de equipo.");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
