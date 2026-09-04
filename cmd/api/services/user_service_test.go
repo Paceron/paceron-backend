@@ -85,6 +85,48 @@ func TestUserUpdate_BankAliasSuccess(t *testing.T) {
 	assert.Equal(t, "mi-banco-123", *resp.BankAlias)
 }
 
+func TestUserUpdate_DefaultThemeAndAllowInvitationsSuccess(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	var savedUser *dbs.User
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:                   userID,
+				Name:                 "John",
+				Surname:              "Doe",
+				Email:                "john@test.com",
+				Password:             "$2a$10$hashedpassword",
+				BirthDate:            birthDate,
+				DefaultTheme:         "dark",
+				AllowTeamInvitations: true,
+			}, nil
+		},
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return nil, nil
+		},
+		mockUpdate: func(ctx *gin.Context, user *dbs.User) error {
+			savedUser = user
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	theme := "light"
+	allowInvitations := false
+	req := &user.UserUpdateRequest{
+		DefaultTheme:         &theme,
+		AllowTeamInvitations: &allowInvitations,
+	}
+
+	resp, err := svc.Update(nil, 1, req, "")
+	assert.NoError(t, err)
+	assert.NotNil(t, savedUser)
+	assert.Equal(t, "light", savedUser.DefaultTheme)
+	assert.False(t, savedUser.AllowTeamInvitations)
+	assert.Equal(t, "light", resp.DefaultTheme)
+	assert.False(t, resp.AllowTeamInvitations)
+}
+
 func TestUserUpdate_UserNotFound(t *testing.T) {
 	mockDao := mockUserDao{
 		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -432,6 +474,23 @@ func TestValidateUserUpdateRequest_InvalidBirthDate(t *testing.T) {
 	assert.Equal(t, "birth_date debe tener formato dd/mm/aaaa", msg)
 }
 
+func TestValidateUserUpdateRequest_InvalidDefaultTheme(t *testing.T) {
+	theme := "purple"
+	req := &user.UserUpdateRequest{
+		DefaultTheme: &theme,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "default_theme debe ser 'light' o 'dark'", msg)
+}
+
+func TestValidateUserUpdateRequest_DefaultThemeValid(t *testing.T) {
+	for _, theme := range []string{"light", "dark"} {
+		req := &user.UserUpdateRequest{DefaultTheme: &theme}
+		msg := ValidateUserUpdateRequest(req)
+		assert.Equal(t, "", msg)
+	}
+}
+
 func TestValidateUserUpdateRequest_Success(t *testing.T) {
 	name := "John"
 	email := "john@test.com"
@@ -448,14 +507,16 @@ func TestValidateUserUpdateRequest_Success(t *testing.T) {
 func TestToUserUpdateResponse(t *testing.T) {
 	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
 	userDB := &dbs.User{
-		ID:        1,
-		Name:      "John",
-		Surname:   "Doe",
-		Email:     "john@test.com",
-		Phone:     "123456789",
-		DNI:       "12345678",
-		Status:    "active",
-		BirthDate: birthDate,
+		ID:                   1,
+		Name:                 "John",
+		Surname:              "Doe",
+		Email:                "john@test.com",
+		Phone:                "123456789",
+		DNI:                  "12345678",
+		Status:               "active",
+		BirthDate:            birthDate,
+		DefaultTheme:         "dark",
+		AllowTeamInvitations: true,
 	}
 
 	resp := toUserUpdateResponse(userDB)
@@ -463,6 +524,9 @@ func TestToUserUpdateResponse(t *testing.T) {
 	assert.Equal(t, "John", resp.Name)
 	assert.Equal(t, "active", resp.Status)
 	assert.Equal(t, "15/04/1990", resp.BirthDate)
+	assert.Equal(t, "dark", resp.DefaultTheme)
+	assert.True(t, resp.AllowTeamInvitations)
+	assert.Nil(t, resp.PhotoURL)
 }
 
 func TestValidateUserUpdateRequest_BankAliasValid(t *testing.T) {

@@ -129,6 +129,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_auth.UserResponse:
     properties:
+      allow_team_invitations:
+        type: boolean
       bank_alias:
         type: string
       birth_date:
@@ -136,6 +138,8 @@ definitions:
       city:
         type: string
       country:
+        type: string
+      default_theme:
         type: string
       dni:
         type: string
@@ -991,6 +995,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_user.UserUpdateRequest:
     properties:
+      allow_team_invitations:
+        type: boolean
       bank_alias:
         type: string
       birth_date:
@@ -998,6 +1004,8 @@ definitions:
       city:
         type: string
       country:
+        type: string
+      default_theme:
         type: string
       dni:
         type: string
@@ -1020,6 +1028,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_user.UserUpdateResponse:
     properties:
+      allow_team_invitations:
+        type: boolean
       bank_alias:
         type: string
       birth_date:
@@ -1027,6 +1037,8 @@ definitions:
       city:
         type: string
       country:
+        type: string
+      default_theme:
         type: string
       dni:
         type: string
@@ -1039,6 +1051,8 @@ definitions:
       phone:
         type: string
       phone_contact:
+        type: string
+      photo_url:
         type: string
       province:
         type: string

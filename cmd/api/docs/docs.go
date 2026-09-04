@@ -3950,6 +3950,9 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_auth.UserResponse": {
             "type": "object",
             "properties": {
+                "allow_team_invitations": {
+                    "type": "boolean"
+                },
                 "bank_alias": {
                     "type": "string"
                 },
@@ -3960,6 +3963,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "default_theme": {
                     "type": "string"
                 },
                 "dni": {
@@ -5197,6 +5203,9 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_user.UserUpdateRequest": {
             "type": "object",
             "properties": {
+                "allow_team_invitations": {
+                    "type": "boolean"
+                },
                 "bank_alias": {
                     "type": "string"
                 },
@@ -5207,6 +5216,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "default_theme": {
                     "type": "string"
                 },
                 "dni": {
@@ -5241,6 +5253,9 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_user.UserUpdateResponse": {
             "type": "object",
             "properties": {
+                "allow_team_invitations": {
+                    "type": "boolean"
+                },
                 "bank_alias": {
                     "type": "string"
                 },
@@ -5251,6 +5266,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "country": {
+                    "type": "string"
+                },
+                "default_theme": {
                     "type": "string"
                 },
                 "dni": {
@@ -5269,6 +5287,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone_contact": {
+                    "type": "string"
+                },
+                "photo_url": {
                     "type": "string"
                 },
                 "province": {
