@@ -182,7 +182,7 @@ func TestInvitationService_InviteRunner_UserDoesNotAllowInvitations(t *testing.T
 	}
 	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}
 
-	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{})
+	svc := NewInvitationService(userDaoForInvitation, mockTeamDao, invDao, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	resp, err := svc.InviteRunner(nil, 1, testEntrenadorCallerID, &invitation.InviteRunnerRequest{
 		Email: "juan@test.com",
 	})
