@@ -21,7 +21,7 @@ type mockTierService struct {
 	deleteFn func(ctx *gin.Context, id int64) (*tier.DeleteTierResponse, error)
 	getByIDFn  func(ctx *gin.Context, id int64) (*tier.TierResponse, error)
 	getByNameFn func(ctx *gin.Context, name string) (*tier.TierResponse, error)
-	getAllFn    func(ctx *gin.Context) ([]tier.TierResponse, error)
+	getAllFn    func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error)
 }
 
 func (m *mockTierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error) {
@@ -59,9 +59,9 @@ func (m *mockTierService) GetByName(ctx *gin.Context, name string) (*tier.TierRe
 	return nil, nil
 }
 
-func (m *mockTierService) GetAll(ctx *gin.Context) ([]tier.TierResponse, error) {
+func (m *mockTierService) GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
 	if m.getAllFn != nil {
-		return m.getAllFn(ctx)
+		return m.getAllFn(ctx, roleID)
 	}
 	return nil, nil
 }
@@ -577,7 +577,7 @@ func TestTierController_GetByName_EmptyName(t *testing.T) {
 
 func TestTierController_GetAll_Success(t *testing.T) {
 	mockSvc := &mockTierService{
-		getAllFn: func(ctx *gin.Context) ([]tier.TierResponse, error) {
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
 			return []tier.TierResponse{
 				{ID: 1, Name: "base"},
 				{ID: 2, Name: "premium"},
@@ -601,7 +601,7 @@ func TestTierController_GetAll_Success(t *testing.T) {
 
 func TestTierController_GetAll_Empty(t *testing.T) {
 	mockSvc := &mockTierService{
-		getAllFn: func(ctx *gin.Context) ([]tier.TierResponse, error) {
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
 			return []tier.TierResponse{}, nil
 		},
 	}
@@ -618,7 +618,7 @@ func TestTierController_GetAll_Empty(t *testing.T) {
 
 func TestTierController_GetAll_InternalError(t *testing.T) {
 	mockSvc := &mockTierService{
-		getAllFn: func(ctx *gin.Context) ([]tier.TierResponse, error) {
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
 			return nil, errors.New("error al obtener tiers")
 		},
 	}
@@ -631,4 +631,66 @@ func TestTierController_GetAll_InternalError(t *testing.T) {
 	controller.GetAll(c)
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestTierController_GetAll_WithRoleID(t *testing.T) {
+	var gotRoleID *int64
+	mockSvc := &mockTierService{
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
+			gotRoleID = roleID
+			return []tier.TierResponse{{ID: 3, Name: "base entrenador", RoleID: 2}}, nil
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers?role_id=2", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.NotNil(t, gotRoleID)
+	assert.Equal(t, int64(2), *gotRoleID)
+
+	var result []tier.TierResponse
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Len(t, result, 1)
+}
+
+func TestTierController_GetAll_RoleNotFound(t *testing.T) {
+	mockSvc := &mockTierService{
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
+			return nil, errors.New("rol no encontrado")
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers?role_id=99", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestTierController_GetAll_InvalidRoleID(t *testing.T) {
+	called := false
+	mockSvc := &mockTierService{
+		getAllFn: func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
+			called = true
+			return nil, nil
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers?role_id=abc", nil)
+
+	controller.GetAll(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.False(t, called, "no debe llamar al service con role_id inválido")
 }

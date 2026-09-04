@@ -2832,7 +2832,7 @@ const docTemplate = `{
         },
         "/api/v1/tiers": {
             "get": {
-                "description": "Get all active tiers",
+                "description": "Get all active tiers. Si se pasa role_id, devuelve solo los tiers de ese rol",
                 "produces": [
                     "application/json"
                 ],
@@ -2840,6 +2840,14 @@ const docTemplate = `{
                     "tiers"
                 ],
                 "summary": "Get all tiers",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filtrar por rol (opcional)",
+                        "name": "role_id",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -2848,6 +2856,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
                     "500": {

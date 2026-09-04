@@ -18,7 +18,7 @@ type TierServiceInterface interface {
 	Delete(ctx *gin.Context, id int64) (*tier.DeleteTierResponse, error)
 	GetByID(ctx *gin.Context, id int64) (*tier.TierResponse, error)
 	GetByName(ctx *gin.Context, name string) (*tier.TierResponse, error)
-	GetAll(ctx *gin.Context) ([]tier.TierResponse, error)
+	GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error)
 }
 
 type tierService struct {
@@ -285,12 +285,26 @@ func (s *tierService) GetByName(ctx *gin.Context, name string) (*tier.TierRespon
 	}, nil
 }
 
-func (s *tierService) GetAll(ctx *gin.Context) ([]tier.TierResponse, error) {
+func (s *tierService) GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error) {
 	tiers, err := s.tierDao.GetAll(ctx)
 	if err != nil {
 		customlogger.Error(ctx, "error getting all tiers", err,
 			customlogger.TagMethod("GetAll"))
 		return nil, fmt.Errorf("error al obtener tiers")
+	}
+
+	// Filtrado en memoria: si llega role_id, quedan solo los tiers de ese rol.
+	if roleID != nil {
+		filtered := make([]dbs.Tier, 0, len(tiers))
+		for _, t := range tiers {
+			if t.RoleID == *roleID {
+				filtered = append(filtered, t)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("rol no encontrado")
+		}
+		tiers = filtered
 	}
 
 	var responses []tier.TierResponse

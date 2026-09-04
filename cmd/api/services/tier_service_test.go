@@ -565,7 +565,7 @@ func TestTierService_GetAll_Success(t *testing.T) {
 	}
 
 	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
-	resp, err := svc.GetAll(nil)
+	resp, err := svc.GetAll(nil, nil)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
@@ -581,7 +581,7 @@ func TestTierService_GetAll_Empty(t *testing.T) {
 	}
 
 	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
-	resp, err := svc.GetAll(nil)
+	resp, err := svc.GetAll(nil, nil)
 
 	assert.NoError(t, err)
 	assert.Empty(t, resp)
@@ -595,7 +595,7 @@ func TestTierService_GetAll_Error(t *testing.T) {
 	}
 
 	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
-	_, err := svc.GetAll(nil)
+	_, err := svc.GetAll(nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener tiers")
@@ -854,10 +854,68 @@ func TestTierService_GetAll_ExposesHierarchy(t *testing.T) {
 	}
 
 	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
-	resp, err := svc.GetAll(nil)
+	resp, err := svc.GetAll(nil, nil)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
 	assert.Equal(t, 1, resp[0].Hierarchy)
 	assert.Equal(t, 3, resp[1].Hierarchy)
+}
+
+func TestTierService_GetAll_FilterByRoleID(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor"},
+				{ID: 3, Name: "base entrenador", RoleID: 2, RoleName: "entrenador"},
+				{ID: 5, Name: "medium entrenador", RoleID: 2, RoleName: "entrenador"},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	roleID := int64(2)
+	resp, err := svc.GetAll(nil, &roleID)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 2)
+	assert.Equal(t, int64(3), resp[0].ID)
+	assert.Equal(t, int64(5), resp[1].ID)
+	assert.Equal(t, "entrenador", resp[0].RoleName)
+}
+
+func TestTierService_GetAll_FilterByRoleID_NoMatch(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	roleID := int64(99)
+	resp, err := svc.GetAll(nil, &roleID)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "rol no encontrado")
+}
+
+func TestTierService_GetAll_NoRoleID_ReturnsAll(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1},
+				{ID: 3, Name: "base entrenador", RoleID: 2},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	resp, err := svc.GetAll(nil, nil)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 2)
 }

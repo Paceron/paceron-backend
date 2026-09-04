@@ -3210,7 +3210,13 @@ paths:
       - team-users
   /api/v1/tiers:
     get:
-      description: Get all active tiers
+      description: Get all active tiers. Si se pasa role_id, devuelve solo los tiers
+        de ese rol
+      parameters:
+      - description: Filtrar por rol (opcional)
+        in: query
+        name: role_id
+        type: integer
       produces:
       - application/json
       responses:
@@ -3220,6 +3226,10 @@ paths:
             items:
               $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tier.TierResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
