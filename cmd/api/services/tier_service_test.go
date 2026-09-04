@@ -600,3 +600,264 @@ func TestTierService_GetAll_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al obtener tiers")
 }
+
+func TestTierRulesByName(t *testing.T) {
+	testCases := []struct {
+		name       string
+		wantLevel  int
+		wantForce  bool
+	}{
+		{name: "base", wantLevel: 1, wantForce: true},
+		{name: "medium", wantLevel: 2, wantForce: false},
+		{name: "premium", wantLevel: 3, wantForce: false},
+		{name: "Base", wantLevel: 1, wantForce: true},
+		{name: "BASE", wantLevel: 1, wantForce: true},
+		{name: "base corredor", wantLevel: 1, wantForce: true},
+		{name: "medium entrenador", wantLevel: 2, wantForce: false},
+		{name: "premium corredor", wantLevel: 3, wantForce: false},
+		{name: "  premium  entrenador", wantLevel: 3, wantForce: false},
+		{name: "pro", wantLevel: 0, wantForce: false},
+		{name: "", wantLevel: 0, wantForce: false},
+	}
+
+	for _, tc := range testCases {
+		gotLevel, gotForce := tierRulesByName(tc.name)
+		assert.Equal(t, tc.wantLevel, gotLevel, "hierarchy para %q", tc.name)
+		assert.Equal(t, tc.wantForce, gotForce, "forceFree para %q", tc.name)
+	}
+}
+
+func TestTierService_Create_BaseForcesFree(t *testing.T) {
+	var captured *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			captured = t
+			t.ID = 1
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	paymentRequired := true
+	resp, err := svc.Create(nil, &tier.CreateTierRequest{
+		Name:            "base",
+		RoleID:          1,
+		PaymentRequired: paymentRequired,
+		TierAmount:      9999,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, captured)
+	assert.False(t, captured.PaymentRequired, "un tier base nunca requiere pago")
+	assert.Equal(t, 1, captured.Hierarchy)
+	assert.Equal(t, 1, resp.Hierarchy)
+	assert.False(t, resp.PaymentRequired)
+}
+
+func TestTierService_Create_MediumHierarchy(t *testing.T) {
+	var captured *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			captured = t
+			t.ID = 2
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	resp, err := svc.Create(nil, &tier.CreateTierRequest{
+		Name:            "medium",
+		RoleID:          1,
+		PaymentRequired: true,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, captured.Hierarchy)
+	assert.True(t, captured.PaymentRequired, "un tier medium conserva el payment_required provisto")
+	assert.Equal(t, 2, resp.Hierarchy)
+}
+
+func TestTierService_Create_PremiumHierarchy(t *testing.T) {
+	var captured *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			captured = t
+			t.ID = 3
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	resp, err := svc.Create(nil, &tier.CreateTierRequest{
+		Name:            "premium",
+		RoleID:          1,
+		PaymentRequired: true,
+		TierAmount:      10000,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 3, captured.Hierarchy)
+	assert.True(t, captured.PaymentRequired)
+	assert.Equal(t, 3, resp.Hierarchy)
+	assert.Equal(t, 10000.0, resp.TierAmount)
+}
+
+func TestTierService_Create_CompoundBaseName(t *testing.T) {
+	var captured *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			captured = t
+			t.ID = 4
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	resp, err := svc.Create(nil, &tier.CreateTierRequest{
+		Name:            "base entrenador",
+		RoleID:          2,
+		PaymentRequired: true,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, captured.Hierarchy)
+	assert.False(t, captured.PaymentRequired)
+	assert.Equal(t, 1, resp.Hierarchy)
+}
+
+func TestTierService_Update_ReconcileByNewName(t *testing.T) {
+	var updated *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			updated = t
+			return nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	newName := "premium"
+	resp, err := svc.Update(nil, 1, &tier.UpdateTierRequest{
+		Name: &newName,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "premium", resp.Name)
+	assert.Equal(t, 3, updated.Hierarchy, "renombrar a premium debe recalcular jerarquía")
+	assert.Equal(t, 3, resp.Hierarchy)
+}
+
+func TestTierService_Update_KeepsBaseFree(t *testing.T) {
+	var updated *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			updated = t
+			return nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	paymentRequired := true
+	resp, err := svc.Update(nil, 1, &tier.UpdateTierRequest{
+		PaymentRequired: &paymentRequired,
+	})
+
+	assert.NoError(t, err)
+	assert.False(t, updated.PaymentRequired, "un tier base nunca debe pasar a exigir pago")
+	assert.Equal(t, 1, updated.Hierarchy)
+	assert.False(t, resp.PaymentRequired)
+}
+
+func TestTierService_Update_NonStandardNameKeepsHierarchy(t *testing.T) {
+	var updated *dbs.Tier
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "pro", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 5}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			updated = t
+			return nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	newDesc := "nueva desc"
+	resp, err := svc.Update(nil, 1, &tier.UpdateTierRequest{
+		Description: &newDesc,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 5, updated.Hierarchy, "un nombre no estándar no debe tocar la jerarquía manual")
+	assert.Equal(t, 5, resp.Hierarchy)
+	assert.True(t, resp.PaymentRequired)
+}
+
+func TestTierService_GetByID_ExposesHierarchy(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 3}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	resp, err := svc.GetByID(nil, 2)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 3, resp.Hierarchy)
+}
+
+func TestTierService_GetAll_ExposesHierarchy(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 3},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	resp, err := svc.GetAll(nil)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 2)
+	assert.Equal(t, 1, resp[0].Hierarchy)
+	assert.Equal(t, 3, resp[1].Hierarchy)
+}

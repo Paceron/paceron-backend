@@ -33,6 +33,25 @@ func NewTierService(tierDao daos.TierDaoInterface, roleDao daos.RoleDaoInterface
 	}
 }
 
+// tierRulesByName devuelve la jerarquía y si debe forzarse la gratuidad según la
+// primera palabra del nombre del tier (regla D11): base=1 (gratis), medium=2, premium=3.
+func tierRulesByName(name string) (hierarchy int, forceFree bool) {
+	first := strings.ToLower(strings.TrimSpace(name))
+	if parts := strings.Fields(first); len(parts) > 0 {
+		first = parts[0]
+	}
+	switch first {
+	case "base":
+		return 1, true
+	case "medium":
+		return 2, false
+	case "premium":
+		return 3, false
+	default:
+		return 0, false
+	}
+}
+
 func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -62,13 +81,20 @@ func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*ti
 		return nil, fmt.Errorf("ya existe un tier con ese nombre para este rol")
 	}
 
+	hierarchy, forceFree := tierRulesByName(name)
+	paymentRequired := req.PaymentRequired
+	if forceFree {
+		paymentRequired = false
+	}
+
 	t := &dbs.Tier{
 		Name:            name,
 		Description:     strings.TrimSpace(req.Description),
 		RoleID:          req.RoleID,
 		RoleName:        role.Name,
-		PaymentRequired: req.PaymentRequired,
+		PaymentRequired: paymentRequired,
 		TierAmount:      req.TierAmount,
+		Hierarchy:       hierarchy,
 	}
 
 	if err := s.tierDao.Create(ctx, t); err != nil {
@@ -93,6 +119,7 @@ func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*ti
 		RoleName:        t.RoleName,
 		PaymentRequired: t.PaymentRequired,
 		TierAmount:      t.TierAmount,
+		Hierarchy:       t.Hierarchy,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 	}, nil
@@ -142,6 +169,16 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 		t.TierAmount = *req.TierAmount
 	}
 
+	// Regla D11: mantener jerarquía y gratuidad en sincronía con el nombre final
+	// (aplica incluso si el nombre no cambió en este request, para no dejar drift).
+	hierarchy, forceFree := tierRulesByName(t.Name)
+	if hierarchy > 0 {
+		t.Hierarchy = hierarchy
+		if forceFree {
+			t.PaymentRequired = false
+		}
+	}
+
 	if err := s.tierDao.Update(ctx, t); err != nil {
 		customlogger.Error(ctx, "error updating tier", err,
 			customlogger.Tag("tier_id", fmt.Sprintf("%d", id)),
@@ -162,6 +199,7 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 		RoleName:        t.RoleName,
 		PaymentRequired: t.PaymentRequired,
 		TierAmount:      t.TierAmount,
+		Hierarchy:       t.Hierarchy,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 	}, nil
@@ -215,6 +253,7 @@ func (s *tierService) GetByID(ctx *gin.Context, id int64) (*tier.TierResponse, e
 		RoleName:        t.RoleName,
 		PaymentRequired: t.PaymentRequired,
 		TierAmount:      t.TierAmount,
+		Hierarchy:       t.Hierarchy,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 	}, nil
@@ -240,6 +279,7 @@ func (s *tierService) GetByName(ctx *gin.Context, name string) (*tier.TierRespon
 		RoleName:        t.RoleName,
 		PaymentRequired: t.PaymentRequired,
 		TierAmount:      t.TierAmount,
+		Hierarchy:       t.Hierarchy,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 	}, nil
@@ -263,6 +303,7 @@ func (s *tierService) GetAll(ctx *gin.Context) ([]tier.TierResponse, error) {
 			RoleName:        t.RoleName,
 			PaymentRequired: t.PaymentRequired,
 			TierAmount:      t.TierAmount,
+			Hierarchy:       t.Hierarchy,
 			CreatedAt:       t.CreatedAt,
 			UpdatedAt:       t.UpdatedAt,
 		})

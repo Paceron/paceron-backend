@@ -5423,6 +5423,10 @@ const docTemplate = `{
                     "description": "Descripción del tier",
                     "type": "string"
                 },
+                "hierarchy": {
+                    "description": "Orden jerárquico (base=1, medium=2, premium=3)",
+                    "type": "integer"
+                },
                 "id": {
                     "description": "ID del tier",
                     "type": "integer"
