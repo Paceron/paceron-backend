@@ -35,6 +35,10 @@ const searchResultsLimit = 5
 // equipo/grupo (decenas de miembros como mucho), no un lookup masivo arbitrario.
 const batchLookupMaxIDs = 50
 
+// validThemes es la whitelist de default_theme — agregar un tercer valor (ej. "system")
+// es sumar una entrada acá, sin tocar el resto de la validación.
+var validThemes = map[string]bool{"light": true, "dark": true}
+
 type UserServiceInterface interface {
 	GetUser(ctx *gin.Context, userID int64) (user.User, error)
 	Update(ctx *gin.Context, id int64, req *user.UserUpdateRequest, currentPassword string) (*user.UserUpdateResponse, error)
@@ -284,6 +288,12 @@ func (s *userService) Update(ctx *gin.Context, id int64, req *user.UserUpdateReq
 	if req.BankAlias != nil {
 		userDB.BankAlias = ptrString(strings.TrimSpace(*req.BankAlias))
 	}
+	if req.DefaultTheme != nil {
+		userDB.DefaultTheme = *req.DefaultTheme
+	}
+	if req.AllowTeamInvitations != nil {
+		userDB.AllowTeamInvitations = *req.AllowTeamInvitations
+	}
 
 	err = s.userDao.Update(ctx, userDB)
 	if err != nil {
@@ -412,21 +422,24 @@ func (s *userService) ChangePassword(ctx *gin.Context, id int64, currentPassword
 
 func toUserUpdateResponse(userDB *dbs.User) *user.UserUpdateResponse {
 	return &user.UserUpdateResponse{
-		UserID:       userDB.ID,
-		Name:         userDB.Name,
-		Surname:      userDB.Surname,
-		Email:        userDB.Email,
-		Phone:        userDB.Phone,
-		PhoneContact: userDB.PhoneContact,
-		Country:      userDB.Country,
-		Province:     userDB.Province,
-		City:         userDB.City,
-		Street:       userDB.Street,
-		Number:       userDB.Number,
-		Dni:          userDB.DNI,
-		BirthDate:    userDB.BirthDate.Format("02/01/2006"),
-		Status:       userDB.Status,
-		BankAlias:    userDB.BankAlias,
+		UserID:               userDB.ID,
+		Name:                 userDB.Name,
+		Surname:              userDB.Surname,
+		Email:                userDB.Email,
+		Phone:                userDB.Phone,
+		PhoneContact:         userDB.PhoneContact,
+		Country:              userDB.Country,
+		Province:             userDB.Province,
+		City:                 userDB.City,
+		Street:               userDB.Street,
+		Number:               userDB.Number,
+		Dni:                  userDB.DNI,
+		BirthDate:            userDB.BirthDate.Format("02/01/2006"),
+		Status:               userDB.Status,
+		BankAlias:            userDB.BankAlias,
+		PhotoURL:             buildMediaURL(userDB.PhotoKey, userDB.PhotoUpdatedAt),
+		DefaultTheme:         userDB.DefaultTheme,
+		AllowTeamInvitations: userDB.AllowTeamInvitations,
 	}
 }
 
@@ -501,6 +514,9 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 		if !bankAliasRegex.MatchString(*req.BankAlias) {
 			return bankAliasFormatError
 		}
+	}
+	if req.DefaultTheme != nil && !validThemes[*req.DefaultTheme] {
+		return "default_theme debe ser 'light' o 'dark'"
 	}
 	return ""
 }
