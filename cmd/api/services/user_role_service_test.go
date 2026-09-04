@@ -226,7 +226,7 @@ func TestUserRoleService_AssignRole_DefaultTierNotFound(t *testing.T) {
 		},
 	}
 	mockTierDao := &mockTierDao{
-		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 			return nil, nil
 		},
 	}
@@ -326,7 +326,7 @@ func TestUserRoleService_AssignRole_SuccessWithDefaultTier(t *testing.T) {
 		},
 	}
 	mockTierDao := &mockTierDao{
-		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 			return &dbs.Tier{ID: 5, Name: "base", RoleID: roleID}, nil
 		},
 	}
@@ -345,6 +345,43 @@ func TestUserRoleService_AssignRole_SuccessWithDefaultTier(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, int64(5), resp.TierID)
+}
+
+func TestUserRoleService_AssignRole_SuccessWithBaseEntrenadorViaHierarchy(t *testing.T) {
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, ur *dbs.UserRole) error {
+			ur.ID = 2
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base entrenador", RoleID: roleID}, nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
+	resp, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{
+		RoleID: 2,
+		TierID: 0,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Equal(t, int64(9), resp.TierID)
 }
 
 func TestUserRoleService_AssignRole_CreateError(t *testing.T) {
@@ -446,7 +483,7 @@ func TestUserRoleService_AssignRole_FindByUserAndRoleError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al asignar rol")
 }
 
-func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing.T) {
+func TestUserRoleService_AssignRole_DefaultTierFindLowestByRoleError(t *testing.T) {
 	mockUserRoleDao := &mockUserRoleDao{
 		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
 			return nil, nil
@@ -458,7 +495,7 @@ func TestUserRoleService_AssignRole_DefaultTierFindByNameAndRoleError(t *testing
 		},
 	}
 	mockTierDao := &mockTierDao{
-		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -621,8 +658,8 @@ func TestUserRoleService_ActivateEntrenador_Success(t *testing.T) {
 		},
 	}
 	mockTierDao := &mockTierDao{
-		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 9, Name: "base", RoleID: roleID}, nil
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base entrenador", RoleID: roleID}, nil
 		},
 	}
 	mockUserRoleDao := &mockUserRoleDao{
@@ -667,8 +704,8 @@ func TestUserRoleService_ActivateEntrenador_UsesExistingBankAlias(t *testing.T) 
 		},
 	}
 	mockTierDao := &mockTierDao{
-		findByNameAndRoleFn: func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 9, Name: "base", RoleID: roleID}, nil
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base entrenador", RoleID: roleID}, nil
 		},
 	}
 	mockUserRoleDao := &mockUserRoleDao{

@@ -17,8 +17,6 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
 
-const defaultTierName = "base"
-
 // protectedRoleName es el rol base que todo usuario de la app tiene por defecto —
 // no se puede dar de baja vía RemoveRole, sea cual sea el usuario.
 const protectedRoleName = "corredor"
@@ -94,11 +92,12 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 
 	var resolvedTier *dbs.Tier
 	if req.TierID == 0 {
-		defaultTier, err := s.tierDao.FindByNameAndRole(ctx, defaultTierName, req.RoleID)
+		// Tier por defecto (base): se resuelve por jerarquía (hierarchy=1), no por
+		// nombre literal, para soportar "base", "base corredor", "base entrenador", etc.
+		defaultTier, err := s.tierDao.FindLowestByRole(ctx, req.RoleID)
 		if err != nil {
 			customlogger.Error(ctx, "error finding default tier", err,
 				customlogger.Tag("role_id", fmt.Sprintf("%d", req.RoleID)),
-				customlogger.Tag("tier_name", defaultTierName),
 				customlogger.TagMethod("AssignRole"))
 			return nil, fmt.Errorf("error al asignar rol")
 		}
