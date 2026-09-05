@@ -80,6 +80,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Teams
 	r.POST("/api/v1/teams", app.teamController.Create)
 	r.GET("/api/v1/teams", app.teamController.GetAll)
+	r.GET("/api/v1/teams/search", app.teamController.Search)
 	r.GET("/api/v1/teams/:id", app.teamController.GetByID)
 	r.PUT("/api/v1/teams/:id", app.teamController.Update)
 	r.DELETE("/api/v1/teams/:id", app.teamController.Delete)
@@ -111,6 +112,15 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/invitations/:id", app.invitationController.GetInvitationByID)
 	r.POST("/api/v1/invitations/:id/accept", app.invitationController.AcceptInvitation)
 	r.POST("/api/v1/invitations/:id/reject", app.invitationController.RejectInvitation)
+
+	// Join Requests
+	r.GET("/api/v1/teams/:id/join-requests", app.joinRequestController.ListByTeam)
+	r.POST("/api/v1/teams/:id/join-requests", app.joinRequestController.Create)
+	r.GET("/api/v1/join-requests/mine", app.joinRequestController.ListMine)
+	r.GET("/api/v1/join-requests/pending-count", app.joinRequestController.PendingCount)
+	r.DELETE("/api/v1/join-requests/:id", app.joinRequestController.Cancel)
+	r.POST("/api/v1/join-requests/:id/accept", app.joinRequestController.Accept)
+	r.POST("/api/v1/join-requests/:id/reject", app.joinRequestController.Reject)
 
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
