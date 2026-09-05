@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -71,10 +72,19 @@ type UserInfoResponse struct {
 	Nick string `json:"nickname"`
 }
 
-type mpClient struct{}
+type mpClient struct {
+	apiBaseURL  string
+	authBaseURL string
+}
 
+// New crea el cliente de MercadoPago apuntando a las URLs productivas.
 func New() MercadoPagoClientInterface {
-	return &mpClient{}
+	return newMP("https://api.mercadopago.com", "https://auth.mercadopago.com")
+}
+
+// newMP crea el cliente con base URLs inyectables (tests usan httptest).
+func newMP(apiBaseURL, authBaseURL string) MercadoPagoClientInterface {
+	return &mpClient{apiBaseURL: apiBaseURL, authBaseURL: authBaseURL}
 }
 
 func (c *mpClient) CreatePreference(ctx context.Context, accessToken string, items []PreferenceItem, externalRef, notificationURL, marketplaceFee string, currencyID string) (string, error) {
@@ -225,7 +235,7 @@ func (c *mpClient) GenerateCardToken(ctx context.Context, accessToken string, ca
 		return "", fmt.Errorf("error marshaling card token request: %w", err)
 	}
 
-	url := fmt.Sprintf("https://api.mercadopago.com/v1/card_tokens?public_key=%s", publicKey)
+	url := fmt.Sprintf("%s/v1/card_tokens?public_key=%s", c.apiBaseURL, publicKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return "", fmt.Errorf("error creating card token request: %w", err)
@@ -259,7 +269,7 @@ func (c *mpClient) GetAuthURL(redirectURI string, state string) string {
 		customlogger.Error(nil, "MP OAuth client ID not configured", fmt.Errorf("missing client ID"))
 		return ""
 	}
-	url := fmt.Sprintf("https://auth.mercadopago.com/authorization?client_id=%s&response_type=code&redirect_uri=%s&state=%s", clientID, redirectURI, state)
+	url := fmt.Sprintf("%s/authorization?client_id=%s&response_type=code&redirect_uri=%s&state=%s", c.authBaseURL, clientID, url.QueryEscape(redirectURI), url.QueryEscape(state))
 	maskedAuthURL := strings.Replace(url, clientID, utils.MaskSecret(clientID), -1)
 	customlogger.Info(nil, "[DEBUG] GetAuthURL",
 		customlogger.Tag("client_id", utils.MaskSecret(clientID)),
@@ -271,7 +281,7 @@ func (c *mpClient) GetAuthURL(redirectURI string, state string) string {
 }
 
 func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error) {
-	url := "https://api.mercadopago.com/oauth/token"
+	url := fmt.Sprintf("%s/oauth/token", c.apiBaseURL)
 	body := fmt.Sprintf("client_id=%s&client_secret=%s&grant_type=authorization_code&redirect_uri=%s&code=%s", clientID, clientSecret, redirectURI, code)
 	if appconfig.MyMP.OAuthTestToken {
 		body += "&test_token=true"
@@ -322,7 +332,7 @@ func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSec
 }
 
 func (c *mpClient) RefreshAccessToken(ctx context.Context, clientID, clientSecret, refreshToken string) (*OAuthTokenResponse, error) {
-	url := "https://api.mercadopago.com/oauth/token"
+	url := fmt.Sprintf("%s/oauth/token", c.apiBaseURL)
 	body := fmt.Sprintf("grant_type=refresh_token&client_id=%s&client_secret=%s&refresh_token=%s", clientID, clientSecret, refreshToken)
 	if appconfig.MyMP.OAuthTestToken {
 		body += "&test_token=true"
@@ -372,7 +382,7 @@ func (c *mpClient) RefreshAccessToken(ctx context.Context, clientID, clientSecre
 }
 
 func (c *mpClient) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error) {
-	url := fmt.Sprintf("https://api.mercadopago.com/users/me?access_token=%s", accessToken)
+	url := fmt.Sprintf("%s/users/me?access_token=%s", c.apiBaseURL, accessToken)
 	maskedURL := strings.Replace(url, accessToken, utils.MaskSecret(accessToken), -1)
 
 	customlogger.Info(nil, "[DEBUG] GetUserInfo request",
