@@ -408,7 +408,7 @@ func (s *invitationService) AcceptInvitation(ctx *gin.Context, invitationID, use
 	// grupo destino (sin group_id y el equipo no tiene grupo principal), se loguea y
 	// se sigue — la invitación igual se marca como aceptada y el usuario ya es
 	// miembro del equipo, que es la parte que importa.
-	s.assignInviteeToGroup(ctx, inv, userID)
+	AssignToDefaultGroup(ctx, s.groupDao, s.groupUserDao, inv.TeamID, inv.GroupID, userID)
 
 	if err := s.invitationDao.UpdateStatus(ctx, inv.ID, string(constants.InvitationStatusAccepted), time.Now()); err != nil {
 		customlogger.Error(ctx, "team_user creado pero invitación no pudo marcarse como aceptada", err,
@@ -465,60 +465,6 @@ func (s *invitationService) notifyInvitationResponse(ctx *gin.Context, inv *dbs.
 		title := "Respuesta a tu invitación"
 		body := fmt.Sprintf("%s %s tu invitación a %s", invitee.Name, status, teamDB.Name)
 		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, inviter.ID, title, body, "invitation_response", fmt.Sprintf("/teams/%d", teamDB.ID))
-	}
-}
-
-// assignInviteeToGroup da de alta al invitado en el grupo elegido al invitar, o en el
-// grupo principal del equipo si no se eligió ninguno. No bloquea AcceptInvitation si
-// falla — ver comentario en el call site.
-func (s *invitationService) assignInviteeToGroup(ctx *gin.Context, inv *dbs.Invitation, userID int64) {
-	targetGroupID := inv.GroupID
-
-	if targetGroupID == nil {
-		groups, err := s.groupDao.GetByTeamID(ctx, inv.TeamID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding team groups for invitation group assignment", err,
-				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-				customlogger.TagMethod("AcceptInvitation"))
-			return
-		}
-		for _, g := range groups {
-			if g.IsMain {
-				id := g.ID
-				targetGroupID = &id
-				break
-			}
-		}
-		if targetGroupID == nil {
-			customlogger.Warn(ctx, "no default group found for team on invitation accept",
-				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-				customlogger.Tag("team_id", fmt.Sprintf("%d", inv.TeamID)),
-				customlogger.TagMethod("AcceptInvitation"))
-			return
-		}
-	}
-
-	existingGroupMember, err := s.groupUserDao.FindByGroupAndUser(ctx, *targetGroupID, userID)
-	if err != nil {
-		customlogger.Error(ctx, "error checking group membership on accept invitation", err,
-			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-			customlogger.TagMethod("AcceptInvitation"))
-		return
-	}
-	if existingGroupMember != nil {
-		return
-	}
-
-	groupUser := &dbs.GroupUser{
-		GroupID:   *targetGroupID,
-		UserID:    userID,
-		DateStart: time.Now(),
-	}
-	if err := s.groupUserDao.Create(ctx, groupUser); err != nil {
-		customlogger.Error(ctx, "error creating group_user on accept invitation", err,
-			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-			customlogger.Tag("group_id", fmt.Sprintf("%d", *targetGroupID)),
-			customlogger.TagMethod("AcceptInvitation"))
 	}
 }
 
