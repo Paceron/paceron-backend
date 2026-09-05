@@ -68,13 +68,11 @@ No hay precedente de paginación en el repo (confirmado, cero uso de `limit`/`of
 | `POST /api/v1/join-requests/:id/accept` | entrenador dueño del equipo | ver D4 |
 | `POST /api/v1/join-requests/:id/reject` | entrenador dueño del equipo | marca `rejected` |
 
-### D4. `Accept`: reuso del gate de membresía y transacción
+### D4. `Accept`: reuso del gate de membresía, mismo patrón secuencial que `AcceptInvitation`
 
-`Accept` sigue el mismo criterio que `AddUser`/`AcceptInvitation`: cuenta miembros actuales contra `MaxMembers` (check-then-act, ver D6 — condición de carrera conocida y aceptada, no se resuelve acá), arma un `dbs.TeamUser{TeamID, UserID: request.RunnerID, RoleInTeam: "corredor"}`, y llama `ApplyTeamMembershipGate(ctx, tx, teamUserDao, installDao, teamUser, teamDB.MembershipFee)`.
+`Accept` replica exactamente la estructura de `invitation_service.AcceptInvitation` (no una transacción nueva): busca si el corredor ya es miembro (`teamUserDao.FindByTeamAndUser`); si no lo es, valida cupo (check-then-act, ver D6 — condición de carrera conocida y aceptada, no se resuelve acá), arma `dbs.TeamUser{TeamID, UserID: request.RunnerID, RoleInTeam: "corredor"}` y llama `ApplyTeamMembershipGate(ctx, s.db, s.teamUserDao, s.installDao, teamUser, teamDB.MembershipFee)` — el gate abre su propia transacción internamente cuando `s.db` no es nil, igual que ya hace para `AddUser`/`AcceptInvitation`, sin que `join_request_service` necesite envolver nada por fuera. Si el corredor ya era miembro (reintento tras un fallo parcial previo), se saltea directamente a los pasos siguientes sin volver a crear nada — mismo guard `if existingMember == nil` que ya usa `AcceptInvitation`.
 
-Para que la creación del `team_user` y el cambio de `join_request.Status` a `accepted` sean atómicos, `join_request_service.Accept` abre su propia transacción GORM y le pasa ese `*gorm.DB` (ya en curso) al gate — que internamente hace `db.Transaction(...)` sobre él. GORM soporta transacciones anidadas vía *savepoint* automáticamente, así que esto no requiere tocar la firma ni el código de `ApplyTeamMembershipGate`: el gate corre como si fuera su propia transacción, pero en realidad es un savepoint dentro de la transacción externa, y un rollback de cualquiera de las dos partes deshace todo.
-
-Después de que el gate resuelve sin error, en la misma transacción se llama `AssignToDefaultGroup` (D5) y se actualiza `join_request.Status = "accepted"`. Si cualquier paso falla, la transacción entera se revierte — no queda un `team_user` creado con la solicitud todavía en `pending`, ni viceversa.
+Después, sin importar si vino del branch de alta o del de "ya era miembro", se llama `AssignToDefaultGroup(ctx, groupDao, groupUserDao, teamDB.ID, nil, jr.RunnerID)` (D5, siempre `groupID: nil`, best-effort, no bloquea) y se actualiza `join_request.Status = "accepted"` como paso final independiente. Igual que en `AcceptInvitation`, esto **no es atómico de punta a punta**: si `UpdateStatus` falla después de que el gate ya creó el `team_user`, la solicitud queda `pending` con la membresía ya creada — un reintento de `Accept` lo detecta vía el guard `existingMember != nil` y solo corrige el estado de la solicitud, sin duplicar nada. Mismo trade-off ya aceptado y documentado en el comentario de `AcceptInvitation` (`invitation_service.go:356-361`), no uno nuevo introducido por este change.
 
 ### D5. Asignación a grupo default: extracción de `AssignToDefaultGroup`
 
@@ -126,7 +124,7 @@ Se elige la convención de códigos específicos en SCREAMING_SNAKE (la usada po
 
 Sigue `Controllers → Delegates → Services → DAOs` (`.agentics/CONVENTIONS.md`):
 
-- **DAOs**: `daos/join_request_dao.go` (nuevo) — `Create`, `FindByID`, `FindPendingByTeamAndUser`, `FindPendingByTeam` (paginado), `FindByUser`, `UpdateStatus`, `CountPendingByOwner`. `daos/team_dao.go` extendido con `SearchPublic(filters, page, pageSize)`.
+- **DAOs**: `daos/join_request_dao.go` (nuevo) — `Create`, `FindByID`, `FindPendingByTeamAndUser`, `FindPendingByTeam` (sin paginar — la lista de pendientes de un equipo no la pide paginada el frontend, a diferencia de la búsqueda), `FindByUser`, `UpdateStatus`, `Delete` (usado por `Cancel` — no hay un 4to valor `cancelled` en `constants.InvitationStatus`, D1 reusa deliberadamente solo `pending`/`accepted`/`rejected`, así que cancelar borra la fila en vez de cambiarle el estado), `CountPendingByOwner`. `daos/team_dao.go` extendido con `SearchPublic(filters, page, pageSize)`.
 - **Services**: `services/join_request_service.go` (nuevo) — `Create`, `Cancel`, `Accept`, `Reject`, `ListMine`, `ListByTeam`, `PendingCount`. `services/team_service.go` extendido con `Search`. `services/team_group_assignment.go` (nuevo, D5).
 - **Delegates**: `delegates/join_request_delegate.go` (nuevo), `delegates/team_delegate.go` extendido si el patrón de delegate-por-recurso lo pide para `Search`.
 - **Controllers**: `controllers/join_request_controller.go` (nuevo), `controllers/team_controller.go` extendido (`Search`).

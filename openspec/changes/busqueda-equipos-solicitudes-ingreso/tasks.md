@@ -35,7 +35,7 @@
 - [ ] `services/join_request_service.go` (nuevo):
   - `Create(ctx, teamID, runnerID)` — valida `is_public`, cupo (D6), no-ya-miembro, no-duplicado (`FindPendingByTeamAndUser`).
   - `Cancel(ctx, requestID, callerID)` — valida dueño de la solicitud y estado `pending`.
-  - `Accept(ctx, requestID, callerID)` — valida dueño del equipo y estado `pending`; transacción propia; revalida cupo; `ApplyTeamMembershipGate` con el `*gorm.DB` de la transacción; `AssignToDefaultGroup(groupID: nil)`; `UpdateStatus(accepted)`.
+  - `Accept(ctx, requestID, callerID)` — valida dueño del equipo y estado `pending`; si el corredor no es miembro todavía, revalida cupo y llama `ApplyTeamMembershipGate` (mismo patrón secuencial que `AcceptInvitation`, sin transacción propia); siempre `AssignToDefaultGroup(groupID: nil)`; `UpdateStatus(accepted)` como paso final independiente.
   - `Reject(ctx, requestID, callerID)` — valida dueño y `pending`; `UpdateStatus(rejected)`.
   - `ListMine(ctx, runnerID)`, `ListByTeam(ctx, teamID, callerID, page)`, `PendingCount(ctx, ownerID)`.
 - [ ] Tests unitarios (mocks de DAOs + `teamUserDao`/`installDao` ya existentes para el gate): los ~13 escenarios de la tabla de códigos de error (D7) + el flujo feliz de cada operación + la revalidación de cupo en `Accept`.
