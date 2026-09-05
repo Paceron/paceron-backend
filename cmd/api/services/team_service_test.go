@@ -1161,3 +1161,30 @@ func TestTeamService_DeleteIcon_NoIcon_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, storage.lastDeleteKey)
 }
+
+func TestTeamService_Search_Success(t *testing.T) {
+	teamDao := &mockTeamDao{searchPublicFn: func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
+		return []dbs.Team{{ID: 1, Name: "equipo test", OwnerID: 2, MaxMembers: 10}}, false, nil
+	}}
+	userDao := &mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
+		return &dbs.User{ID: id, Name: "Ana", Surname: "Gómez"}, nil
+	}}
+	teamUserDao := &mockTeamUserDao{countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) { return 3, nil }}
+	svc := NewTeamService(teamDao, userDao, &mockUserRoleDao{}, &mockRoleDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+
+	resp, err := svc.Search(nil, 99, team.SearchFilters{}, 1)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Teams, 1)
+	assert.Equal(t, "Ana Gómez", resp.Teams[0].OwnerName)
+	assert.Equal(t, int64(3), resp.Teams[0].MemberCount)
+	assert.False(t, resp.HasMore)
+}
+
+func TestTeamService_Search_InvalidPage(t *testing.T) {
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDao{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+
+	_, err := svc.Search(nil, 99, team.SearchFilters{}, 0)
+
+	assert.ErrorIs(t, err, ErrInvalidQuery)
+}

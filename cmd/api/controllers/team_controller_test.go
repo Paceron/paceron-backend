@@ -24,6 +24,7 @@ type mockTeamService struct {
 	updateAddressFn func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 	uploadIconFn    func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error)
 	deleteIconFn    func(ctx *gin.Context, id int64, callerID int64) error
+	searchFn        func(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error)
 }
 
 func (m *mockTeamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
@@ -80,6 +81,13 @@ func (m *mockTeamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64)
 		return m.deleteIconFn(ctx, id, callerID)
 	}
 	return nil
+}
+
+func (m *mockTeamService) Search(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+	if m.searchFn != nil {
+		return m.searchFn(ctx, callerID, filters, page)
+	}
+	return nil, nil
 }
 
 type mockTeamDelegate struct {
