@@ -167,6 +167,122 @@ func TestJoinRequestController_Accept_Forbidden(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+func TestJoinRequestController_Reject_Success(t *testing.T) {
+	svc := &mockJoinRequestService{rejectFn: func(ctx *gin.Context, requestID, callerID int64) error { return nil }}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/join-requests/1/reject", nil)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	ctrl.Reject(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Solicitud rechazada")
+}
+
+func TestJoinRequestController_Reject_NotFound(t *testing.T) {
+	svc := &mockJoinRequestService{rejectFn: func(ctx *gin.Context, requestID, callerID int64) error {
+		return services.ErrJoinRequestNotFound
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/join-requests/1/reject", nil)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	ctrl.Reject(c)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestJoinRequestController_Reject_Forbidden(t *testing.T) {
+	svc := &mockJoinRequestService{rejectFn: func(ctx *gin.Context, requestID, callerID int64) error {
+		return services.ErrJoinRequestForbidden
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/join-requests/1/reject", nil)
+	c.Params = gin.Params{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 2)
+
+	ctrl.Reject(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestJoinRequestController_ListMine_Success(t *testing.T) {
+	svc := &mockJoinRequestService{listMineFn: func(ctx *gin.Context, runnerID int64) ([]joinrequest.JoinRequestResponse, error) {
+		return []joinrequest.JoinRequestResponse{
+			{ID: 1, TeamID: 5, RunnerID: runnerID, Status: "pending"},
+		}, nil
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/join-requests/mine", nil)
+	setAuthUserID(c, 7)
+
+	ctrl.ListMine(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"team_id":5`)
+}
+
+func TestJoinRequestController_ListByTeam_Success(t *testing.T) {
+	svc := &mockJoinRequestService{listByTeamFn: func(ctx *gin.Context, teamID, callerID int64) ([]joinrequest.JoinRequestResponse, error) {
+		return []joinrequest.JoinRequestResponse{
+			{ID: 2, TeamID: teamID, RunnerID: 9, Status: "pending"},
+		}, nil
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/teams/5/join-requests", nil)
+	c.Params = gin.Params{{Key: "id", Value: "5"}}
+	setAuthUserID(c, 1)
+
+	ctrl.ListByTeam(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"runner_id":9`)
+}
+
+func TestJoinRequestController_ListByTeam_Forbidden(t *testing.T) {
+	svc := &mockJoinRequestService{listByTeamFn: func(ctx *gin.Context, teamID, callerID int64) ([]joinrequest.JoinRequestResponse, error) {
+		return nil, services.ErrJoinRequestForbidden
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/teams/5/join-requests", nil)
+	c.Params = gin.Params{{Key: "id", Value: "5"}}
+	setAuthUserID(c, 2)
+
+	ctrl.ListByTeam(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestJoinRequestController_ListByTeam_NotFound(t *testing.T) {
+	svc := &mockJoinRequestService{listByTeamFn: func(ctx *gin.Context, teamID, callerID int64) ([]joinrequest.JoinRequestResponse, error) {
+		return nil, services.ErrTeamNotFound
+	}}
+	ctrl := NewJoinRequestController(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/teams/999/join-requests", nil)
+	c.Params = gin.Params{{Key: "id", Value: "999"}}
+	setAuthUserID(c, 1)
+
+	ctrl.ListByTeam(c)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestJoinRequestController_PendingCount(t *testing.T) {
 	svc := &mockJoinRequestService{pendingCountFn: func(ctx *gin.Context, ownerID int64) (int64, error) { return 4, nil }}
 	ctrl := NewJoinRequestController(svc)
