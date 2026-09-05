@@ -303,6 +303,14 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/invitations/:id` | Get invitation detail (must be the invitee) |
 | POST | `/api/v1/invitations/:id/accept` | Invitee accepts an invitation (joins team as corredor, and the invitation's group or the team's default) |
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
+| GET | `/api/v1/teams/search` | Search public/visible teams by name/level/location (excludes teams where caller is already member; paginated) |
+| POST | `/api/v1/teams/:id/join-requests` | Request to join a public team (caller becomes pending member; fails if already member or team full) |
+| GET | `/api/v1/teams/:id/join-requests` | List pending join requests for a team (entrenador of the team only) |
+| GET | `/api/v1/join-requests/mine` | List the authenticated user's sent join requests |
+| POST | `/api/v1/join-requests/:id/accept` | Accept a join request for your team (entrenador only; joins runner and optionally adds to default group) |
+| POST | `/api/v1/join-requests/:id/reject` | Reject a join request (entrenador only) |
+| DELETE | `/api/v1/join-requests/:id` | Cancel a join request (request owner only) |
+| GET | `/api/v1/join-requests/pending-count` | Count of pending join requests for teams owned by authenticated user |
 | GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
 | GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
 | GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |

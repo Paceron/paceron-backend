@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
+	_ "simple-arq-golang/cmd/api/domains/joinrequest"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )

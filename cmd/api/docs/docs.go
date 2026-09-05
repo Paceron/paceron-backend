@@ -1001,6 +1001,173 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/join-requests/mine": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Mis solicitudes de ingreso",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_joinrequest.JoinRequestResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/join-requests/pending-count": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Conteo agregado de solicitudes pendientes",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_joinrequest.PendingCountResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/join-requests/{id}": {
+            "delete": {
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Cancelar solicitud propia",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Join request ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/join-requests/{id}/accept": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Aceptar solicitud de ingreso",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Join request ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/join-requests/{id}/reject": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Rechazar solicitud de ingreso",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Join request ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/mercadopago/connect": {
             "get": {
                 "description": "Returns the authorization URL to connect a Mercado Pago account for split payments.",
@@ -2214,6 +2381,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/teams/search": {
+            "get": {
+                "description": "Busca equipos visible=true por nombre/nivel/ubicación, excluyendo equipos donde el caller ya es miembro. Paginado (page, tamaño fijo 20)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Buscar equipos",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nombre (parcial)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Nivel",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "País",
+                        "name": "country",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Provincia",
+                        "name": "province",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Ciudad",
+                        "name": "city",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamSearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/{id}": {
             "get": {
                 "description": "Devuelve un equipo por su ID",
@@ -2737,6 +2974,93 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/{id}/join-requests": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Solicitudes pendientes de un equipo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Team ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_joinrequest.JoinRequestResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "join-requests"
+                ],
+                "summary": "Solicitar ingreso a un equipo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Team ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_joinrequest.JoinRequestResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -4218,6 +4542,23 @@ const docTemplate = `{
                 }
             }
         },
+        "/callbackauth": {
+            "get": {
+                "description": "Loguea todos los query params recibidos (util para debug de OAuth callback)",
+                "tags": [
+                    "health"
+                ],
+                "summary": "Debug OAuth callback",
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/ping": {
             "get": {
                 "description": "Returns pong if the server is running",
@@ -4698,6 +5039,40 @@ const docTemplate = `{
                 "message": {
                     "description": "Mensaje de confirmación",
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_joinrequest.JoinRequestResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "runner_id": {
+                    "type": "integer"
+                },
+                "runner_name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_joinrequest.PendingCountResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
                 }
             }
         },
@@ -5389,6 +5764,10 @@ const docTemplate = `{
                     "description": "ID del equipo",
                     "type": "integer"
                 },
+                "is_public": {
+                    "description": "Si acepta solicitudes de ingreso",
+                    "type": "boolean"
+                },
                 "level": {
                     "description": "Nivel del equipo",
                     "type": "string"
@@ -5432,6 +5811,62 @@ const docTemplate = `{
                 "updated_at": {
                     "description": "Fecha de última actualización",
                     "type": "string"
+                },
+                "visible": {
+                    "description": "Si aparece en resultados de búsqueda",
+                    "type": "boolean"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_team.TeamSearchResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "teams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_team.TeamSearchResult"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_team.TeamSearchResult": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string"
+                },
+                "country": {
+                    "type": "string"
+                },
+                "icon_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_public": {
+                    "type": "boolean"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "max_members": {
+                    "type": "integer"
+                },
+                "member_count": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_name": {
+                    "type": "string"
+                },
+                "province": {
+                    "type": "string"
                 }
             }
         },
@@ -5467,6 +5902,10 @@ const docTemplate = `{
                     "description": "Descripción del equipo (opcional)",
                     "type": "string"
                 },
+                "is_public": {
+                    "description": "Si acepta solicitudes de ingreso (opcional)",
+                    "type": "boolean"
+                },
                 "level": {
                     "description": "Nivel del equipo (opcional)",
                     "type": "string"
@@ -5485,6 +5924,10 @@ const docTemplate = `{
                 },
                 "show_groups_to_runners": {
                     "description": "Si los corredores ven a qué grupo pertenece cada compañero (opcional)",
+                    "type": "boolean"
+                },
+                "visible": {
+                    "description": "Si aparece en resultados de búsqueda (opcional)",
                     "type": "boolean"
                 }
             }
