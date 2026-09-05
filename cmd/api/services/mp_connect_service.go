@@ -13,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/crypto"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // MPConnectServiceInterface define las operaciones de conexión OAuth con Mercado Pago.
@@ -54,9 +55,15 @@ func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64) (*mpconnec
 	// Generar state único para CSRF (userID + timestamp + random)
 	state := fmt.Sprintf("%d-%d", userID, time.Now().UnixNano())
 
-	// Usar el redirect_uri configurado
-	redirectURI := "https://paceron-frontend.vercel.app/mercadopago/callback"
-	authURL := s.mpClient.GetAuthURL(redirectURI, state)
+	if s.clientID == "" || s.redirectURI == "" {
+		customlogger.Error(ctx, "MP OAuth client not configured", fmt.Errorf("missing client ID/redirect"),
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("redirect_uri", s.redirectURI),
+			customlogger.TagMethod("GetAuthURL"))
+		return nil, fmt.Errorf("configuración de Mercado Pago incompleta")
+	}
+
+	authURL := s.mpClient.GetAuthURL(s.redirectURI, state)
 	if authURL == "" {
 		customlogger.Error(ctx, "MP OAuth client not configured", fmt.Errorf("missing client ID"),
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
@@ -69,6 +76,13 @@ func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64) (*mpconnec
 
 // HandleCallback procesa el callback de OAuth de Mercado Pago.
 func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.CallbackRequest) (*mpconnect.CallbackResponse, error) {
+	customlogger.Info(ctx, "[DEBUG] HandleCallback recibido",
+		customlogger.Tag("code", utils.MaskSecret(req.Code)),
+		customlogger.Tag("state", req.State),
+		customlogger.Tag("error", req.Error),
+		customlogger.Tag("error_description", req.ErrorDescription),
+		customlogger.TagMethod("HandleCallback"))
+
 	if req.Error != "" {
 		customlogger.Warn(ctx, "MP OAuth callback error",
 			customlogger.Tag("error", req.Error),
@@ -78,6 +92,10 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 	}
 
 	if req.Code == "" || req.State == "" {
+		customlogger.Warn(ctx, "MP OAuth missing code/state",
+			customlogger.Tag("code", utils.MaskSecret(req.Code)),
+			customlogger.Tag("state", req.State),
+			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("parámetros code y state requeridos")
 	}
 
@@ -90,57 +108,115 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("state inválido")
 	}
+	customlogger.Info(ctx, "[DEBUG] State validado",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.TagMethod("HandleCallback"))
 
 	if s.clientID == "" || s.clientSecret == "" || s.redirectURI == "" {
-		customlogger.Error(ctx, "MP OAuth credentials not configured", fmt.Errorf("missing credentials"))
+		customlogger.Error(ctx, "MP OAuth credentials not configured", fmt.Errorf("missing credentials"),
+			customlogger.Tag("client_id", s.clientID),
+			customlogger.Tag("client_secret", utils.MaskSecret(s.clientSecret)),
+			customlogger.Tag("redirect_uri", s.redirectURI),
+			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("configuración de Mercado Pago incompleta")
 	}
+	customlogger.Info(ctx, "[DEBUG] Credenciales OAuth configuradas",
+		customlogger.Tag("client_id", s.clientID),
+		customlogger.Tag("client_secret", utils.MaskSecret(s.clientSecret)),
+		customlogger.Tag("redirect_uri", s.redirectURI),
+		customlogger.TagMethod("HandleCallback"))
 
 	tokenResp, err := s.mpClient.ExchangeCodeForToken(ctx, s.clientID, s.clientSecret, s.redirectURI, req.Code)
 	if err != nil {
 		customlogger.Error(ctx, "MP OAuth token exchange failed", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("code", utils.MaskSecret(req.Code)),
 			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("error al obtener tokens: %w", err)
 	}
+	customlogger.Info(ctx, "[DEBUG] Token exchange OK",
+		customlogger.Tag("access_token", utils.MaskSecret(tokenResp.AccessToken)),
+		customlogger.Tag("refresh_token", utils.MaskSecret(tokenResp.RefreshToken)),
+		customlogger.Tag("expires_in", fmt.Sprintf("%d", tokenResp.ExpiresIn)),
+		customlogger.Tag("mp_user_id", fmt.Sprintf("%d", tokenResp.UserID)),
+		customlogger.TagMethod("HandleCallback"))
+
+	// Refrescar el token apenas lo tenemos para que dure el máximo posible.
+	refreshResp, err := s.mpClient.RefreshAccessToken(ctx, s.clientID, s.clientSecret, tokenResp.RefreshToken)
+	if err != nil {
+		customlogger.Error(ctx, "MP OAuth token refresh failed", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("HandleCallback"))
+		return nil, fmt.Errorf("error al refrescar tokens: %w", err)
+	}
+	customlogger.Info(ctx, "[DEBUG] Token refresh OK",
+		customlogger.Tag("access_token", utils.MaskSecret(refreshResp.AccessToken)),
+		customlogger.Tag("refresh_token", utils.MaskSecret(refreshResp.RefreshToken)),
+		customlogger.Tag("expires_in", fmt.Sprintf("%d", refreshResp.ExpiresIn)),
+		customlogger.TagMethod("HandleCallback"))
+
+	accessToken := refreshResp.AccessToken
+	refreshToken := refreshResp.RefreshToken
+	if refreshToken == "" {
+		refreshToken = tokenResp.RefreshToken
+	}
 
 	// Obtener info del usuario de MP para confirmar mp_user_id
-	userInfo, err := s.mpClient.GetUserInfo(ctx, tokenResp.AccessToken)
+	userInfo, err := s.mpClient.GetUserInfo(ctx, accessToken)
 	if err != nil {
 		customlogger.Error(ctx, "MP OAuth get user info failed", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("access_token", utils.MaskSecret(accessToken)),
 			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("error al obtener info de usuario: %w", err)
 	}
+	customlogger.Info(ctx, "[DEBUG] User info OK",
+		customlogger.Tag("mp_user_id", fmt.Sprintf("%d", userInfo.ID)),
+		customlogger.Tag("nickname", userInfo.Nick),
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.TagMethod("HandleCallback"))
 
 	// Cifrar tokens antes de guardar
-	encryptedAccessToken, err := s.encryptor.Encrypt(tokenResp.AccessToken)
+	encryptedAccessToken, err := s.encryptor.Encrypt(accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("error cifrando access_token")
 	}
-	encryptedRefreshToken, err := s.encryptor.Encrypt(tokenResp.RefreshToken)
+	encryptedRefreshToken, err := s.encryptor.Encrypt(refreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("error cifrando refresh_token")
 	}
+	customlogger.Info(ctx, "[DEBUG] Tokens cifrados",
+		customlogger.Tag("encrypted_access_token", utils.MaskSecret(encryptedAccessToken)),
+		customlogger.Tag("encrypted_refresh_token", utils.MaskSecret(encryptedRefreshToken)),
+		customlogger.TagMethod("HandleCallback"))
 
 	// Upsert seller_connection
-	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	expiresAt := time.Now().Add(time.Duration(refreshResp.ExpiresIn) * time.Second)
+	if refreshResp.ExpiresIn == 0 {
+		expiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	}
 	conn := &dbs.SellerConnection{
-		UserID:          userID,
-		MPUserID:        fmt.Sprintf("%d", userInfo.ID),
-		AccessToken:     encryptedAccessToken,
-		RefreshToken:    encryptedRefreshToken,
-		Status:          string(constants.SellerConnectionStatusAuthorized),
-		TokenExpiresAt:  &expiresAt,
+		UserID:         userID,
+		MPUserID:       fmt.Sprintf("%d", userInfo.ID),
+		AccessToken:    encryptedAccessToken,
+		RefreshToken:   encryptedRefreshToken,
+		Status:         string(constants.SellerConnectionStatusAuthorized),
+		TokenExpiresAt: &expiresAt,
 	}
 
-	_, err = s.sellerConnDao.Upsert(ctx, conn)
+	saved, err := s.sellerConnDao.Upsert(ctx, conn)
 	if err != nil {
 		customlogger.Error(ctx, "error upserting seller connection", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("error guardando conexión")
 	}
+	customlogger.Info(ctx, "[DEBUG] Seller connection guardada",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", saved.UserID)),
+		customlogger.Tag("mp_user_id", saved.MPUserID),
+		customlogger.Tag("status", saved.Status),
+		customlogger.Tag("token_expires_at", saved.TokenExpiresAt.String()),
+		customlogger.TagMethod("HandleCallback"))
 
 	return &mpconnect.CallbackResponse{Success: true, Message: "Cuenta de Mercado Pago conectada exitosamente"}, nil
 }

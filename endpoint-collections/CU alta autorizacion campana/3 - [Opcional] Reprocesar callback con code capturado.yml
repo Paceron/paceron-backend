@@ -1,0 +1,25 @@
+info:
+  name: 3 - [Opcional] Reprocesar callback con code capturado
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/mercadopago/connect/callback?code=INGRESAR_CODE_AQUI&state={{coach_user_id}}-666
+  headers:
+    - name: Authorization
+      value: Bearer dummy
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        console.log(JSON.stringify(body));
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
