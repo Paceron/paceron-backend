@@ -1,6 +1,7 @@
 package daos
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -219,4 +220,75 @@ func TestTeamDao_ClearIcon_Success(t *testing.T) {
 	require.NoError(t, findErr)
 	assert.Nil(t, found.IconKey)
 	assert.Nil(t, found.IconUpdatedAt)
+}
+
+func TestTeamDao_SearchPublic_ExcludesInvisible(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "search-owner-1@test.com", "50000001")
+	caller := persistUser(db, "search-caller-1@test.com", "50000002")
+	visible := testTeam(db, "equipo_visible_1", owner.ID)
+	require.NoError(t, dao.Update(nil, visible))
+	invisible := testTeam(db, "equipo_invisible_1", owner.ID)
+	invisible.Visible = false
+	require.NoError(t, dao.Update(nil, invisible))
+
+	results, hasMore, err := dao.SearchPublic(nil, TeamSearchFilters{}, caller.ID, 1, 20)
+
+	require.NoError(t, err)
+	assert.False(t, hasMore)
+	names := make([]string, len(results))
+	for i, r := range results {
+		names[i] = r.Name
+	}
+	assert.Contains(t, names, "equipo_visible_1")
+	assert.NotContains(t, names, "equipo_invisible_1")
+}
+
+func TestTeamDao_SearchPublic_ExcludesCallerMembership(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	teamDao := NewTeamDao(db)
+	teamUserDao := NewTeamUserDao(db)
+	owner := persistUser(db, "search-owner-2@test.com", "50000003")
+	caller := persistUser(db, "search-caller-2@test.com", "50000004")
+	team := testTeam(db, "equipo_member_test", owner.ID)
+	require.NoError(t, teamUserDao.Create(nil, &dbs.TeamUser{TeamID: team.ID, UserID: caller.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}))
+
+	results, _, err := teamDao.SearchPublic(nil, TeamSearchFilters{}, caller.ID, 1, 20)
+
+	require.NoError(t, err)
+	for _, r := range results {
+		assert.NotEqual(t, team.ID, r.ID)
+	}
+}
+
+func TestTeamDao_SearchPublic_FiltersByName(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "search-owner-3@test.com", "50000005")
+	caller := persistUser(db, "search-caller-3@test.com", "50000006")
+	testTeam(db, "runners_unicos_del_sur", owner.ID)
+	testTeam(db, "otro_equipo_cualquiera", owner.ID)
+
+	results, _, err := dao.SearchPublic(nil, TeamSearchFilters{Name: "unicos"}, caller.ID, 1, 20)
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "runners_unicos_del_sur", results[0].Name)
+}
+
+func TestTeamDao_SearchPublic_HasMore(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "search-owner-4@test.com", "50000007")
+	caller := persistUser(db, "search-caller-4@test.com", "50000008")
+	for i := 0; i < 3; i++ {
+		testTeam(db, fmt.Sprintf("equipo_paginado_%d", i), owner.ID)
+	}
+
+	results, hasMore, err := dao.SearchPublic(nil, TeamSearchFilters{}, caller.ID, 1, 2)
+
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	assert.True(t, hasMore)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/team"
 )
@@ -34,6 +35,7 @@ type mockTeamDao struct {
 	softDeleteFn       func(ctx *gin.Context, id int64) error
 	updateIconFn       func(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
 	clearIconFn        func(ctx *gin.Context, teamID int64) error
+	searchPublicFn     func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error)
 }
 
 func (m *mockTeamDao) Create(ctx *gin.Context, t *dbs.Team) error {
@@ -97,6 +99,13 @@ func (m *mockTeamDao) ClearIcon(ctx *gin.Context, teamID int64) error {
 		return m.clearIconFn(ctx, teamID)
 	}
 	return nil
+}
+
+func (m *mockTeamDao) SearchPublic(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
+	if m.searchPublicFn != nil {
+		return m.searchPublicFn(ctx, filters, callerID, page, pageSize)
+	}
+	return nil, false, nil
 }
 
 func TestTeamService_Create_Success(t *testing.T) {

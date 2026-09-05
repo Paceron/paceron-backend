@@ -21,6 +21,16 @@ type TeamDaoInterface interface {
 	SoftDelete(ctx *gin.Context, id int64) error
 	UpdateIcon(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
 	ClearIcon(ctx *gin.Context, teamID int64) error
+	SearchPublic(ctx *gin.Context, filters TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error)
+}
+
+// TeamSearchFilters agrupa los filtros opcionales de búsqueda de equipos.
+type TeamSearchFilters struct {
+	Name     string
+	Level    string
+	Country  string
+	Province string
+	City     string
 }
 
 type teamDao struct {
@@ -116,4 +126,43 @@ func (d *teamDao) ClearIcon(ctx *gin.Context, teamID int64) error {
 		return fmt.Errorf("error clearing team icon: %w", err)
 	}
 	return nil
+}
+
+// SearchPublic busca equipos visible=true, excluyendo aquellos donde callerID
+// ya es miembro activo. Pide pageSize+1 filas para derivar hasMore sin un
+// COUNT(*) adicional.
+func (d *teamDao) SearchPublic(ctx *gin.Context, filters TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
+	query := d.DB.Model(&dbs.Team{}).
+		Where("teams.visible = true AND teams.deleted_at IS NULL").
+		Where("teams.id NOT IN (?)", d.DB.Model(&dbs.TeamUser{}).Select("team_id").Where("user_id = ? AND deleted_at IS NULL", callerID))
+
+	if filters.Name != "" {
+		query = query.Where("teams.name ILIKE ?", "%"+filters.Name+"%")
+	}
+	if filters.Level != "" {
+		query = query.Where("teams.level = ?", filters.Level)
+	}
+	if filters.Country != "" {
+		query = query.Where("teams.country = ?", filters.Country)
+	}
+	if filters.Province != "" {
+		query = query.Where("teams.province = ?", filters.Province)
+	}
+	if filters.City != "" {
+		query = query.Where("teams.city = ?", filters.City)
+	}
+
+	var teams []dbs.Team
+	offset := (page - 1) * pageSize
+	err := query.Order("teams.id").Offset(offset).Limit(pageSize + 1).Find(&teams).Error
+	if err != nil {
+		return nil, false, fmt.Errorf("error searching teams: %w", err)
+	}
+
+	hasMore := len(teams) > pageSize
+	if hasMore {
+		teams = teams[:pageSize]
+	}
+
+	return teams, hasMore, nil
 }
