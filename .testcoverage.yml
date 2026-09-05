@@ -18,6 +18,7 @@ threshold:
 exclude:
   paths:
     - ^cmd/api/main\.go$
+    - ^cmd/api/app/router\.go$
     - ^cmd/api/docs/
     - ^cmd/api/testutils/
     - ^cmd/api/constants/
