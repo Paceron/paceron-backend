@@ -25,6 +25,7 @@ type TeamController interface {
 	UpdateAddress(c *gin.Context)
 	UploadIcon(c *gin.Context)
 	DeleteIcon(c *gin.Context)
+	Search(c *gin.Context)
 }
 
 type teamController struct {
@@ -491,4 +492,54 @@ func (tc *teamController) DeleteIcon(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// Search godoc
+// @Summary      Buscar equipos
+// @Description  Busca equipos visible=true por nombre/nivel/ubicación, excluyendo equipos donde el caller ya es miembro. Paginado (page, tamaño fijo 20)
+// @Tags         teams
+// @Produce      json
+// @Param        name      query     string  false  "Nombre (parcial)"
+// @Param        level     query     string  false  "Nivel"
+// @Param        country   query     string  false  "País"
+// @Param        province  query     string  false  "Provincia"
+// @Param        city      query     string  false  "Ciudad"
+// @Param        page      query     int     false  "Página (default 1)"
+// @Success      200  {object}  team.TeamSearchResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/teams/search [get]
+func (tc *teamController) Search(c *gin.Context) {
+	page := 1
+	if p := c.Query("page"); p != "" {
+		parsed, err := strconv.Atoi(p)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, apierror.APIError{StatusCode: http.StatusBadRequest, Code: "INVALID_QUERY", Message: "page debe ser un número válido"})
+			return
+		}
+		page = parsed
+	}
+
+	filters := team.SearchFilters{
+		Name:     c.Query("name"),
+		Level:    c.Query("level"),
+		Country:  c.Query("country"),
+		Province: c.Query("province"),
+		City:     c.Query("city"),
+	}
+
+	callerID, _ := utils.GetAuthUserID(c)
+	response, err := tc.teamService.Search(c, callerID, filters, page)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+		if errors.Is(err, services.ErrInvalidQuery) {
+			statusCode = http.StatusBadRequest
+			code = "INVALID_QUERY"
+		}
+		c.JSON(statusCode, apierror.APIError{StatusCode: statusCode, Code: code, Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
