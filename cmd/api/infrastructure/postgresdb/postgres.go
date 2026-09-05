@@ -81,6 +81,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.TeamUser{},
 		&dbs.GroupUser{},
 		&dbs.Invitation{},
+		&dbs.JoinRequest{},
 		&dbs.RefreshToken{},
 		&dbs.PushToken{},
 		&dbs.Payment{},

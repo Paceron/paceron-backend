@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 // teamOwnerRoleName es el rol que debe tener un usuario para poder ser owner de un equipo.
 const teamOwnerRoleName = "entrenador"
 
+// teamSearchPageSize es el tamaño de página fijo para la búsqueda de equipos.
+const teamSearchPageSize = 20
+
+// ErrInvalidQuery indica que los parámetros de búsqueda son inválidos.
+var ErrInvalidQuery = errors.New("page debe ser mayor o igual a 1")
+
 // TeamServiceInterface define las operaciones de negocio para equipos.
 type TeamServiceInterface interface {
 	Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
@@ -26,6 +33,7 @@ type TeamServiceInterface interface {
 	UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 	UploadIcon(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error)
 	DeleteIcon(ctx *gin.Context, id int64, callerID int64) error
+	Search(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error)
 }
 
 type teamService struct {
@@ -286,6 +294,12 @@ func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *te
 	if req.ShowGroupsToRunners != nil {
 		teamDB.ShowGroupsToRunners = *req.ShowGroupsToRunners
 	}
+	if req.Visible != nil {
+		teamDB.Visible = *req.Visible
+	}
+	if req.IsPublic != nil {
+		teamDB.IsPublic = *req.IsPublic
+	}
 
 	if err := s.teamDao.Update(ctx, teamDB); err != nil {
 		customlogger.Error(ctx, "error updating team", err,
@@ -508,8 +522,62 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		Street:              t.Street,
 		Number:              t.Number,
 		ShowGroupsToRunners: t.ShowGroupsToRunners,
+		Visible:             t.Visible,
+		IsPublic:            t.IsPublic,
 		IconURL:             buildMediaURL(t.IconKey, t.IconUpdatedAt),
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,
 	}
+}
+
+// Search busca equipos visible=true con filtros opcionales, paginado por
+// página fija de teamSearchPageSize, excluyendo equipos donde callerID ya es
+// miembro.
+func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+	if page < 1 {
+		return nil, ErrInvalidQuery
+	}
+
+	daoFilters := daos.TeamSearchFilters{
+		Name:     filters.Name,
+		Level:    filters.Level,
+		Country:  filters.Country,
+		Province: filters.Province,
+		City:     filters.City,
+	}
+
+	teams, hasMore, err := s.teamDao.SearchPublic(ctx, daoFilters, callerID, page, teamSearchPageSize)
+	if err != nil {
+		customlogger.Error(ctx, "error searching teams", err, customlogger.TagMethod("Search"))
+		return nil, fmt.Errorf("error al buscar equipos")
+	}
+
+	results := make([]team.TeamSearchResult, len(teams))
+	for i, t := range teams {
+		ownerName := ""
+		if owner, err := s.userDao.FindByID(ctx, t.OwnerID); err == nil && owner != nil {
+			ownerName = owner.Name + " " + owner.Surname
+		}
+
+		memberCount, err := s.teamUserDao.CountActiveByTeam(ctx, t.ID)
+		if err != nil {
+			memberCount = 0
+		}
+
+		results[i] = team.TeamSearchResult{
+			ID:          t.ID,
+			Name:        t.Name,
+			Level:       t.Level,
+			Country:     t.Country,
+			Province:    t.Province,
+			City:        t.City,
+			MaxMembers:  t.MaxMembers,
+			MemberCount: memberCount,
+			OwnerName:   ownerName,
+			IconURL:     buildMediaURL(t.IconKey, t.IconUpdatedAt),
+			IsPublic:    t.IsPublic,
+		}
+	}
+
+	return &team.TeamSearchResponse{Teams: results, HasMore: hasMore}, nil
 }

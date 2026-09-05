@@ -44,6 +44,10 @@ func (m *mockTeamServiceForDelegate) DeleteIcon(ctx *gin.Context, id int64, call
 	return nil
 }
 
+func (m *mockTeamServiceForDelegate) Search(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+	return nil, nil
+}
+
 type mockGroupServiceForDelegate struct {
 	createFn        func(ctx *gin.Context, callerID int64, req *group.CreateGroupRequest) (*group.GroupResponse, error)
 	createCalled    bool

@@ -39,6 +39,7 @@ type Application struct {
 	teamUserController         controllers.TeamUserController
 	groupUserController        controllers.GroupUserController
 	invitationController       controllers.InvitationController
+	joinRequestController      controllers.JoinRequestController
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
 	tierSubscriptionController controllers.TierSubscriptionController
@@ -183,6 +184,9 @@ func NewApplication() *Application {
 	// Invitation DAO (también lo necesita teamService para cascadear el soft-delete)
 	invitationDao := daos.NewInvitationDao(db)
 
+	// Join Request DAO
+	joinRequestDao := daos.NewJoinRequestDao(db)
+
 	// Team flow
 	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao, storageClientInstance)
 
@@ -201,6 +205,10 @@ func NewApplication() *Application {
 	// Invitation flow
 	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient, installmentDao, db)
 	invitationController := controllers.NewInvitationController(invitationService)
+
+	// Join Request flow
+	joinRequestService := services.NewJoinRequestService(joinRequestDao, teamDao, teamUserDao, userDao, groupDao, groupUserDao, installmentDao, db)
+	joinRequestController := controllers.NewJoinRequestController(joinRequestService)
 
 	// Push token flow
 	pushTokenService := services.NewPushTokenService(pushTokenDao)
@@ -254,6 +262,7 @@ func NewApplication() *Application {
 		teamUserController:         teamUserController,
 		groupUserController:        groupUserController,
 		invitationController:       invitationController,
+		joinRequestController:      joinRequestController,
 		pushTokenController:        pushTokenController,
 		paymentController:          paymentController,
 		tierSubscriptionController: tierSubscriptionController,

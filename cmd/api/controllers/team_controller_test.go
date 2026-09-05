@@ -24,6 +24,7 @@ type mockTeamService struct {
 	updateAddressFn func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error)
 	uploadIconFn    func(ctx *gin.Context, id int64, callerID int64, content []byte) (*string, error)
 	deleteIconFn    func(ctx *gin.Context, id int64, callerID int64) error
+	searchFn        func(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error)
 }
 
 func (m *mockTeamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
@@ -80,6 +81,13 @@ func (m *mockTeamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64)
 		return m.deleteIconFn(ctx, id, callerID)
 	}
 	return nil
+}
+
+func (m *mockTeamService) Search(ctx *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+	if m.searchFn != nil {
+		return m.searchFn(ctx, callerID, filters, page)
+	}
+	return nil, nil
 }
 
 type mockTeamDelegate struct {
@@ -705,4 +713,37 @@ func TestTeamController_DeleteIcon_Forbidden(t *testing.T) {
 	controller.DeleteIcon(c)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestTeamController_Search_Success(t *testing.T) {
+	svc := &mockTeamService{searchFn: func(c *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+		assert.Equal(t, "medio", filters.Level)
+		assert.Equal(t, 2, page)
+		return &team.TeamSearchResponse{Teams: []team.TeamSearchResult{{ID: 1}}, HasMore: false}, nil
+	}}
+	ctrl := NewTeamController(svc, nil)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/teams/search?level=medio&page=2", nil)
+
+	ctrl.Search(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestTeamController_Search_InvalidPage(t *testing.T) {
+	svc := &mockTeamService{searchFn: func(c *gin.Context, callerID int64, filters team.SearchFilters, page int) (*team.TeamSearchResponse, error) {
+		return nil, services.ErrInvalidQuery
+	}}
+	ctrl := NewTeamController(svc, nil)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/teams/search?page=0", nil)
+
+	ctrl.Search(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "INVALID_QUERY")
 }

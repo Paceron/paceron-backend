@@ -9,6 +9,8 @@ type UpdateTeamRequest struct {
 	MaxMembers          *int64  `json:"max_members"`            // Cantidad máxima de integrantes (opcional)
 	Requirements        *string `json:"requirements"`           // Requerimientos para entrar (opcional)
 	ShowGroupsToRunners *bool   `json:"show_groups_to_runners"` // Si los corredores ven a qué grupo pertenece cada compañero (opcional)
+	Visible             *bool   `json:"visible"`                // Si aparece en resultados de búsqueda (opcional)
+	IsPublic            *bool   `json:"is_public"`              // Si acepta solicitudes de ingreso (opcional)
 }
 
 // UpdateTeamAddressRequest es el DTO para actualizar la dirección de un equipo.
