@@ -127,6 +127,22 @@ func TestJoinRequestService_Create_AlreadyMember(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAlreadyMember)
 }
 
+func TestJoinRequestService_Create_OwnerCannotRequestOwnTeam(t *testing.T) {
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7, IsPublic: true, MaxMembers: 10}, nil
+	}}
+	teamUserDao := &mockTeamUserDao{findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+		t.Fatal("no debería consultar team_users: el chequeo de owner corta antes")
+		return nil, nil
+	}}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(&mockJoinRequestDao{}, teamDao, teamUserDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	_, err := svc.Create(nil, 5, 7)
+
+	assert.ErrorIs(t, err, ErrAlreadyMember)
+}
+
 func TestJoinRequestService_Create_TeamFull(t *testing.T) {
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, IsPublic: true, MaxMembers: 2}, nil

@@ -88,6 +88,12 @@ func (s *joinRequestService) Create(ctx *gin.Context, teamID, runnerID int64) (*
 	if !teamDB.IsPublic {
 		return nil, ErrTeamNotPublic
 	}
+	// El owner puede no tener fila en team_users si la inserción best-effort
+	// de team_service.Create falló — chequeo explícito, no depender solo de
+	// FindByTeamAndUser.
+	if teamDB.OwnerID == runnerID {
+		return nil, ErrAlreadyMember
+	}
 
 	existingMember, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, runnerID)
 	if err != nil {
