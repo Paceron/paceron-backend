@@ -1,0 +1,31 @@
+info:
+  name: 4 - Verificar estado de conexion del entrenador
+  type: http
+  seq: 4
+
+http:
+  method: GET
+  url: http://localhost:8080/api/v1/mercadopago/connect/status
+  headers:
+    - name: Authorization
+      value: Bearer {{coach_token}}
+
+runtime:
+  scripts:
+    - type: after-response
+      code: |-
+        const body = res.getBody();
+        console.log("connected:", body && body.connected);
+        console.log("account_status:", body && body.account_status);
+        if (!body || !body.connected) {
+          console.log("ADVERTENCIA: el entrenador aun no quedo conectado. Revisar el request 3 y el code pegado.");
+        } else {
+          console.log("OK: entrenador conectado para cobrar en su nombre (split).");
+        }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
