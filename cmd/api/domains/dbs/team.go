@@ -16,6 +16,8 @@ type Team struct {
 	MembershipFee       float64    `gorm:"column:membership_fee;not null;default:0"`             // Mensualidad que paga cada corredor al entrenador (0 = gratis)
 	Status              string     `gorm:"column:status;not null;default:active"`                // Estado del equipo (active, inactive, archived)
 	ShowGroupsToRunners bool       `gorm:"column:show_groups_to_runners;not null;default:false"` // Si los corredores ven a qué grupo pertenece cada compañero
+	Visible             bool       `gorm:"column:visible;not null;default:true"`                 // Si aparece en resultados de búsqueda de equipos
+	IsPublic            bool       `gorm:"column:is_public;not null;default:true"`               // Si acepta solicitudes de ingreso ("Solicitar unirse")
 	Country             string     `gorm:"column:country"`                                       // Dirección: país
 	Province            string     `gorm:"column:province"`                                      // Dirección: provincia
 	City                string     `gorm:"column:city"`                                          // Dirección: ciudad
