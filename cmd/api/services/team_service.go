@@ -286,6 +286,12 @@ func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *te
 	if req.ShowGroupsToRunners != nil {
 		teamDB.ShowGroupsToRunners = *req.ShowGroupsToRunners
 	}
+	if req.Visible != nil {
+		teamDB.Visible = *req.Visible
+	}
+	if req.IsPublic != nil {
+		teamDB.IsPublic = *req.IsPublic
+	}
 
 	if err := s.teamDao.Update(ctx, teamDB); err != nil {
 		customlogger.Error(ctx, "error updating team", err,
@@ -508,6 +514,8 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		Street:              t.Street,
 		Number:              t.Number,
 		ShowGroupsToRunners: t.ShowGroupsToRunners,
+		Visible:             t.Visible,
+		IsPublic:            t.IsPublic,
 		IconURL:             buildMediaURL(t.IconKey, t.IconUpdatedAt),
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,

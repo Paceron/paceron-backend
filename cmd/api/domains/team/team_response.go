@@ -18,6 +18,8 @@ type TeamResponse struct {
 	Street              string    `json:"street"`                 // Dirección: calle
 	Number              string    `json:"number"`                 // Dirección: número
 	ShowGroupsToRunners bool      `json:"show_groups_to_runners"` // Si los corredores ven a qué grupo pertenece cada compañero
+	Visible             bool      `json:"visible"`                // Si aparece en resultados de búsqueda
+	IsPublic            bool      `json:"is_public"`              // Si acepta solicitudes de ingreso
 	IconURL             *string   `json:"icon_url"`               // URL pública del ícono del equipo (nil = sin ícono)
 	CreatedAt           time.Time `json:"created_at"`             // Fecha de creación
 	UpdatedAt           time.Time `json:"updated_at"`             // Fecha de última actualización
