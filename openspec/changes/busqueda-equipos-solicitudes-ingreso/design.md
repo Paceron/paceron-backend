@@ -122,12 +122,11 @@ Se elige la convención de códigos específicos en SCREAMING_SNAKE (la usada po
 
 ### D8. Capas y archivos
 
-Sigue `Controllers → Delegates → Services → DAOs` (`.agentics/CONVENTIONS.md`):
+Sigue `Controllers → Delegates → Services → DAOs` (`.agentics/CONVENTIONS.md`) — el delegate solo aparece cuando una acción compone dos o más **services** (ej. `TeamDelegate.CreateTeam` llama a `teamSvc` y `groupSvc`). Ninguna operación de esta feature compone services entre sí (todo pasa por DAOs directamente, mismo criterio que `invitation_service.go`, que tampoco tiene delegate propio pese a tocar `teamDao`/`teamUserDao`/`groupDao`/`groupUserDao`/`installDao`), así que no se crea un delegate nuevo:
 
 - **DAOs**: `daos/join_request_dao.go` (nuevo) — `Create`, `FindByID`, `FindPendingByTeamAndUser`, `FindPendingByTeam` (sin paginar — la lista de pendientes de un equipo no la pide paginada el frontend, a diferencia de la búsqueda), `FindByUser`, `UpdateStatus`, `Delete` (usado por `Cancel` — no hay un 4to valor `cancelled` en `constants.InvitationStatus`, D1 reusa deliberadamente solo `pending`/`accepted`/`rejected`, así que cancelar borra la fila en vez de cambiarle el estado), `CountPendingByOwner`. `daos/team_dao.go` extendido con `SearchPublic(filters, page, pageSize)`.
 - **Services**: `services/join_request_service.go` (nuevo) — `Create`, `Cancel`, `Accept`, `Reject`, `ListMine`, `ListByTeam`, `PendingCount`. `services/team_service.go` extendido con `Search`. `services/team_group_assignment.go` (nuevo, D5).
-- **Delegates**: `delegates/join_request_delegate.go` (nuevo), `delegates/team_delegate.go` extendido si el patrón de delegate-por-recurso lo pide para `Search`.
-- **Controllers**: `controllers/join_request_controller.go` (nuevo), `controllers/team_controller.go` extendido (`Search`).
+- **Controllers**: `controllers/join_request_controller.go` (nuevo, llama a `join_request_service` directo, mismo patrón que `invitation_controller.go`), `controllers/team_controller.go` extendido (`Search`, llama a `team_service` directo, mismo patrón que `Update`/`GetByID`/etc — solo `Create` pasa por `teamDelegate`).
 - **Rutas** (`cmd/api/app/url_mappings.go`): las 8 de D3 + `GET /api/v1/teams/search`, todas detrás de `AuthMiddleware()`.
 
 ## Risks / Trade-offs

@@ -37,13 +37,12 @@
   - `Cancel(ctx, requestID, callerID)` — valida dueño de la solicitud y estado `pending`.
   - `Accept(ctx, requestID, callerID)` — valida dueño del equipo y estado `pending`; si el corredor no es miembro todavía, revalida cupo y llama `ApplyTeamMembershipGate` (mismo patrón secuencial que `AcceptInvitation`, sin transacción propia); siempre `AssignToDefaultGroup(groupID: nil)`; `UpdateStatus(accepted)` como paso final independiente.
   - `Reject(ctx, requestID, callerID)` — valida dueño y `pending`; `UpdateStatus(rejected)`.
-  - `ListMine(ctx, runnerID)`, `ListByTeam(ctx, teamID, callerID, page)`, `PendingCount(ctx, ownerID)`.
+  - `ListMine(ctx, runnerID)`, `ListByTeam(ctx, teamID, callerID)` (sin paginar), `PendingCount(ctx, ownerID)`.
 - [ ] Tests unitarios (mocks de DAOs + `teamUserDao`/`installDao` ya existentes para el gate): los ~13 escenarios de la tabla de códigos de error (D7) + el flujo feliz de cada operación + la revalidación de cupo en `Accept`.
 
-### 6. Delegates y Controllers
+### 6. Controllers
 
-- [ ] `delegates/join_request_delegate.go` (nuevo) — sigue el molde de `team_delegate.go`.
-- [ ] `controllers/join_request_controller.go` (nuevo): handlers para las 7 rutas de join-requests, mapeo de errores a los códigos de D7.
+- [ ] `controllers/join_request_controller.go` (nuevo, sin delegate — llama al service directo, mismo patrón que `invitation_controller.go`): handlers para las 7 rutas de join-requests, mapeo de errores a los códigos de D7.
 - [ ] `controllers/team_controller.go`: handler `Search`.
 - [ ] Registrar las 8 rutas en `cmd/api/app/url_mappings.go`, todas detrás de `AuthMiddleware()`.
 - [ ] Tests de controller (httptest) para cada código de error + camino feliz.
