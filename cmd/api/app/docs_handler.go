@@ -28,12 +28,21 @@ func handleGuide(c *gin.Context) {
 	serveGuide(c, anyPath)
 }
 
+// sanitizeRelativePath fuerza filePath a tratarse como enraizado antes de
+// limpiarlo, para que filepath.Clean elimine cualquier ".." que intente
+// escapar de docsDir (Clean solo clampea ".." al inicio de un path
+// absoluto; sin el "/" forzado, un ../../.. sobrevive y filepath.Join lo
+// arrastra fuera de docsDir).
+func sanitizeRelativePath(filePath string) string {
+	return filepath.Clean("/" + filePath)
+}
+
 func serveGuide(c *gin.Context, filePath string) {
 	if filePath == "" || filePath == "/" {
 		filePath = "/index.html"
 	}
 
-	fullPath := filepath.Join(docsDir, filePath)
+	fullPath := filepath.Join(docsDir, sanitizeRelativePath(filePath))
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		c.Status(http.StatusNotFound)
@@ -44,7 +53,7 @@ func serveGuide(c *gin.Context, filePath string) {
 }
 
 func plantUMLProxy(c *gin.Context, pumlFile string) {
-	fullPath := filepath.Join(docsDir, "diagrams", pumlFile)
+	fullPath := filepath.Join(docsDir, "diagrams", sanitizeRelativePath(pumlFile))
 
 	source, err := os.ReadFile(fullPath)
 	if err != nil {
