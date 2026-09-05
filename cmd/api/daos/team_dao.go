@@ -129,11 +129,13 @@ func (d *teamDao) ClearIcon(ctx *gin.Context, teamID int64) error {
 }
 
 // SearchPublic busca equipos visible=true, excluyendo aquellos donde callerID
-// ya es miembro activo. Pide pageSize+1 filas para derivar hasMore sin un
-// COUNT(*) adicional.
+// es el owner o ya es miembro activo (independiente uno del otro: el team_user
+// del owner se crea best-effort en team_service.Create y puede faltar). Pide
+// pageSize+1 filas para derivar hasMore sin un COUNT(*) adicional.
 func (d *teamDao) SearchPublic(ctx *gin.Context, filters TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
 	query := d.DB.Model(&dbs.Team{}).
 		Where("teams.visible = true AND teams.deleted_at IS NULL").
+		Where("teams.owner_id != ?", callerID).
 		Where("teams.id NOT IN (?)", d.DB.Model(&dbs.TeamUser{}).Select("team_id").Where("user_id = ? AND deleted_at IS NULL", callerID))
 
 	if filters.Name != "" {

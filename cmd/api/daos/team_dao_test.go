@@ -262,6 +262,23 @@ func TestTeamDao_SearchPublic_ExcludesCallerMembership(t *testing.T) {
 	}
 }
 
+func TestTeamDao_SearchPublic_ExcludesOwnTeams(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	teamDao := NewTeamDao(db)
+	owner := persistUser(db, "search-owner-own@test.com", "50000009")
+	// Sin fila en team_users para el owner: reproduce el caso donde la
+	// inserción best-effort del team_user del owner (team_service.Create)
+	// falló o nunca corrió. La exclusión debe seguir aplicando por owner_id.
+	team := testTeam(db, "equipo_propio_del_owner", owner.ID)
+
+	results, _, err := teamDao.SearchPublic(nil, TeamSearchFilters{}, owner.ID, 1, 20)
+
+	require.NoError(t, err)
+	for _, r := range results {
+		assert.NotEqual(t, team.ID, r.ID)
+	}
+}
+
 func TestTeamDao_SearchPublic_FiltersByName(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTeamDao(db)
