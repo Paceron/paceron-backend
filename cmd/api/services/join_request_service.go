@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -159,13 +160,108 @@ func (s *joinRequestService) Cancel(ctx *gin.Context, requestID, callerID int64)
 	return nil
 }
 
-// Accept, Reject, ListMine, ListByTeam, PendingCount: implemented in Task 7/8.
+// findPendingRequestForOwner carga una solicitud pending y valida que callerID
+// sea el entrenador dueño del equipo al que pertenece. Compartido por Accept/Reject.
+func (s *joinRequestService) findPendingRequestForOwner(ctx *gin.Context, requestID, callerID int64, method string) (*dbs.JoinRequest, *dbs.Team, error) {
+	jr, err := s.joinRequestDao.FindByID(ctx, requestID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding join request", err,
+			customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod(method))
+		return nil, nil, fmt.Errorf("error al procesar solicitud")
+	}
+	if jr == nil {
+		return nil, nil, ErrJoinRequestNotFound
+	}
+	if jr.Status != string(constants.InvitationStatusPending) {
+		return nil, nil, ErrJoinRequestNotPending
+	}
+
+	teamDB, err := s.teamDao.FindByID(ctx, jr.TeamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for join request", err,
+			customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod(method))
+		return nil, nil, fmt.Errorf("error al procesar solicitud")
+	}
+	if teamDB == nil {
+		return nil, nil, ErrTeamNotFound
+	}
+	if teamDB.OwnerID != callerID {
+		return nil, nil, ErrJoinRequestForbidden
+	}
+
+	return jr, teamDB, nil
+}
+
+// Accept crea la membresía (gateada por membership_fee, mismo patrón secuencial
+// que invitation_service.AcceptInvitation), asigna al grupo default, y marca la
+// solicitud como accepted.
 func (s *joinRequestService) Accept(ctx *gin.Context, requestID, callerID int64) error {
-	return fmt.Errorf("not implemented")
+	jr, teamDB, err := s.findPendingRequestForOwner(ctx, requestID, callerID, "Accept")
+	if err != nil {
+		return err
+	}
+
+	existingMember, err := s.teamUserDao.FindByTeamAndUser(ctx, teamDB.ID, jr.RunnerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking membership on accept join request", err,
+			customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Accept"))
+		return fmt.Errorf("error al aceptar solicitud")
+	}
+
+	if existingMember == nil {
+		count, err := s.teamUserDao.CountActiveByTeam(ctx, teamDB.ID)
+		if err != nil {
+			customlogger.Error(ctx, "error counting team members on accept", err,
+				customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Accept"))
+			return fmt.Errorf("error al aceptar solicitud")
+		}
+		if count >= teamDB.MaxMembers {
+			return ErrTeamFull
+		}
+
+		teamUser := &dbs.TeamUser{
+			TeamID:         teamDB.ID,
+			UserID:         jr.RunnerID,
+			RoleInTeam:     string(constants.TeamUserRoleCorredor),
+			Status:         "active",
+			AssignmentDate: time.Now(),
+		}
+		if err := ApplyTeamMembershipGate(ctx, s.db, s.teamUserDao, s.installDao, teamUser, teamDB.MembershipFee); err != nil {
+			customlogger.Error(ctx, "error creating team_user on accept join request", err,
+				customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Accept"))
+			return fmt.Errorf("error al aceptar solicitud")
+		}
+	}
+
+	AssignToDefaultGroup(ctx, s.groupDao, s.groupUserDao, teamDB.ID, nil, jr.RunnerID)
+
+	if err := s.joinRequestDao.UpdateStatus(ctx, jr.ID, string(constants.InvitationStatusAccepted)); err != nil {
+		customlogger.Error(ctx, "team_user creado pero join request no pudo marcarse como aceptada", err,
+			customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Accept"))
+		return fmt.Errorf("error al aceptar solicitud")
+	}
+
+	customlogger.Info(ctx, "join request accepted successfully",
+		customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Accept"))
+	return nil
 }
+
+// Reject marca la solicitud como rejected sin crear ninguna membresía.
 func (s *joinRequestService) Reject(ctx *gin.Context, requestID, callerID int64) error {
-	return fmt.Errorf("not implemented")
+	jr, _, err := s.findPendingRequestForOwner(ctx, requestID, callerID, "Reject")
+	if err != nil {
+		return err
+	}
+
+	if err := s.joinRequestDao.UpdateStatus(ctx, jr.ID, string(constants.InvitationStatusRejected)); err != nil {
+		customlogger.Error(ctx, "error rejecting join request", err,
+			customlogger.Tag("join_request_id", fmt.Sprintf("%d", requestID)), customlogger.TagMethod("Reject"))
+		return fmt.Errorf("error al rechazar solicitud")
+	}
+	return nil
 }
+
+// ListMine, ListByTeam, PendingCount: implemented in Task 8.
 func (s *joinRequestService) ListMine(ctx *gin.Context, runnerID int64) ([]joinrequest.JoinRequestResponse, error) {
 	return nil, fmt.Errorf("not implemented")
 }

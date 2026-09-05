@@ -215,3 +215,148 @@ func TestJoinRequestService_Cancel_NotPending(t *testing.T) {
 
 	assert.ErrorIs(t, err, ErrJoinRequestNotPending)
 }
+
+func TestJoinRequestService_Accept_FreeTeam_CreatesActiveMembership(t *testing.T) {
+	var createdTeamUser *dbs.TeamUser
+	jrDao := &mockJoinRequestDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+			return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, id int64, status string) error {
+			assert.Equal(t, string(constants.InvitationStatusAccepted), status)
+			return nil
+		},
+	}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 1, MaxMembers: 10, MembershipFee: 0}, nil
+	}}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) { return nil, nil },
+		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) { return 1, nil },
+		createFn: func(ctx *gin.Context, tu *dbs.TeamUser) error {
+			createdTeamUser = tu
+			return nil
+		},
+	}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, teamUserDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Accept(nil, 1, 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, createdTeamUser)
+	assert.Equal(t, string(constants.SubscriptionStatusActive), createdTeamUser.SubscriptionStatus)
+}
+
+func TestJoinRequestService_Accept_AlreadyMember_SkipsGateStillMarksAccepted(t *testing.T) {
+	gateCreateCalled := false
+	jrDao := &mockJoinRequestDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+			return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, id int64, status string) error { return nil },
+	}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 1, MaxMembers: 10}, nil
+	}}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+		},
+		createFn: func(ctx *gin.Context, tu *dbs.TeamUser) error {
+			gateCreateCalled = true
+			return nil
+		},
+	}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, teamUserDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Accept(nil, 1, 1)
+
+	require.NoError(t, err)
+	assert.False(t, gateCreateCalled)
+}
+
+func TestJoinRequestService_Accept_TeamFull(t *testing.T) {
+	jrDao := &mockJoinRequestDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+		return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 1, MaxMembers: 1}, nil
+	}}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) { return nil, nil },
+		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) { return 1, nil },
+	}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, teamUserDao, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Accept(nil, 1, 1)
+
+	assert.ErrorIs(t, err, ErrTeamFull)
+}
+
+func TestJoinRequestService_Accept_NotOwner(t *testing.T) {
+	jrDao := &mockJoinRequestDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+		return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 99}, nil
+	}}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Accept(nil, 1, 1)
+
+	assert.ErrorIs(t, err, ErrJoinRequestForbidden)
+}
+
+func TestJoinRequestService_Accept_NotPending(t *testing.T) {
+	jrDao := &mockJoinRequestDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+		return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusAccepted)}, nil
+	}}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, &mockTeamDao{}, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Accept(nil, 1, 1)
+
+	assert.ErrorIs(t, err, ErrJoinRequestNotPending)
+}
+
+func TestJoinRequestService_Reject_Success(t *testing.T) {
+	statusSet := ""
+	jrDao := &mockJoinRequestDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+			return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, id int64, status string) error {
+			statusSet = status
+			return nil
+		},
+	}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 1}, nil
+	}}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Reject(nil, 1, 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, string(constants.InvitationStatusRejected), statusSet)
+}
+
+func TestJoinRequestService_Reject_NotOwner(t *testing.T) {
+	jrDao := &mockJoinRequestDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.JoinRequest, error) {
+		return &dbs.JoinRequest{ID: id, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 5, OwnerID: 99}, nil
+	}}
+	userDao := mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	err := svc.Reject(nil, 1, 1)
+
+	assert.ErrorIs(t, err, ErrJoinRequestForbidden)
+}
