@@ -261,15 +261,66 @@ func (s *joinRequestService) Reject(ctx *gin.Context, requestID, callerID int64)
 	return nil
 }
 
-// ListMine, ListByTeam, PendingCount: implemented in Task 8.
+// ListMine devuelve todas las solicitudes del corredor, cualquier estado.
 func (s *joinRequestService) ListMine(ctx *gin.Context, runnerID int64) ([]joinrequest.JoinRequestResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+	requests, err := s.joinRequestDao.FindByUser(ctx, runnerID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing join requests for user", err,
+			customlogger.Tag("runner_id", fmt.Sprintf("%d", runnerID)), customlogger.TagMethod("ListMine"))
+		return nil, fmt.Errorf("error al listar solicitudes")
+	}
+
+	responses := make([]joinrequest.JoinRequestResponse, len(requests))
+	for i, jr := range requests {
+		teamName := ""
+		if teamDB, err := s.teamDao.FindByID(ctx, jr.TeamID); err == nil && teamDB != nil {
+			teamName = teamDB.Name
+		}
+		responses[i] = *s.toResponse(ctx, &jr, teamName)
+	}
+	return responses, nil
 }
+
+// ListByTeam devuelve las solicitudes pending de un equipo, solo para su
+// entrenador dueño.
 func (s *joinRequestService) ListByTeam(ctx *gin.Context, teamID, callerID int64) ([]joinrequest.JoinRequestResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+	teamDB, err := s.teamDao.FindByID(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for join request list", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)), customlogger.TagMethod("ListByTeam"))
+		return nil, fmt.Errorf("error al listar solicitudes")
+	}
+	if teamDB == nil {
+		return nil, ErrTeamNotFound
+	}
+	if teamDB.OwnerID != callerID {
+		return nil, ErrJoinRequestForbidden
+	}
+
+	requests, err := s.joinRequestDao.FindPendingByTeam(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing pending join requests for team", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)), customlogger.TagMethod("ListByTeam"))
+		return nil, fmt.Errorf("error al listar solicitudes")
+	}
+
+	responses := make([]joinrequest.JoinRequestResponse, len(requests))
+	for i, jr := range requests {
+		responses[i] = *s.toResponse(ctx, &jr, teamDB.Name)
+	}
+	return responses, nil
 }
+
+// PendingCount suma las solicitudes pending en todos los equipos que
+// administra ownerID, para el badge del entrenador.
 func (s *joinRequestService) PendingCount(ctx *gin.Context, ownerID int64) (int64, error) {
-	return 0, fmt.Errorf("not implemented")
+	count, err := s.joinRequestDao.CountPendingByOwner(ctx, ownerID)
+	if err != nil {
+		customlogger.Error(ctx, "error counting pending join requests", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)), customlogger.TagMethod("PendingCount"))
+		return 0, fmt.Errorf("error al contar solicitudes")
+	}
+	return count, nil
 }
 
 // toResponse convierte un dbs.JoinRequest a su DTO de respuesta, resolviendo
