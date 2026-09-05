@@ -33,6 +33,12 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// MP Connect deauthorization webhook - public (Mercado Pago sends it without auth)
 	r.POST("/api/v1/mercadopago/webhook/connect", app.mpConnectController.HandleDeauthWebhook)
 
+	// MP Connect OAuth callback - public a propósito: MP redirige el navegador a
+	// esta ruta con code+state SIN header Authorization. La identidad se resuelve
+	// del state (CSRF). GET /mercadopago/connect y /connect/status quedan detrás
+	// del AuthMiddleware porque sí requieren sesión.
+	r.GET("/api/v1/mercadopago/connect/callback", app.mpConnectController.HandleCallback)
+
 	mapSwagger(r)
 	mapGuide(r)
 
@@ -121,7 +127,6 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// MP Connect (suscripcion-teams-split D7)
 	r.GET("/api/v1/mercadopago/connect", app.mpConnectController.GetAuthURL)
-	r.GET("/api/v1/mercadopago/connect/callback", app.mpConnectController.HandleCallback)
 	r.GET("/api/v1/mercadopago/connect/status", app.mpConnectController.GetStatus)
 
 	// Platform Settings (suscripcion-teams-split D8)
