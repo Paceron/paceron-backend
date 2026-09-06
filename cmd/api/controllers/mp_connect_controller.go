@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +9,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/mpconnect"
+	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -78,6 +80,9 @@ func (c *mpConnectController) GetAuthURL(ctx *gin.Context) {
 func (c *mpConnectController) HandleCallback(ctx *gin.Context) {
 	var req mpconnect.CallbackRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
+		customlogger.Warn(ctx, "MP OAuth callback bad request",
+			customlogger.Tag("error", err.Error()),
+			customlogger.TagMethod("HandleCallback"))
 		ctx.JSON(http.StatusBadRequest, apierror.APIError{
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
@@ -86,9 +91,21 @@ func (c *mpConnectController) HandleCallback(ctx *gin.Context) {
 		return
 	}
 
+	customlogger.Info(ctx, "[DEBUG] HandleCallback controller",
+		customlogger.Tag("code", utils.MaskSecret(req.Code)),
+		customlogger.Tag("state", req.State),
+		customlogger.Tag("error", req.Error),
+		customlogger.Tag("error_description", req.ErrorDescription),
+		customlogger.TagMethod("HandleCallback"))
+
 	resp, err := c.service.HandleCallback(ctx, &req)
 	if err != nil {
 		statusCode, code := mapMPConnectError(err)
+		customlogger.Error(ctx, "MP OAuth callback process failed", err,
+			customlogger.Tag("status_code", fmt.Sprintf("%d", statusCode)),
+			customlogger.Tag("code", code),
+			customlogger.Tag("state", req.State),
+			customlogger.TagMethod("HandleCallback"))
 		ctx.JSON(statusCode, apierror.APIError{
 			StatusCode: statusCode,
 			Code:       code,
@@ -97,6 +114,11 @@ func (c *mpConnectController) HandleCallback(ctx *gin.Context) {
 		return
 	}
 
+	customlogger.Info(ctx, "[DEBUG] HandleCallback controller OK",
+		customlogger.Tag("success", fmt.Sprintf("%t", resp.Success)),
+		customlogger.Tag("message", resp.Message),
+		customlogger.Tag("state", req.State),
+		customlogger.TagMethod("HandleCallback"))
 	ctx.JSON(http.StatusOK, resp)
 }
 
