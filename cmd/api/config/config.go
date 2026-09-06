@@ -70,6 +70,7 @@ type MercadoPago struct {
 	OAuthClientID     string
 	OAuthClientSecret string
 	OAuthRedirectURI  string
+	OAuthTestToken    bool
 }
 
 type StorageConfig struct {
@@ -202,6 +203,18 @@ func getEnvOrDefault(key, fallback string) string {
 	return fallback
 }
 
+// envBoolDefaultTrue lee una env var booleana con default true: solo un valor
+// explícito false/0/no (case-insensitive) la desactiva; si falta o es inválida,
+// queda true.
+func envBoolDefaultTrue(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "false", "0", "no":
+		return false
+	default:
+		return true
+	}
+}
+
 func getDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -225,6 +238,7 @@ func loadMercadoPagoConfig() {
 	MyMP.OAuthClientID = os.Getenv("MP_OAUTH_CLIENT_ID")
 	MyMP.OAuthClientSecret = os.Getenv("MP_OAUTH_CLIENT_SECRET")
 	MyMP.OAuthRedirectURI = os.Getenv("MP_OAUTH_REDIRECT_URI")
+	MyMP.OAuthTestToken = envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN")
 	TokenEncryptionKey = os.Getenv("TOKEN_ENCRYPTION_KEY")
 }
 

@@ -136,6 +136,23 @@ func TestStagedDatabaseURL_ProductionWithFlag(t *testing.T) {
 	assert.Equal(t, "postgresql://p:p@prodhost:5432/proddb", stagedDatabaseURL())
 }
 
+func TestEnvBoolDefaultTrue(t *testing.T) {
+	os.Unsetenv("MP_OAUTH_TEST_TOKEN")
+	assert.True(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"), "sin env var → default true")
+
+	os.Setenv("MP_OAUTH_TEST_TOKEN", "true")
+	assert.True(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"))
+	os.Setenv("MP_OAUTH_TEST_TOKEN", "TRUE")
+	assert.True(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"), "case-insensitive")
+	os.Setenv("MP_OAUTH_TEST_TOKEN", "false")
+	assert.False(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"))
+	os.Setenv("MP_OAUTH_TEST_TOKEN", "0")
+	assert.False(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"))
+	os.Setenv("MP_OAUTH_TEST_TOKEN", "invalido")
+	assert.True(t, envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN"), "valor inválido → default true")
+	os.Unsetenv("MP_OAUTH_TEST_TOKEN")
+}
+
 func TestLoadMailerConfig(t *testing.T) {
 	os.Setenv("RESEND_API_KEY", "re_test_key")
 	os.Setenv("RESEND_FROM_ADDRESS", "Paceron <no-reply@paceron.com>")

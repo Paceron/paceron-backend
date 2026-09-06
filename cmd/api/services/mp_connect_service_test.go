@@ -19,11 +19,11 @@ import (
 )
 
 type mockSellerConnectionDao struct {
-	upsertFn func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error)
-	findByUserFn func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
-	setStatusFn func(ctx *gin.Context, userID int64, status string) error
+	upsertFn            func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error)
+	findByUserFn        func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
+	setStatusFn         func(ctx *gin.Context, userID int64, status string) error
 	setStatusByMPUserFn func(ctx *gin.Context, mpUserID int64, status string) error
-	findAuthorizedFn func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
+	findAuthorizedFn    func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
 }
 
 func (m *mockSellerConnectionDao) Upsert(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error) {
@@ -155,7 +155,9 @@ func TestHandleCallback_Success(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, "client-id", "client-secret", "https://redirect", "abc").
 		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
-	client.On("GetUserInfo", mock.Anything, "tk").
+	client.On("RefreshAccessToken", mock.Anything, "client-id", "client-secret", "rt").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "rt2", ExpiresIn: 5400}, nil).Once()
+	client.On("GetUserInfo", mock.Anything, "tk2").
 		Return(&mercadopagoclient.UserInfoResponse{ID: 123, Nick: "vendedor"}, nil).Once()
 
 	var saved *dbs.SellerConnection
@@ -177,10 +179,58 @@ func TestHandleCallback_Success(t *testing.T) {
 	require.NotNil(t, saved)
 	assert.Equal(t, int64(7), saved.UserID)
 	assert.Equal(t, "123", saved.MPUserID)
-	assert.Equal(t, "enc(tk)", saved.AccessToken)
-	assert.Equal(t, "enc(rt)", saved.RefreshToken)
+	assert.Equal(t, "enc(tk2)", saved.AccessToken)
+	assert.Equal(t, "enc(rt2)", saved.RefreshToken)
 	assert.Equal(t, string(constants.SellerConnectionStatusAuthorized), saved.Status)
 	require.NotNil(t, saved.TokenExpiresAt)
+	client.AssertExpectations(t)
+}
+
+func TestHandleCallback_RefreshKeepsOriginalRefreshToken(t *testing.T) {
+	ctx := &gin.Context{}
+	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+
+	client := new(mockMercadoPagoClient)
+	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
+	client.On("RefreshAccessToken", mock.Anything, mock.Anything, mock.Anything, "rt").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "", ExpiresIn: 0}, nil).Once()
+	client.On("GetUserInfo", mock.Anything, "tk2").
+		Return(&mercadopagoclient.UserInfoResponse{ID: 123}, nil).Once()
+
+	var saved *dbs.SellerConnection
+	connDao := &mockSellerConnectionDao{
+		upsertFn: func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error) {
+			saved = conn
+			return conn, nil
+		},
+	}
+
+	svc := NewMPConnectService(connDao, client, &mockEncryptor{}, "client-id", "client-secret", "https://redirect")
+	resp, err := svc.HandleCallback(ctx, &mpconnect.CallbackRequest{Code: "abc", State: state})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, saved)
+	assert.Equal(t, "enc(tk2)", saved.AccessToken)
+	assert.Equal(t, "enc(rt)", saved.RefreshToken)
+	client.AssertExpectations(t)
+}
+
+func TestHandleCallback_RefreshError(t *testing.T) {
+	ctx := &gin.Context{}
+	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+
+	client := new(mockMercadoPagoClient)
+	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
+	client.On("RefreshAccessToken", mock.Anything, mock.Anything, mock.Anything, "rt").
+		Return(nil, errors.New("refresh boom")).Once()
+
+	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
+	resp, err := svc.HandleCallback(ctx, &mpconnect.CallbackRequest{Code: "abc", State: state})
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "error al refrescar tokens")
 	client.AssertExpectations(t)
 }
 
@@ -207,7 +257,9 @@ func TestHandleCallback_GetUserInfoError(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
 		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
-	client.On("GetUserInfo", mock.Anything, "tk").Return(nil, errors.New("userinfo boom")).Once()
+	client.On("RefreshAccessToken", mock.Anything, mock.Anything, mock.Anything, "rt").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "rt2", ExpiresIn: 5400}, nil).Once()
+	client.On("GetUserInfo", mock.Anything, "tk2").Return(nil, errors.New("userinfo boom")).Once()
 
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
 	resp, err := svc.HandleCallback(ctx, &mpconnect.CallbackRequest{Code: "abc", State: state})
@@ -224,7 +276,9 @@ func TestHandleCallback_EncryptError(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
 		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
-	client.On("GetUserInfo", mock.Anything, "tk").
+	client.On("RefreshAccessToken", mock.Anything, mock.Anything, mock.Anything, "rt").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "rt2", ExpiresIn: 5400}, nil).Once()
+	client.On("GetUserInfo", mock.Anything, "tk2").
 		Return(&mercadopagoclient.UserInfoResponse{ID: 123}, nil).Once()
 
 	enc := &mockEncryptor{encryptFn: func(p string) (string, error) { return "", errors.New("crypt boom") }}
@@ -243,7 +297,9 @@ func TestHandleCallback_UpsertError(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
 		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
-	client.On("GetUserInfo", mock.Anything, "tk").
+	client.On("RefreshAccessToken", mock.Anything, mock.Anything, mock.Anything, "rt").
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "rt2", ExpiresIn: 5400}, nil).Once()
+	client.On("GetUserInfo", mock.Anything, "tk2").
 		Return(&mercadopagoclient.UserInfoResponse{ID: 123}, nil).Once()
 
 	connDao := &mockSellerConnectionDao{

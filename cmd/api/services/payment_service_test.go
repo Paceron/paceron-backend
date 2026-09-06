@@ -139,6 +139,14 @@ func (m *mockMercadoPagoClient) ExchangeCodeForToken(ctx context.Context, client
 	return args.Get(0).(*mercadopagoclient.OAuthTokenResponse), args.Error(1)
 }
 
+func (m *mockMercadoPagoClient) RefreshAccessToken(ctx context.Context, clientID, clientSecret, refreshToken string) (*mercadopagoclient.OAuthTokenResponse, error) {
+	args := m.Called(ctx, clientID, clientSecret, refreshToken)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*mercadopagoclient.OAuthTokenResponse), args.Error(1)
+}
+
 func (m *mockMercadoPagoClient) GetUserInfo(ctx context.Context, accessToken string) (*mercadopagoclient.UserInfoResponse, error) {
 	args := m.Called(ctx, accessToken)
 	if args.Get(0) == nil {

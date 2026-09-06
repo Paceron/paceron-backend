@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 	appconfig "simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 type MercadoPagoClientInterface interface {
@@ -27,6 +29,7 @@ type MercadoPagoClientInterface interface {
 	GenerateCardToken(ctx context.Context, accessToken string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error)
 	GetAuthURL(redirectURI string, state string) string
 	ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error)
+	RefreshAccessToken(ctx context.Context, clientID, clientSecret, refreshToken string) (*OAuthTokenResponse, error)
 	GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error)
 }
 
@@ -69,10 +72,19 @@ type UserInfoResponse struct {
 	Nick string `json:"nickname"`
 }
 
-type mpClient struct{}
+type mpClient struct {
+	apiBaseURL  string
+	authBaseURL string
+}
 
+// New crea el cliente de MercadoPago apuntando a las URLs productivas.
 func New() MercadoPagoClientInterface {
-	return &mpClient{}
+	return newMP("https://api.mercadopago.com", "https://auth.mercadopago.com")
+}
+
+// newMP crea el cliente con base URLs inyectables (tests usan httptest).
+func newMP(apiBaseURL, authBaseURL string) MercadoPagoClientInterface {
+	return &mpClient{apiBaseURL: apiBaseURL, authBaseURL: authBaseURL}
 }
 
 func (c *mpClient) CreatePreference(ctx context.Context, accessToken string, items []PreferenceItem, externalRef, notificationURL, marketplaceFee string, currencyID string) (string, error) {
@@ -223,7 +235,7 @@ func (c *mpClient) GenerateCardToken(ctx context.Context, accessToken string, ca
 		return "", fmt.Errorf("error marshaling card token request: %w", err)
 	}
 
-	url := fmt.Sprintf("https://api.mercadopago.com/v1/card_tokens?public_key=%s", publicKey)
+	url := fmt.Sprintf("%s/v1/card_tokens?public_key=%s", c.apiBaseURL, publicKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return "", fmt.Errorf("error creating card token request: %w", err)
@@ -257,12 +269,30 @@ func (c *mpClient) GetAuthURL(redirectURI string, state string) string {
 		customlogger.Error(nil, "MP OAuth client ID not configured", fmt.Errorf("missing client ID"))
 		return ""
 	}
-	return fmt.Sprintf("https://auth.mercadopago.com/authorization?client_id=%s&response_type=code&redirect_uri=%s&state=%s", clientID, redirectURI, state)
+	url := fmt.Sprintf("%s/authorization?client_id=%s&response_type=code&redirect_uri=%s&state=%s", c.authBaseURL, clientID, url.QueryEscape(redirectURI), url.QueryEscape(state))
+	maskedAuthURL := strings.Replace(url, clientID, utils.MaskSecret(clientID), -1)
+	customlogger.Info(nil, "[DEBUG] GetAuthURL",
+		customlogger.Tag("client_id", utils.MaskSecret(clientID)),
+		customlogger.Tag("redirect_uri", redirectURI),
+		customlogger.Tag("state", state),
+		customlogger.Tag("auth_url", maskedAuthURL),
+		customlogger.TagMethod("GetAuthURL"))
+	return url
 }
 
 func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error) {
-	url := "https://api.mercadopago.com/oauth/token"
+	url := fmt.Sprintf("%s/oauth/token", c.apiBaseURL)
 	body := fmt.Sprintf("client_id=%s&client_secret=%s&grant_type=authorization_code&redirect_uri=%s&code=%s", clientID, clientSecret, redirectURI, code)
+	if appconfig.MyMP.OAuthTestToken {
+		body += "&test_token=true"
+	}
+
+	customlogger.Info(nil, "[DEBUG] ExchangeCodeForToken request",
+		customlogger.Tag("client_id", utils.MaskSecret(clientID)),
+		customlogger.Tag("client_secret", utils.MaskSecret(clientSecret)),
+		customlogger.Tag("redirect_uri", redirectURI),
+		customlogger.Tag("code", utils.MaskSecret(code)),
+		customlogger.TagMethod("ExchangeCodeForToken"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
@@ -289,11 +319,76 @@ func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSec
 		return nil, fmt.Errorf("error parsing token response: %w", err)
 	}
 
+	customlogger.Info(nil, "[DEBUG] ExchangeCodeForToken response",
+		customlogger.Tag("access_token", utils.MaskSecret(tokenResp.AccessToken)),
+		customlogger.Tag("token_type", tokenResp.TokenType),
+		customlogger.Tag("expires_in", fmt.Sprintf("%d", tokenResp.ExpiresIn)),
+		customlogger.Tag("refresh_token", utils.MaskSecret(tokenResp.RefreshToken)),
+		customlogger.Tag("scope", tokenResp.Scope),
+		customlogger.Tag("user_id", fmt.Sprintf("%d", tokenResp.UserID)),
+		customlogger.TagMethod("ExchangeCodeForToken"))
+
+	return &tokenResp, nil
+}
+
+func (c *mpClient) RefreshAccessToken(ctx context.Context, clientID, clientSecret, refreshToken string) (*OAuthTokenResponse, error) {
+	url := fmt.Sprintf("%s/oauth/token", c.apiBaseURL)
+	body := fmt.Sprintf("grant_type=refresh_token&client_id=%s&client_secret=%s&refresh_token=%s", clientID, clientSecret, refreshToken)
+	if appconfig.MyMP.OAuthTestToken {
+		body += "&test_token=true"
+	}
+
+	customlogger.Info(nil, "[DEBUG] RefreshAccessToken request",
+		customlogger.Tag("client_id", utils.MaskSecret(clientID)),
+		customlogger.Tag("client_secret", utils.MaskSecret(clientSecret)),
+		customlogger.Tag("refresh_token", utils.MaskSecret(refreshToken)),
+		customlogger.TagMethod("RefreshAccessToken"))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("error creating refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error sending refresh request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error refreshing token: HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var tokenResp OAuthTokenResponse
+	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
+		return nil, fmt.Errorf("error parsing refresh response: %w", err)
+	}
+
+	customlogger.Info(nil, "[DEBUG] RefreshAccessToken response",
+		customlogger.Tag("access_token", utils.MaskSecret(tokenResp.AccessToken)),
+		customlogger.Tag("token_type", tokenResp.TokenType),
+		customlogger.Tag("expires_in", fmt.Sprintf("%d", tokenResp.ExpiresIn)),
+		customlogger.Tag("refresh_token", utils.MaskSecret(tokenResp.RefreshToken)),
+		customlogger.Tag("scope", tokenResp.Scope),
+		customlogger.Tag("user_id", fmt.Sprintf("%d", tokenResp.UserID)),
+		customlogger.TagMethod("RefreshAccessToken"))
+
 	return &tokenResp, nil
 }
 
 func (c *mpClient) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error) {
-	url := fmt.Sprintf("https://api.mercadopago.com/users/me?access_token=%s", accessToken)
+	url := fmt.Sprintf("%s/users/me?access_token=%s", c.apiBaseURL, accessToken)
+	maskedURL := strings.Replace(url, accessToken, utils.MaskSecret(accessToken), -1)
+
+	customlogger.Info(nil, "[DEBUG] GetUserInfo request",
+		customlogger.Tag("access_token", utils.MaskSecret(accessToken)),
+		customlogger.Tag("url", maskedURL),
+		customlogger.TagMethod("GetUserInfo"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -318,6 +413,11 @@ func (c *mpClient) GetUserInfo(ctx context.Context, accessToken string) (*UserIn
 	if err := json.Unmarshal(respBody, &userResp); err != nil {
 		return nil, fmt.Errorf("error parsing user info response: %w", err)
 	}
+
+	customlogger.Info(nil, "[DEBUG] GetUserInfo response",
+		customlogger.Tag("mp_user_id", fmt.Sprintf("%d", userResp.ID)),
+		customlogger.Tag("nickname", userResp.Nick),
+		customlogger.TagMethod("GetUserInfo"))
 
 	return &userResp, nil
 }
