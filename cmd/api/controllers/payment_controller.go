@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -299,10 +300,16 @@ func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
 // @Failure      400  {object}  apierror.APIError
 // @Router       /api/v1/payments/webhook [post]
 func (pc *paymentController) HandleWebhook(c *gin.Context) {
+	customlogger.Info(c, "[DEBUG] PaymentWebhook recibido",
+		customlogger.Tag("x_signature", c.GetHeader("X-Signature")),
+		customlogger.Tag("x_request_id", c.GetHeader("X-Request-Id")),
+		customlogger.TagMethod("HandleWebhook"))
+
 	var notification payment.WebhookNotification
 	if err := c.BindJSON(&notification); err != nil {
 		customlogger.Warn(c, "invalid webhook body",
-			customlogger.Tag("field", "body"))
+			customlogger.Tag("field", "body"),
+			customlogger.Tag("error", err.Error()))
 		c.JSON(http.StatusBadRequest, apierror.APIError{
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
@@ -310,6 +317,14 @@ func (pc *paymentController) HandleWebhook(c *gin.Context) {
 		})
 		return
 	}
+
+	customlogger.Info(c, "[DEBUG] PaymentWebhook payload",
+		customlogger.Tag("id", fmt.Sprintf("%d", notification.ID)),
+		customlogger.Tag("type", notification.Type),
+		customlogger.Tag("action", notification.Action),
+		customlogger.Tag("live_mode", fmt.Sprintf("%t", notification.LiveMode)),
+		customlogger.Tag("data_id", notification.Data.ID),
+		customlogger.TagMethod("HandleWebhook"))
 
 	xSignature := c.GetHeader("X-Signature")
 	xRequestID := c.GetHeader("X-Request-Id")
@@ -323,6 +338,9 @@ func (pc *paymentController) HandleWebhook(c *gin.Context) {
 	}
 
 	if notification.Type != "payment" {
+		customlogger.Info(c, "[DEBUG] PaymentWebhook tipo no soportado, ignorado",
+			customlogger.Tag("type", notification.Type),
+			customlogger.TagMethod("HandleWebhook"))
 		c.JSON(http.StatusOK, gin.H{"message": "ignored"})
 		return
 	}
@@ -333,6 +351,9 @@ func (pc *paymentController) HandleWebhook(c *gin.Context) {
 		return
 	}
 
+	customlogger.Info(c, "[DEBUG] PaymentWebhook procesado OK",
+		customlogger.Tag("data_id", notification.Data.ID),
+		customlogger.TagMethod("HandleWebhook"))
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
