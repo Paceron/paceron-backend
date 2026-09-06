@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -75,9 +76,10 @@ func (d *sellerConnectionDao) SetStatus(ctx *gin.Context, userID int64, status s
 
 // SetStatusByMPUser actualiza el estado de la conexión localizando por el MP user id
 // del vendedor (aquí habla el webhook de desautorización que solo conoce ese id).
+// La columna mp_user_id es texto; el webhook la manda como entero.
 func (d *sellerConnectionDao) SetStatusByMPUser(ctx *gin.Context, mpUserID int64, status string) error {
 	return d.DB.Model(&dbs.SellerConnection{}).
-		Where("mp_user_id = ?", mpUserID).
+		Where("mp_user_id = ?", strconv.FormatInt(mpUserID, 10)).
 		Update("status", status).Error
 }
 
