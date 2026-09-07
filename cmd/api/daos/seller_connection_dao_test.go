@@ -78,18 +78,21 @@ func TestSellerConnectionDao_Upsert_UpdatesExisting(t *testing.T) {
 		MPUserID:     "222",
 		AccessToken:  "access-new",
 		RefreshToken: "refresh-new",
+		PublicKey:    "TEST-pk-new",
 		Status:       string(constants.SellerConnectionStatusAuthorized),
 	}
 	result, err := dao.Upsert(nil, updated)
 	require.NoError(t, err)
 	assert.Equal(t, "222", result.MPUserID)
 	assert.Equal(t, "access-new", result.AccessToken)
+	assert.Equal(t, "TEST-pk-new", result.PublicKey)
 
 	found, err := dao.FindByUser(nil, 999002)
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	assert.Equal(t, "222", found.MPUserID)
 	assert.Equal(t, "refresh-new", found.RefreshToken)
+	assert.Equal(t, "TEST-pk-new", found.PublicKey)
 }
 
 func TestSellerConnectionDao_FindAuthorizedByUser(t *testing.T) {

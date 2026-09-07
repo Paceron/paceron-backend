@@ -5468,6 +5468,10 @@ const docTemplate = `{
                 "cardholder_name": {
                     "type": "string"
                 },
+                "concept": {
+                    "description": "Opcionales: en team_subscription la cuota se cobra con el access token y la\npublic_key del dueño del equipo, así que para tokenizar la tarjeta hay que\nindicar el concepto y la cuota.",
+                    "type": "string"
+                },
                 "expiration_month": {
                     "type": "string"
                 },
@@ -5479,6 +5483,9 @@ const docTemplate = `{
                 },
                 "identification_type": {
                     "type": "string"
+                },
+                "installment_id": {
+                    "type": "integer"
                 },
                 "security_code": {
                     "type": "string"

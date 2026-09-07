@@ -1,11 +1,11 @@
 package payment
 
 type CreatePreferenceRequest struct {
-	Items          []PreferenceItem `json:"items" binding:"required"`
-	Concept        string           `json:"concept" binding:"required"`
-	SellerID       *int64           `json:"seller_id"`
-	Description    string           `json:"description"`
-	InstallmentID  *int64           `json:"installment_id"` // cuota a la que se vincula el pago
+	Items         []PreferenceItem `json:"items" binding:"required"`
+	Concept       string           `json:"concept" binding:"required"`
+	SellerID      *int64           `json:"seller_id"`
+	Description   string           `json:"description"`
+	InstallmentID *int64           `json:"installment_id"` // cuota a la que se vincula el pago
 }
 
 type PreferenceItem struct {
@@ -27,7 +27,7 @@ type ProcessPaymentRequest struct {
 	PayerEmail        string  `json:"payer_email" binding:"required,email"`
 	PreferenceID      string  `json:"preference_id"`
 	InstallmentID     *int64  `json:"installment_id"` // cuota a la que se vincula el pago
-	Concept           string  `json:"concept"`         // team_subscription | order
+	Concept           string  `json:"concept"`        // team_subscription | order
 	Description       string  `json:"description"`
 }
 
@@ -66,6 +66,12 @@ type TestCardTokenRequest struct {
 	CardholderName       string `json:"cardholder_name" binding:"required"`
 	IdentificationType   string `json:"identification_type" binding:"required"`
 	IdentificationNumber string `json:"identification_number" binding:"required"`
+
+	// Opcionales: en team_subscription la cuota se cobra con el access token y la
+	// public_key del dueño del equipo, así que para tokenizar la tarjeta hay que
+	// indicar el concepto y la cuota.
+	Concept       string `json:"concept"`
+	InstallmentID *int64 `json:"installment_id"`
 }
 
 type TestCardTokenResponse struct {

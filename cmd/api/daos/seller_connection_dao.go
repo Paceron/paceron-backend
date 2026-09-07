@@ -47,6 +47,7 @@ func (d *sellerConnectionDao) Upsert(ctx *gin.Context, conn *dbs.SellerConnectio
 	existing.MPUserID = conn.MPUserID
 	existing.AccessToken = conn.AccessToken
 	existing.RefreshToken = conn.RefreshToken
+	existing.PublicKey = conn.PublicKey
 	existing.TokenExpiresAt = conn.TokenExpiresAt
 	existing.Status = conn.Status
 	if err := d.DB.Save(&existing).Error; err != nil {

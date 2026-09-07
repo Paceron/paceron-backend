@@ -154,7 +154,7 @@ func TestHandleCallback_Success(t *testing.T) {
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, "client-id", "client-secret", "https://redirect", "abc").
-		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600}, nil).Once()
+		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk", RefreshToken: "rt", ExpiresIn: 3600, PublicKey: "TEST-pk-vendedor"}, nil).Once()
 	client.On("RefreshAccessToken", mock.Anything, "client-id", "client-secret", "rt").
 		Return(&mercadopagoclient.OAuthTokenResponse{AccessToken: "tk2", RefreshToken: "rt2", ExpiresIn: 5400}, nil).Once()
 	client.On("GetUserInfo", mock.Anything, "tk2").
@@ -181,6 +181,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	assert.Equal(t, "123", saved.MPUserID)
 	assert.Equal(t, "enc(tk2)", saved.AccessToken)
 	assert.Equal(t, "enc(rt2)", saved.RefreshToken)
+	assert.Equal(t, "TEST-pk-vendedor", saved.PublicKey)
 	assert.Equal(t, string(constants.SellerConnectionStatusAuthorized), saved.Status)
 	require.NotNil(t, saved.TokenExpiresAt)
 	client.AssertExpectations(t)
