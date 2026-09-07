@@ -12,6 +12,7 @@ type SellerConnection struct {
 	MPUserID       string     `gorm:"column:mp_user_id"`                   // id de la cuenta de Mercado Pago conectada
 	AccessToken    string     `gorm:"column:access_token;type:text"`       // CIFRADO
 	RefreshToken   string     `gorm:"column:refresh_token;type:text"`      // CIFRADO
+	PublicKey      string     `gorm:"column:public_key;type:text"`         // public_key del vendedor (OAuth), para tokenizar tarjetas en split
 	TokenExpiresAt *time.Time `gorm:"column:token_expires_at"`
 	Status         string     `gorm:"column:status;not null;default:authorized"` // authorized | deauthorized
 	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime"`

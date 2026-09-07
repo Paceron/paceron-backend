@@ -26,7 +26,7 @@ type MercadoPagoClientInterface interface {
 	CreatePayment(ctx context.Context, accessToken string, req CreatePaymentRequest) (*PaymentResult, error)
 	GetPayment(ctx context.Context, accessToken string, paymentID int) (*payment.Response, error)
 	ValidateWebhookSignature(xSignature, xRequestID, dataID, secret string) error
-	GenerateCardToken(ctx context.Context, accessToken string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error)
+	GenerateCardToken(ctx context.Context, publicKey string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error)
 	GetAuthURL(redirectURI string, state string) string
 	ExchangeCodeForToken(ctx context.Context, clientID, clientSecret, redirectURI, code string) (*OAuthTokenResponse, error)
 	RefreshAccessToken(ctx context.Context, clientID, clientSecret, refreshToken string) (*OAuthTokenResponse, error)
@@ -65,6 +65,7 @@ type OAuthTokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	Scope        string `json:"scope"`
 	UserID       int64  `json:"user_id"`
+	PublicKey    string `json:"public_key"`
 }
 
 type UserInfoResponse struct {
@@ -183,9 +184,7 @@ func (c *mpClient) ValidateWebhookSignature(xSignature, xRequestID, dataID, secr
 	return webhook.ValidateSignature(xSignature, xRequestID, dataID, secret)
 }
 
-func (c *mpClient) GenerateCardToken(ctx context.Context, accessToken string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error) {
-	publicKey := appconfig.MyMP.PublicKey
-
+func (c *mpClient) GenerateCardToken(ctx context.Context, publicKey string, cardNumber, expirationMonth, expirationYear, cvv, cardholderName, identificationType, identificationNumber, siteID string) (string, error) {
 	type cardTokenRequest struct {
 		CardNumber      string `json:"card_number"`
 		ExpirationMonth string `json:"expiration_month"`

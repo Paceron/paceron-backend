@@ -161,6 +161,13 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 		refreshToken = tokenResp.RefreshToken
 	}
 
+	// public_key del vendedor: la devuelve MP en el OAuth (autorización o
+	// refresh). Se usa al tokenizar tarjetas en pagos con split.
+	publicKey := tokenResp.PublicKey
+	if publicKey == "" {
+		publicKey = refreshResp.PublicKey
+	}
+
 	// Obtener info del usuario de MP para confirmar mp_user_id
 	userInfo, err := s.mpClient.GetUserInfo(ctx, accessToken)
 	if err != nil {
@@ -200,6 +207,7 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 		MPUserID:       fmt.Sprintf("%d", userInfo.ID),
 		AccessToken:    encryptedAccessToken,
 		RefreshToken:   encryptedRefreshToken,
+		PublicKey:      publicKey,
 		Status:         string(constants.SellerConnectionStatusAuthorized),
 		TokenExpiresAt: &expiresAt,
 	}

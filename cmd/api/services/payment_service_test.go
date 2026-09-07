@@ -847,3 +847,233 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 	require.NotNil(t, subAgain)
 	assert.Equal(t, 1, subAgain.PaidInstallments)
 }
+
+func TestCreatePreference_TeamSubscription_SellerPublicKey(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			teamID := int64(20)
+			return &dbs.Installment{ID: id, TeamID: &teamID, Amount: 1500}, nil
+		},
+	}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, OwnerID: 3}, nil
+		},
+	}
+	connDao := &mockSellerConnectionDao{
+		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{
+				UserID:      userID,
+				AccessToken: "enc(seller-access)",
+				PublicKey:   "TEST-seller-public-key",
+				Status:      string(constants.SellerConnectionStatusAuthorized),
+			}, nil
+		},
+	}
+	settingDao := &mockPlatformSettingDao{}
+	enc := &mockEncryptor{}
+
+	svc := NewPaymentService(dao, client, nil, connDao, teamDao, nil, settingDao, installDao, enc)
+
+	ctx := config.GetTestContext()
+	insID := int64(5)
+	req := payment.CreatePreferenceRequest{
+		Concept:       string(constants.PaymentConceptTeamSubscription),
+		Description:   "Cuota equipo",
+		InstallmentID: &insID,
+		Items: []payment.PreferenceItem{
+			{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500},
+		},
+	}
+
+	dao.On("Create", ctx, mock.AnythingOfType("*dbs.Payment")).Return(nil)
+	dao.On("UpdateExternalRef", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+	client.On("CreatePreference", ctx, "seller-access", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "75.00", "ARS").Return("pref-team", nil)
+
+	resp, err := svc.CreatePreference(ctx, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "pref-team", resp.PreferenceID)
+	assert.Equal(t, "TEST-seller-public-key", resp.PublicKey)
+	dao.AssertExpectations(t)
+	client.AssertExpectations(t)
+}
+
+func TestGenerateTestCardToken_Success_IntegratorPublicKey(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	req := payment.TestCardTokenRequest{
+		CardNumber:           "5031755734530604",
+		ExpirationMonth:      "11",
+		ExpirationYear:       "2030",
+		SecurityCode:         "123",
+		CardholderName:       "APRO Test User",
+		IdentificationType:   "DNI",
+		IdentificationNumber: "12345678",
+	}
+
+	client.On("GenerateCardToken", ctx, "test-public-key",
+		"5031755734530604", "11", "2030", "123", "APRO Test User", "DNI", "12345678", "MLA").
+		Return("tok_success", nil)
+
+	resp, err := svc.GenerateTestCardToken(ctx, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "tok_success", resp.Token)
+	client.AssertExpectations(t)
+}
+
+func TestGenerateTestCardToken_MercadoPagoError(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	req := payment.TestCardTokenRequest{
+		CardNumber:           "5031755734530604",
+		ExpirationMonth:      "11",
+		ExpirationYear:       "2030",
+		SecurityCode:         "123",
+		CardholderName:       "APRO Test User",
+		IdentificationType:   "DNI",
+		IdentificationNumber: "99999999",
+	}
+
+	client.On("GenerateCardToken", ctx, "test-public-key",
+		"5031755734530604", "11", "2030", "123", "APRO Test User", "DNI", "99999999", "MLA").
+		Return("", fmt.Errorf("mp error"))
+
+	resp, err := svc.GenerateTestCardToken(ctx, req)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "mp error")
+	client.AssertExpectations(t)
+}
+
+func TestGenerateTestCardToken_TeamSubscription_UsesSellerPublicKey(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			teamID := int64(20)
+			return &dbs.Installment{
+				ID:     id,
+				TeamID: &teamID,
+				Amount: 1500,
+			}, nil
+		},
+	}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, OwnerID: 3}, nil
+		},
+	}
+	connDao := &mockSellerConnectionDao{
+		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{
+				UserID:      userID,
+				AccessToken: "enc(seller-access)",
+				PublicKey:   "TEST-seller-public-key",
+				Status:      string(constants.SellerConnectionStatusAuthorized),
+			}, nil
+		},
+	}
+	settingDao := &mockPlatformSettingDao{}
+	enc := &mockEncryptor{}
+
+	svc := NewPaymentService(dao, client, nil, connDao, teamDao, nil, settingDao, installDao, enc)
+
+	ctx := config.GetTestContext()
+	installmentID := int64(5)
+	req := payment.TestCardTokenRequest{
+		CardNumber:           "5031755734530604",
+		ExpirationMonth:      "11",
+		ExpirationYear:       "2030",
+		SecurityCode:         "123",
+		CardholderName:       "APRO Test User",
+		IdentificationType:   "DNI",
+		IdentificationNumber: "12345678",
+		Concept:              string(constants.PaymentConceptTeamSubscription),
+		InstallmentID:        &installmentID,
+	}
+
+	client.On("GenerateCardToken", ctx, "TEST-seller-public-key",
+		"5031755734530604", "11", "2030", "123", "APRO Test User", "DNI", "12345678", "MLA").
+		Return("tok_seller", nil)
+
+	resp, err := svc.GenerateTestCardToken(ctx, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "tok_seller", resp.Token)
+	client.AssertExpectations(t)
+}
+
+func TestGenerateTestCardToken_TeamSubscription_NonTeamInstallmentErrors(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			return &dbs.Installment{ID: id, Amount: 1500}, nil
+		},
+	}
+
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	installmentID := int64(5)
+	req := payment.TestCardTokenRequest{
+		CardNumber:           "5031755734530604",
+		ExpirationMonth:      "11",
+		ExpirationYear:       "2030",
+		SecurityCode:         "123",
+		CardholderName:       "APRO Test User",
+		IdentificationType:   "DNI",
+		IdentificationNumber: "12345678",
+		Concept:              string(constants.PaymentConceptTeamSubscription),
+		InstallmentID:        &installmentID,
+	}
+
+	resp, err := svc.GenerateTestCardToken(ctx, req)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "no pertenece a un equipo")
+}
+
+func TestGenerateTestCardToken_TeamSubscription_InstallmentNotFound(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{}
+
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	installmentID := int64(999)
+	req := payment.TestCardTokenRequest{
+		CardNumber:           "5031755734530604",
+		ExpirationMonth:      "11",
+		ExpirationYear:       "2030",
+		SecurityCode:         "123",
+		CardholderName:       "APRO Test User",
+		IdentificationType:   "DNI",
+		IdentificationNumber: "12345678",
+		Concept:              string(constants.PaymentConceptTeamSubscription),
+		InstallmentID:        &installmentID,
+	}
+
+	resp, err := svc.GenerateTestCardToken(ctx, req)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "cuota no encontrada")
+}

@@ -30,20 +30,20 @@ type PaymentServiceInterface interface {
 }
 
 type paymentService struct {
-	paymentDao       daos.PaymentDaoInterface
-	mpClient         mercadopagoclient.MercadoPagoClientInterface
-	accessToken      string
-	publicKey        string
-	webhookSecret    string
-	currencyID       string
-	db               *gorm.DB
+	paymentDao    daos.PaymentDaoInterface
+	mpClient      mercadopagoclient.MercadoPagoClientInterface
+	accessToken   string
+	publicKey     string
+	webhookSecret string
+	currencyID    string
+	db            *gorm.DB
 	// split team subscriptions
-	sellerConnDao    daos.SellerConnectionDaoInterface
-	teamDao          daos.TeamDaoInterface
-	teamUserDao      daos.TeamUserDaoInterface
-	settingDao       daos.PlatformSettingDaoInterface
-	installDao       daos.InstallmentDaoInterface
-	encryptor        crypto.EncryptorInterface
+	sellerConnDao daos.SellerConnectionDaoInterface
+	teamDao       daos.TeamDaoInterface
+	teamUserDao   daos.TeamUserDaoInterface
+	settingDao    daos.PlatformSettingDaoInterface
+	installDao    daos.InstallmentDaoInterface
+	encryptor     crypto.EncryptorInterface
 }
 
 func NewPaymentService(
@@ -85,11 +85,12 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	var mpAccessToken string
 	var marketplaceFee float64
 	var sellerUserID int64
+	var sellerPublicKey string
 
 	// Si es suscripción de equipo (team_subscription), usar token del dueño y aplicar split
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -97,6 +98,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 		mpAccessToken = s.accessToken
 		marketplaceFee = 0
 		sellerUserID = 0
+		sellerPublicKey = s.publicKey
 	}
 
 	var sellerUserIDPtr *int64
@@ -153,7 +155,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 
 	return &payment.CreatePreferenceResponse{
 		PreferenceID: preferenceID,
-		PublicKey:    s.publicKey,
+		PublicKey:    sellerPublicKey,
 	}, nil
 }
 
@@ -176,7 +178,7 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	// Resolver configuración de split si es team_subscription
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) && req.InstallmentID != nil {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		mpAccessToken, marketplaceFee, sellerUserID, _, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -654,11 +656,12 @@ func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResp
 	}
 }
 
-// resolveTeamSplitConfig obtiene el token del dueño del equipo y calcula la comisión
-// marketplace_fee. Debe llamarse con un installment_id válido de tipo team_subscription.
-func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64) (accessToken string, marketplaceFee float64, sellerUserID int64, err error) {
+// resolveTeamSplitConfig obtiene el token del dueño del equipo, su public_key y
+// calcula la comisión marketplace_fee. Debe llamarse con un installment_id válido
+// de tipo team_subscription.
+func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64) (accessToken string, marketplaceFee float64, sellerUserID int64, sellerPublicKey string, err error) {
 	if installmentID == nil {
-		return "", 0, 0, fmt.Errorf("installment_id requerido para team_subscription")
+		return "", 0, 0, "", fmt.Errorf("installment_id requerido para team_subscription")
 	}
 
 	installment, err := s.installDao.FindByID(ctx, *installmentID)
@@ -666,13 +669,13 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		customlogger.Error(ctx, "error finding installment for split", err,
 			customlogger.Tag("installment_id", fmt.Sprintf("%d", *installmentID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, fmt.Errorf("error consultando cuota")
+		return "", 0, 0, "", fmt.Errorf("error consultando cuota")
 	}
 	if installment == nil {
-		return "", 0, 0, fmt.Errorf("cuota no encontrada")
+		return "", 0, 0, "", fmt.Errorf("cuota no encontrada")
 	}
 	if installment.TeamID == nil {
-		return "", 0, 0, fmt.Errorf("la cuota no pertenece a un equipo")
+		return "", 0, 0, "", fmt.Errorf("la cuota no pertenece a un equipo")
 	}
 
 	team, err := s.teamDao.FindByID(ctx, *installment.TeamID)
@@ -680,10 +683,10 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		customlogger.Error(ctx, "error finding team for split", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", *installment.TeamID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, fmt.Errorf("error consultando equipo")
+		return "", 0, 0, "", fmt.Errorf("error consultando equipo")
 	}
 	if team == nil {
-		return "", 0, 0, fmt.Errorf("equipo no encontrado")
+		return "", 0, 0, "", fmt.Errorf("equipo no encontrado")
 	}
 
 	ownerID := team.OwnerID
@@ -692,14 +695,24 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		customlogger.Error(ctx, "error finding seller connection", err,
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, fmt.Errorf("error consultando conexión del entrenador")
+		return "", 0, 0, "", fmt.Errorf("error consultando conexión del entrenador")
 	}
 	if conn == nil || conn.Status != string(constants.SellerConnectionStatusAuthorized) {
 		customlogger.Warn(ctx, "team owner not connected to MP",
 			customlogger.Tag("team_id", fmt.Sprintf("%d", team.ID)),
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, fmt.Errorf("el entrenador debe conectar su cuenta de Mercado Pago")
+		return "", 0, 0, "", fmt.Errorf("el entrenador debe conectar su cuenta de Mercado Pago")
+	}
+
+	// La public_key se guarda al conectar la cuenta (OAuth). Sin ella no se puede
+	// tokenizar la tarjeta de forma coherente con el access token del vendedor.
+	if conn.PublicKey == "" {
+		customlogger.Warn(ctx, "team owner connected before public_key was stored",
+			customlogger.Tag("team_id", fmt.Sprintf("%d", team.ID)),
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("resolveTeamSplitConfig"))
+		return "", 0, 0, "", fmt.Errorf("el entrenador debe reconectar su cuenta de Mercado Pago")
 	}
 
 	// Descifrar access_token
@@ -708,7 +721,7 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		customlogger.Error(ctx, "error decrypting access token", err,
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, fmt.Errorf("error descifrando token del entrenador")
+		return "", 0, 0, "", fmt.Errorf("error descifrando token del entrenador")
 	}
 
 	// Obtener marketplace_fee_percent (default 5%)
@@ -725,13 +738,25 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 	// Calcular fee redondeado (moneda local, 2 decimales)
 	marketplaceFee = float64(int(installment.Amount*feePercent/100*100+0.5)) / 100
 
-	return decrypted, marketplaceFee, ownerID, nil
+	return decrypted, marketplaceFee, ownerID, conn.PublicKey, nil
 }
 
 func (s *paymentService) GenerateTestCardToken(ctx *gin.Context, req payment.TestCardTokenRequest) (*payment.TestCardTokenResponse, error) {
 	customlogger.Info(ctx, "generating test card token", customlogger.TagMethod("GenerateTestCardToken"))
 
-	token, err := s.mpClient.GenerateCardToken(ctx, s.accessToken,
+	// La public_key debe ser coherente con el access token con el que se creará el
+	// pago: la del vendedor (dueño del equipo) en team_subscription, la del
+	// integrador en el resto. Mezclarlas produce "Invalid users involved".
+	publicKey := s.publicKey
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
+		_, _, _, sellerPublicKey, err := s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		if err != nil {
+			return nil, err
+		}
+		publicKey = sellerPublicKey
+	}
+
+	token, err := s.mpClient.GenerateCardToken(ctx, publicKey,
 		req.CardNumber,
 		req.ExpirationMonth,
 		req.ExpirationYear,
