@@ -20,10 +20,10 @@ import (
 
 type mockSellerConnectionDao struct {
 	upsertFn            func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error)
-	findByUserFn        func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
-	setStatusFn         func(ctx *gin.Context, userID int64, status string) error
+	findByUserAndClFn   func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+	setStatusFn         func(ctx *gin.Context, userID int64, clientID string, status string) error
 	setStatusByMPUserFn func(ctx *gin.Context, mpUserID int64, status string) error
-	findAuthorizedFn    func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error)
+	findAuthorizedFn    func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
 }
 
 func (m *mockSellerConnectionDao) Upsert(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error) {
@@ -33,16 +33,16 @@ func (m *mockSellerConnectionDao) Upsert(ctx *gin.Context, conn *dbs.SellerConne
 	return conn, nil
 }
 
-func (m *mockSellerConnectionDao) FindByUser(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
-	if m.findByUserFn != nil {
-		return m.findByUserFn(ctx, userID)
+func (m *mockSellerConnectionDao) FindByUserAndClient(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+	if m.findByUserAndClFn != nil {
+		return m.findByUserAndClFn(ctx, userID, clientID)
 	}
 	return nil, nil
 }
 
-func (m *mockSellerConnectionDao) SetStatus(ctx *gin.Context, userID int64, status string) error {
+func (m *mockSellerConnectionDao) SetStatus(ctx *gin.Context, userID int64, clientID string, status string) error {
 	if m.setStatusFn != nil {
-		return m.setStatusFn(ctx, userID, status)
+		return m.setStatusFn(ctx, userID, clientID, status)
 	}
 	return nil
 }
@@ -54,9 +54,9 @@ func (m *mockSellerConnectionDao) SetStatusByMPUser(ctx *gin.Context, mpUserID i
 	return nil
 }
 
-func (m *mockSellerConnectionDao) FindAuthorizedByUser(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+func (m *mockSellerConnectionDao) FindAuthorizedByUserAndClient(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
 	if m.findAuthorizedFn != nil {
-		return m.findAuthorizedFn(ctx, userID)
+		return m.findAuthorizedFn(ctx, userID, clientID)
 	}
 	return nil, nil
 }
@@ -178,6 +178,7 @@ func TestHandleCallback_Success(t *testing.T) {
 	assert.True(t, resp.Success)
 	require.NotNil(t, saved)
 	assert.Equal(t, int64(7), saved.UserID)
+	assert.Equal(t, "client-id", saved.ClientID)
 	assert.Equal(t, "123", saved.MPUserID)
 	assert.Equal(t, "enc(tk2)", saved.AccessToken)
 	assert.Equal(t, "enc(rt2)", saved.RefreshToken)
@@ -318,9 +319,11 @@ func TestHandleCallback_UpsertError(t *testing.T) {
 
 func TestGetStatus_Success(t *testing.T) {
 	ctx := &gin.Context{}
+	var gotClientID string
 
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+			gotClientID = clientID
 			return &dbs.SellerConnection{UserID: userID, Status: string(constants.SellerConnectionStatusAuthorized)}, nil
 		},
 	}
@@ -328,6 +331,7 @@ func TestGetStatus_Success(t *testing.T) {
 	resp, err := svc.GetStatus(ctx, 5)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	assert.Equal(t, "client-id", gotClientID)
 	assert.True(t, resp.Connected)
 	assert.Equal(t, string(constants.SellerConnectionStatusAuthorized), resp.AccountStatus)
 }
@@ -335,7 +339,7 @@ func TestGetStatus_Success(t *testing.T) {
 func TestGetStatus_NotConnected(t *testing.T) {
 	ctx := &gin.Context{}
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
 			return &dbs.SellerConnection{UserID: userID, Status: string(constants.SellerConnectionStatusDeauthorized)}, nil
 		},
 	}
@@ -349,7 +353,7 @@ func TestGetStatus_NotConnected(t *testing.T) {
 func TestGetStatus_NoConnection(t *testing.T) {
 	ctx := &gin.Context{}
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
 			return nil, nil
 		},
 	}
@@ -363,7 +367,7 @@ func TestGetStatus_NoConnection(t *testing.T) {
 func TestGetStatus_DaoError(t *testing.T) {
 	ctx := &gin.Context{}
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
 			return nil, errors.New("boom")
 		},
 	}

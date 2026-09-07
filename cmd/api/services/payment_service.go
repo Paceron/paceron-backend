@@ -34,6 +34,7 @@ type paymentService struct {
 	mpClient      mercadopagoclient.MercadoPagoClientInterface
 	accessToken   string
 	publicKey     string
+	clientID      string
 	webhookSecret string
 	currencyID    string
 	db            *gorm.DB
@@ -62,6 +63,7 @@ func NewPaymentService(
 		mpClient:      mpClient,
 		accessToken:   config.MyMP.AccessToken,
 		publicKey:     config.MyMP.PublicKey,
+		clientID:      config.MyMP.OAuthClientID,
 		webhookSecret: config.MyMP.WebhookSecret,
 		currencyID:    config.MyMP.CurrencyID,
 		db:            db,
@@ -690,7 +692,7 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 	}
 
 	ownerID := team.OwnerID
-	conn, err := s.sellerConnDao.FindByUser(ctx, ownerID)
+	conn, err := s.sellerConnDao.FindByUserAndClient(ctx, ownerID, s.clientID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding seller connection", err,
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
