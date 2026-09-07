@@ -3,9 +3,10 @@ package app
 import (
 	"fmt"
 
-	"github.com/gin-gonic/gin"
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+
+	"github.com/gin-gonic/gin"
 )
 
 const banner = `
@@ -26,7 +27,8 @@ func StartApp() {
 	}
 	customlogger.Info(nil, "supabase stage resolved", customlogger.Tag("stage", stage))
 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
 	app := NewApplication()
 	mapUrls(router, app)
 
