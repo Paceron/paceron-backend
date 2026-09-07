@@ -863,7 +863,7 @@ func TestCreatePreference_TeamSubscription_SellerPublicKey(t *testing.T) {
 		},
 	}
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
 			return &dbs.SellerConnection{
 				UserID:      userID,
 				AccessToken: "enc(seller-access)",
@@ -978,7 +978,7 @@ func TestGenerateTestCardToken_TeamSubscription_UsesSellerPublicKey(t *testing.T
 		},
 	}
 	connDao := &mockSellerConnectionDao{
-		findByUserFn: func(ctx *gin.Context, userID int64) (*dbs.SellerConnection, error) {
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
 			return &dbs.SellerConnection{
 				UserID:      userID,
 				AccessToken: "enc(seller-access)",

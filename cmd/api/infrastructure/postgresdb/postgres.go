@@ -128,6 +128,26 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	// 4. seller_connections: la clave única pasa de (user_id) a (user_id, client_id).
+	// El access token OAuth es válido solo para la app que lo emitió; al versionar por
+	// client_id evitamos que un reconnect contra otra app pise la conexión vigente.
+	// Idempotente: columna recién agregada se completa con default '', el índice viejo
+	// (si existía de un schema anterior) se dropea para liberar el user_id.
+	// Se ejecutan por separado: el driver prepara los statements y no acepta
+	// varios comandos en un solo Exec.
+	migSellerConn := []string{
+		`ALTER TABLE seller_connections ADD COLUMN IF NOT EXISTS client_id text NOT NULL DEFAULT '';`,
+		`DROP INDEX IF EXISTS idx_seller_connections_user_id;`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_seller_connections_user_client
+			ON seller_connections (user_id, client_id);`,
+	}
+	for _, stmt := range migSellerConn {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error migrating seller_connections unique key", err)
+			return nil, err
+		}
+	}
+
 	customlogger.Info(nil, "DB initialized successfully",
 		customlogger.Tag("db_name", configDB.Name))
 

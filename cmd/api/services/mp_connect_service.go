@@ -204,6 +204,7 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 	}
 	conn := &dbs.SellerConnection{
 		UserID:         userID,
+		ClientID:       s.clientID,
 		MPUserID:       fmt.Sprintf("%d", userInfo.ID),
 		AccessToken:    encryptedAccessToken,
 		RefreshToken:   encryptedRefreshToken,
@@ -229,9 +230,10 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 	return &mpconnect.CallbackResponse{Success: true, Message: "Cuenta de Mercado Pago conectada exitosamente"}, nil
 }
 
-// GetStatus devuelve el estado de conexión del entrenador.
+// GetStatus devuelve el estado de conexión del entrenador para la app activa
+// (client_id). Ignora conexiones hechas contra otras apps del mismo usuario.
 func (s *mpConnectService) GetStatus(ctx *gin.Context, userID int64) (*mpconnect.StatusResponse, error) {
-	conn, err := s.sellerConnDao.FindByUser(ctx, userID)
+	conn, err := s.sellerConnDao.FindByUserAndClient(ctx, userID, s.clientID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding seller connection", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),

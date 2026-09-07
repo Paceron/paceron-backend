@@ -8,11 +8,12 @@ import "time"
 // infrastructure/crypto) y nunca se loguean ni se exponen en ninguna respuesta.
 type SellerConnection struct {
 	ID             int64      `gorm:"column:id;primaryKey"`
-	UserID         int64      `gorm:"column:user_id;not null;uniqueIndex"` // entrenador (un solo dueño de equipo por cuenta)
-	MPUserID       string     `gorm:"column:mp_user_id"`                   // id de la cuenta de Mercado Pago conectada
-	AccessToken    string     `gorm:"column:access_token;type:text"`       // CIFRADO
-	RefreshToken   string     `gorm:"column:refresh_token;type:text"`      // CIFRADO
-	PublicKey      string     `gorm:"column:public_key;type:text"`         // public_key del vendedor (OAuth), para tokenizar tarjetas en split
+	UserID         int64      `gorm:"column:user_id;not null"`                        // entrenador (dueño de equipo)
+	ClientID       string     `gorm:"column:client_id;type:text;not null;default:''"` // app OAuth hacia la que se emitió el access token
+	MPUserID       string     `gorm:"column:mp_user_id"`                              // id de la cuenta de Mercado Pago conectada
+	AccessToken    string     `gorm:"column:access_token;type:text"`                  // CIFRADO
+	RefreshToken   string     `gorm:"column:refresh_token;type:text"`                 // CIFRADO
+	PublicKey      string     `gorm:"column:public_key;type:text"`                    // public_key del vendedor (OAuth), para tokenizar tarjetas en split
 	TokenExpiresAt *time.Time `gorm:"column:token_expires_at"`
 	Status         string     `gorm:"column:status;not null;default:authorized"` // authorized | deauthorized
 	CreatedAt      time.Time  `gorm:"column:created_at;autoCreateTime"`
