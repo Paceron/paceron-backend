@@ -31,6 +31,11 @@ tmp/
 # Environment variables (credentials)
 .env
 
+# Documentos con credenciales reales para soporte externo (no commitear)
+reporte_e2e_mercadopago.md
+reporte_e2e_mercadopago_formato_soporte.md
+plan_fix_pagos.md
+
 # CI/CD generated artifacts
 ci/test_coverage/
 cmd/api/__debug*
