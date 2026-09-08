@@ -70,13 +70,13 @@ func (s *authService) Register(ctx *gin.Context, req *auth.RegisterRequest, pass
 	existingDNI, err := s.authDao.FindByDNI(ctx, req.Dni)
 	if err != nil {
 		customlogger.Error(ctx, "error checking existing dni", err,
-			customlogger.Tag("dni", req.Dni),
+			customlogger.Tag("dni", utils.MaskSecret(req.Dni)),
 			customlogger.Tag("step", "find_by_dni"))
 		return nil, fmt.Errorf("error al registrar usuario")
 	}
 	if existingDNI != nil {
 		customlogger.Warn(ctx, "dni already registered",
-			customlogger.Tag("dni", req.Dni),
+			customlogger.Tag("dni", utils.MaskSecret(req.Dni)),
 			customlogger.Tag("field", "dni"))
 		return nil, fmt.Errorf("el DNI ya está registrado")
 	}
