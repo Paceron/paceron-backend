@@ -23,15 +23,16 @@ const (
 	DebugLevel LogLevel = "debug"
 	TraceLevel LogLevel = "trace"
 
-	_callerTag        = "caller-line"
-	_callerFileBase   = 4
-	_tagMsgFormat     = "%s - %s"
-	_XrequestID       = "x-request-id"
-	_Flow             = "flow"
-	_root             = "/"
-	_currentFile      = "customlogger.go"
-	_splitValue       = 2
-	_splittedCount    = 2
+	_callerTag      = "caller-line"
+	_callerFileBase = 4
+	_tagMsgFormat   = "%s - %s"
+	_XrequestID     = "x-request-id"
+	_Flow           = "flow"
+	_URLTag         = "url"
+	_root           = "/"
+	_currentFile    = "customlogger.go"
+	_splitValue     = 2
+	_splittedCount  = 2
 )
 
 var (
@@ -44,6 +45,7 @@ type customlogger struct {
 	showFileName  bool
 	showRequestID bool
 	showFlow      bool
+	showURL       bool
 }
 
 func init() {
@@ -65,6 +67,13 @@ func CustomConfig(logLevel LogLevel, fileNameFlag bool, requestIDFlag bool, flow
 	showFileName(fileNameFlag)
 	showRequestID(requestIDFlag)
 	showFlow(flow)
+}
+
+// SetShowURL activa o desactiva el tag automático "url" (ruta registrada del
+// endpoint, ej. /api/v1/payments/:id) en todos los logs dentro de una request.
+func SetShowURL(show bool) {
+	TLogger.showURL = show
+	TLogger.log.Infof("Show url: %t", show)
 }
 
 func showRequestID(show bool) {
@@ -111,6 +120,20 @@ func addRequestIDToTags(ctx *gin.Context, tags *[]string) {
 	}
 }
 
+// addURLToTags agrega la ruta registrada del endpoint actual (ctx.FullPath, ej.
+// /api/v1/payments/:id) a todos los logs de la request, sin exponer IDs ni query
+// params reales (que podrían llevar data sensible).
+func addURLToTags(ctx *gin.Context, tags *[]string) {
+	if ctx == nil {
+		return
+	}
+	url := ctx.FullPath()
+	if url != "" {
+		b := []string{_URLTag + ":" + url}
+		*tags = append(b, *tags...)
+	}
+}
+
 func addFileNameToTags(tags *[]string) {
 	caller := callerFileName()
 	if caller != "" {
@@ -122,6 +145,9 @@ func addFileNameToTags(tags *[]string) {
 func buildLogEntry(ctx *gin.Context, tags []string, message string) (*logrus.Entry, string) {
 	if TLogger.showRequestID {
 		addRequestIDToTags(ctx, &tags)
+	}
+	if TLogger.showURL {
+		addURLToTags(ctx, &tags)
 	}
 	if TLogger.showFileName {
 		addFileNameToTags(&tags)

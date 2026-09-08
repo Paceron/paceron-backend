@@ -20,6 +20,7 @@ const banner = `
 func StartApp() {
 	fmt.Print(banner)
 	customlogger.CustomConfig(customlogger.DebugLevel, true, true, true)
+	customlogger.SetShowURL(true)
 
 	stage := "testing"
 	if config.IsProductionStage() {
