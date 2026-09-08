@@ -210,6 +210,17 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		concept = "order"
 	}
 
+	installmentIDStr := "nil"
+	if req.InstallmentID != nil {
+		installmentIDStr = fmt.Sprintf("%d", *req.InstallmentID)
+	}
+	customlogger.Info(ctx, "ProcessPayment start",
+		customlogger.Tag("concept", concept),
+		customlogger.Tag("installment_id", installmentIDStr),
+		customlogger.Tag("preference_id", req.PreferenceID),
+		customlogger.Tag("amount", fmt.Sprintf("%.2f", req.TransactionAmount)),
+		customlogger.TagMethod("ProcessPayment"))
+
 	var sellerUserIDPtr *int64
 	var marketplaceFeePtr *float64
 	if sellerUserID != 0 {
@@ -447,6 +458,18 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 		return fmt.Errorf("payment not found locally")
 	}
 
+	installmentIDStr := "nil"
+	if paymentRecord.InstallmentID != nil {
+		installmentIDStr = fmt.Sprintf("%d", *paymentRecord.InstallmentID)
+	}
+	customlogger.Info(ctx, "webhook matched local payment",
+		customlogger.Tag("mp_payment_id", mpPaymentID),
+		customlogger.Tag("payment_id", fmt.Sprintf("%d", paymentRecord.ID)),
+		customlogger.Tag("concept", paymentRecord.Concept),
+		customlogger.Tag("installment_id", installmentIDStr),
+		customlogger.Tag("status", result.Status),
+		customlogger.TagMethod("HandleWebhook"))
+
 	if err := s.paymentDao.UpdateStatus(ctx, paymentRecord.ID, result.Status, result.StatusDetail); err != nil {
 		customlogger.Error(ctx, "error updating payment status from webhook", err)
 		return fmt.Errorf("error updating payment status: %w", err)
@@ -459,19 +482,36 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 
 	// Pago de cuota aprobado: confirmar la cuota y avanzar el ciclo mensual (D6/D7).
 	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
-		// Determinar si es cuota de tier o de equipo
 		installment, err := s.installDao.FindByID(ctx, *paymentRecord.InstallmentID)
 		if err != nil {
 			customlogger.Error(ctx, "error finding installment for webhook", err)
-		} else if installment != nil && installment.TeamID != nil {
-			// Cuota de equipo (change suscripcion-teams-split D10)
-			if err := s.applyApprovedTeamInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
-				return fmt.Errorf("error confirming team installment: %w", err)
+		} else if installment != nil {
+			teamIDStr := "nil"
+			if installment.TeamID != nil {
+				teamIDStr = fmt.Sprintf("%d", *installment.TeamID)
 			}
-		} else {
-			// Cuota de tier (D6/D7)
-			if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
-				return fmt.Errorf("error confirming installment: %w", err)
+			subIDStr := "nil"
+			if installment.SubscriptionID != nil {
+				subIDStr = fmt.Sprintf("%d", *installment.SubscriptionID)
+			}
+			customlogger.Info(ctx, "webhook resolving installment",
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+				customlogger.Tag("installment_number", fmt.Sprintf("%d", installment.InstallmentNumber)),
+				customlogger.Tag("subscription_id", subIDStr),
+				customlogger.Tag("team_id", teamIDStr),
+				customlogger.Tag("status", installment.Status),
+				customlogger.TagMethod("HandleWebhook"))
+
+			if installment.TeamID != nil {
+				// Cuota de equipo (change suscripcion-teams-split D10)
+				if err := s.applyApprovedTeamInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+					return fmt.Errorf("error confirming team installment: %w", err)
+				}
+			} else {
+				// Cuota de tier (D6/D7)
+				if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+					return fmt.Errorf("error confirming installment: %w", err)
+				}
 			}
 		}
 	}
@@ -555,6 +595,15 @@ func (s *paymentService) applyApprovedInstallment(ctx *gin.Context, paymentRecor
 			return fmt.Errorf("subscription %d not found", *installment.SubscriptionID)
 		}
 
+		customlogger.Info(ctx, "applyApprovedInstallment confirming",
+			customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+			customlogger.Tag("installment_number", fmt.Sprintf("%d", installment.InstallmentNumber)),
+			customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
+			customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+			customlogger.Tag("sub_status", sub.Status),
+			customlogger.Tag("paid_installments_before", fmt.Sprintf("%d", sub.PaidInstallments)),
+			customlogger.TagMethod("applyApprovedInstallment"))
+
 		if err := subDao.IncrementPaidInstallments(ctx, sub.ID); err != nil {
 			return err
 		}
@@ -563,6 +612,12 @@ func (s *paymentService) applyApprovedInstallment(ctx *gin.Context, paymentRecor
 			if err := subDao.Activate(ctx, sub.ID); err != nil {
 				return err
 			}
+			customlogger.Info(ctx, "applyApprovedInstallment updating tier",
+				customlogger.Tag("user_id", fmt.Sprintf("%d", sub.UserID)),
+				customlogger.Tag("role_id", fmt.Sprintf("%d", sub.RoleID)),
+				customlogger.Tag("new_tier_id", fmt.Sprintf("%d", sub.TierID)),
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("applyApprovedInstallment"))
 			if err := urDao.UpdateTier(ctx, sub.UserID, sub.RoleID, sub.TierID); err != nil {
 				return err
 			}
