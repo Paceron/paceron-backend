@@ -55,6 +55,11 @@ func NewTierSubscriptionService(
 // nueva (target pago -> first_payment_pending + cuota #1; target gratis -> active
 // + tier sync inmediato). Con db seteada corre todo en una transacción GORM.
 func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID int64, req *tiersubscription.ChangeTierRequest) (*tiersubscription.ChangeTierResponse, error) {
+	customlogger.Info(ctx, "ChangeTier start",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+		customlogger.Tag("target_tier_id", fmt.Sprintf("%d", req.TierID)),
+		customlogger.TagMethod("ChangeTier"))
 	apply := func(
 		urDao daos.UserRoleDaoInterface,
 		roleDao daos.RoleDaoInterface,
@@ -95,6 +100,12 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 		}
 
 		if sub != nil {
+			customlogger.Info(ctx, "ChangeTier found active sub",
+				customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
+				customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+				customlogger.Tag("sub_status", sub.Status),
+				customlogger.Tag("paid_installments", fmt.Sprintf("%d", sub.PaidInstallments)),
+				customlogger.TagMethod("ChangeTier"))
 			pending, err := insDao.FindPendingBySubscription(ctx, sub.ID)
 			if err != nil {
 				return nil, fmt.Errorf("error al cambiar de tier")
@@ -123,6 +134,10 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 			if err := subDao.SetEnded(ctx, sub.ID); err != nil {
 				return nil, fmt.Errorf("error al cambiar de tier")
 			}
+			customlogger.Info(ctx, "ChangeTier ended previous sub",
+				customlogger.Tag("old_sub_id", fmt.Sprintf("%d", sub.ID)),
+				customlogger.Tag("old_sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+				customlogger.TagMethod("ChangeTier"))
 		}
 
 		newSub := &dbs.UserRoleTierSubscription{
@@ -144,6 +159,14 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 			if err := insDao.Create(ctx, installment); err != nil {
 				return nil, fmt.Errorf("error al cambiar de tier")
 			}
+			customlogger.Info(ctx, "ChangeTier created paid sub",
+				customlogger.Tag("new_sub_id", fmt.Sprintf("%d", newSub.ID)),
+				customlogger.Tag("new_sub_tier_id", fmt.Sprintf("%d", newSub.TierID)),
+				customlogger.Tag("new_sub_status", newSub.Status),
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+				customlogger.Tag("installment_number", fmt.Sprintf("%d", installment.InstallmentNumber)),
+				customlogger.Tag("amount", fmt.Sprintf("%.2f", installment.Amount)),
+				customlogger.TagMethod("ChangeTier"))
 
 			resp.SubscriptionID = newSub.ID
 			resp.SubscriptionStatus = newSub.Status
@@ -235,6 +258,15 @@ func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userI
 	}
 
 	if sub != nil {
+		customlogger.Info(ctx, "GetCurrentSubscription active sub",
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
+			customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+			customlogger.Tag("sub_status", sub.Status),
+			customlogger.Tag("paid_installments", fmt.Sprintf("%d", sub.PaidInstallments)),
+			customlogger.TagMethod("GetCurrentSubscription"))
+
 		tier, err := s.tierDao.FindByID(ctx, sub.TierID)
 		if err != nil {
 			customlogger.Error(ctx, "error finding subscription tier", err,
@@ -272,6 +304,13 @@ func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userI
 			resp.InstallmentAmount = &amount
 			resp.NextDueDate = next.DueDate
 			resp.BlockedDate = next.BlockedDate
+
+			customlogger.Info(ctx, "GetCurrentSubscription next installment",
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", next.ID)),
+				customlogger.Tag("installment_number", fmt.Sprintf("%d", next.InstallmentNumber)),
+				customlogger.Tag("amount", fmt.Sprintf("%.2f", next.Amount)),
+				customlogger.Tag("status", next.Status),
+				customlogger.TagMethod("GetCurrentSubscription"))
 		}
 
 		if tier.PaymentRequired {

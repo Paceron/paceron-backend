@@ -114,14 +114,14 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 
 	if s.clientID == "" || s.clientSecret == "" || s.redirectURI == "" {
 		customlogger.Error(ctx, "MP OAuth credentials not configured", fmt.Errorf("missing credentials"),
-			customlogger.Tag("client_id", s.clientID),
+			customlogger.Tag("client_id", utils.MaskSecret(s.clientID)),
 			customlogger.Tag("client_secret", utils.MaskSecret(s.clientSecret)),
 			customlogger.Tag("redirect_uri", s.redirectURI),
 			customlogger.TagMethod("HandleCallback"))
 		return nil, fmt.Errorf("configuración de Mercado Pago incompleta")
 	}
 	customlogger.Info(ctx, "[DEBUG] Credenciales OAuth configuradas",
-		customlogger.Tag("client_id", s.clientID),
+		customlogger.Tag("client_id", utils.MaskSecret(s.clientID)),
 		customlogger.Tag("client_secret", utils.MaskSecret(s.clientSecret)),
 		customlogger.Tag("redirect_uri", s.redirectURI),
 		customlogger.TagMethod("HandleCallback"))

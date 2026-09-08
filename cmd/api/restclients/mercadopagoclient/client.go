@@ -291,6 +291,7 @@ func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSec
 		customlogger.Tag("client_secret", utils.MaskSecret(clientSecret)),
 		customlogger.Tag("redirect_uri", redirectURI),
 		customlogger.Tag("code", utils.MaskSecret(code)),
+		customlogger.Tag("test_token", fmt.Sprintf("%t", appconfig.MyMP.OAuthTestToken)),
 		customlogger.TagMethod("ExchangeCodeForToken"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
@@ -325,6 +326,7 @@ func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSec
 		customlogger.Tag("refresh_token", utils.MaskSecret(tokenResp.RefreshToken)),
 		customlogger.Tag("scope", tokenResp.Scope),
 		customlogger.Tag("user_id", fmt.Sprintf("%d", tokenResp.UserID)),
+		customlogger.Tag("test_token", fmt.Sprintf("%t", appconfig.MyMP.OAuthTestToken)),
 		customlogger.TagMethod("ExchangeCodeForToken"))
 
 	return &tokenResp, nil
@@ -341,6 +343,7 @@ func (c *mpClient) RefreshAccessToken(ctx context.Context, clientID, clientSecre
 		customlogger.Tag("client_id", utils.MaskSecret(clientID)),
 		customlogger.Tag("client_secret", utils.MaskSecret(clientSecret)),
 		customlogger.Tag("refresh_token", utils.MaskSecret(refreshToken)),
+		customlogger.Tag("test_token", fmt.Sprintf("%t", appconfig.MyMP.OAuthTestToken)),
 		customlogger.TagMethod("RefreshAccessToken"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
