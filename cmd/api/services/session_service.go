@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -30,13 +31,55 @@ type SessionServiceInterface interface {
 }
 
 type sessionService struct {
-	sessionDao         daos.SessionDaoInterface
-	sessionExerciseDao daos.SessionExerciseDaoInterface
-	exerciseDao        daos.ExerciseDaoInterface
+	sessionDao          daos.SessionDaoInterface
+	sessionExerciseDao  daos.SessionExerciseDaoInterface
+	exerciseDao         daos.ExerciseDaoInterface
+	groupCalendarDayDao daos.GroupCalendarDaoInterface
+	db                  *gorm.DB
 }
 
-func NewSessionService(sessionDao daos.SessionDaoInterface, sessionExerciseDao daos.SessionExerciseDaoInterface, exerciseDao daos.ExerciseDaoInterface) SessionServiceInterface {
-	return &sessionService{sessionDao: sessionDao, sessionExerciseDao: sessionExerciseDao, exerciseDao: exerciseDao}
+func NewSessionService(
+	sessionDao daos.SessionDaoInterface,
+	sessionExerciseDao daos.SessionExerciseDaoInterface,
+	exerciseDao daos.ExerciseDaoInterface,
+	groupCalendarDayDao daos.GroupCalendarDaoInterface,
+	db *gorm.DB,
+) SessionServiceInterface {
+	return &sessionService{
+		sessionDao: sessionDao, sessionExerciseDao: sessionExerciseDao, exerciseDao: exerciseDao,
+		groupCalendarDayDao: groupCalendarDayDao, db: db,
+	}
+}
+
+// cloneSessionInternal crea una copia de original (sesión + ejercicios) usando
+// las DAOs recibidas — permite reusar la misma lógica tanto sobre las DAOs
+// "normales" del service (Clone) como sobre DAOs frescas atadas a una
+// transacción (rama de divergencia en Update).
+func cloneSessionInternal(sessionDao daos.SessionDaoInterface, sessionExerciseDao daos.SessionExerciseDaoInterface, ctx *gin.Context, original *dbs.Session, name, description *string) (*dbs.Session, error) {
+	rows, err := sessionExerciseDao.FindBySession(ctx, original.ID)
+	if err != nil {
+		return nil, fmt.Errorf("error al leer ejercicios de la sesión original")
+	}
+	cloneName := original.Name + " (copia)"
+	if name != nil {
+		cloneName = *name
+	}
+	cloneDescription := original.Description
+	if description != nil {
+		cloneDescription = description
+	}
+	clone := &dbs.Session{OwnerID: original.OwnerID, Name: cloneName, Description: cloneDescription}
+	if err := sessionDao.Create(ctx, clone); err != nil {
+		return nil, fmt.Errorf("error al crear sesión clonada")
+	}
+	clonedRows := make([]dbs.SessionExercise, len(rows))
+	for i, r := range rows {
+		clonedRows[i] = dbs.SessionExercise{ExerciseID: r.ExerciseID, Role: r.Role, RepeatCount: r.RepeatCount, RestMinutes: r.RestMinutes}
+	}
+	if err := sessionExerciseDao.ReplaceForSession(ctx, clone.ID, clonedRows); err != nil {
+		return nil, fmt.Errorf("error al copiar ejercicios al clon")
+	}
+	return clone, nil
 }
 
 func (s *sessionService) validateExercises(ctx *gin.Context, items []session.SessionExerciseRequest) error {
@@ -128,15 +171,44 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 	if err := s.validateExercises(ctx, req.Exercises); err != nil {
 		return nil, err
 	}
-	existing.Name = req.Name
-	existing.Description = req.Description
-	if err := s.sessionDao.Update(ctx, existing); err != nil {
-		customlogger.Error(ctx, "error updating session", err, customlogger.TagMethod("Update"))
-		return nil, fmt.Errorf("error al editar sesión")
+
+	if req.ExcludeGroupIDs == nil || len(*req.ExcludeGroupIDs) == 0 {
+		existing.Name = req.Name
+		existing.Description = req.Description
+		if err := s.sessionDao.Update(ctx, existing); err != nil {
+			customlogger.Error(ctx, "error updating session", err, customlogger.TagMethod("Update"))
+			return nil, fmt.Errorf("error al editar sesión")
+		}
+		if err := s.sessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises)); err != nil {
+			customlogger.Error(ctx, "error replacing session exercises", err, customlogger.TagMethod("Update"))
+			return nil, fmt.Errorf("error al editar sesión")
+		}
+		return s.toResponse(ctx, existing)
 	}
-	if err := s.sessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises)); err != nil {
-		customlogger.Error(ctx, "error replacing session exercises", err, customlogger.TagMethod("Update"))
-		return nil, fmt.Errorf("error al editar sesión")
+
+	excludeGroupIDs := *req.ExcludeGroupIDs
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txSessionDao := daos.NewSessionDao(tx)
+		txSessionExerciseDao := daos.NewSessionExerciseDao(tx)
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+
+		clone, err := cloneSessionInternal(txSessionDao, txSessionExerciseDao, ctx, existing, req.CloneName, req.CloneDescription)
+		if err != nil {
+			return err
+		}
+		if err := txCalendarDao.RepointSessionForGroups(ctx, excludeGroupIDs, id, clone.ID); err != nil {
+			return fmt.Errorf("error al repuntear grupos excluidos")
+		}
+		existing.Name = req.Name
+		existing.Description = req.Description
+		if err := txSessionDao.Update(ctx, existing); err != nil {
+			return fmt.Errorf("error al editar sesión original")
+		}
+		return txSessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises))
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error in divergence-clone update", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión con exclusión de grupos")
 	}
 	return s.toResponse(ctx, existing)
 }
@@ -172,22 +244,9 @@ func (s *sessionService) Clone(ctx *gin.Context, id, callerID int64) (*session.S
 	if existing.OwnerID != callerID {
 		return nil, ErrCatalogForbidden
 	}
-	rows, err := s.sessionExerciseDao.FindBySession(ctx, id)
+	clone, err := cloneSessionInternal(s.sessionDao, s.sessionExerciseDao, ctx, existing, nil, nil)
 	if err != nil {
-		customlogger.Error(ctx, "error loading session exercises", err, customlogger.TagMethod("Clone"))
-		return nil, fmt.Errorf("error al clonar sesión")
-	}
-	clone := &dbs.Session{OwnerID: existing.OwnerID, Name: existing.Name + " (copia)", Description: existing.Description}
-	if err := s.sessionDao.Create(ctx, clone); err != nil {
 		customlogger.Error(ctx, "error cloning session", err, customlogger.TagMethod("Clone"))
-		return nil, fmt.Errorf("error al clonar sesión")
-	}
-	clonedRows := make([]dbs.SessionExercise, len(rows))
-	for i, r := range rows {
-		clonedRows[i] = dbs.SessionExercise{ExerciseID: r.ExerciseID, Role: r.Role, RepeatCount: r.RepeatCount, RestMinutes: r.RestMinutes}
-	}
-	if err := s.sessionExerciseDao.ReplaceForSession(ctx, clone.ID, clonedRows); err != nil {
-		customlogger.Error(ctx, "error setting cloned session exercises", err, customlogger.TagMethod("Clone"))
 		return nil, fmt.Errorf("error al clonar sesión")
 	}
 	return s.toResponse(ctx, clone)

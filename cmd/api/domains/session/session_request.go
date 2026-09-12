@@ -15,4 +15,10 @@ type SessionRequest struct {
 	Name        string                   `json:"name" binding:"required"`
 	Description *string                  `json:"description"`
 	Exercises   []SessionExerciseRequest `json:"exercises" binding:"required"`
+
+	// Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,
+	// solo se usan en PUT, ignorados en POST).
+	ExcludeGroupIDs  *[]int64 `json:"exclude_group_ids"`
+	CloneName        *string  `json:"clone_name"`
+	CloneDescription *string  `json:"clone_description"`
 }
