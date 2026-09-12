@@ -166,6 +166,60 @@ definitions:
       user_id:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest:
+    properties:
+      description:
+        type: string
+      distance_m:
+        type: integer
+      intensity:
+        type: string
+      kind:
+        type: string
+      minutes:
+        type: integer
+      muscle_group:
+        type: string
+      name:
+        type: string
+      owner_id:
+        type: integer
+      speed_kph:
+        type: number
+    required:
+    - kind
+    - name
+    - owner_id
+    type: object
+  simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      distance_m:
+        type: integer
+      id:
+        type: integer
+      intensity:
+        type: string
+      kind:
+        type: string
+      minutes:
+        type: integer
+      muscle_group:
+        type: string
+      name:
+        type: string
+      owner_id:
+        type: integer
+      speed_kph:
+        type: number
+      updated_at:
+        type: string
+      video_url:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_group.CreateGroupRequest:
     properties:
       description:
@@ -759,6 +813,69 @@ definitions:
         description: Nuevo nombre del rol (opcional)
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest:
+    properties:
+      exercise_id:
+        type: integer
+      repeat_count:
+        type: integer
+      rest_minutes:
+        type: integer
+      role:
+        type: string
+    required:
+    - exercise_id
+    - role
+    type: object
+  simple-arq-golang_cmd_api_domains_session.SessionExerciseResponse:
+    properties:
+      exercise_id:
+        type: integer
+      id:
+        type: integer
+      repeat_count:
+        type: integer
+      rest_minutes:
+        type: integer
+      role:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_session.SessionRequest:
+    properties:
+      description:
+        type: string
+      exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest'
+        type: array
+      name:
+        type: string
+      owner_id:
+        type: integer
+    required:
+    - exercises
+    - name
+    - owner_id
+    type: object
+  simple-arq-golang_cmd_api_domains_session.SessionResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseResponse'
+        type: array
+      id:
+        type: integer
+      name:
+        type: string
+      owner_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
     properties:
       create_default_group:
@@ -1230,6 +1347,101 @@ definitions:
       payment_required:
         type: boolean
     type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.Location:
+    properties:
+      label:
+        type: string
+      lat:
+        type: number
+      lng:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest:
+    properties:
+      default_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      default_presencial:
+        type: boolean
+      default_time:
+        type: string
+      kind:
+        type: string
+      other_name:
+        type: string
+      sequence_no:
+        type: integer
+      session_id:
+        type: integer
+    required:
+    - kind
+    - sequence_no
+    type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.PlanDayResponse:
+    properties:
+      default_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      default_presencial:
+        type: boolean
+      default_time:
+        type: string
+      id:
+        type: integer
+      kind:
+        type: string
+      other_name:
+        type: string
+      sequence_no:
+        type: integer
+      session_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanRequest:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest'
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+      owner_id:
+        type: integer
+    required:
+    - days
+    - name
+    - owner_id
+    type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse:
+    properties:
+      created_at:
+        type: string
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayResponse'
+        type: array
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      owner_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanUpdateRequest:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest'
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_user.BatchLookupResponse:
     properties:
       results:
@@ -1699,6 +1911,148 @@ paths:
       summary: Get user by ID or email
       tags:
       - auth
+  /api/v1/exercises:
+    get:
+      parameters:
+      - description: Owner ID
+        in: query
+        name: owner_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Listar ejercicios por propietario
+      tags:
+      - exercises
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Datos del ejercicio
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Crear ejercicio
+      tags:
+      - exercises
+  /api/v1/exercises/{id}:
+    delete:
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Eliminar ejercicio
+      tags:
+      - exercises
+    get:
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Obtener ejercicio por ID
+      tags:
+      - exercises
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del ejercicio
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Actualizar ejercicio
+      tags:
+      - exercises
+  /api/v1/exercises/{id}/clone:
+    post:
+      parameters:
+      - description: Exercise ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse'
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Clonar ejercicio
+      tags:
+      - exercises
   /api/v1/groups:
     get:
       description: Devuelve los grupos de un equipo. Si se filtra por team_id, valida
@@ -2945,6 +3299,152 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/sessions:
+    get:
+      parameters:
+      - description: Owner ID
+        in: query
+        name: owner_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Listar sesiones por propietario
+      tags:
+      - sessions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Datos de la sesión
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "422":
+          description: Unprocessable Entity
+      summary: Crear sesión
+      tags:
+      - sessions
+  /api/v1/sessions/{id}:
+    delete:
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Eliminar sesión
+      tags:
+      - sessions
+    get:
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Obtener sesión por ID
+      tags:
+      - sessions
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos de la sesión
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "422":
+          description: Unprocessable Entity
+      summary: Actualizar sesión
+      tags:
+      - sessions
+  /api/v1/sessions/{id}/clone:
+    post:
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse'
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Clonar sesión
+      tags:
+      - sessions
   /api/v1/teams:
     get:
       description: Devuelve equipos activos. Sin filtros, todos. owner_id filtra por
@@ -3864,6 +4364,152 @@ paths:
       summary: Get tier by name
       tags:
       - tiers
+  /api/v1/training-plans:
+    get:
+      parameters:
+      - description: Owner ID
+        in: query
+        name: owner_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Listar planes de entrenamiento por propietario
+      tags:
+      - training-plans
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Datos del plan
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "422":
+          description: Unprocessable Entity
+      summary: Crear plan de entrenamiento
+      tags:
+      - training-plans
+  /api/v1/training-plans/{id}:
+    delete:
+      parameters:
+      - description: Training Plan ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Eliminar plan de entrenamiento
+      tags:
+      - training-plans
+    get:
+      parameters:
+      - description: Training Plan ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Obtener plan de entrenamiento por ID
+      tags:
+      - training-plans
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Training Plan ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del plan
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+        "422":
+          description: Unprocessable Entity
+      summary: Actualizar plan de entrenamiento
+      tags:
+      - training-plans
+  /api/v1/training-plans/{id}/clone:
+    post:
+      parameters:
+      - description: Training Plan ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse'
+        "403":
+          description: Forbidden
+        "404":
+          description: Not Found
+      summary: Clonar plan de entrenamiento
+      tags:
+      - training-plans
   /api/v1/users:
     get:
       consumes:
