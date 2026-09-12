@@ -999,6 +999,13 @@ definitions:
       team:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo'
     type: object
+  simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration:
+    properties:
+      max_members:
+        type: integer
+      minimum_fee:
+        type: number
+    type: object
   simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
     properties:
       role_in_team:
@@ -2945,6 +2952,47 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/team-configuration:
+    get:
+      description: Returns the max members and minimum membership fee allowed for
+        the trainer's tier, validated against a team they own.
+      parameters:
+      - description: User ID (the trainer)
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      - description: Team ID
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get team configuration by trainer tier
+      tags:
+      - teams
   /api/v1/teams:
     get:
       description: Devuelve equipos activos. Sin filtros, todos. owner_id filtra por

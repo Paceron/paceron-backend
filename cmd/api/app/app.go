@@ -44,9 +44,10 @@ type Application struct {
 	paymentController          controllers.PaymentController
 	tierSubscriptionController controllers.TierSubscriptionController
 	// suscripcion-teams-split
-	mpConnectController       controllers.MPConnectControllerInterface
-	platformSettingController controllers.PlatformSettingControllerInterface
-	teamSubscriptionController controllers.TeamSubscriptionControllerInterface
+	mpConnectController         controllers.MPConnectControllerInterface
+	platformSettingController   controllers.PlatformSettingControllerInterface
+	teamSubscriptionController  controllers.TeamSubscriptionControllerInterface
+	teamConfigurationController controllers.TeamConfigurationControllerInterface
 }
 
 func NewApplication() *Application {
@@ -244,30 +245,35 @@ func NewApplication() *Application {
 	teamSubscriptionService := services.NewTeamSubscriptionService(teamDao, teamUserDao, installmentDao)
 	teamSubscriptionController := controllers.NewTeamSubscriptionController(teamSubscriptionService)
 
+	// Team Configuration flow (configuración por tier del entrenador)
+	teamConfigurationService := services.NewTeamConfigurationService(teamDao, roleDao, userRoleDao, tierSubscriptionDao, tierDao)
+	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
+
 	return &Application{
-		pingController:             controllers.NewPingController(),
-		userController:             userController,
-		authController:             authController,
-		exampleWeatherController:   exampleWeatherController,
-		userWeatherController:      userWeatherController,
-		permissionController:       permissionController,
-		tierController:             tierController,
-		roleController:             roleController,
-		tierPermissionController:   tierPermissionController,
-		userRoleController:         userRoleController,
-		permissionsQueryController: permissionsQueryController,
-		passwordResetController:    passwordResetController,
-		teamController:             teamController,
-		groupController:            groupController,
-		teamUserController:         teamUserController,
-		groupUserController:        groupUserController,
-		invitationController:       invitationController,
-		joinRequestController:      joinRequestController,
-		pushTokenController:        pushTokenController,
-		paymentController:          paymentController,
-		tierSubscriptionController: tierSubscriptionController,
-		mpConnectController:        mpConnectController,
-		platformSettingController:  platformSettingController,
-		teamSubscriptionController: teamSubscriptionController,
+		pingController:              controllers.NewPingController(),
+		userController:              userController,
+		authController:              authController,
+		exampleWeatherController:    exampleWeatherController,
+		userWeatherController:       userWeatherController,
+		permissionController:        permissionController,
+		tierController:              tierController,
+		roleController:              roleController,
+		tierPermissionController:    tierPermissionController,
+		userRoleController:          userRoleController,
+		permissionsQueryController:  permissionsQueryController,
+		passwordResetController:     passwordResetController,
+		teamController:              teamController,
+		groupController:             groupController,
+		teamUserController:          teamUserController,
+		groupUserController:         groupUserController,
+		invitationController:        invitationController,
+		joinRequestController:       joinRequestController,
+		pushTokenController:         pushTokenController,
+		paymentController:           paymentController,
+		tierSubscriptionController:  tierSubscriptionController,
+		mpConnectController:         mpConnectController,
+		platformSettingController:   platformSettingController,
+		teamSubscriptionController:  teamSubscriptionController,
+		teamConfigurationController: teamConfigurationController,
 	}
 }

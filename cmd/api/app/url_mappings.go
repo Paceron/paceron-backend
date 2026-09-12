@@ -144,6 +144,9 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/platform-settings/marketplace-fee", app.platformSettingController.GetMarketplaceFee)
 	r.PUT("/api/v1/platform-settings/marketplace-fee", app.platformSettingController.UpdateMarketplaceFee)
 
+	// Team Configuration (configuración por tier del entrenador)
+	r.GET("/api/v1/team-configuration", app.teamConfigurationController.GetTeamConfiguration)
+
 	// Team Subscription (suscripcion-teams-split D3)
 	r.GET("/api/v1/users/:id/teams/:team_id/subscription", app.teamSubscriptionController.GetTeamSubscription)
 }

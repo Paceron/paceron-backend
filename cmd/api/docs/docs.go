@@ -2282,6 +2282,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/team-configuration": {
+            "get": {
+                "description": "Returns the max members and minimum membership fee allowed for the trainer's tier, validated against a team they own.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Get team configuration by trainer tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID (the trainer)",
+                        "name": "user_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Team ID",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams": {
             "get": {
                 "description": "Devuelve equipos activos. Sin filtros, todos. owner_id filtra por equipos administrados, member_id por equipos donde el usuario es miembro",
@@ -6113,6 +6173,17 @@ const docTemplate = `{
                 },
                 "team": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration": {
+            "type": "object",
+            "properties": {
+                "max_members": {
+                    "type": "integer"
+                },
+                "minimum_fee": {
+                    "type": "number"
                 }
             }
         },
