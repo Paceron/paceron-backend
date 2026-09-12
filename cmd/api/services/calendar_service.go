@@ -256,11 +256,10 @@ func jsonUnmarshalLocation(s string) (*trainingplan.Location, error) {
 	return &loc, nil
 }
 
-// Stamp, Bulk, BulkClear, Shift, NextSession, CalendarSummary y
-// AssignedGroups son placeholders intencionales — Tasks 5, 6 y 7
-// reemplazan cada uno con la lógica real. Sin estos métodos el struct
-// calendarService no implementaría CalendarServiceInterface y el build
-// no compilaría.
+// NextSession, CalendarSummary y AssignedGroups son placeholders
+// intencionales — Task 7 reemplaza cada uno con la lógica real. Sin estos
+// métodos el struct calendarService no implementaría
+// CalendarServiceInterface y el build no compilaría.
 
 func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
@@ -339,13 +338,95 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 	return responses, nil
 }
 func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 6")
+	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
+		return nil, err
+	}
+	dayReq := calendar.CalendarDayRequest{
+		Kind: req.Kind, SessionID: req.SessionID, OtherName: req.OtherName,
+		IsPresencial: req.IsPresencial, PresencialTime: req.PresencialTime, PresencialLocation: req.PresencialLocation,
+	}
+	if err := s.validateDayFields(dayReq, ""); err != nil {
+		return nil, err
+	}
+	responses := make([]calendar.CalendarDayResponse, 0, len(req.Dates))
+	for _, dateStr := range req.Dates {
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return nil, fmt.Errorf("fecha inválida en dates: %s", dateStr)
+		}
+		row, err := s.buildRow(ctx, groupID, date, dayReq)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.calendarDao.Upsert(ctx, row); err != nil {
+			customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
+			return nil, fmt.Errorf("error al aplicar bulk")
+		}
+		responses = append(responses, toCalendarDayResponse(*row))
+	}
+	return responses, nil
 }
+
 func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error {
-	return fmt.Errorf("no implementado todavía — ver Task 6")
+	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
+		return err
+	}
+	dates := make([]time.Time, 0, len(req.Dates))
+	for _, dateStr := range req.Dates {
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return fmt.Errorf("fecha inválida en dates: %s", dateStr)
+		}
+		dates = append(dates, date)
+	}
+	if err := s.calendarDao.DeleteByDates(ctx, groupID, dates); err != nil {
+		customlogger.Error(ctx, "error bulk-clearing calendar days", err, customlogger.TagMethod("BulkClear"))
+		return fmt.Errorf("error al limpiar fechas")
+	}
+	return nil
 }
+
 func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 6")
+	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
+		return nil, err
+	}
+	fromDate, err := time.Parse("2006-01-02", req.FromDate)
+	if err != nil {
+		return nil, fmt.Errorf("from_date debe tener formato YYYY-MM-DD")
+	}
+	if req.Days <= 0 {
+		return nil, fmt.Errorf("days debe ser un entero positivo")
+	}
+	farFuture := fromDate.AddDate(1, 0, 0)
+	affected, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, fromDate, farFuture)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar filas a correr")
+	}
+	before, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, fromDate.AddDate(0, 0, -365), fromDate.AddDate(0, 0, -1))
+	if err != nil {
+		return nil, fmt.Errorf("error al validar colisiones")
+	}
+	unaffectedDates := make(map[string]bool, len(before))
+	for _, b := range before {
+		unaffectedDates[b.Date.Format("2006-01-02")] = true
+	}
+	for _, a := range affected {
+		newDate := a.Date.AddDate(0, 0, req.Days)
+		if unaffectedDates[newDate.Format("2006-01-02")] {
+			return nil, ErrCalendarShiftCollision
+		}
+	}
+	responses := make([]calendar.CalendarDayResponse, len(affected))
+	for i, a := range affected {
+		newDate := a.Date.AddDate(0, 0, req.Days)
+		if err := s.calendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
+			customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
+			return nil, fmt.Errorf("error al correr fechas")
+		}
+		a.Date = newDate
+		responses[i] = toCalendarDayResponse(a)
+	}
+	return responses, nil
 }
 func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
 	return nil, fmt.Errorf("no implementado todavía — ver Task 7")

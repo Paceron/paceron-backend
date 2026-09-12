@@ -246,6 +246,62 @@ func TestCalendarService_Stamp_PlanFromOtherOwnerForbidden(t *testing.T) {
 	assert.ErrorIs(t, err, ErrCalendarPlanForbidden)
 }
 
+func TestCalendarService_Bulk_Success(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	resp, err := svc.Bulk(nil, 1, 7, calendar.BulkRequest{Dates: []string{"2026-10-01", "2026-10-02"}, Kind: "rest"})
+
+	require.NoError(t, err)
+	assert.Len(t, resp, 2)
+}
+
+func TestCalendarService_BulkClear_Success(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	deleted := false
+	calDao := &mockGroupCalendarDao{deleteByDatesFn: func(ctx *gin.Context, groupID int64, dates []time.Time) error {
+		deleted = true
+		return nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	err := svc.BulkClear(nil, 1, 7, calendar.BulkClearRequest{Dates: []string{"2026-10-01"}})
+
+	require.NoError(t, err)
+	assert.True(t, deleted)
+}
+
+func TestCalendarService_Shift_NoCollision(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	fromDate, _ := time.Parse("2006-01-02", "2026-10-01")
+	calDao := &mockGroupCalendarDao{
+		findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{GroupID: groupID, Date: fromDate, Kind: "rest"}}, nil
+		},
+	}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	resp, err := svc.Shift(nil, 1, 7, calendar.ShiftRequest{FromDate: "2026-10-01", Days: 2})
+
+	require.NoError(t, err)
+	assert.Len(t, resp, 1)
+}
+
 func TestCalendarService_Stamp_ConflictWithoutForce(t *testing.T) {
 	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
 		return &dbs.Group{ID: id, TeamID: 1}, nil
