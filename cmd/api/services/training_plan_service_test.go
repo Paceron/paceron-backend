@@ -79,7 +79,7 @@ func validPlanDays() []trainingplan.PlanDayRequest {
 func strPtrTP(s string) *string { return &s }
 
 func TestTrainingPlanService_Create_Success(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	resp, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: validPlanDays()})
 
@@ -88,7 +88,7 @@ func TestTrainingPlanService_Create_Success(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_TooFewDays(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "rest"},
@@ -98,7 +98,7 @@ func TestTrainingPlanService_Create_TooFewDays(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_SequenceGap(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "rest"}, {SequenceNo: 3, Kind: "rest"},
@@ -108,7 +108,7 @@ func TestTrainingPlanService_Create_SequenceGap(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_TrainingWithoutSessionID(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "training"}, {SequenceNo: 2, Kind: "rest"},
@@ -119,7 +119,7 @@ func TestTrainingPlanService_Create_TrainingWithoutSessionID(t *testing.T) {
 
 func TestTrainingPlanService_Create_TrainingSessionNotFound(t *testing.T) {
 	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return nil, nil }}
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, sessionDao)
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, sessionDao, &mockGroupCalendarDao{})
 	sessionID := int64(5)
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
@@ -130,7 +130,7 @@ func TestTrainingPlanService_Create_TrainingSessionNotFound(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_OwnerMismatch(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 99, Name: "Plan", Days: validPlanDays()})
 
@@ -145,7 +145,7 @@ func TestTrainingPlanService_Update_PartialWithoutDays(t *testing.T) {
 		dayDaoCalled = true
 		return nil
 	}}
-	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 	newName := "Nuevo"
 
 	_, err := svc.Update(nil, 1, 7, trainingplan.TrainingPlanUpdateRequest{Name: &newName})
@@ -158,15 +158,32 @@ func TestTrainingPlanService_Delete_Forbidden(t *testing.T) {
 	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) {
 		return &dbs.TrainingPlan{ID: id, OwnerID: 99}, nil
 	}}
-	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	err := svc.Delete(nil, 1, 7)
 
 	assert.ErrorIs(t, err, ErrCatalogForbidden)
 }
 
+func TestTrainingPlanService_Delete_ClearsSourcePlan(t *testing.T) {
+	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) {
+		return &dbs.TrainingPlan{ID: id, OwnerID: 7}, nil
+	}}
+	cleared := false
+	calDao := &mockGroupCalendarDao{clearSourcePlanFn: func(ctx *gin.Context, planID int64) error {
+		cleared = true
+		return nil
+	}}
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, calDao)
+
+	err := svc.Delete(nil, 1, 7)
+
+	require.NoError(t, err)
+	assert.True(t, cleared)
+}
+
 func TestTrainingPlanService_Create_InvalidDayKind(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "not-a-kind"}, {SequenceNo: 2, Kind: "rest"},
@@ -176,7 +193,7 @@ func TestTrainingPlanService_Create_InvalidDayKind(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_InvalidTimeFormat(t *testing.T) {
-	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 	presencial := true
 	badTime := "25:99"
 	loc := &trainingplan.Location{Lat: 1, Lng: 2}
@@ -216,7 +233,7 @@ func TestTrainingPlanService_Create_DefaultPresencialSuccess_RoundTripsThroughGe
 			return stored, nil
 		},
 	}
-	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 	presencial := true
 	validTime := "07:30"
 	label := "Plaza Central"
@@ -250,7 +267,7 @@ func TestTrainingPlanService_Create_DefaultPresencialSuccess_RoundTripsThroughGe
 
 func TestTrainingPlanService_Get_NotFound(t *testing.T) {
 	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) { return nil, nil }}
-	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Get(nil, 1)
 
@@ -263,7 +280,7 @@ func TestTrainingPlanService_Get_Success(t *testing.T) {
 	dayDao := &mockPlanDayDao{findByPlanFn: func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
 		return []dbs.PlanDay{{ID: 1, PlanID: planID, SequenceNo: 1, Kind: "rest"}}, nil
 	}}
-	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	resp, err := svc.Get(nil, 1)
 
@@ -282,7 +299,7 @@ func TestTrainingPlanService_List_Success(t *testing.T) {
 	dayDao := &mockPlanDayDao{findByPlanFn: func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
 		return []dbs.PlanDay{{ID: planID, PlanID: planID, SequenceNo: 1, Kind: "rest"}}, nil
 	}}
-	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	resp, err := svc.List(nil, 7)
 
@@ -294,7 +311,7 @@ func TestTrainingPlanService_List_Success(t *testing.T) {
 
 func TestTrainingPlanService_List_Empty(t *testing.T) {
 	planDao := &mockTrainingPlanDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.TrainingPlan, error) { return nil, nil }}
-	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	resp, err := svc.List(nil, 7)
 
@@ -339,7 +356,7 @@ func TestTrainingPlanService_Clone_Success_DoesNotAffectOriginal(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	resp, err := svc.Clone(nil, 1, 7)
 
@@ -356,7 +373,7 @@ func TestTrainingPlanService_Clone_Success_DoesNotAffectOriginal(t *testing.T) {
 
 func TestTrainingPlanService_Clone_NotFound(t *testing.T) {
 	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) { return nil, nil }}
-	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Clone(nil, 1, 7)
 
@@ -367,7 +384,7 @@ func TestTrainingPlanService_Clone_Forbidden(t *testing.T) {
 	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) {
 		return &dbs.TrainingPlan{ID: id, OwnerID: 99}, nil
 	}}
-	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{})
+	svc := NewTrainingPlanService(planDao, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 
 	_, err := svc.Clone(nil, 1, 7)
 

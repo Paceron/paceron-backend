@@ -35,13 +35,21 @@ type TrainingPlanServiceInterface interface {
 }
 
 type trainingPlanService struct {
-	trainingPlanDao daos.TrainingPlanDaoInterface
-	planDayDao      daos.PlanDayDaoInterface
-	sessionDao      daos.SessionDaoInterface
+	trainingPlanDao     daos.TrainingPlanDaoInterface
+	planDayDao          daos.PlanDayDaoInterface
+	sessionDao          daos.SessionDaoInterface
+	groupCalendarDayDao daos.GroupCalendarDaoInterface
 }
 
-func NewTrainingPlanService(trainingPlanDao daos.TrainingPlanDaoInterface, planDayDao daos.PlanDayDaoInterface, sessionDao daos.SessionDaoInterface) TrainingPlanServiceInterface {
-	return &trainingPlanService{trainingPlanDao: trainingPlanDao, planDayDao: planDayDao, sessionDao: sessionDao}
+func NewTrainingPlanService(
+	trainingPlanDao daos.TrainingPlanDaoInterface,
+	planDayDao daos.PlanDayDaoInterface,
+	sessionDao daos.SessionDaoInterface,
+	groupCalendarDayDao daos.GroupCalendarDaoInterface,
+) TrainingPlanServiceInterface {
+	return &trainingPlanService{
+		trainingPlanDao: trainingPlanDao, planDayDao: planDayDao, sessionDao: sessionDao, groupCalendarDayDao: groupCalendarDayDao,
+	}
 }
 
 func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trainingplan.PlanDayRequest) ([]dbs.PlanDay, error) {
@@ -219,6 +227,10 @@ func (s *trainingPlanService) Delete(ctx *gin.Context, id, callerID int64) error
 	}
 	if planDB.OwnerID != callerID {
 		return ErrCatalogForbidden
+	}
+	if err := s.groupCalendarDayDao.ClearSourcePlan(ctx, id); err != nil {
+		customlogger.Error(ctx, "error clearing source_plan_id", err, customlogger.TagMethod("Delete"))
+		return fmt.Errorf("error al borrar plan")
 	}
 	if err := s.trainingPlanDao.Delete(ctx, id); err != nil {
 		customlogger.Error(ctx, "error deleting training plan", err, customlogger.TagMethod("Delete"))

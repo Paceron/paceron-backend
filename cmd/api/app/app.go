@@ -227,7 +227,7 @@ func NewApplication() *Application {
 	sessionService := services.NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, groupCalendarDayDao, db)
 	sessionController := controllers.NewSessionController(sessionService)
 
-	trainingPlanService := services.NewTrainingPlanService(trainingPlanDao, planDayDao, sessionDao)
+	trainingPlanService := services.NewTrainingPlanService(trainingPlanDao, planDayDao, sessionDao, groupCalendarDayDao)
 	trainingPlanController := controllers.NewTrainingPlanController(trainingPlanService)
 
 	// Push token flow
