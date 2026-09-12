@@ -40,6 +40,9 @@ type Application struct {
 	groupUserController        controllers.GroupUserController
 	invitationController       controllers.InvitationController
 	joinRequestController      controllers.JoinRequestController
+	exerciseController         controllers.ExerciseController
+	sessionController          controllers.SessionController
+	trainingPlanController     controllers.TrainingPlanController
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
 	tierSubscriptionController controllers.TierSubscriptionController
@@ -210,6 +213,22 @@ func NewApplication() *Application {
 	joinRequestService := services.NewJoinRequestService(joinRequestDao, teamDao, teamUserDao, userDao, groupDao, groupUserDao, installmentDao, db)
 	joinRequestController := controllers.NewJoinRequestController(joinRequestService)
 
+	// Catalog flow (Exercise/Session/TrainingPlan)
+	exerciseDao := daos.NewExerciseDao(db)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	trainingPlanDao := daos.NewTrainingPlanDao(db)
+	planDayDao := daos.NewPlanDayDao(db)
+
+	exerciseService := services.NewExerciseService(exerciseDao)
+	exerciseController := controllers.NewExerciseController(exerciseService)
+
+	sessionService := services.NewSessionService(sessionDao, sessionExerciseDao, exerciseDao)
+	sessionController := controllers.NewSessionController(sessionService)
+
+	trainingPlanService := services.NewTrainingPlanService(trainingPlanDao, planDayDao, sessionDao)
+	trainingPlanController := controllers.NewTrainingPlanController(trainingPlanService)
+
 	// Push token flow
 	pushTokenService := services.NewPushTokenService(pushTokenDao)
 	pushTokenController := controllers.NewPushTokenController(pushTokenService)
@@ -263,6 +282,9 @@ func NewApplication() *Application {
 		groupUserController:        groupUserController,
 		invitationController:       invitationController,
 		joinRequestController:      joinRequestController,
+		exerciseController:         exerciseController,
+		sessionController:          sessionController,
+		trainingPlanController:     trainingPlanController,
 		pushTokenController:        pushTokenController,
 		paymentController:          paymentController,
 		tierSubscriptionController: tierSubscriptionController,
