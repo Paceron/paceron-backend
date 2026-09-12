@@ -6,6 +6,8 @@ const (
 	ErrorCodeTierNotFound                  = "TIER_NOT_FOUND"
 	ErrorCodeTierRoleMismatch              = "TIER_ROLE_MISMATCH"
 	ErrorCodeSubscriptionPendingFirstPayment = "SUBSCRIPTION_PENDING_FIRST_PAYMENT"
+	ErrorCodeSubscriptionNotFound            = "SUBSCRIPTION_NOT_FOUND"
+	ErrorCodeSubscriptionNotPendingFirstPayment = "SUBSCRIPTION_NOT_PENDING_FIRST_PAYMENT"
 	ErrorCodeDebtBlocksOperation           = "DEBT_BLOCKS_OPERATION"
 	ErrorCodeSellerNotConnected            = "SELLER_NOT_CONNECTED"
 	ErrorCodeTeamDebtBlocksOperation       = "TEAM_DEBT_BLOCKS_OPERATION"

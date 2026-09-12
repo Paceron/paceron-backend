@@ -256,7 +256,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/users/:id/trainer-role` | Activate your own entrenador role (self only; requires current password + a valid bank alias, own or provided) |
 | DELETE | `/api/v1/users/:id/trainer-role` | Deactivate your own entrenador role (self only; blocked while you still lead an active team) |
 | PUT | `/api/v1/users/:id/roles/:role_id/tier` | Change the tier of one of your role subscriptions (self only; body `{ "tier_id": int }`; blocked by debt or a pending first payment) |
-| GET | `/api/v1/users/:id/subscriptions/current?role_id=` | Current tier subscription / next installment to pay, with Mercado Pago `public_key` for Bricks (paid tiers; free roles return tier/role only) |
+| GET | `/api/v1/users/:id/subscriptions/:period?role_id=` | Tier subscription for the period, next installment to pay and Mercado Pago `public_key` for Bricks. `period=current` → active sub; `period=next` → sub with a pending first payment; `200 {}` if no sub in that state |
+| DELETE | `/api/v1/users/:id/roles/:role_id/subscriptions/pending?tier_id=` | Cancel a `first_payment_pending` subscription (self only), moving the sub and its pending installments to `canceled` and freeing the tier change; `404` if the tier triad has no subscription, `409` if it is not pending |
 | POST | `/api/v1/push-tokens` | Register/update a device's push token (self only, upsert by token — same device can switch accounts) |
 | GET | `/api/v1/permissions` | List all permissions |
 | GET | `/api/v1/permissions/:id` | Get permission by ID |

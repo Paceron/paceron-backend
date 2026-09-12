@@ -60,7 +60,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Tier subscriptions
 	r.PUT("/api/v1/users/:id/roles/:role_id/tier", app.tierSubscriptionController.ChangeTier)
-	r.GET("/api/v1/users/:id/subscriptions/current", app.tierSubscriptionController.GetCurrentSubscription)
+	r.DELETE("/api/v1/users/:id/roles/:role_id/subscriptions/pending", app.tierSubscriptionController.CancelPendingSubscription)
+	r.GET("/api/v1/users/:id/subscriptions/:period", app.tierSubscriptionController.GetCurrentSubscription)
 	r.POST("/api/v1/push-tokens", app.pushTokenController.RegisterToken)
 	r.GET("/api/v1/permissions", app.permissionController.GetAll)
 	r.GET("/api/v1/permissions/by-name", app.permissionController.GetByName)
