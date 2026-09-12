@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -324,4 +325,64 @@ func TestCalendarService_Stamp_ConflictWithoutForce(t *testing.T) {
 	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
 
 	assert.ErrorIs(t, err, ErrCalendarStampConflict)
+}
+
+func TestCalendarService_NextSession_Found(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
+	}}
+	sessionID := int64(3)
+	nextDate, _ := time.Parse("2006-01-02", "2026-10-10")
+	calDao := &mockGroupCalendarDao{findNextSessionForGroupsFn: func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error) {
+		return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training", SessionID: &sessionID}, nil
+	}}
+	svc := NewCalendarService(calDao, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.NextSession(nil, 42)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int64(1), resp.GroupID)
+}
+
+func TestCalendarService_NextSession_NoneReturnsNil(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.NextSession(nil, 42)
+
+	require.NoError(t, err)
+	assert.Nil(t, resp)
+}
+
+func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return []dbs.GroupUser{{GroupID: 1, UserID: userID}, {GroupID: 2, UserID: userID}}, nil
+	}}
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.CalendarSummary(nil, 42)
+
+	require.NoError(t, err)
+	assert.Len(t, resp, 2)
+}
+
+func TestCalendarService_AssignedGroups_Distinct(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)}, nil
+	}}
+	calDao := &mockGroupCalendarDao{findDistinctGroupsBySessionFn: func(ctx *gin.Context, sessionID int64) ([]int64, error) {
+		return []int64{1, 2}, nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	resp, err := svc.AssignedGroups(nil, 99)
+
+	require.NoError(t, err)
+	assert.Len(t, resp, 2)
 }

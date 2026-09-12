@@ -256,11 +256,6 @@ func jsonUnmarshalLocation(s string) (*trainingplan.Location, error) {
 	return &loc, nil
 }
 
-// NextSession, CalendarSummary y AssignedGroups son placeholders
-// intencionales — Task 7 reemplaza cada uno con la lógica real. Sin estos
-// métodos el struct calendarService no implementaría
-// CalendarServiceInterface y el build no compilaría.
-
 func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
 		return nil, err
@@ -429,11 +424,67 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 	return responses, nil
 }
 func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 7")
+	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	groupIDs := make([]int64, len(memberships))
+	for i, m := range memberships {
+		groupIDs[i] = m.GroupID
+	}
+	day, err := s.calendarDao.FindNextSessionForGroups(ctx, groupIDs, time.Now().Truncate(24*time.Hour))
+	if err != nil {
+		customlogger.Error(ctx, "error finding next session", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	if day == nil {
+		return nil, nil
+	}
+	resp := &calendar.NextSessionResponse{
+		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), SessionID: day.SessionID, IsPresencial: day.IsPresencial,
+	}
+	if day.PresencialTime != nil {
+		formatted := day.PresencialTime.Format("15:04")
+		resp.PresencialTime = &formatted
+	}
+	if day.PresencialLocation != nil {
+		loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
+		if err == nil {
+			resp.PresencialLocation = loc
+		}
+	}
+	return resp, nil
 }
+
 func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 7")
+	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	items := make([]calendar.CalendarSummaryItem, 0, len(memberships))
+	for _, m := range memberships {
+		group, err := s.groupDao.FindByID(ctx, m.GroupID)
+		if err != nil || group == nil {
+			continue
+		}
+		items = append(items, calendar.CalendarSummaryItem{GroupID: group.ID, GroupName: group.Name})
+	}
+	return items, nil
 }
+
 func (s *calendarService) AssignedGroups(ctx *gin.Context, sessionID int64) ([]calendar.CalendarSummaryItem, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 7")
+	groupIDs, err := s.calendarDao.FindDistinctGroupsBySession(ctx, sessionID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding assigned groups", err, customlogger.TagMethod("AssignedGroups"))
+		return nil, fmt.Errorf("error al buscar grupos asignados")
+	}
+	items := make([]calendar.CalendarSummaryItem, 0, len(groupIDs))
+	for _, id := range groupIDs {
+		group, err := s.groupDao.FindByID(ctx, id)
+		if err != nil || group == nil {
+			continue
+		}
+		items = append(items, calendar.CalendarSummaryItem{GroupID: group.ID, GroupName: group.Name})
+	}
+	return items, nil
 }
