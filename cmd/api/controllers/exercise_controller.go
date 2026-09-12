@@ -51,6 +51,16 @@ func respondExerciseError(c *gin.Context, err error) {
 	respondCatalogError(c, status, message)
 }
 
+// Create godoc
+// @Summary      Crear ejercicio
+// @Tags         exercises
+// @Accept       json
+// @Produce      json
+// @Param        body  body  exercise.ExerciseRequest  true  "Datos del ejercicio"
+// @Success      201  {object}  exercise.ExerciseResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/exercises [post]
 func (ec *exerciseController) Create(c *gin.Context) {
 	var req exercise.ExerciseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -66,6 +76,16 @@ func (ec *exerciseController) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// Get godoc
+// @Summary      Obtener ejercicio por ID
+// @Tags         exercises
+// @Produce      json
+// @Param        id  path  int  true  "Exercise ID"
+// @Success      200  {object}  exercise.ExerciseResponse
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/exercises/{id} [get]
 func (ec *exerciseController) Get(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -80,6 +100,15 @@ func (ec *exerciseController) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// List godoc
+// @Summary      Listar ejercicios por propietario
+// @Tags         exercises
+// @Produce      json
+// @Param        owner_id  query  int  true  "Owner ID"
+// @Success      200  {array}  exercise.ExerciseResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/exercises [get]
 func (ec *exerciseController) List(c *gin.Context) {
 	ownerID, err := strconv.ParseInt(c.Query("owner_id"), 10, 64)
 	if err != nil {
@@ -94,6 +123,18 @@ func (ec *exerciseController) List(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// Update godoc
+// @Summary      Actualizar ejercicio
+// @Tags         exercises
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int  true  "Exercise ID"
+// @Param        body  body  exercise.ExerciseRequest  true  "Datos del ejercicio"
+// @Success      200  {object}  exercise.ExerciseResponse
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/exercises/{id} [put]
 func (ec *exerciseController) Update(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -114,6 +155,14 @@ func (ec *exerciseController) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// Delete godoc
+// @Summary      Eliminar ejercicio
+// @Tags         exercises
+// @Param        id  path  int  true  "Exercise ID"
+// @Success      204
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/exercises/{id} [delete]
 func (ec *exerciseController) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -128,6 +177,15 @@ func (ec *exerciseController) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// Clone godoc
+// @Summary      Clonar ejercicio
+// @Tags         exercises
+// @Produce      json
+// @Param        id  path  int  true  "Exercise ID"
+// @Success      201  {object}  exercise.ExerciseResponse
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/exercises/{id}/clone [post]
 func (ec *exerciseController) Clone(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

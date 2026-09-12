@@ -311,6 +311,24 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/join-requests/:id/reject` | Reject a join request (entrenador only) |
 | DELETE | `/api/v1/join-requests/:id` | Cancel a join request (request owner only) |
 | GET | `/api/v1/join-requests/pending-count` | Count of pending join requests for teams owned by authenticated user |
+| POST | `/api/v1/exercises` | Create exercise (authenticated user becomes owner) |
+| GET | `/api/v1/exercises` | List exercises by owner (required `owner_id` query param) |
+| GET | `/api/v1/exercises/:id` | Get exercise by ID |
+| PUT | `/api/v1/exercises/:id` | Update exercise (owner only) |
+| DELETE | `/api/v1/exercises/:id` | Soft delete exercise (owner only) |
+| POST | `/api/v1/exercises/:id/clone` | Clone exercise (creates copy with authenticated user as owner) |
+| POST | `/api/v1/sessions` | Create session (authenticated user becomes owner) |
+| GET | `/api/v1/sessions` | List sessions by owner (required `owner_id` query param) |
+| GET | `/api/v1/sessions/:id` | Get session by ID |
+| PUT | `/api/v1/sessions/:id` | Update session (owner only) |
+| DELETE | `/api/v1/sessions/:id` | Soft delete session (owner only) |
+| POST | `/api/v1/sessions/:id/clone` | Clone session (creates copy with authenticated user as owner) |
+| POST | `/api/v1/training-plans` | Create training plan (authenticated user becomes owner) |
+| GET | `/api/v1/training-plans` | List training plans by owner (required `owner_id` query param) |
+| GET | `/api/v1/training-plans/:id` | Get training plan by ID |
+| PUT | `/api/v1/training-plans/:id` | Update training plan (owner only) |
+| DELETE | `/api/v1/training-plans/:id` | Soft delete training plan (owner only) |
+| POST | `/api/v1/training-plans/:id/clone` | Clone training plan (creates copy with authenticated user as owner) |
 | GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
 | GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
 | GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |

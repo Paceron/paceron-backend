@@ -51,6 +51,17 @@ func respondSessionError(c *gin.Context, err error) {
 	respondCatalogError(c, status, message)
 }
 
+// Create godoc
+// @Summary      Crear sesión
+// @Tags         sessions
+// @Accept       json
+// @Produce      json
+// @Param        body  body  session.SessionRequest  true  "Datos de la sesión"
+// @Success      201  {object}  session.SessionResponse
+// @Failure      400
+// @Failure      403
+// @Failure      422
+// @Router       /api/v1/sessions [post]
 func (sc *sessionController) Create(c *gin.Context) {
 	var req session.SessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -66,6 +77,16 @@ func (sc *sessionController) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// Get godoc
+// @Summary      Obtener sesión por ID
+// @Tags         sessions
+// @Produce      json
+// @Param        id  path  int  true  "Session ID"
+// @Success      200  {object}  session.SessionResponse
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/sessions/{id} [get]
 func (sc *sessionController) Get(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -80,6 +101,15 @@ func (sc *sessionController) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// List godoc
+// @Summary      Listar sesiones por propietario
+// @Tags         sessions
+// @Produce      json
+// @Param        owner_id  query  int  true  "Owner ID"
+// @Success      200  {array}  session.SessionResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/sessions [get]
 func (sc *sessionController) List(c *gin.Context) {
 	ownerID, err := strconv.ParseInt(c.Query("owner_id"), 10, 64)
 	if err != nil {
@@ -94,6 +124,19 @@ func (sc *sessionController) List(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// Update godoc
+// @Summary      Actualizar sesión
+// @Tags         sessions
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int  true  "Session ID"
+// @Param        body  body  session.SessionRequest  true  "Datos de la sesión"
+// @Success      200  {object}  session.SessionResponse
+// @Failure      400
+// @Failure      403
+// @Failure      404
+// @Failure      422
+// @Router       /api/v1/sessions/{id} [put]
 func (sc *sessionController) Update(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -114,6 +157,14 @@ func (sc *sessionController) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// Delete godoc
+// @Summary      Eliminar sesión
+// @Tags         sessions
+// @Param        id  path  int  true  "Session ID"
+// @Success      204
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/sessions/{id} [delete]
 func (sc *sessionController) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -128,6 +179,15 @@ func (sc *sessionController) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// Clone godoc
+// @Summary      Clonar sesión
+// @Tags         sessions
+// @Produce      json
+// @Param        id  path  int  true  "Session ID"
+// @Success      201  {object}  session.SessionResponse
+// @Failure      403
+// @Failure      404
+// @Router       /api/v1/sessions/{id}/clone [post]
 func (sc *sessionController) Clone(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
