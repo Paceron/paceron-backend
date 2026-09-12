@@ -279,10 +279,10 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/roles` | Create role |
 | PUT | `/api/v1/roles/:id` | Update role |
 | DELETE | `/api/v1/roles/:id` | Soft delete role |
-| POST | `/api/v1/teams` | Create team (authenticated user becomes owner; must have "entrenador" role) |
+| POST | `/api/v1/teams` | Create team (authenticated user becomes owner; must have "entrenador" role; optional `membership_fee`) |
 | GET | `/api/v1/teams` | List teams (optional `owner_id`/`member_id` filters) |
-| GET | `/api/v1/teams/:id` | Get team by ID |
-| PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only) |
+| GET | `/api/v1/teams/:id` | Get team by ID (includes `membership_fee`) |
+| PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only; optional `membership_fee`) |
 | DELETE | `/api/v1/teams/:id` | Soft delete team (entrenador only) |
 | PUT | `/api/v1/teams/:id/address` | Update team address (entrenador of the team only) |
 | PUT | `/api/v1/teams/:id/icon` | Upload/replace the team icon (entrenador owner of the team only; max 5MB, JPEG/PNG/WEBP) |

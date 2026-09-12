@@ -5801,6 +5801,10 @@ const docTemplate = `{
                     "description": "Cantidad máxima de integrantes (requerido)",
                     "type": "integer"
                 },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor al entrenador (opcional, 0 = gratis, \u003e= 0)",
+                    "type": "number"
+                },
                 "name": {
                     "description": "Nombre del equipo (requerido)",
                     "type": "string"
@@ -5862,6 +5866,10 @@ const docTemplate = `{
                 "max_members": {
                     "description": "Cantidad máxima de integrantes",
                     "type": "integer"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor al entrenador (0 = gratis)",
+                    "type": "number"
                 },
                 "name": {
                     "description": "Nombre del equipo",
@@ -6000,6 +6008,10 @@ const docTemplate = `{
                 "max_members": {
                     "description": "Cantidad máxima de integrantes (opcional)",
                     "type": "integer"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor (opcional, \u003e= 0; no es retroactivo sobre membresías existentes)",
+                    "type": "number"
                 },
                 "name": {
                     "description": "Nombre del equipo (opcional)",

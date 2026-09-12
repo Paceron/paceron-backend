@@ -174,6 +174,28 @@ func TestTeamDao_Update_Success(t *testing.T) {
 	assert.Equal(t, "actualizado", found.Description)
 }
 
+func TestTeamDao_MembershipFee_PersistAndUpdate(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-fee-owner@test.com", "20000013")
+
+	feeTeam := &dbs.Team{Name: "equipo_fee_test", MaxMembers: 20, OwnerID: owner.ID, MembershipFee: 5000}
+	require.NoError(t, dao.Create(nil, feeTeam))
+
+	found, err := dao.FindByID(nil, feeTeam.ID)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, float64(5000), found.MembershipFee)
+
+	found.MembershipFee = 8000
+	require.NoError(t, dao.Update(nil, found))
+
+	updated, err := dao.FindByID(nil, feeTeam.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, float64(8000), updated.MembershipFee)
+}
+
 func TestTeamDao_SoftDelete_Success(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTeamDao(db)
