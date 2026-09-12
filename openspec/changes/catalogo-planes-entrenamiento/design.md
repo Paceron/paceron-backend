@@ -155,6 +155,16 @@ Mismo criterio ya aplicado en `busqueda-equipos-solicitudes-ingreso`: delegate s
 - `cmd/api/app/app.go` (wiring) + `cmd/api/app/url_mappings.go` (rutas)
 - `cmd/api/infrastructure/postgresdb/postgres.go` (AutoMigrate)
 
+## D9 — Autorización por dueño (adición de esta implementación, no está en la spec de frontend)
+
+La spec de frontend no menciona un chequeo de propiedad — solo pide `Authorization: Bearer` genérico. Sin un chequeo adicional, cualquier usuario autenticado podría editar/borrar/clonar el catálogo de **otro** entrenador con solo conocer el `id`, o crear un recurso con un `owner_id` ajeno. Mismo tipo de gap que se encontró y corrigió hoy en `team_dao.SearchPublic`/`join_request_service.Create` (ver rama `fix/busqueda-equipos-owner-y-path-traversal`, ya mergeada a `develop`) — se agrega acá por el mismo criterio, sin esperar a que aparezca como bug:
+
+- **`Create`**: `req.OwnerID` debe ser igual al usuario autenticado (`utils.GetAuthUserID(c)`) — `403` si no.
+- **`Update`/`Delete`/`Clone`**: el `OwnerID` del recurso existente debe ser igual al usuario autenticado — `403` si no.
+- **`Get`/`List`**: sin chequeo — la spec no pide que el catálogo sea privado entre entrenadores (a diferencia de equipos, acá no hay noción de "descubrir" catálogo ajeno, pero tampoco se pidió bloquear la lectura; se deja abierta como está especificado, `owner_id` es un filtro, no una ACL).
+
+Nuevo sentinel compartido por los 3 services: `ErrCatalogForbidden = errors.New("no autorizado")`, mapeado a `403` en cada controller.
+
 ## D8 — Clone (las 3 entidades)
 
 `POST /{entity}/{id}/clone`, sin body. Mismo patrón en los 3: leer original (404 si no existe o `deleted_at` no nulo), copiar todos los campos salvo `ID`/`CreatedAt`/`UpdatedAt`, `Name = original.Name + " (copia)"`, insertar. `Session.clone` copia profunda de `session_exercises` (nuevas filas apuntando al `exercise_id` original, no clona los ejercicios). `TrainingPlan.clone` copia profunda de `plan_days` (mismo `session_id` que el original, no clona sesiones).
