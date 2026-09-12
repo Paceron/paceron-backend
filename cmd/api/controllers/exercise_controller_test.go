@@ -113,3 +113,68 @@ func TestExerciseController_Delete_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
+
+func TestExerciseController_Get_Success(t *testing.T) {
+	svc := &mockExerciseService{getFn: func(ctx *gin.Context, id int64) (*exercise.ExerciseResponse, error) {
+		return &exercise.ExerciseResponse{ID: id, Name: "Trote"}, nil
+	}}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/exercises/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestExerciseController_List_Success(t *testing.T) {
+	svc := &mockExerciseService{listFn: func(ctx *gin.Context, ownerID int64) ([]exercise.ExerciseResponse, error) {
+		return []exercise.ExerciseResponse{{ID: 1, OwnerID: ownerID, Name: "Trote"}}, nil
+	}}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/exercises?owner_id=7", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestExerciseController_List_InvalidOwnerID(t *testing.T) {
+	svc := &mockExerciseService{}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/exercises?owner_id=abc", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestExerciseController_Update_Success(t *testing.T) {
+	svc := &mockExerciseService{updateFn: func(ctx *gin.Context, id, callerID int64, req exercise.ExerciseRequest) (*exercise.ExerciseResponse, error) {
+		return &exercise.ExerciseResponse{ID: id, Name: req.Name}, nil
+	}}
+	router := setupExerciseRouter(svc, 7)
+	body, _ := json.Marshal(exercise.ExerciseRequest{OwnerID: 7, Name: "Actualizado", Kind: "running"})
+	req := httptest.NewRequest(http.MethodPut, "/exercises/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestExerciseController_Clone_Success(t *testing.T) {
+	svc := &mockExerciseService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*exercise.ExerciseResponse, error) {
+		return &exercise.ExerciseResponse{ID: id + 1, Name: "Trote (copia)"}, nil
+	}}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/exercises/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}

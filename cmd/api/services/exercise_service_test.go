@@ -118,3 +118,47 @@ func TestExerciseService_Delete_Success(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestExerciseService_Get_Success(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id, OwnerID: 7, Name: "Trote", Kind: "jogging"}, nil
+	}}
+	svc := NewExerciseService(dao)
+
+	resp, err := svc.Get(nil, 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Trote", resp.Name)
+}
+
+func TestExerciseService_Get_NotFound(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, nil }}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Get(nil, 1)
+
+	assert.ErrorIs(t, err, ErrExerciseNotFound)
+}
+
+func TestExerciseService_List_Success(t *testing.T) {
+	exercises := []dbs.Exercise{{ID: 1, OwnerID: 7, Name: "A", Kind: "running"}, {ID: 2, OwnerID: 7, Name: "B", Kind: "jogging"}}
+	dao := &mockExerciseDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error) { return exercises, nil }}
+	svc := NewExerciseService(dao)
+
+	resp, err := svc.List(nil, 7)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 2)
+	assert.Equal(t, "A", resp[0].Name)
+	assert.Equal(t, "B", resp[1].Name)
+}
+
+func TestExerciseService_List_Empty(t *testing.T) {
+	dao := &mockExerciseDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error) { return nil, nil }}
+	svc := NewExerciseService(dao)
+
+	resp, err := svc.List(nil, 7)
+
+	require.NoError(t, err)
+	assert.Empty(t, resp)
+}

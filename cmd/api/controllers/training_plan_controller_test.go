@@ -118,4 +118,80 @@ func TestTrainingPlanController_Delete_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
+func TestTrainingPlanController_Get_Success(t *testing.T) {
+	svc := &mockTrainingPlanService{getFn: func(ctx *gin.Context, id int64) (*trainingplan.TrainingPlanResponse, error) {
+		return &trainingplan.TrainingPlanResponse{ID: id, Name: "Plan"}, nil
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/training-plans/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestTrainingPlanController_Get_NotFound(t *testing.T) {
+	svc := &mockTrainingPlanService{getFn: func(ctx *gin.Context, id int64) (*trainingplan.TrainingPlanResponse, error) {
+		return nil, services.ErrPlanNotFound
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/training-plans/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestTrainingPlanController_List_Success(t *testing.T) {
+	svc := &mockTrainingPlanService{listFn: func(ctx *gin.Context, ownerID int64) ([]trainingplan.TrainingPlanResponse, error) {
+		return []trainingplan.TrainingPlanResponse{{ID: 1, OwnerID: ownerID, Name: "Plan"}}, nil
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/training-plans?owner_id=7", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestTrainingPlanController_List_InvalidOwnerID(t *testing.T) {
+	svc := &mockTrainingPlanService{}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/training-plans?owner_id=abc", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestTrainingPlanController_Clone_Success(t *testing.T) {
+	svc := &mockTrainingPlanService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*trainingplan.TrainingPlanResponse, error) {
+		return &trainingplan.TrainingPlanResponse{ID: id + 1, Name: "Plan (copia)"}, nil
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/training-plans/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestTrainingPlanController_Clone_Forbidden(t *testing.T) {
+	svc := &mockTrainingPlanService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*trainingplan.TrainingPlanResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/training-plans/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func strPtrTPController(s string) *string { return &s }

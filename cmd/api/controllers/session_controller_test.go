@@ -102,3 +102,83 @@ func TestSessionController_Delete_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
+
+func TestSessionController_Get_Success(t *testing.T) {
+	svc := &mockSessionService{getFn: func(ctx *gin.Context, id int64) (*session.SessionResponse, error) {
+		return &session.SessionResponse{ID: id, Name: "Sesión"}, nil
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/sessions/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestSessionController_Get_NotFound(t *testing.T) {
+	svc := &mockSessionService{getFn: func(ctx *gin.Context, id int64) (*session.SessionResponse, error) {
+		return nil, services.ErrSessionNotFound
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/sessions/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestSessionController_List_Success(t *testing.T) {
+	svc := &mockSessionService{listFn: func(ctx *gin.Context, ownerID int64) ([]session.SessionResponse, error) {
+		return []session.SessionResponse{{ID: 1, OwnerID: ownerID, Name: "Sesión"}}, nil
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/sessions?owner_id=7", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestSessionController_List_InvalidOwnerID(t *testing.T) {
+	svc := &mockSessionService{}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/sessions?owner_id=abc", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestSessionController_Update_Success(t *testing.T) {
+	svc := &mockSessionService{updateFn: func(ctx *gin.Context, id, callerID int64, req session.SessionRequest) (*session.SessionResponse, error) {
+		return &session.SessionResponse{ID: id, Name: req.Name}, nil
+	}}
+	router := setupSessionRouter(svc, 7)
+	body, _ := json.Marshal(session.SessionRequest{OwnerID: 7, Name: "Actualizada", Exercises: []session.SessionExerciseRequest{
+		{ExerciseID: 1, Role: "warmup"}, {ExerciseID: 2, Role: "main"}, {ExerciseID: 3, Role: "cooldown"},
+	}})
+	req := httptest.NewRequest(http.MethodPut, "/sessions/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestSessionController_Clone_Success(t *testing.T) {
+	svc := &mockSessionService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*session.SessionResponse, error) {
+		return &session.SessionResponse{ID: id + 1, Name: "Sesión (copia)"}, nil
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/sessions/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
