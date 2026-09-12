@@ -263,7 +263,80 @@ func jsonUnmarshalLocation(s string) (*trainingplan.Location, error) {
 // no compilaría.
 
 func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
-	return nil, fmt.Errorf("no implementado todavía — ver Task 5")
+	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
+		return nil, err
+	}
+	plan, err := s.trainingPlanDao.FindByID(ctx, req.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar plan")
+	}
+	if plan == nil {
+		return nil, ErrCalendarPlanNotFound
+	}
+	if plan.OwnerID != callerID {
+		return nil, ErrCalendarPlanForbidden
+	}
+	planDays, err := s.planDayDao.FindByPlan(ctx, req.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar días del plan")
+	}
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		return nil, fmt.Errorf("start_date debe tener formato YYYY-MM-DD")
+	}
+
+	rows := make([]dbs.GroupCalendarDay, len(planDays))
+	targetDates := make([]time.Time, len(planDays))
+	for i, pd := range planDays {
+		date := startDate.AddDate(0, 0, pd.SequenceNo-1)
+		targetDates[i] = date
+		row := dbs.GroupCalendarDay{
+			GroupID: groupID, Date: date, Kind: pd.Kind, OtherName: pd.OtherName, SessionID: pd.SessionID,
+			IsPresencial: pd.DefaultPresencial, PresencialTime: pd.DefaultTime, PresencialLocation: pd.DefaultLocation,
+			SourcePlanID: &req.PlanID,
+		}
+		rows[i] = row
+	}
+
+	if !req.Force {
+		minDate, maxDate := targetDates[0], targetDates[0]
+		for _, d := range targetDates {
+			if d.Before(minDate) {
+				minDate = d
+			}
+			if d.After(maxDate) {
+				maxDate = d
+			}
+		}
+		existing, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, minDate, maxDate)
+		if err != nil {
+			return nil, fmt.Errorf("error al validar conflictos")
+		}
+		occupied := make(map[string]bool, len(existing))
+		for _, e := range existing {
+			occupied[e.Date.Format("2006-01-02")] = true
+		}
+		conflict := false
+		for _, d := range targetDates {
+			if occupied[d.Format("2006-01-02")] {
+				conflict = true
+				break
+			}
+		}
+		if conflict {
+			return nil, ErrCalendarStampConflict
+		}
+	}
+
+	responses := make([]calendar.CalendarDayResponse, len(rows))
+	for i := range rows {
+		if err := s.calendarDao.Upsert(ctx, &rows[i]); err != nil {
+			customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
+			return nil, fmt.Errorf("error al estampar plan")
+		}
+		responses[i] = toCalendarDayResponse(rows[i])
+	}
+	return responses, nil
 }
 func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
 	return nil, fmt.Errorf("no implementado todavía — ver Task 6")
