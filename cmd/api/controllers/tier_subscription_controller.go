@@ -16,6 +16,7 @@ import (
 type TierSubscriptionController interface {
 	ChangeTier(c *gin.Context)
 	GetCurrentSubscription(c *gin.Context)
+	CancelPendingSubscription(c *gin.Context)
 }
 
 type tierSubscriptionController struct {
@@ -94,21 +95,32 @@ func (tsc *tierSubscriptionController) ChangeTier(c *gin.Context) {
 }
 
 // GetCurrentSubscription godoc
-// @Summary      Get current subscription of a role
-// @Description  Returns the current subscription and next installment to pay for the role (Bricks checkout data). Free roles return tier/role only.
+// @Summary      Get subscription of a role for a period
+// @Description  Returns the next installment to pay for the role for the requested period (Bricks checkout data). period=current returns the active subscription; period=next returns the pending first-payment subscription. Empty body (200) when there is no subscription in that state.
 // @Tags         user-roles
 // @Produce      json
-// @Param        id      path      int  true  "User ID"
-// @Param        role_id query     int  true  "Role ID"
+// @Param        id      path      int     true  "User ID"
+// @Param        period  path      string  true  "Subscription period: current|next"
+// @Param        role_id query     int     true  "Role ID"
 // @Success      200     {object}  tiersubscription.CurrentSubscriptionResponse
 // @Failure      400     {object}  apierror.APIError
 // @Failure      403     {object}  apierror.APIError
 // @Failure      404     {object}  apierror.APIError
 // @Failure      500     {object}  apierror.APIError
-// @Router       /api/v1/users/{id}/subscriptions/current [get]
+// @Router       /api/v1/users/{id}/subscriptions/{period} [get]
 func (tsc *tierSubscriptionController) GetCurrentSubscription(c *gin.Context) {
 	userID, ok := parseUserIDFromPath(c)
 	if !ok {
+		return
+	}
+
+	period := c.Param("period")
+	if !constants.IsValidSubscriptionPeriod(period) {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "period debe ser 'current' o 'next'",
+		})
 		return
 	}
 
@@ -136,7 +148,75 @@ func (tsc *tierSubscriptionController) GetCurrentSubscription(c *gin.Context) {
 		return
 	}
 
-	response, err := tsc.tierSubscriptionService.GetCurrentSubscription(c, userID, roleID)
+	response, err := tsc.tierSubscriptionService.GetCurrentSubscription(c, userID, roleID, period)
+	if err != nil {
+		statusCode, code := mapTierSubscriptionError(err)
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	if response == nil {
+		c.JSON(http.StatusOK, gin.H{})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// CancelPendingSubscription godoc
+// @Summary      Cancel a role subscription with pending first payment
+// @Description  Cancels the first-payment-pending subscription of a (user, role, tier). Moves the subscription and its pending installments to canceled, freeing the slot to attempt a new tier change.
+// @Tags         user-roles
+// @Produce      json
+// @Param        id      path      int  true  "User ID"
+// @Param        role_id path      int  true  "Role ID"
+// @Param        tier_id query     int  true  "Tier ID of the pending subscription"
+// @Success      200     {object}  tiersubscription.CancelSubscriptionResponse
+// @Failure      400     {object}  apierror.APIError
+// @Failure      403     {object}  apierror.APIError
+// @Failure      404     {object}  apierror.APIError
+// @Failure      409     {object}  apierror.APIError
+// @Failure      500     {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/roles/{role_id}/subscriptions/pending [delete]
+func (tsc *tierSubscriptionController) CancelPendingSubscription(c *gin.Context) {
+	userID, ok := parseUserIDFromPath(c)
+	if !ok {
+		return
+	}
+	roleID, ok := parseRoleIDFromPath(c)
+	if !ok {
+		return
+	}
+
+	if authUserID, _ := utils.GetAuthUserID(c); authUserID != userID {
+		forbiddenNotSelfSubscription(c)
+		return
+	}
+
+	tierIDStr := c.Query("tier_id")
+	if tierIDStr == "" {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "el parámetro tier_id es requerido",
+		})
+		return
+	}
+	tierID, err := strconv.ParseInt(tierIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "tier_id debe ser un número válido",
+		})
+		return
+	}
+
+	response, err := tsc.tierSubscriptionService.CancelPendingSubscription(c, userID, roleID, tierID)
 	if err != nil {
 		statusCode, code := mapTierSubscriptionError(err)
 		c.JSON(statusCode, apierror.APIError{
@@ -195,6 +275,10 @@ func mapTierSubscriptionError(err error) (statusCode int, code string) {
 		return http.StatusConflict, constants.ErrorCodeDebtBlocksOperation
 	case errMsg == "no podés cambiar de tier con el primer pago pendiente":
 		return http.StatusConflict, constants.ErrorCodeSubscriptionPendingFirstPayment
+	case errMsg == "suscripción no encontrada":
+		return http.StatusNotFound, constants.ErrorCodeSubscriptionNotFound
+	case errMsg == "la suscripción no está en primer pago pendiente":
+		return http.StatusConflict, constants.ErrorCodeSubscriptionNotPendingFirstPayment
 	default:
 		return http.StatusInternalServerError, "Internal Server Error"
 	}

@@ -13,7 +13,7 @@ type Installment struct {
 	TeamID            *int64     `gorm:"column:team_id"`
 	UserID            int64      `gorm:"column:user_id;not null"`
 	InstallmentNumber int        `gorm:"column:installment_number;not null"` // arranca en 1
-	Status            string     `gorm:"column:status;not null"`             // pending / paid
+	Status            string     `gorm:"column:status;not null"`             // pending / paid / canceled
 	InternalPaymentID *int64     `gorm:"column:internal_payment_id"`         // FK -> payments.id
 	ExternalPaymentID *string    `gorm:"column:external_payment_id"`         // payment_id de Mercado Pago
 	Amount            float64    `gorm:"column:amount;not null"`

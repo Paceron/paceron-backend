@@ -11,7 +11,7 @@ type UserRoleTierSubscription struct {
 	UserID           int64      `gorm:"column:user_id;not null"`
 	RoleID           int64      `gorm:"column:role_id;not null"`
 	TierID           int64      `gorm:"column:tier_id;not null"`
-	Status           string     `gorm:"column:status;not null"` // first_payment_pending / active / ended
+	Status           string     `gorm:"column:status;not null"` // first_payment_pending / active / ended / canceled
 	InitAmount       float64    `gorm:"column:init_amount;not null;default:0"`
 	PaidInstallments int        `gorm:"column:paid_installments;not null;default:0"`
 	StartDate        time.Time  `gorm:"column:start_date;not null"`

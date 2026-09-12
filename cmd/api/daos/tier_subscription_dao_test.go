@@ -211,3 +211,106 @@ func TestTierSubscriptionDao_Activate(t *testing.T) {
 	require.NotNil(t, found)
 	assert.Equal(t, string(constants.SubscriptionStatusActive), found.Status)
 }
+
+func TestTierSubscriptionDao_FindActiveByUserRole_FilterByStatus(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-filter@test.com", "31000009")
+	role := testRole(db, "role_for_ts_filter")
+
+	sub := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusActive))
+
+	foundActive, err := dao.FindActiveByUserRole(nil, user.ID, role.ID, string(constants.SubscriptionStatusActive))
+	require.NoError(t, err)
+	require.NotNil(t, foundActive)
+	assert.Equal(t, sub.ID, foundActive.ID)
+
+	foundPending, err := dao.FindActiveByUserRole(nil, user.ID, role.ID, string(constants.SubscriptionStatusFirstPaymentPending))
+	require.NoError(t, err)
+	assert.Nil(t, foundPending)
+}
+
+func TestTierSubscriptionDao_SetCanceled(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-cancel@test.com", "31000010")
+	role := testRole(db, "role_for_ts_cancel")
+
+	sub := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusFirstPaymentPending))
+	require.NoError(t, dao.SetCanceled(nil, sub.ID))
+
+	found, err := dao.FindByID(nil, sub.ID)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, string(constants.SubscriptionStatusCanceled), found.Status)
+}
+
+// TestTierSubscriptionDao_CanceledFreesUniqueSlot: cancelar una sub pendiente la
+// saca del conjunto vigente (el índice único parcial solo cubre active y
+// first_payment_pending), habilitando crear una suscripción vigente nueva.
+func TestTierSubscriptionDao_CanceledFreesUniqueSlot(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-cancelfree@test.com", "31000011")
+	role := testRole(db, "role_for_ts_cancelfree")
+
+	pending := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusFirstPaymentPending))
+	require.NoError(t, dao.SetCanceled(nil, pending.ID))
+
+	refound, err := dao.FindActiveByUserRole(nil, user.ID, role.ID)
+	require.NoError(t, err)
+	assert.Nil(t, refound)
+
+	// Una nueva sub vigente para el mismo (user_id, role_id) ya no viola el índice.
+	newSub := persistSubscription(db, user.ID, role.ID, 2, string(constants.SubscriptionStatusActive))
+	assert.NotZero(t, newSub.ID)
+}
+
+func TestTierSubscriptionDao_FindPendingByUserRoleTier(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-pendtier@test.com", "31000012")
+	role := testRole(db, "role_for_ts_pendtier")
+
+	sub := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusFirstPaymentPending))
+
+	found, err := dao.FindPendingByUserRoleTier(nil, user.ID, role.ID, sub.TierID)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, sub.ID, found.ID)
+
+	missing, err := dao.FindPendingByUserRoleTier(nil, user.ID, role.ID, 999)
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+
+	require.NoError(t, dao.SetEnded(nil, sub.ID))
+	gone, err := dao.FindPendingByUserRoleTier(nil, user.ID, role.ID, sub.TierID)
+	require.NoError(t, err)
+	assert.Nil(t, gone)
+}
+
+func TestTierSubscriptionDao_FindByUserRoleTier(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-byurt@test.com", "31000013")
+	role := testRole(db, "role_for_ts_byurt")
+
+	oldSub := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusEnded))
+	oldSub.EndedDate = &time.Time{}
+	require.NoError(t, db.Save(oldSub).Error)
+	pending := persistSubscription(db, user.ID, role.ID, 2, string(constants.SubscriptionStatusFirstPaymentPending))
+
+	foundOld, err := dao.FindByUserRoleTier(nil, user.ID, role.ID, 1)
+	require.NoError(t, err)
+	require.NotNil(t, foundOld)
+	assert.Equal(t, oldSub.ID, foundOld.ID)
+
+	foundPending, err := dao.FindByUserRoleTier(nil, user.ID, role.ID, 2)
+	require.NoError(t, err)
+	require.NotNil(t, foundPending)
+	assert.Equal(t, pending.ID, foundPending.ID)
+
+	missing, err := dao.FindByUserRoleTier(nil, user.ID, role.ID, 999)
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+}

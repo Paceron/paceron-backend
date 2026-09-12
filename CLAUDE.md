@@ -10,6 +10,7 @@ Go 1.26 + Gin (HTTP) + GORM (ORM sobre PostgreSQL/Supabase) + JWT (`golang-jwt/j
 
 Documentación técnica detallada ya existe en [`.agentics/`](.agentics/) (en inglés) y en `cmd/api/docs/documentationdetail/` (en español) — este archivo **no la duplica**, es la capa de convenciones de trabajo/git sobre esa base:
 
+- [`docs/STATE_MACHINES.md`](docs/STATE_MACHINES.md) — referencia única de estados, transiciones, disparadores e invariantes por entidad (suscripciones, cuotas, usuarios, equipos, invitaciones, etc.). La fuente de verdad del valor de los estados son `cmd/api/domains/constants/`; este doc es la lectura navegable.
 - [`.agentics/CONVENTIONS.md`](.agentics/CONVENTIONS.md) — convenciones de código, capas, qué no está permitido (ej. service-to-service imports, DAO directo desde controller).
 - [`.agentics/STRUCTURE.md`](.agentics/STRUCTURE.md) — estructura de carpetas.
 - [`.agentics/WORKFLOW.md`](.agentics/WORKFLOW.md) — cómo correr, testear, buildear, regenerar swagger, agregar una feature paso a paso.

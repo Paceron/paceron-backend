@@ -5,7 +5,9 @@
 Flujo general del cambio (spec `cambio-tier-suscripciones`):
 
 ```
-GET /users/:id/subscriptions/current  ──►  installment_id + amount + public_key
+GET /users/:id/subscriptions/:period  ──►  installment_id + amount + public_key
+      (current → sub active; next → sub con primer pago pendiente; si
+       no hay sub en ese estado responde 200 con body vacío)
       │
       ▼
 POST /payments/preference { installment_id, items }   (preference_id)
