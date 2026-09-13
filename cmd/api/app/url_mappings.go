@@ -153,6 +153,22 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.DELETE("/api/v1/training-plans/:id", app.trainingPlanController.Delete)
 	r.POST("/api/v1/training-plans/:id/clone", app.trainingPlanController.Clone)
 
+	// Group calendar
+	r.GET("/api/v1/groups/:id/calendar", app.calendarController.GetRange)
+	r.PUT("/api/v1/groups/:id/calendar/:date", app.calendarController.PutDay)
+	r.DELETE("/api/v1/groups/:id/calendar/:date", app.calendarController.DeleteDay)
+	r.POST("/api/v1/groups/:id/calendar/stamp", app.calendarController.Stamp)
+	r.POST("/api/v1/groups/:id/calendar/bulk", app.calendarController.Bulk)
+	r.POST("/api/v1/groups/:id/calendar/bulk-clear", app.calendarController.BulkClear)
+	r.POST("/api/v1/groups/:id/calendar/shift", app.calendarController.Shift)
+
+	// Runner calendar views
+	r.GET("/api/v1/users/:id/next-session", app.calendarController.NextSession)
+	r.GET("/api/v1/users/:id/calendar-summary", app.calendarController.CalendarSummary)
+
+	// Session divergence-clone helper
+	r.GET("/api/v1/sessions/:id/assigned-groups", app.sessionController.AssignedGroups)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
