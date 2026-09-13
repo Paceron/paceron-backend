@@ -19,14 +19,16 @@ type SessionController interface {
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
 	Clone(c *gin.Context)
+	AssignedGroups(c *gin.Context)
 }
 
 type sessionController struct {
-	sessionService services.SessionServiceInterface
+	sessionService  services.SessionServiceInterface
+	calendarService services.CalendarServiceInterface
 }
 
-func NewSessionController(sessionService services.SessionServiceInterface) SessionController {
-	return &sessionController{sessionService: sessionService}
+func NewSessionController(sessionService services.SessionServiceInterface, calendarService services.CalendarServiceInterface) SessionController {
+	return &sessionController{sessionService: sessionService, calendarService: calendarService}
 }
 
 func mapSessionError(err error) (int, string) {
@@ -201,4 +203,27 @@ func (sc *sessionController) Clone(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, resp)
+}
+
+// AssignedGroups godoc
+// @Summary      Grupos con calendario asignados a una sesión
+// @Tags         sessions
+// @Produce      json
+// @Param        id  path  int  true  "Session ID"
+// @Success      200  {array}  calendar.CalendarSummaryItem
+// @Failure      400
+// @Failure      500
+// @Router       /api/v1/sessions/{id}/assigned-groups [get]
+func (sc *sessionController) AssignedGroups(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	resp, err := sc.calendarService.AssignedGroups(c, id)
+	if err != nil {
+		respondCatalogError(c, http.StatusInternalServerError, "error interno")
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
