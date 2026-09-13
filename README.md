@@ -334,10 +334,10 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/groups/:id/calendar` | Group calendar for a date range (required `from`/`to` query params, YYYY-MM-DD format) |
 | PUT | `/api/v1/groups/:id/calendar/:date` | Create or update a day in group calendar (body: `kind`, `session_id` or `rest_kind`, optional `note`) |
 | DELETE | `/api/v1/groups/:id/calendar/:date` | Delete a day from group calendar |
-| POST | `/api/v1/groups/:id/calendar/stamp` | Copy training plan into group calendar (body: `source_plan_id`, optional `start_date`) |
+| POST | `/api/v1/groups/:id/calendar/stamp` | Copy training plan into group calendar (body: `plan_id`, `start_date`, optional `force`) |
 | POST | `/api/v1/groups/:id/calendar/bulk` | Bulk operation on multiple calendar days (body: `dates`, `action`, `session_id` or `rest_kind`, optional `note`) |
 | POST | `/api/v1/groups/:id/calendar/bulk-clear` | Clear multiple calendar days (body: `dates`) |
-| POST | `/api/v1/groups/:id/calendar/shift` | Shift calendar days by a number of days (body: `from_date`, `to_date`, `shift_days`, optional `exclude_group_ids`) |
+| POST | `/api/v1/groups/:id/calendar/shift` | Shift calendar days by a number of days (body: `from_date`, `days`) |
 | GET | `/api/v1/users/:id/next-session` | Next session scheduled for the user (self only; returns 204 if no session scheduled) |
 | GET | `/api/v1/users/:id/calendar-summary` | Summary of groups the user belongs to with calendar data (self only) |
 | GET | `/api/v1/sessions/:id/assigned-groups` | List of groups that have this session assigned in their calendar |
