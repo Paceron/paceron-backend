@@ -28,5 +28,5 @@
 ## 5. Verificación final
 
 - [x] 5.1 Regenerar Swagger (`swag init --parseDependency -g cmd/api/docs.go --output cmd/api/docs`) con la nueva documentación de los 3 endpoints
-- [ ] 5.2 Correr `go test ./...` (suite completa en verde) y `make coverage-with-db` (coverage ≥ umbral de CI 80%)
-- [ ] 5.3 Verificar con Postgres real que el `UNIQUE` y los índices quedaron creados correctamente sobre `attendances`
+- [x] 5.2 Correr `go test ./...` (suite completa en verde) y `make coverage-with-db` (coverage ≥ umbral de CI 80%)
+- [x] 5.3 Verificar con Postgres real que el `UNIQUE` y los índices quedaron creados correctamente sobre `attendances`
