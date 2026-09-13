@@ -18,6 +18,7 @@ type InstallmentDaoInterface interface {
 	MarkPaidConditional(ctx *gin.Context, id int64, internalPaymentID *int64, externalPaymentID *string) (bool, error)
 	FindPendingBySubscription(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
 	FindNext(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
+	CancelPendingBySubscription(ctx *gin.Context, subscriptionID int64) error
 	FindPendingByUserTeam(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
 	FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
 }
@@ -96,6 +97,15 @@ func (d *installmentDao) FindNext(ctx *gin.Context, subscriptionID int64) (*dbs.
 		return nil, fmt.Errorf("error finding next installment: %w", err)
 	}
 	return &installment, nil
+}
+
+// CancelPendingBySubscription marca como canceled todas las cuotas pendientes
+// de una suscripción — se usa al cancelar una sub con primer pago pendiente
+// (la cuota #1 deja de ofrecerse como próxima cuota a pagar).
+func (d *installmentDao) CancelPendingBySubscription(ctx *gin.Context, subscriptionID int64) error {
+	return d.DB.Model(&dbs.Installment{}).
+		Where("subscription_id = ? AND status = ?", subscriptionID, string(constants.InstallmentStatusPending)).
+		Update("status", string(constants.InstallmentStatusCanceled)).Error
 }
 
 // FindPendingByUserTeam devuelve las cuotas pendientes de la membresía de un

@@ -842,8 +842,19 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_session.SessionRequest:
     properties:
+      clone_description:
+        type: string
+      clone_name:
+        type: string
       description:
         type: string
+      exclude_group_ids:
+        description: |-
+          Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,
+          solo se usan en PUT, ignorados en POST).
+        items:
+          type: integer
+        type: array
       exercises:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest'
@@ -891,6 +902,10 @@ definitions:
       max_members:
         description: Cantidad máxima de integrantes (requerido)
         type: integer
+      membership_fee:
+        description: Mensualidad que paga cada corredor al entrenador (opcional, 0
+          = gratis, >= 0)
+        type: number
       name:
         description: Nombre del equipo (requerido)
         type: string
@@ -940,6 +955,9 @@ definitions:
       max_members:
         description: Cantidad máxima de integrantes
         type: integer
+      membership_fee:
+        description: Mensualidad que paga cada corredor al entrenador (0 = gratis)
+        type: number
       name:
         description: Nombre del equipo
         type: string
@@ -1037,6 +1055,10 @@ definitions:
       max_members:
         description: Cantidad máxima de integrantes (opcional)
         type: integer
+      membership_fee:
+        description: Mensualidad que paga cada corredor (opcional, >= 0; no es retroactivo
+          sobre membresías existentes)
+        type: number
       name:
         description: Nombre del equipo (opcional)
         type: string
@@ -1104,6 +1126,13 @@ definitions:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.NextInstallmentInfo'
       team:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration:
+    properties:
+      max_members:
+        type: integer
+      minimum_fee:
+        type: number
     type: object
   simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
     properties:
@@ -1247,6 +1276,13 @@ definitions:
       tier_id:
         description: ID del tier
         type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_tiersubscription.CancelSubscriptionResponse:
+    properties:
+      subscription_id:
+        type: integer
+      subscription_status:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_tiersubscription.ChangeTierRequest:
     properties:
@@ -3427,6 +3463,24 @@ paths:
       summary: Clonar sesión
       tags:
       - sessions
+  /api/v1/team-configuration:
+    get:
+      description: Returns the max members and minimum membership fee allowed for
+        the trainer's tier. Identity comes from the access token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get team configuration by trainer tier
+      tags:
+      - teams
   /api/v1/teams:
     get:
       description: Devuelve equipos activos. Sin filtros, todos. owner_id filtra por
@@ -4809,6 +4863,57 @@ paths:
       summary: Remove a role from a user
       tags:
       - user-roles
+  /api/v1/users/{id}/roles/{role_id}/subscriptions/pending:
+    delete:
+      description: Cancels the first-payment-pending subscription of a (user, role,
+        tier). Moves the subscription and its pending installments to canceled, freeing
+        the slot to attempt a new tier change.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Role ID
+        in: path
+        name: role_id
+        required: true
+        type: integer
+      - description: Tier ID of the pending subscription
+        in: query
+        name: tier_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.CancelSubscriptionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Cancel a role subscription with pending first payment
+      tags:
+      - user-roles
   /api/v1/users/{id}/roles/{role_id}/tier:
     put:
       consumes:
@@ -4906,16 +5011,23 @@ paths:
       summary: Change user status
       tags:
       - users
-  /api/v1/users/{id}/subscriptions/current:
+  /api/v1/users/{id}/subscriptions/{period}:
     get:
-      description: Returns the current subscription and next installment to pay for
-        the role (Bricks checkout data). Free roles return tier/role only.
+      description: Returns the next installment to pay for the role for the requested
+        period (Bricks checkout data). period=current returns the active subscription;
+        period=next returns the pending first-payment subscription. Empty body (200)
+        when there is no subscription in that state.
       parameters:
       - description: User ID
         in: path
         name: id
         required: true
         type: integer
+      - description: 'Subscription period: current|next'
+        in: path
+        name: period
+        required: true
+        type: string
       - description: Role ID
         in: query
         name: role_id
@@ -4944,7 +5056,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Get current subscription of a role
+      summary: Get subscription of a role for a period
       tags:
       - user-roles
   /api/v1/users/{id}/teams/{team_id}/subscription:

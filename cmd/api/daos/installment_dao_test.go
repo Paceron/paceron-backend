@@ -189,6 +189,44 @@ func TestInstallmentDao_FindPendingByUserTeam(t *testing.T) {
 
 // TestInstallmentDao_ExclusiveArc cubre el CHECK de arco exclusivo: una cuota
 // debe referenciar exactamente uno de subscription_id o team_id.
+func TestInstallmentDao_CancelPendingBySubscription(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewInstallmentDao(db)
+	user := persistUser(db, "inst-cancel@test.com", "32000011")
+	role := testRole(db, "role_for_inst_cancel")
+	sub := persistSubscription(db, user.ID, role.ID, 1, string(constants.SubscriptionStatusFirstPaymentPending))
+
+	pending := persistTierInstallment(db, sub.ID, user.ID, 1)
+	paid := persistTierInstallment(db, sub.ID, user.ID, 2)
+	internalID := int64(101)
+	externalID := "MP-101"
+	_, err := dao.MarkPaidConditional(nil, paid.ID, &internalID, &externalID)
+	require.NoError(t, err)
+
+	require.NoError(t, dao.CancelPendingBySubscription(nil, sub.ID))
+
+	updatedPending, err := dao.FindByID(nil, pending.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedPending)
+	assert.Equal(t, string(constants.InstallmentStatusCanceled), updatedPending.Status)
+
+	updatedPaid, err := dao.FindByID(nil, paid.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedPaid)
+	assert.Equal(t, string(constants.InstallmentStatusPaid), updatedPaid.Status)
+}
+
+// TestInstallmentDao_CancelPendingBySubscription_NoInstances: cancelar una
+// suscripción sin cuotas pendientes no falla.
+func TestInstallmentDao_CancelPendingBySubscription_NoInstances(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewInstallmentDao(db)
+
+	err := dao.CancelPendingBySubscription(nil, 999999)
+
+	require.NoError(t, err)
+}
+
 func TestInstallmentDao_ExclusiveArc_BothNilFails(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewInstallmentDao(db)

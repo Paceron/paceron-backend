@@ -19,7 +19,8 @@ import (
 // usuario/rol: cambiar de tier (D4) y consultar la próxima cuota a pagar (D9).
 type TierSubscriptionServiceInterface interface {
 	ChangeTier(ctx *gin.Context, userID, roleID int64, req *tiersubscription.ChangeTierRequest) (*tiersubscription.ChangeTierResponse, error)
-	GetCurrentSubscription(ctx *gin.Context, userID, roleID int64) (*tiersubscription.CurrentSubscriptionResponse, error)
+	GetCurrentSubscription(ctx *gin.Context, userID, roleID int64, period string) (*tiersubscription.CurrentSubscriptionResponse, error)
+	CancelPendingSubscription(ctx *gin.Context, userID, roleID, tierID int64) (*tiersubscription.CancelSubscriptionResponse, error)
 }
 
 type tierSubscriptionService struct {
@@ -222,10 +223,11 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 }
 
 // GetCurrentSubscription devuelve el estado vigente de la suscripción del
-// usuario para el rol (D9): próxima cuota a pagar y datos para el checkout
-// Bricks. Si el rol es gratis (sin cuota) devuelve el estado del rol/tier
-// con los campos de suscripción/cuota vacíos.
-func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userID, roleID int64) (*tiersubscription.CurrentSubscriptionResponse, error) {
+// usuario para el rol y período pedido (D9): próxima cuota a pagar y datos para
+// el checkout Bricks. period = current → sub activa; period = next → sub con
+// primer pago pendiente. Si no existe sub en el estado del período devuelve
+// (nil, nil) → el controller responde 200 con body vacío.
+func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userID, roleID int64, period string) (*tiersubscription.CurrentSubscriptionResponse, error) {
 	ur, err := s.userRoleDao.FindByUserAndRole(ctx, userID, roleID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding user role for current subscription", err,
@@ -248,81 +250,32 @@ func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userI
 		return nil, fmt.Errorf("rol no encontrado")
 	}
 
-	sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, roleID)
+	filterStatus := subscriptionStatusForPeriod(period)
+	sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, roleID, filterStatus)
 	if err != nil {
 		customlogger.Error(ctx, "error finding active subscription", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+			customlogger.Tag("period", period),
 			customlogger.TagMethod("GetCurrentSubscription"))
 		return nil, fmt.Errorf("error al obtener la suscripción")
 	}
-
-	if sub != nil {
-		customlogger.Info(ctx, "GetCurrentSubscription active sub",
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-			customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
-			customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
-			customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
-			customlogger.Tag("sub_status", sub.Status),
-			customlogger.Tag("paid_installments", fmt.Sprintf("%d", sub.PaidInstallments)),
-			customlogger.TagMethod("GetCurrentSubscription"))
-
-		tier, err := s.tierDao.FindByID(ctx, sub.TierID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding subscription tier", err,
-				customlogger.TagMethod("GetCurrentSubscription"))
-			return nil, fmt.Errorf("error al obtener la suscripción")
-		}
-		if tier == nil {
-			return nil, fmt.Errorf("tier no encontrado")
-		}
-
-		resp := &tiersubscription.CurrentSubscriptionResponse{
-			SubscriptionID:     sub.ID,
-			SubscriptionStatus: sub.Status,
-			PaidInstallments:   &sub.PaidInstallments,
-			Tier: tiersubscription.TierInfo{
-				ID:              tier.ID,
-				Name:            tier.Name,
-				Hierarchy:       tier.Hierarchy,
-				PaymentRequired: tier.PaymentRequired,
-			},
-			Role: tiersubscription.RoleInfo{ID: role.ID, Name: role.Name},
-		}
-
-		next, err := s.installDao.FindNext(ctx, sub.ID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding next installment", err,
-				customlogger.TagMethod("GetCurrentSubscription"))
-			return nil, fmt.Errorf("error al obtener la suscripción")
-		}
-		if next != nil {
-			num := next.InstallmentNumber
-			amount := next.Amount
-			resp.InstallmentID = &next.ID
-			resp.InstallmentNumber = &num
-			resp.InstallmentAmount = &amount
-			resp.NextDueDate = next.DueDate
-			resp.BlockedDate = next.BlockedDate
-
-			customlogger.Info(ctx, "GetCurrentSubscription next installment",
-				customlogger.Tag("installment_id", fmt.Sprintf("%d", next.ID)),
-				customlogger.Tag("installment_number", fmt.Sprintf("%d", next.InstallmentNumber)),
-				customlogger.Tag("amount", fmt.Sprintf("%.2f", next.Amount)),
-				customlogger.Tag("status", next.Status),
-				customlogger.TagMethod("GetCurrentSubscription"))
-		}
-
-		if tier.PaymentRequired {
-			resp.MercadoPago = &tiersubscription.MercadoPagoInfo{PublicKey: config.MyMP.PublicKey}
-		}
-		return resp, nil
+	if sub == nil {
+		return nil, nil
 	}
 
-	// Sin suscripción vigente (rol gratis o sub terminada): estado del rol/tier.
-	tier, err := s.tierDao.FindByID(ctx, ur.TierID)
+	customlogger.Info(ctx, "GetCurrentSubscription active sub",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+		customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
+		customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+		customlogger.Tag("sub_status", sub.Status),
+		customlogger.Tag("paid_installments", fmt.Sprintf("%d", sub.PaidInstallments)),
+		customlogger.TagMethod("GetCurrentSubscription"))
+
+	tier, err := s.tierDao.FindByID(ctx, sub.TierID)
 	if err != nil {
-		customlogger.Error(ctx, "error finding user role tier", err,
+		customlogger.Error(ctx, "error finding subscription tier", err,
 			customlogger.TagMethod("GetCurrentSubscription"))
 		return nil, fmt.Errorf("error al obtener la suscripción")
 	}
@@ -330,7 +283,10 @@ func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userI
 		return nil, fmt.Errorf("tier no encontrado")
 	}
 
-	return &tiersubscription.CurrentSubscriptionResponse{
+	resp := &tiersubscription.CurrentSubscriptionResponse{
+		SubscriptionID:     sub.ID,
+		SubscriptionStatus: sub.Status,
+		PaidInstallments:   &sub.PaidInstallments,
 		Tier: tiersubscription.TierInfo{
 			ID:              tier.ID,
 			Name:            tier.Name,
@@ -338,5 +294,118 @@ func (s *tierSubscriptionService) GetCurrentSubscription(ctx *gin.Context, userI
 			PaymentRequired: tier.PaymentRequired,
 		},
 		Role: tiersubscription.RoleInfo{ID: role.ID, Name: role.Name},
-	}, nil
+	}
+
+	next, err := s.installDao.FindNext(ctx, sub.ID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next installment", err,
+			customlogger.TagMethod("GetCurrentSubscription"))
+		return nil, fmt.Errorf("error al obtener la suscripción")
+	}
+	if next != nil {
+		num := next.InstallmentNumber
+		amount := next.Amount
+		resp.InstallmentID = &next.ID
+		resp.InstallmentNumber = &num
+		resp.InstallmentAmount = &amount
+		resp.NextDueDate = next.DueDate
+		resp.BlockedDate = next.BlockedDate
+
+		customlogger.Info(ctx, "GetCurrentSubscription next installment",
+			customlogger.Tag("installment_id", fmt.Sprintf("%d", next.ID)),
+			customlogger.Tag("installment_number", fmt.Sprintf("%d", next.InstallmentNumber)),
+			customlogger.Tag("amount", fmt.Sprintf("%.2f", next.Amount)),
+			customlogger.Tag("status", next.Status),
+			customlogger.TagMethod("GetCurrentSubscription"))
+	}
+
+	if tier.PaymentRequired {
+		resp.MercadoPago = &tiersubscription.MercadoPagoInfo{PublicKey: config.MyMP.PublicKey}
+	}
+	return resp, nil
+}
+
+// subscriptionStatusForPeriod mapea el período pedido en la URL al estado de
+// suscripción a filtrar. current → active; next → first_payment_pending. El
+// controller valida el período antes de llegar acá.
+func subscriptionStatusForPeriod(period string) string {
+	switch period {
+	case string(constants.SubscriptionPeriodCurrent):
+		return string(constants.SubscriptionStatusActive)
+	case string(constants.SubscriptionPeriodNext):
+		return string(constants.SubscriptionStatusFirstPaymentPending)
+	default:
+		return ""
+	}
+}
+
+// CancelPendingSubscription cancela la suscripción con primer pago pendiente de
+// la terna (user_id, role_id, tier_id): pasa la sub a canceled, cancela sus
+// cuotas pendientes y libera el slot del índice único parcial para permitir un
+// nuevo cambio de tier. Errores tipificados para el controller: 404 si la terna
+// no tiene ninguna suscripción, 409 si la tiene pero no en first_payment_pending.
+func (s *tierSubscriptionService) CancelPendingSubscription(ctx *gin.Context, userID, roleID, tierID int64) (*tiersubscription.CancelSubscriptionResponse, error) {
+	customlogger.Info(ctx, "CancelPendingSubscription start",
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("role_id", fmt.Sprintf("%d", roleID)),
+		customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+		customlogger.TagMethod("CancelPendingSubscription"))
+	apply := func(
+		subDao daos.TierSubscriptionDaoInterface,
+		insDao daos.InstallmentDaoInterface,
+	) (*tiersubscription.CancelSubscriptionResponse, error) {
+		sub, err := subDao.FindPendingByUserRoleTier(ctx, userID, roleID, tierID)
+		if err != nil {
+			return nil, fmt.Errorf("error al cancelar la suscripción")
+		}
+		if sub == nil {
+			existing, err := subDao.FindByUserRoleTier(ctx, userID, roleID, tierID)
+			if err != nil {
+				return nil, fmt.Errorf("error al cancelar la suscripción")
+			}
+			if existing == nil {
+				return nil, fmt.Errorf("suscripción no encontrada")
+			}
+			return nil, fmt.Errorf("la suscripción no está en primer pago pendiente")
+		}
+
+		if err := subDao.SetCanceled(ctx, sub.ID); err != nil {
+			return nil, fmt.Errorf("error al cancelar la suscripción")
+		}
+		if err := insDao.CancelPendingBySubscription(ctx, sub.ID); err != nil {
+			return nil, fmt.Errorf("error al cancelar la suscripción")
+		}
+
+		customlogger.Info(ctx, "CancelPendingSubscription canceled sub",
+			customlogger.Tag("sub_id", fmt.Sprintf("%d", sub.ID)),
+			customlogger.Tag("sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+			customlogger.Tag("new_sub_status", string(constants.SubscriptionStatusCanceled)),
+			customlogger.TagMethod("CancelPendingSubscription"))
+
+		return &tiersubscription.CancelSubscriptionResponse{
+			SubscriptionID:     sub.ID,
+			SubscriptionStatus: string(constants.SubscriptionStatusCanceled),
+		}, nil
+	}
+
+	if s.db != nil {
+		var result *tiersubscription.CancelSubscriptionResponse
+		err := s.db.Transaction(func(tx *gorm.DB) error {
+			res, err := apply(
+				daos.NewTierSubscriptionDao(tx),
+				daos.NewInstallmentDao(tx),
+			)
+			if err != nil {
+				return err
+			}
+			result = res
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	return apply(s.tierSubDao, s.installDao)
 }

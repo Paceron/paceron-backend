@@ -23,6 +23,9 @@ const teamSearchPageSize = 20
 // ErrInvalidQuery indica que los parámetros de búsqueda son inválidos.
 var ErrInvalidQuery = errors.New("page debe ser mayor o igual a 1")
 
+// ErrInvalidMembershipFee indica que membership_fee es inválido (negativo).
+var ErrInvalidMembershipFee = errors.New("membership_fee no puede ser negativo")
+
 // TeamServiceInterface define las operaciones de negocio para equipos.
 type TeamServiceInterface interface {
 	Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
@@ -210,6 +213,12 @@ func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTe
 	if req.ShowGroupsToRunners != nil {
 		teamDB.ShowGroupsToRunners = *req.ShowGroupsToRunners
 	}
+	if req.MembershipFee != nil {
+		if *req.MembershipFee < 0 {
+			return nil, ErrInvalidMembershipFee
+		}
+		teamDB.MembershipFee = *req.MembershipFee
+	}
 
 	if err := s.teamDao.Create(ctx, teamDB); err != nil {
 		customlogger.Error(ctx, "error creating team", err,
@@ -299,6 +308,12 @@ func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *te
 	}
 	if req.IsPublic != nil {
 		teamDB.IsPublic = *req.IsPublic
+	}
+	if req.MembershipFee != nil {
+		if *req.MembershipFee < 0 {
+			return nil, ErrInvalidMembershipFee
+		}
+		teamDB.MembershipFee = *req.MembershipFee
 	}
 
 	if err := s.teamDao.Update(ctx, teamDB); err != nil {
@@ -525,6 +540,7 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		Visible:             t.Visible,
 		IsPublic:            t.IsPublic,
 		IconURL:             buildMediaURL(t.IconKey, t.IconUpdatedAt),
+		MembershipFee:       t.MembershipFee,
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,
 	}

@@ -76,7 +76,7 @@ conectar su cuenta de Mercado Pago"`).
 - El `owner_id` del equipo pasa a ser el entrenador (el "seller").
 - `description`, `level`, `requirements` son opcionales; `max_members` es requerido.
 
-### P4. Mensualidad del equipo `membership_fee > 0`  ⚠️ (setup en DB)
+### P4. Mensualidad del equipo `membership_fee > 0`
 
 La cuota que paga cada miembro sale de **`team.membership_fee`**. El gate que crea
 la cuota #1 (`ApplyTeamMembershipGate`) la resuelve así:
@@ -86,14 +86,13 @@ la cuota #1 (`ApplyTeamMembershipGate`) la resuelve así:
 - `membership_fee > 0` → membidad `first_payment_pending`, `init_amount =
   membership_fee`, y genera la **cuota #1** de `installments`.
 
-> **⚠️ No hay endpoint para setear `membership_fee`** (no está en `POST /teams` ni
-> en `PUT /teams/:id`). Para probar tenés que **setearlo en la DB** (seed/SQL):
+> Se configura por **API**: `POST /api/v1/teams` (al crear, campo `membership_fee`)
+> o `PUT /api/v1/teams/:id` (para cambiar el de un equipo existente). Si queda en
+> `0` (o no se manda el campo), el equipo es gratis y el flujo de pago no aplica.
 >
-> ```sql
-> UPDATE teams SET membership_fee = 5000 WHERE id = <team_id>;
-> ```
->
-> Si quedó en `0`, el flujo de pago no aplica (el equipo es gratis).
+> ⚠️ **El cambio no es retroactivo**: el `init_amount` de cada miembro se congela al
+> momento de sumarse al equipo. Cambiar `membership_fee` afecta solo a futuras
+> membresías, no a las cuotas ya generadas.
 
 ### P5. Comisión de la plataforma (marketplace fee) — opcional, default 5%
 

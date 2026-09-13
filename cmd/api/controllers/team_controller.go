@@ -77,6 +77,9 @@ func (tc *teamController) Create(c *gin.Context) {
 		} else if errMsg == "el owner debe tener el rol 'entrenador'" {
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
+		} else if errors.Is(err, services.ErrInvalidMembershipFee) {
+			statusCode = http.StatusBadRequest
+			code = "INVALID_MEMBERSHIP_FEE"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -138,6 +141,9 @@ func (tc *teamController) Update(c *gin.Context) {
 		} else if errMsg == "solo el entrenador puede actualizar el equipo" {
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
+		} else if errors.Is(err, services.ErrInvalidMembershipFee) {
+			statusCode = http.StatusBadRequest
+			code = "INVALID_MEMBERSHIP_FEE"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

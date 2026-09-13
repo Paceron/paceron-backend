@@ -256,7 +256,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/users/:id/trainer-role` | Activate your own entrenador role (self only; requires current password + a valid bank alias, own or provided) |
 | DELETE | `/api/v1/users/:id/trainer-role` | Deactivate your own entrenador role (self only; blocked while you still lead an active team) |
 | PUT | `/api/v1/users/:id/roles/:role_id/tier` | Change the tier of one of your role subscriptions (self only; body `{ "tier_id": int }`; blocked by debt or a pending first payment) |
-| GET | `/api/v1/users/:id/subscriptions/current?role_id=` | Current tier subscription / next installment to pay, with Mercado Pago `public_key` for Bricks (paid tiers; free roles return tier/role only) |
+| GET | `/api/v1/users/:id/subscriptions/:period?role_id=` | Tier subscription for the period, next installment to pay and Mercado Pago `public_key` for Bricks. `period=current` → active sub; `period=next` → sub with a pending first payment; `200 {}` if no sub in that state |
+| DELETE | `/api/v1/users/:id/roles/:role_id/subscriptions/pending?tier_id=` | Cancel a `first_payment_pending` subscription (self only), moving the sub and its pending installments to `canceled` and freeing the tier change; `404` if the tier triad has no subscription, `409` if it is not pending |
 | POST | `/api/v1/push-tokens` | Register/update a device's push token (self only, upsert by token — same device can switch accounts) |
 | GET | `/api/v1/permissions` | List all permissions |
 | GET | `/api/v1/permissions/:id` | Get permission by ID |
@@ -278,10 +279,10 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/roles` | Create role |
 | PUT | `/api/v1/roles/:id` | Update role |
 | DELETE | `/api/v1/roles/:id` | Soft delete role |
-| POST | `/api/v1/teams` | Create team (authenticated user becomes owner; must have "entrenador" role) |
+| POST | `/api/v1/teams` | Create team (authenticated user becomes owner; must have "entrenador" role; optional `membership_fee`) |
 | GET | `/api/v1/teams` | List teams (optional `owner_id`/`member_id` filters) |
-| GET | `/api/v1/teams/:id` | Get team by ID |
-| PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only) |
+| GET | `/api/v1/teams/:id` | Get team by ID (includes `membership_fee`) |
+| PUT | `/api/v1/teams/:id` | Update team (entrenador of the team only; optional `membership_fee`) |
 | DELETE | `/api/v1/teams/:id` | Soft delete team (entrenador only) |
 | PUT | `/api/v1/teams/:id/address` | Update team address (entrenador of the team only) |
 | PUT | `/api/v1/teams/:id/icon` | Upload/replace the team icon (entrenador owner of the team only; max 5MB, JPEG/PNG/WEBP) |
@@ -305,6 +306,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
 | GET | `/api/v1/teams/search` | Search public/visible teams by name/level/location (excludes teams where caller is already member; paginated) |
 | POST | `/api/v1/teams/:id/join-requests` | Request to join a public team (caller becomes pending member; fails if already member or team full) |
+| GET | `/api/v1/team-configuration` | Get team creation config by trainer tier: `max_members` and `minimum_fee` (identity from the access token) |
 | GET | `/api/v1/teams/:id/join-requests` | List pending join requests for a team (entrenador of the team only) |
 | GET | `/api/v1/join-requests/mine` | List the authenticated user's sent join requests |
 | POST | `/api/v1/join-requests/:id/accept` | Accept a join request for your team (entrenador only; joins runner and optionally adds to default group) |

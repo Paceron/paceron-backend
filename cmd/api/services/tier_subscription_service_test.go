@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -18,7 +19,10 @@ type mockTierSubscriptionDao struct {
 	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.UserRoleTierSubscription, error)
 	findActiveFn        func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
 	findLatestFn        func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
+	findPendingByURTFn  func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
+	findByURTFn         func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
 	setEndedFn          func(ctx *gin.Context, id int64) error
+	setCanceledFn       func(ctx *gin.Context, id int64) error
 	activateFn          func(ctx *gin.Context, id int64) error
 	incrementPaidFn     func(ctx *gin.Context, id int64) error
 }
@@ -38,7 +42,7 @@ func (m *mockTierSubscriptionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Use
 	return nil, nil
 }
 
-func (m *mockTierSubscriptionDao) FindActiveByUserRole(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error) {
+func (m *mockTierSubscriptionDao) FindActiveByUserRole(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
 	if m.findActiveFn != nil {
 		return m.findActiveFn(ctx, userID, roleID)
 	}
@@ -52,9 +56,30 @@ func (m *mockTierSubscriptionDao) FindLatestByUserRole(ctx *gin.Context, userID,
 	return nil, nil
 }
 
+func (m *mockTierSubscriptionDao) FindPendingByUserRoleTier(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+	if m.findPendingByURTFn != nil {
+		return m.findPendingByURTFn(ctx, userID, roleID, tierID)
+	}
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDao) FindByUserRoleTier(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+	if m.findByURTFn != nil {
+		return m.findByURTFn(ctx, userID, roleID, tierID)
+	}
+	return nil, nil
+}
+
 func (m *mockTierSubscriptionDao) SetEnded(ctx *gin.Context, id int64) error {
 	if m.setEndedFn != nil {
 		return m.setEndedFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockTierSubscriptionDao) SetCanceled(ctx *gin.Context, id int64) error {
+	if m.setCanceledFn != nil {
+		return m.setCanceledFn(ctx, id)
 	}
 	return nil
 }
@@ -74,13 +99,14 @@ func (m *mockTierSubscriptionDao) IncrementPaidInstallments(ctx *gin.Context, id
 }
 
 type mockInstallmentDao struct {
-	createFn            func(ctx *gin.Context, ins *dbs.Installment) error
-	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.Installment, error)
-	markPaidFn          func(ctx *gin.Context, id int64, internalID *int64, externalID *string) (bool, error)
-	findPendingBySubFn  func(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
-	findNextFn          func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
-	findPendingByTeamFn func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
-	findNextByTeamFn    func(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
+	createFn               func(ctx *gin.Context, ins *dbs.Installment) error
+	findByIDFn             func(ctx *gin.Context, id int64) (*dbs.Installment, error)
+	markPaidFn             func(ctx *gin.Context, id int64, internalID *int64, externalID *string) (bool, error)
+	findPendingBySubFn     func(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
+	findNextFn             func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
+	cancelPendingBySubFn   func(ctx *gin.Context, subscriptionID int64) error
+	findPendingByTeamFn    func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
+	findNextByTeamFn       func(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
 }
 
 func (m *mockInstallmentDao) Create(ctx *gin.Context, ins *dbs.Installment) error {
@@ -117,6 +143,13 @@ func (m *mockInstallmentDao) FindNext(ctx *gin.Context, subscriptionID int64) (*
 		return m.findNextFn(ctx, subscriptionID)
 	}
 	return nil, nil
+}
+
+func (m *mockInstallmentDao) CancelPendingBySubscription(ctx *gin.Context, subscriptionID int64) error {
+	if m.cancelPendingBySubFn != nil {
+		return m.cancelPendingBySubFn(ctx, subscriptionID)
+	}
+	return nil
 }
 
 func (m *mockInstallmentDao) FindPendingByUserTeam(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error) {
@@ -169,7 +202,7 @@ func TestGetCurrentSubscription_PaidWithNextInstallment(t *testing.T) {
 	}
 
 	svc := newTierSubscriptionService(urDao, roleDao, tierDao, subDao, insDao)
-	resp, err := svc.GetCurrentSubscription(nil, 1, 1)
+	resp, err := svc.GetCurrentSubscription(nil, 1, 1, string(constants.SubscriptionPeriodCurrent))
 
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
@@ -188,7 +221,7 @@ func TestGetCurrentSubscription_PaidWithNextInstallment(t *testing.T) {
 	assert.Equal(t, "test-public-key", resp.MercadoPago.PublicKey)
 }
 
-func TestGetCurrentSubscription_FreeRoleWithoutSubscription(t *testing.T) {
+func TestGetCurrentSubscription_EmptyWhenNoSubInPeriod(t *testing.T) {
 	urDao := &mockUserRoleDao{
 		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
 			return &dbs.UserRole{UserID: userID, RoleID: roleID, TierID: 1}, nil
@@ -206,20 +239,57 @@ func TestGetCurrentSubscription_FreeRoleWithoutSubscription(t *testing.T) {
 	}
 
 	svc := newTierSubscriptionService(urDao, roleDao, tierDao, &mockTierSubscriptionDao{}, &mockInstallmentDao{})
-	resp, err := svc.GetCurrentSubscription(nil, 1, 1)
+	resp, err := svc.GetCurrentSubscription(nil, 1, 1, string(constants.SubscriptionPeriodCurrent))
+
+	assert.NoError(t, err)
+	assert.Nil(t, resp)
+}
+
+func TestGetCurrentSubscription_NextReturnsPendingSub(t *testing.T) {
+	urDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{UserID: userID, RoleID: roleID, TierID: 1}, nil
+		},
+	}
+	roleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "corredor"}, nil
+		},
+	}
+	tierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 2, Name: "premium", Hierarchy: 3, PaymentRequired: true}, nil
+		},
+	}
+	subDao := &mockTierSubscriptionDao{
+		findActiveFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 9, UserID: userID, RoleID: roleID, TierID: 2,
+				Status: string(constants.SubscriptionStatusFirstPaymentPending), PaidInstallments: 0}, nil
+		},
+	}
+	insDao := &mockInstallmentDao{
+		findNextFn: func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error) {
+			return &dbs.Installment{ID: 12, SubscriptionID: &subscriptionID, InstallmentNumber: 1,
+				Status: string(constants.InstallmentStatusPending), Amount: 1500}, nil
+		},
+	}
+
+	svc := newTierSubscriptionService(urDao, roleDao, tierDao, subDao, insDao)
+	resp, err := svc.GetCurrentSubscription(nil, 1, 1, string(constants.SubscriptionPeriodNext))
 
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Zero(t, resp.SubscriptionID)
-	assert.Zero(t, resp.SubscriptionStatus)
-	assert.Equal(t, "base", resp.Tier.Name)
-	assert.False(t, resp.Tier.PaymentRequired)
-	assert.Nil(t, resp.MercadoPago)
+	assert.Equal(t, int64(9), resp.SubscriptionID)
+	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), resp.SubscriptionStatus)
+	assert.NotNil(t, resp.InstallmentID)
+	assert.Equal(t, 1, *resp.InstallmentNumber)
+	assert.Equal(t, float64(1500), *resp.InstallmentAmount)
+	assert.NotNil(t, resp.MercadoPago)
 }
 
 func TestGetCurrentSubscription_RoleNotAssigned(t *testing.T) {
 	svc := newTierSubscriptionService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, &mockTierSubscriptionDao{}, &mockInstallmentDao{})
-	_, err := svc.GetCurrentSubscription(nil, 1, 1)
+	_, err := svc.GetCurrentSubscription(nil, 1, 1, string(constants.SubscriptionPeriodCurrent))
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "el usuario no tiene asignado este rol")
@@ -425,4 +495,112 @@ func TestChangeTier_PendingFirstPaymentBlocks(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no podés cambiar de tier con el primer pago pendiente")
+}
+
+func TestCancelPendingSubscription_Success(t *testing.T) {
+	setCanceledCalled := false
+	cancelInsCalled := false
+	subDao := &mockTierSubscriptionDao{
+		findPendingByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 7, UserID: userID, RoleID: roleID, TierID: tierID,
+				Status: string(constants.SubscriptionStatusFirstPaymentPending)}, nil
+		},
+		setCanceledFn: func(ctx *gin.Context, id int64) error {
+			setCanceledCalled = true
+			return nil
+		},
+	}
+	insDao := &mockInstallmentDao{
+		cancelPendingBySubFn: func(ctx *gin.Context, subscriptionID int64) error {
+			cancelInsCalled = true
+			return nil
+		},
+	}
+
+	svc := newTierSubscriptionService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, subDao, insDao)
+	resp, err := svc.CancelPendingSubscription(nil, 1, 1, 2)
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, setCanceledCalled)
+	assert.True(t, cancelInsCalled)
+	assert.Equal(t, int64(7), resp.SubscriptionID)
+	assert.Equal(t, string(constants.SubscriptionStatusCanceled), resp.SubscriptionStatus)
+}
+
+func TestCancelPendingSubscription_NotFound(t *testing.T) {
+	subDao := &mockTierSubscriptionDao{
+		findPendingByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return nil, nil
+		},
+		findByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return nil, nil
+		},
+	}
+
+	svc := newTierSubscriptionService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, subDao, &mockInstallmentDao{})
+	_, err := svc.CancelPendingSubscription(nil, 1, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "suscripción no encontrada")
+}
+
+func TestCancelPendingSubscription_NotPending(t *testing.T) {
+	subDao := &mockTierSubscriptionDao{
+		findPendingByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return nil, nil
+		},
+		findByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 8, UserID: userID, RoleID: roleID, TierID: tierID,
+				Status: string(constants.SubscriptionStatusActive)}, nil
+		},
+	}
+
+	svc := newTierSubscriptionService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, subDao, &mockInstallmentDao{})
+	_, err := svc.CancelPendingSubscription(nil, 1, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "la suscripción no está en primer pago pendiente")
+}
+
+func TestCancelPendingSubscription_DBError(t *testing.T) {
+	subDao := &mockTierSubscriptionDao{
+		findPendingByURTFn: func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+			return nil, errors.New("boom")
+		},
+	}
+
+	svc := newTierSubscriptionService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, subDao, &mockInstallmentDao{})
+	_, err := svc.CancelPendingSubscription(nil, 1, 1, 2)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al cancelar la suscripción")
+}
+
+func TestChangeTier_AllowedAfterPendingCanceled(t *testing.T) {
+	urDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{UserID: userID, RoleID: roleID, TierID: 1}, nil
+		},
+	}
+	roleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "corredor"}, nil
+		},
+	}
+	tierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 2, Name: "premium", RoleID: 1, Hierarchy: 3, PaymentRequired: true, TierAmount: 1500}, nil
+		},
+	}
+	// Tras cancelar la pendiente, ya no hay sub vigente (el mock las da de baja).
+	subDao := &mockTierSubscriptionDao{}
+	insDao := &mockInstallmentDao{}
+
+	svc := newTierSubscriptionService(urDao, roleDao, tierDao, subDao, insDao)
+	resp, err := svc.ChangeTier(nil, 1, 1, &tiersubscription.ChangeTierRequest{TierID: 2})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), resp.SubscriptionStatus)
 }

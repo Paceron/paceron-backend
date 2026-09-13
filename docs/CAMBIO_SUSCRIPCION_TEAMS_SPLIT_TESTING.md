@@ -74,17 +74,20 @@ FROM seller_connections WHERE user_id = :entrenador_id;
 
 ## Paso 3 — Seed: equipo con membresía paga
 
-Crear un equipo con `membership_fee > 0`. Puede ser:
+Crear un equipo con `membership_fee > 0`. Se configura por API:
 
-```sql
--- Actualizá un equipo existente (dueño = el entrenador conectado en el paso 2)
-UPDATE teams SET membership_fee = 1500 WHERE id = :team_id AND owner_id = :entrenador_id;
-```
+- `POST /api/v1/teams` con `"membership_fee": 1500` al crear el equipo.
+- O `PUT /api/v1/teams/:id` con `{ "membership_fee": 1500 }` para cambiarlo en un
+  equipo ya existente (si no se manda el campo, queda igual).
 
-O por API → `POST /api/v1/teams` queda con `membership_fee = 0` por defecto; es más cómodo matchear un equipo ya creado y actualizar su `membership_fee`. Confirmá:
+Confirmá:
 ```sql
 SELECT id, name, owner_id, membership_fee FROM teams WHERE id = :team_id;
 ```
+
+> ⚠️ **No retroactivo**: el `init_amount` del corredor se congela al sumarse al
+> equipo; cambiar `membership_fee` afecta solo a futuras membresías, no a cuotas
+> ya generadas.
 
 ---
 

@@ -747,3 +747,44 @@ func TestTeamController_Search_InvalidPage(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "INVALID_QUERY")
 }
+
+func TestTeamController_Create_InvalidMembershipFee(t *testing.T) {
+	mockSvc := &mockTeamService{
+		createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+			return nil, services.ErrInvalidMembershipFee
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	body := `{"name":"Alpha","max_members":20,"membership_fee":-1}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
+
+	controller.Create(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Contains(t, response.Body.String(), "INVALID_MEMBERSHIP_FEE")
+}
+
+func TestTeamController_Update_InvalidMembershipFee(t *testing.T) {
+	mockSvc := &mockTeamService{
+		updateFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamRequest) (*team.TeamResponse, error) {
+			return nil, services.ErrInvalidMembershipFee
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{})
+	response := httptest.NewRecorder()
+	body := `{"membership_fee":-5}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Contains(t, response.Body.String(), "INVALID_MEMBERSHIP_FEE")
+}

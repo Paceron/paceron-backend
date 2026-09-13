@@ -1188,3 +1188,124 @@ func TestTeamService_Search_InvalidPage(t *testing.T) {
 
 	assert.ErrorIs(t, err, ErrInvalidQuery)
 }
+
+func newMembershipFeeCreateService() TeamServiceInterface {
+	mockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Coach"}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	return NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+}
+
+func TestTeamService_Create_MembershipFee(t *testing.T) {
+	svc := newMembershipFeeCreateService()
+	fee := float64(5000)
+	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "Pago", MaxMembers: 10, MembershipFee: &fee})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, float64(5000), resp.MembershipFee)
+}
+
+func TestTeamService_Create_MembershipFee_DefaultZero(t *testing.T) {
+	svc := newMembershipFeeCreateService()
+	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "Gratis", MaxMembers: 10})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, float64(0), resp.MembershipFee)
+}
+
+func TestTeamService_Create_MembershipFee_Negative(t *testing.T) {
+	svc := newMembershipFeeCreateService()
+	negative := float64(-1)
+	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "Invalido", MaxMembers: 10, MembershipFee: &negative})
+
+	assert.ErrorIs(t, err, ErrInvalidMembershipFee)
+}
+
+func TestTeamService_Update_MembershipFee(t *testing.T) {
+	var persistedFee float64
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Equipo", Status: "active", MembershipFee: 1000}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error {
+			persistedFee = t.MembershipFee
+			return nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	fee := float64(8000)
+	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{MembershipFee: &fee})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, float64(8000), persistedFee)
+	assert.Equal(t, float64(8000), resp.MembershipFee)
+}
+
+func TestTeamService_Update_MembershipFee_NotSent(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Equipo", Status: "active", MembershipFee: 5000}, nil
+		},
+		updateFn: func(ctx *gin.Context, team *dbs.Team) error {
+			assert.Equal(t, float64(5000), team.MembershipFee)
+			return nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	newName := "renombrado"
+
+	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, float64(5000), resp.MembershipFee)
+}
+
+func TestTeamService_Update_MembershipFee_Negative(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Equipo", Status: "active"}, nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	negative := float64(-5)
+	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{MembershipFee: &negative})
+
+	assert.ErrorIs(t, err, ErrInvalidMembershipFee)
+}
+
+func TestTeamService_GetByID_IncludesMembershipFee(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Equipo Alpha", Status: "active", MembershipFee: 1500}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	resp, err := svc.GetByID(nil, 1)
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, float64(1500), resp.MembershipFee)
+}

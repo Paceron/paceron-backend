@@ -2724,6 +2724,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/team-configuration": {
+            "get": {
+                "description": "Returns the max members and minimum membership fee allowed for the trainer's tier. Identity comes from the access token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "summary": "Get team configuration by trainer tier",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams": {
             "get": {
                 "description": "Devuelve equipos activos. Sin filtros, todos. owner_id filtra por equipos administrados, member_id por equipos donde el usuario es miembro",
@@ -4814,6 +4840,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/roles/{role_id}/subscriptions/pending": {
+            "delete": {
+                "description": "Cancels the first-payment-pending subscription of a (user, role, tier). Moves the subscription and its pending installments to canceled, freeing the slot to attempt a new tier change.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user-roles"
+                ],
+                "summary": "Cancel a role subscription with pending first payment",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Role ID",
+                        "name": "role_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tier ID of the pending subscription",
+                        "name": "tier_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tiersubscription.CancelSubscriptionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/roles/{role_id}/tier": {
             "put": {
                 "description": "Changes the tier of an assigned role, blocking if there is debt or a pending first payment.",
@@ -4957,21 +5056,28 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/users/{id}/subscriptions/current": {
+        "/api/v1/users/{id}/subscriptions/{period}": {
             "get": {
-                "description": "Returns the current subscription and next installment to pay for the role (Bricks checkout data). Free roles return tier/role only.",
+                "description": "Returns the next installment to pay for the role for the requested period (Bricks checkout data). period=current returns the active subscription; period=next returns the pending first-payment subscription. Empty body (200) when there is no subscription in that state.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "user-roles"
                 ],
-                "summary": "Get current subscription of a role",
+                "summary": "Get subscription of a role for a period",
                 "parameters": [
                     {
                         "type": "integer",
                         "description": "User ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Subscription period: current|next",
+                        "name": "period",
                         "in": "path",
                         "required": true
                     },
@@ -6494,8 +6600,21 @@ const docTemplate = `{
                 "owner_id"
             ],
             "properties": {
+                "clone_description": {
+                    "type": "string"
+                },
+                "clone_name": {
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
+                },
+                "exclude_group_ids": {
+                    "description": "Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,\nsolo se usan en PUT, ignorados en POST).",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "exercises": {
                     "type": "array",
@@ -6563,6 +6682,10 @@ const docTemplate = `{
                     "description": "Cantidad máxima de integrantes (requerido)",
                     "type": "integer"
                 },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor al entrenador (opcional, 0 = gratis, \u003e= 0)",
+                    "type": "number"
+                },
                 "name": {
                     "description": "Nombre del equipo (requerido)",
                     "type": "string"
@@ -6624,6 +6747,10 @@ const docTemplate = `{
                 "max_members": {
                     "description": "Cantidad máxima de integrantes",
                     "type": "integer"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor al entrenador (0 = gratis)",
+                    "type": "number"
                 },
                 "name": {
                     "description": "Nombre del equipo",
@@ -6763,6 +6890,10 @@ const docTemplate = `{
                     "description": "Cantidad máxima de integrantes (opcional)",
                     "type": "integer"
                 },
+                "membership_fee": {
+                    "description": "Mensualidad que paga cada corredor (opcional, \u003e= 0; no es retroactivo sobre membresías existentes)",
+                    "type": "number"
+                },
                 "name": {
                     "description": "Nombre del equipo (opcional)",
                     "type": "string"
@@ -6863,6 +6994,17 @@ const docTemplate = `{
                 },
                 "team": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration": {
+            "type": "object",
+            "properties": {
+                "max_members": {
+                    "type": "integer"
+                },
+                "minimum_fee": {
+                    "type": "number"
                 }
             }
         },
@@ -7064,6 +7206,17 @@ const docTemplate = `{
                 "tier_id": {
                     "description": "ID del tier",
                     "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tiersubscription.CancelSubscriptionResponse": {
+            "type": "object",
+            "properties": {
+                "subscription_id": {
+                    "type": "integer"
+                },
+                "subscription_status": {
+                    "type": "string"
                 }
             }
         },

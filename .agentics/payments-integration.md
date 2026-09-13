@@ -593,7 +593,7 @@ Todas con **CVV `123`** y **vencimiento `11/30`**:
 
 ```
 Frontend                          Backend                          Mercado Pago
-   |  GET /users/:id/subscriptions/current?role_id=X (próxima cuota + public_key)
+   |  GET /users/:id/subscriptions/:period?role_id=X (current → active sub, next → pending sub; cuota + public_key)
    |---------------------------------------------------------------->|
    |<-- { subscription, installment (id, amount, due), tier, role,  |
    |      mercadopago.public_key }                                   |
@@ -615,7 +615,8 @@ Frontend                          Backend                          Mercado Pago
 
 ### Endpoints clave
 
-- `GET /api/v1/users/:id/subscriptions/current?role_id=X` — próxima cuota a pagar (D9). Si el rol es gratis devuelve solo `tier`/`role`; si es pago incluye `installment_id`, `installment_amount`, `next_due_date`, `blocked_date` y `mercadopago.public_key`.
+- `GET /api/v1/users/:id/subscriptions/:period?role_id=X` — sub del período y próxima cuota a pagar (D9): `period=current` → sub `active`; `period=next` → sub `first_payment_pending` (primer pago sin resolver); `200 {}` si no hay sub en ese estado. Si el rol es gratis devuelve solo `tier`/`role`; si es pago incluye `installment_id`, `installment_amount`, `next_due_date`, `blocked_date` y `mercadopago.public_key`. (Antes: `subscriptions/current` fijo.)
+- `DELETE /api/v1/users/:id/roles/:role_id/subscriptions/pending?tier_id=X` — cancela la sub `first_payment_pending` de la terna (X→ `canceled`, cuotas `pending` → `canceled`), liberando el slot del índice único y habilitando reintentar `PUT tier`. `404` si la terna no tiene sub; `409` si la sub no está en `first_payment_pending`.
 - `PUT /api/v1/users/:id/roles/:role_id/tier` — cambia de tier (body `{ "tier_id": int }`). Validaciones D4: asignación previa, mismo rol, **sin deuda** (`DEBT_BLOCKS_OPERATION`), **sin primer pago impago** (`SUBSCRIPTION_PENDING_FIRST_PAYMENT`). Target pago → sub `first_payment_pending` + cuota #1; target gratis → sub `active` + sync inmediato de `user_roles.tier_id`.
 - `POST /api/v1/payments/preference` y `POST /api/v1/payments` — aceptan `installment_id` opcional. Cuando viene, el pago queda ligado a la cuota (`payments.installment_id`).
 - `POST /api/v1/payments/webhook` — al confirmarse `approved` con `installment_id`: marca la cuota `paid` (condicional `WHERE status='pending'`, **idempotente ante doble notificación**), incrementa `paid_installments`, y si fue la cuota #1 activa la suscripción y sincroniza `user_roles.tier_id` → tier pago (D3); luego crea la cuota N+1 en el mismo commit (D6).
