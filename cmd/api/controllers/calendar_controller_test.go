@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -178,4 +179,415 @@ func TestCalendarController_NextSession_OtherUserForbidden(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_NextSession_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/abc/next-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_NextSession_Success(t *testing.T) {
+	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
+		return &calendar.NextSessionResponse{Date: "2026-10-01"}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCalendarController_Bulk_Success(t *testing.T) {
+	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
+		return []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkRequest{Dates: []string{"2026-10-01"}, Kind: "rest"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCalendarController_Bulk_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkRequest{Dates: []string{"2026-10-01"}, Kind: "rest"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/abc/calendar/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Bulk_InvalidPayload(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk", bytes.NewReader([]byte("{invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Bulk_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarInvalidKind
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkRequest{Dates: []string{"2026-10-01"}, Kind: "invalid"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+}
+
+func TestCalendarController_BulkClear_Success(t *testing.T) {
+	svc := &mockCalendarService{bulkClearFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error {
+		return nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkClearRequest{Dates: []string{"2026-10-01"}})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk-clear", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestCalendarController_BulkClear_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkClearRequest{Dates: []string{"2026-10-01"}})
+	req := httptest.NewRequest(http.MethodPost, "/groups/abc/calendar/bulk-clear", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_BulkClear_InvalidPayload(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk-clear", bytes.NewReader([]byte("{invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_BulkClear_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{bulkClearFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error {
+		return services.ErrCalendarForbidden
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.BulkClearRequest{Dates: []string{"2026-10-01"}})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/bulk-clear", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_Shift_Success(t *testing.T) {
+	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
+		return []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/shift", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCalendarController_Shift_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
+	req := httptest.NewRequest(http.MethodPost, "/groups/abc/calendar/shift", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Shift_InvalidPayload(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/shift", bytes.NewReader([]byte("{invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Shift_Collision(t *testing.T) {
+	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarShiftCollision
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/shift", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestCalendarController_CalendarSummary_Success(t *testing.T) {
+	svc := &mockCalendarService{calendarSummaryFn: func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
+		return []calendar.CalendarSummaryItem{{GroupID: 1, GroupName: "Grupo A"}}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/calendar-summary", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCalendarController_CalendarSummary_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/abc/calendar-summary", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_CalendarSummary_OtherUserForbidden(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/99/calendar-summary", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_CalendarSummary_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{calendarSummaryFn: func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
+		return nil, services.ErrCalendarGroupNotFound
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/calendar-summary", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestCalendarController_PutDay_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.CalendarDayRequest{Kind: "rest"})
+	req := httptest.NewRequest(http.MethodPut, "/groups/abc/calendar/2026-10-01", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_PutDay_InvalidDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.CalendarDayRequest{Kind: "rest"})
+	req := httptest.NewRequest(http.MethodPut, "/groups/1/calendar/not-a-date", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_PutDay_InvalidPayload(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPut, "/groups/1/calendar/2026-10-01", bytes.NewReader([]byte("{invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_PutDay_FieldMismatch(t *testing.T) {
+	svc := &mockCalendarService{upsertDayFn: func(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarFieldMismatch
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.CalendarDayRequest{Kind: "rest"})
+	req := httptest.NewRequest(http.MethodPut, "/groups/1/calendar/2026-10-01", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+}
+
+func TestCalendarController_DeleteDay_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/groups/abc/calendar/2026-10-01", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_DeleteDay_InvalidDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/groups/1/calendar/not-a-date", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_DeleteDay_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{deleteDayFn: func(ctx *gin.Context, groupID, callerID int64, date time.Time) error {
+		return services.ErrCalendarPlanNotFound
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/groups/1/calendar/2026-10-01", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestCalendarController_Stamp_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/abc/calendar/stamp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Stamp_InvalidPayload(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader([]byte("{invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_Stamp_PlanForbidden(t *testing.T) {
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarPlanForbidden
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_GetRange_InvalidFromDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/groups/1/calendar?from=not-a-date&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_GetRange_InvalidToDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/groups/1/calendar?from=2026-10-01&to=not-a-date", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_GetRange_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/groups/abc/calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestMapCalendarError_DefaultInternalError(t *testing.T) {
+	status, message := mapCalendarError(errors.New("something unexpected"))
+
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Equal(t, "error interno", message)
+}
+
+func TestMapCalendarError_InvalidCancelTransition(t *testing.T) {
+	status, _ := mapCalendarError(services.ErrCalendarInvalidCancelTransition)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
 }

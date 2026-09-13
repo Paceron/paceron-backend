@@ -11,6 +11,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/calendar"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/trainingplan"
 )
 
 type mockGroupCalendarDao struct {
@@ -384,6 +385,90 @@ func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, resp, 2)
+}
+
+func TestCalendarService_DeleteDay_OwnerSuccess(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	deleted := false
+	calDao := &mockGroupCalendarDao{deleteFn: func(ctx *gin.Context, groupID int64, date time.Time) error {
+		deleted = true
+		return nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	err := svc.DeleteDay(nil, 1, 7, time.Now())
+
+	require.NoError(t, err)
+	assert.True(t, deleted)
+}
+
+func TestCalendarService_DeleteDay_DaoErrorWrapped(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	calDao := &mockGroupCalendarDao{deleteFn: func(ctx *gin.Context, groupID int64, date time.Time) error {
+		return fmt.Errorf("boom")
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	err := svc.DeleteDay(nil, 1, 7, time.Now())
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrCalendarForbidden)
+}
+
+func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+	isPresencial := true
+	presencialTime := "18:30"
+	req := calendar.CalendarDayRequest{
+		Kind: "rest", IsPresencial: &isPresencial, PresencialTime: &presencialTime,
+		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
+	}
+
+	resp, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.IsPresencial)
+	require.NotNil(t, resp.PresencialTime)
+	assert.Equal(t, "18:30", *resp.PresencialTime)
+	require.NotNil(t, resp.PresencialLocation)
+	assert.Equal(t, -34.6, resp.PresencialLocation.Lat)
+}
+
+func TestCalendarService_UpsertDay_PresencialInvalidTimeFormat(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+	isPresencial := true
+	presencialTime := "not-a-time"
+	req := calendar.CalendarDayRequest{
+		Kind: "rest", IsPresencial: &isPresencial, PresencialTime: &presencialTime,
+		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
+	}
+
+	_, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
+
+	require.Error(t, err)
 }
 
 func TestCalendarService_AssignedGroups_Distinct(t *testing.T) {
