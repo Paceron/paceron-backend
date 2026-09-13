@@ -7,10 +7,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"simple-arq-golang/cmd/api/domains/calendar"
 	"simple-arq-golang/cmd/api/domains/session"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
+
+// calendar.CalendarSummaryItem is referenced in AssignedGroups godoc annotations
+var _ = (calendar.CalendarSummaryItem{})
 
 type SessionController interface {
 	Create(c *gin.Context)

@@ -331,6 +331,16 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | PUT | `/api/v1/training-plans/:id` | Update training plan (owner only) |
 | DELETE | `/api/v1/training-plans/:id` | Soft delete training plan (owner only) |
 | POST | `/api/v1/training-plans/:id/clone` | Clone training plan (creates copy with authenticated user as owner) |
+| GET | `/api/v1/groups/:id/calendar` | Group calendar for a date range (required `from`/`to` query params, YYYY-MM-DD format) |
+| PUT | `/api/v1/groups/:id/calendar/:date` | Create or update a day in group calendar (body: `kind`, `session_id` or `rest_kind`, optional `note`) |
+| DELETE | `/api/v1/groups/:id/calendar/:date` | Delete a day from group calendar |
+| POST | `/api/v1/groups/:id/calendar/stamp` | Copy training plan into group calendar (body: `source_plan_id`, optional `start_date`) |
+| POST | `/api/v1/groups/:id/calendar/bulk` | Bulk operation on multiple calendar days (body: `dates`, `action`, `session_id` or `rest_kind`, optional `note`) |
+| POST | `/api/v1/groups/:id/calendar/bulk-clear` | Clear multiple calendar days (body: `dates`) |
+| POST | `/api/v1/groups/:id/calendar/shift` | Shift calendar days by a number of days (body: `from_date`, `to_date`, `shift_days`, optional `exclude_group_ids`) |
+| GET | `/api/v1/users/:id/next-session` | Next session scheduled for the user (self only; returns 204 if no session scheduled) |
+| GET | `/api/v1/users/:id/calendar-summary` | Summary of groups the user belongs to with calendar data (self only) |
+| GET | `/api/v1/sessions/:id/assigned-groups` | List of groups that have this session assigned in their calendar |
 | GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
 | GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
 | GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |

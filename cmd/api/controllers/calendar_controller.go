@@ -63,6 +63,17 @@ func respondCalendarError(c *gin.Context, err error) {
 	respondCatalogError(c, status, message)
 }
 
+// GetRange godoc
+// @Summary      Calendario de un grupo en un rango de fechas
+// @Tags         calendar
+// @Produce      json
+// @Param        id    path   int     true   "Group ID"
+// @Param        from  query  string  true   "Fecha desde (YYYY-MM-DD)"
+// @Param        to    query  string  true   "Fecha hasta (YYYY-MM-DD)"
+// @Success      200  {array}  calendar.CalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/groups/{id}/calendar [get]
 func (cc *calendarController) GetRange(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -93,6 +104,19 @@ func (cc *calendarController) GetRange(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// PutDay godoc
+// @Summary      Crear o actualizar un día en el calendario
+// @Tags         calendar
+// @Accept       json
+// @Produce      json
+// @Param        id    path   int                       true   "Group ID"
+// @Param        date  path   string                    true   "Fecha (YYYY-MM-DD)"
+// @Param        body  body   calendar.CalendarDayRequest  true   "Datos del día"
+// @Success      200  {object}  calendar.CalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Failure      422
+// @Router       /api/v1/groups/{id}/calendar/{date} [put]
 func (cc *calendarController) PutDay(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -118,6 +142,15 @@ func (cc *calendarController) PutDay(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// DeleteDay godoc
+// @Summary      Eliminar un día del calendario
+// @Tags         calendar
+// @Param        id    path  int     true  "Group ID"
+// @Param        date  path  string  true  "Fecha (YYYY-MM-DD)"
+// @Success      204
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/groups/{id}/calendar/{date} [delete]
 func (cc *calendarController) DeleteDay(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -137,6 +170,18 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// Stamp godoc
+// @Summary      Copiar plan al calendario del grupo
+// @Tags         calendar
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                    true  "Group ID"
+// @Param        body  body  calendar.StampRequest  true  "Datos del stamp"
+// @Success      201  {array}  calendar.CalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Failure      409
+// @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -157,6 +202,18 @@ func (cc *calendarController) Stamp(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// Bulk godoc
+// @Summary      Operación masiva de días en el calendario
+// @Tags         calendar
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                   true  "Group ID"
+// @Param        body  body  calendar.BulkRequest  true  "Datos de la operación"
+// @Success      200  {array}  calendar.CalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Failure      422
+// @Router       /api/v1/groups/{id}/calendar/bulk [post]
 func (cc *calendarController) Bulk(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -177,6 +234,17 @@ func (cc *calendarController) Bulk(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// BulkClear godoc
+// @Summary      Limpiar múltiples días del calendario
+// @Tags         calendar
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                       true  "Group ID"
+// @Param        body  body  calendar.BulkClearRequest  true  "Datos de limpiar"
+// @Success      204
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/groups/{id}/calendar/bulk-clear [post]
 func (cc *calendarController) BulkClear(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -196,6 +264,18 @@ func (cc *calendarController) BulkClear(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// Shift godoc
+// @Summary      Desplazar días del calendario
+// @Tags         calendar
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                   true  "Group ID"
+// @Param        body  body  calendar.ShiftRequest  true  "Datos del desplazamiento"
+// @Success      200  {array}  calendar.CalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Failure      409
+// @Router       /api/v1/groups/{id}/calendar/shift [post]
 func (cc *calendarController) Shift(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -216,6 +296,16 @@ func (cc *calendarController) Shift(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// NextSession godoc
+// @Summary      Próxima sesión del usuario
+// @Tags         calendar
+// @Produce      json
+// @Param        id  path  int  true  "User ID"
+// @Success      200  {object}  calendar.NextSessionResponse
+// @Success      204
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/next-session [get]
 func (cc *calendarController) NextSession(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -239,6 +329,15 @@ func (cc *calendarController) NextSession(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// CalendarSummary godoc
+// @Summary      Resumen de calendario del usuario
+// @Tags         calendar
+// @Produce      json
+// @Param        id  path  int  true  "User ID"
+// @Success      200  {array}  calendar.CalendarSummaryItem
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/calendar-summary [get]
 func (cc *calendarController) CalendarSummary(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

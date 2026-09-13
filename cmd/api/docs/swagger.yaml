@@ -166,6 +166,132 @@ definitions:
       user_id:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_calendar.BulkClearRequest:
+    properties:
+      dates:
+        items:
+          type: string
+        type: array
+    required:
+    - dates
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.BulkRequest:
+    properties:
+      dates:
+        items:
+          type: string
+        type: array
+      is_presencial:
+        type: boolean
+      kind:
+        type: string
+      other_name:
+        type: string
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time:
+        type: string
+      session_id:
+        type: integer
+    required:
+    - dates
+    - kind
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.CalendarDayRequest:
+    properties:
+      cancelled_reason:
+        type: string
+      is_presencial:
+        type: boolean
+      kind:
+        type: string
+      other_name:
+        type: string
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time:
+        type: string
+      session_id:
+        type: integer
+    required:
+    - kind
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse:
+    properties:
+      cancelled_reason:
+        type: string
+      created_at:
+        type: string
+      date:
+        description: '"YYYY-MM-DD"'
+        type: string
+      group_id:
+        type: integer
+      id:
+        type: integer
+      is_presencial:
+        type: boolean
+      kind:
+        type: string
+      other_name:
+        type: string
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time:
+        type: string
+      session_id:
+        type: integer
+      source_plan_id:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem:
+    properties:
+      group_id:
+        type: integer
+      group_name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse:
+    properties:
+      date:
+        type: string
+      group_id:
+        type: integer
+      is_presencial:
+        type: boolean
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time:
+        type: string
+      session_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.ShiftRequest:
+    properties:
+      days:
+        type: integer
+      from_date:
+        description: '"YYYY-MM-DD"'
+        type: string
+    required:
+    - days
+    - from_date
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.StampRequest:
+    properties:
+      force:
+        type: boolean
+      plan_id:
+        type: integer
+      start_date:
+        description: '"YYYY-MM-DD"'
+        type: string
+    required:
+    - plan_id
+    - start_date
+    type: object
   simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest:
     properties:
       description:
@@ -2255,6 +2381,229 @@ paths:
       summary: Actualizar grupo
       tags:
       - groups
+  /api/v1/groups/{id}/calendar:
+    get:
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fecha desde (YYYY-MM-DD)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Fecha hasta (YYYY-MM-DD)
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Calendario de un grupo en un rango de fechas
+      tags:
+      - calendar
+  /api/v1/groups/{id}/calendar/{date}:
+    delete:
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fecha (YYYY-MM-DD)
+        in: path
+        name: date
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Eliminar un día del calendario
+      tags:
+      - calendar
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fecha (YYYY-MM-DD)
+        in: path
+        name: date
+        required: true
+        type: string
+      - description: Datos del día
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "422":
+          description: Unprocessable Entity
+      summary: Crear o actualizar un día en el calendario
+      tags:
+      - calendar
+  /api/v1/groups/{id}/calendar/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos de la operación
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.BulkRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "422":
+          description: Unprocessable Entity
+      summary: Operación masiva de días en el calendario
+      tags:
+      - calendar
+  /api/v1/groups/{id}/calendar/bulk-clear:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos de limpiar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.BulkClearRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Limpiar múltiples días del calendario
+      tags:
+      - calendar
+  /api/v1/groups/{id}/calendar/shift:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del desplazamiento
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.ShiftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "409":
+          description: Conflict
+      summary: Desplazar días del calendario
+      tags:
+      - calendar
+  /api/v1/groups/{id}/calendar/stamp:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Group ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del stamp
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.StampRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+        "409":
+          description: Conflict
+      summary: Copiar plan al calendario del grupo
+      tags:
+      - calendar
   /api/v1/groups/{id}/users:
     get:
       description: Devuelve todos los miembros activos de un grupo. Solo un miembro
@@ -3439,6 +3788,30 @@ paths:
         "422":
           description: Unprocessable Entity
       summary: Actualizar sesión
+      tags:
+      - sessions
+  /api/v1/sessions/{id}/assigned-groups:
+    get:
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem'
+            type: array
+        "400":
+          description: Bad Request
+        "500":
+          description: Internal Server Error
+      summary: Grupos con calendario asignados a una sesión
       tags:
       - sessions
   /api/v1/sessions/{id}/clone:
@@ -4647,6 +5020,54 @@ paths:
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/calendar-summary:
+    get:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Resumen de calendario del usuario
+      tags:
+      - calendar
+  /api/v1/users/{id}/next-session:
+    get:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse'
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Próxima sesión del usuario
+      tags:
+      - calendar
   /api/v1/users/{id}/password:
     patch:
       consumes:
