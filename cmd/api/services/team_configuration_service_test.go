@@ -12,11 +12,6 @@ import (
 )
 
 func TestTeamConfigurationService_PremiumViaActiveSubscription(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 7, Status: "active"}, nil
-		},
-	}
 	mockRoleDao := &mockRoleDao{
 		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
 			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
@@ -33,19 +28,14 @@ func TestTeamConfigurationService_PremiumViaActiveSubscription(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamConfigurationService(mockTeamDao, mockRoleDao, &mockUserRoleDao{}, mockSubDao, mockTierDao)
-	cfg, err := svc.GetTeamConfiguration(nil, 7, 3)
+	svc := NewTeamConfigurationService(mockRoleDao, &mockUserRoleDao{}, mockSubDao, mockTierDao)
+	cfg, err := svc.GetTeamConfiguration(nil, 7)
 
 	require.NoError(t, err)
 	assert.Equal(t, &teamconfiguration.TeamConfiguration{MaxMembers: 50, MinimumFee: 20000}, cfg)
 }
 
 func TestTeamConfigurationService_BaseViaUserRoleTier(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 1, Status: "active"}, nil
-		},
-	}
 	mockRoleDao := &mockRoleDao{
 		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
 			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
@@ -62,83 +52,42 @@ func TestTeamConfigurationService_BaseViaUserRoleTier(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamConfigurationService(mockTeamDao, mockRoleDao, mockUserRoleDao, &mockTierSubscriptionDao{}, mockTierDao)
-	cfg, err := svc.GetTeamConfiguration(nil, 1, 10)
+	svc := NewTeamConfigurationService(mockRoleDao, mockUserRoleDao, &mockTierSubscriptionDao{}, mockTierDao)
+	cfg, err := svc.GetTeamConfiguration(nil, 1)
 
 	require.NoError(t, err)
 	assert.Equal(t, &teamconfiguration.TeamConfiguration{MaxMembers: 10, MinimumFee: 20000}, cfg)
 }
 
-func TestTeamConfigurationService_TeamNotFound(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return nil, nil
-		},
-	}
-	svc := NewTeamConfigurationService(mockTeamDao, &mockRoleDao{}, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
-
-	_, err := svc.GetTeamConfiguration(nil, 1, 999)
-
-	assert.ErrorIs(t, err, ErrTeamNotFound)
-}
-
-func TestTeamConfigurationService_NotOwner(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 7, Status: "active"}, nil
-		},
-	}
-	svc := NewTeamConfigurationService(mockTeamDao, &mockRoleDao{}, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
-
-	_, err := svc.GetTeamConfiguration(nil, 1, 3)
-
-	assert.ErrorIs(t, err, ErrTeamNotOwner)
-}
-
 func TestTeamConfigurationService_RoleEntrenadorMissingReturnsDefault(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 5, Status: "active"}, nil
-		},
-	}
 	mockRoleDao := &mockRoleDao{
 		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
 			return nil, nil
 		},
 	}
-	svc := NewTeamConfigurationService(mockTeamDao, mockRoleDao, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
+	svc := NewTeamConfigurationService(mockRoleDao, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
 
-	cfg, err := svc.GetTeamConfiguration(nil, 5, 3)
+	cfg, err := svc.GetTeamConfiguration(nil, 5)
 
 	require.NoError(t, err)
 	assert.Equal(t, &teamconfiguration.TeamConfiguration{MaxMembers: 10, MinimumFee: 20000}, cfg)
 }
 
 func TestTeamConfigurationService_NoSubNoUserRoleReturnsDefault(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 5, Status: "active"}, nil
-		},
-	}
 	mockRoleDao := &mockRoleDao{
 		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
 			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
-	svc := NewTeamConfigurationService(mockTeamDao, mockRoleDao, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
-	cfg, err := svc.GetTeamConfiguration(nil, 5, 3)
+	svc := NewTeamConfigurationService(mockRoleDao, &mockUserRoleDao{}, &mockTierSubscriptionDao{}, &mockTierDao{})
+	cfg, err := svc.GetTeamConfiguration(nil, 5)
 
 	require.NoError(t, err)
 	assert.Equal(t, &teamconfiguration.TeamConfiguration{MaxMembers: 10, MinimumFee: 20000}, cfg)
 }
 
 func TestTeamConfigurationService_UnknownTierReturnsDefault(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 5, Status: "active"}, nil
-		},
-	}
 	mockRoleDao := &mockRoleDao{
 		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
 			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
@@ -154,9 +103,9 @@ func TestTeamConfigurationService_UnknownTierReturnsDefault(t *testing.T) {
 			return &dbs.Tier{ID: id, Name: "tier_desconocido"}, nil
 		},
 	}
-	svc := NewTeamConfigurationService(mockTeamDao, mockRoleDao, mockUserRoleDao, &mockTierSubscriptionDao{}, mockTierDao)
+	svc := NewTeamConfigurationService(mockRoleDao, mockUserRoleDao, &mockTierSubscriptionDao{}, mockTierDao)
 
-	cfg, err := svc.GetTeamConfiguration(nil, 5, 3)
+	cfg, err := svc.GetTeamConfiguration(nil, 5)
 
 	require.NoError(t, err)
 	assert.Equal(t, &teamconfiguration.TeamConfiguration{MaxMembers: 10, MinimumFee: 20000}, cfg)

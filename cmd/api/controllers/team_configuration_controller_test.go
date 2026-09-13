@@ -10,114 +10,55 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"simple-arq-golang/cmd/api/domains/teamconfiguration"
-	"simple-arq-golang/cmd/api/services"
 )
 
 type mockTeamConfigurationService struct {
-	getTeamConfigurationFn func(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error)
+	getTeamConfigurationFn func(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error)
 }
 
-func (m *mockTeamConfigurationService) GetTeamConfiguration(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error) {
+func (m *mockTeamConfigurationService) GetTeamConfiguration(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error) {
 	if m.getTeamConfigurationFn != nil {
-		return m.getTeamConfigurationFn(ctx, userID, teamID)
+		return m.getTeamConfigurationFn(ctx, userID)
 	}
 	return nil, nil
 }
 
-func setupTeamConfigurationRequest(response *httptest.ResponseRecorder, url string, authUserID int64) *gin.Context {
-	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, url, nil)
-	if authUserID > 0 {
-		setAuthUserID(c, authUserID)
-	}
-	return c
-}
-
 func TestTeamConfigurationController_Success(t *testing.T) {
+	capturedUserID := int64(0)
 	mockSvc := &mockTeamConfigurationService{
-		getTeamConfigurationFn: func(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error) {
+		getTeamConfigurationFn: func(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error) {
+			capturedUserID = userID
 			return &teamconfiguration.TeamConfiguration{MaxMembers: 50, MinimumFee: 20000}, nil
 		},
 	}
 	controller := NewTeamConfigurationController(mockSvc)
 	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=7&team_id=3", 7)
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/team-configuration", nil)
+	setAuthUserID(c, 7)
 
 	controller.GetTeamConfiguration(c)
 
 	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, int64(7), capturedUserID)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equal(t, float64(50), body["max_members"])
 	assert.Equal(t, float64(20000), body["minimum_fee"])
 }
 
-func TestTeamConfigurationController_MissingUserID(t *testing.T) {
-	controller := NewTeamConfigurationController(&mockTeamConfigurationService{})
-	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?team_id=3", 1)
-
-	controller.GetTeamConfiguration(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestTeamConfigurationController_MissingTeamID(t *testing.T) {
-	controller := NewTeamConfigurationController(&mockTeamConfigurationService{})
-	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=1", 1)
-
-	controller.GetTeamConfiguration(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestTeamConfigurationController_InvalidUserID(t *testing.T) {
-	controller := NewTeamConfigurationController(&mockTeamConfigurationService{})
-	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=abc&team_id=3", 1)
-
-	controller.GetTeamConfiguration(c)
-
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-func TestTeamConfigurationController_SelfOnlyForbidden(t *testing.T) {
-	controller := NewTeamConfigurationController(&mockTeamConfigurationService{})
-	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=7&team_id=3", 99)
-
-	controller.GetTeamConfiguration(c)
-
-	assert.Equal(t, http.StatusForbidden, response.Code)
-}
-
-func TestTeamConfigurationController_TeamNotFound(t *testing.T) {
+func TestTeamConfigurationController_NoAuthUserIDReturnsUnauthorized(t *testing.T) {
 	mockSvc := &mockTeamConfigurationService{
-		getTeamConfigurationFn: func(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error) {
-			return nil, services.ErrTeamNotFound
+		getTeamConfigurationFn: func(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error) {
+			return &teamconfiguration.TeamConfiguration{MaxMembers: 10, MinimumFee: 20000}, nil
 		},
 	}
 	controller := NewTeamConfigurationController(mockSvc)
 	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=1&team_id=999", 1)
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/team-configuration", nil)
 
 	controller.GetTeamConfiguration(c)
 
-	assert.Equal(t, http.StatusNotFound, response.Code)
-}
-
-func TestTeamConfigurationController_NotOwner(t *testing.T) {
-	mockSvc := &mockTeamConfigurationService{
-		getTeamConfigurationFn: func(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error) {
-			return nil, services.ErrTeamNotOwner
-		},
-	}
-	controller := NewTeamConfigurationController(mockSvc)
-	response := httptest.NewRecorder()
-	c := setupTeamConfigurationRequest(response, "/api/v1/team-configuration?user_id=1&team_id=3", 1)
-
-	controller.GetTeamConfiguration(c)
-
-	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
 }

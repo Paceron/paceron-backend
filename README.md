@@ -306,7 +306,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | POST | `/api/v1/invitations/:id/reject` | Invitee rejects an invitation |
 | GET | `/api/v1/teams/search` | Search public/visible teams by name/level/location (excludes teams where caller is already member; paginated) |
 | POST | `/api/v1/teams/:id/join-requests` | Request to join a public team (caller becomes pending member; fails if already member or team full) |
-| GET | `/api/v1/team-configuration` | Get team creation config by trainer tier: `max_members` and `minimum_fee` (query `user_id`, `team_id`; entrenador must own the team) |
+| GET | `/api/v1/team-configuration` | Get team creation config by trainer tier: `max_members` and `minimum_fee` (identity from the access token) |
 | GET | `/api/v1/teams/:id/join-requests` | List pending join requests for a team (entrenador of the team only) |
 | GET | `/api/v1/join-requests/mine` | List the authenticated user's sent join requests |
 | POST | `/api/v1/join-requests/:id/accept` | Accept a join request for your team (entrenador only; joins runner and optionally adds to default group) |

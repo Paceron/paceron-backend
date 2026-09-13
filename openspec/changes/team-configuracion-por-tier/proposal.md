@@ -4,12 +4,12 @@ Cuando el frontend arma/edita un equipo necesita saber cuántos integrantes máx
 
 ## What Changes
 
-- **Nuevo endpoint `GET /api/v1/team-configuration`** (autenticado): recibe `user_id` (entrenador) y `team_id` por query y devuelve la configuración según el tier del entrenador:
+- **Nuevo endpoint `GET /api/v1/team-configuration`** (autenticado, sin params): devuelve la configuración según el tier del **entrenador logueado** (identidad tomada del access token):
   - `max_members`: cantidad máxima de integrantes.
   - `minimum_fee`: valor mínimo de `membership_fee`.
 - **Hashmap en código** (`cmd/api/domains/teamconfiguration`): tier → configuración. Si el tier no está en el mapa (o el usuario no tiene tier resuelto), devuelve el **default**: `max_members = 10`, `minimum_fee = 20000`.
 - El **tier se resuelve igual que `GET /users/:id/subscriptions/current`** para el rol "entrenador": suscripción vigente (`user_role_tier_subscriptions.active/first_payment_pending`) si existe; si no, el tier asignado en `user_roles.tier_id`.
-- Se **valida que el entrenador sea dueño del equipo** (`teams.owner_id == user_id`); si el equipo no existe → `404`, si no es dueño → `403`.
+- No requiere `team_id` ni `user_id`: no hay validación de equipo (la config es del entrenador, no de un equipo puntual).
 
 ## Capabilities
 

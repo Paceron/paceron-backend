@@ -2955,18 +2955,7 @@ paths:
   /api/v1/team-configuration:
     get:
       description: Returns the max members and minimum membership fee allowed for
-        the trainer's tier, validated against a team they own.
-      parameters:
-      - description: User ID (the trainer)
-        in: query
-        name: user_id
-        required: true
-        type: integer
-      - description: Team ID
-        in: query
-        name: team_id
-        required: true
-        type: integer
+        the trainer's tier. Identity comes from the access token.
       produces:
       - application/json
       responses:
@@ -2974,18 +2963,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:

@@ -246,7 +246,7 @@ func NewApplication() *Application {
 	teamSubscriptionController := controllers.NewTeamSubscriptionController(teamSubscriptionService)
 
 	// Team Configuration flow (configuración por tier del entrenador)
-	teamConfigurationService := services.NewTeamConfigurationService(teamDao, roleDao, userRoleDao, tierSubscriptionDao, tierDao)
+	teamConfigurationService := services.NewTeamConfigurationService(roleDao, userRoleDao, tierSubscriptionDao, tierDao)
 	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
 
 	return &Application{

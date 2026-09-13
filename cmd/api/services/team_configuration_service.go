@@ -1,7 +1,6 @@
 package services
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -11,17 +10,13 @@ import (
 	"simple-arq-golang/cmd/api/domains/teamconfiguration"
 )
 
-// ErrTeamNotOwner indica que el usuario no es el dueño del equipo.
-var ErrTeamNotOwner = errors.New("solo el dueño del equipo puede consultar su configuración")
-
 // TeamConfigurationServiceInterface devuelve la configuración de creación/
 // edición de equipos según el tier del entrenador (rol "entrenador").
 type TeamConfigurationServiceInterface interface {
-	GetTeamConfiguration(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error)
+	GetTeamConfiguration(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error)
 }
 
 type teamConfigurationService struct {
-	teamDao     daos.TeamDaoInterface
 	roleDao     daos.RoleDaoInterface
 	userRoleDao daos.UserRoleDaoInterface
 	tierSubDao  daos.TierSubscriptionDaoInterface
@@ -29,14 +24,12 @@ type teamConfigurationService struct {
 }
 
 func NewTeamConfigurationService(
-	teamDao daos.TeamDaoInterface,
 	roleDao daos.RoleDaoInterface,
 	userRoleDao daos.UserRoleDaoInterface,
 	tierSubDao daos.TierSubscriptionDaoInterface,
 	tierDao daos.TierDaoInterface,
 ) TeamConfigurationServiceInterface {
 	return &teamConfigurationService{
-		teamDao:     teamDao,
 		roleDao:     roleDao,
 		userRoleDao: userRoleDao,
 		tierSubDao:  tierSubDao,
@@ -44,22 +37,11 @@ func NewTeamConfigurationService(
 	}
 }
 
-// GetTeamConfiguration resuelve la config de equipo del entrenador: valida que
-// sea dueño del equipo y devuelve el hashmap según su tier. El tier se resuelve
-// igual que GetCurrentSubscription (suscripción vigente → user_roles.tier_id);
-// si no hay tier resuelto o el tier no está en el mapa, devuelve el default.
-func (s *teamConfigurationService) GetTeamConfiguration(ctx *gin.Context, userID, teamID int64) (*teamconfiguration.TeamConfiguration, error) {
-	team, err := s.teamDao.FindByID(ctx, teamID)
-	if err != nil {
-		return nil, fmt.Errorf("error al obtener la configuración")
-	}
-	if team == nil {
-		return nil, ErrTeamNotFound
-	}
-	if team.OwnerID != userID {
-		return nil, ErrTeamNotOwner
-	}
-
+// GetTeamConfiguration resuelve la config de equipo del entrenador (identidad
+// tomada del access token) según su tier. El tier se resuelve igual que
+// GetCurrentSubscription (suscripción vigente → user_roles.tier_id); si no hay
+// tier resuelto o el tier no está en el mapa, devuelve el default.
+func (s *teamConfigurationService) GetTeamConfiguration(ctx *gin.Context, userID int64) (*teamconfiguration.TeamConfiguration, error) {
 	tier, err := s.resolveEntrenadorTier(ctx, userID)
 	if err != nil {
 		return nil, err
