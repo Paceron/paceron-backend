@@ -474,8 +474,9 @@ func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) 
 	group := &dbs.Group{Name: "Grupo autolock presencial", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 
-	today := time.Now().Truncate(24 * time.Hour)
-	past := time.Now().Add(-2 * time.Hour)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	past := now.Add(-2 * time.Hour)
 	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
 		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTime: &presencialTime, SessionID: &original.ID,
@@ -529,7 +530,8 @@ func TestSessionService_Update_TodayAsyncAlwaysLocks(t *testing.T) {
 	group := &dbs.Group{Name: "Grupo autolock async", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 
-	today := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
 		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: false, SessionID: &original.ID,
 	}))
