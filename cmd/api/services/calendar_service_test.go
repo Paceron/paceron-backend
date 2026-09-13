@@ -24,6 +24,8 @@ type mockGroupCalendarDao struct {
 	clearSourcePlanFn             func(ctx *gin.Context, planID int64) error
 	repointSessionForGroupsFn     func(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
 	updateDatesForShiftFn         func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	findBySessionIDFn             func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
+	repointDaysByIDFn             func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -84,6 +86,18 @@ func (m *mockGroupCalendarDao) RepointSessionForGroups(ctx *gin.Context, groupID
 func (m *mockGroupCalendarDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
 	if m.updateDatesForShiftFn != nil {
 		return m.updateDatesForShiftFn(ctx, groupID, oldDate, newDate)
+	}
+	return nil
+}
+func (m *mockGroupCalendarDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+	if m.findBySessionIDFn != nil {
+		return m.findBySessionIDFn(ctx, sessionID)
+	}
+	return nil, nil
+}
+func (m *mockGroupCalendarDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+	if m.repointDaysByIDFn != nil {
+		return m.repointDaysByIDFn(ctx, dayIDs, newSessionID)
 	}
 	return nil
 }

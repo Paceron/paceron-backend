@@ -197,4 +197,45 @@ func TestGroupCalendarDayDao_UpdateDatesForShift(t *testing.T) {
 	require.NotNil(t, newFound)
 }
 
+func TestGroupCalendarDayDao_FindBySessionID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group1 := setupCalendarGroup(t, db, "13")
+	group2 := setupCalendarGroup(t, db, "14")
+	sessionID := int64(77)
+	otherSessionID := int64(78)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2027, 2, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 3, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &otherSessionID}))
+
+	found, err := dao.FindBySessionID(nil, sessionID)
+
+	require.NoError(t, err)
+	assert.Len(t, found, 2)
+}
+
+func TestGroupCalendarDayDao_RepointDaysByID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "15")
+	oldSessionID := int64(80)
+	newSessionID := int64(81)
+	date1 := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	date2 := time.Date(2027, 3, 2, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date1, Kind: "training", SessionID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date2, Kind: "training", SessionID: &oldSessionID}))
+	day1, err := dao.FindByGroupAndDate(nil, group.ID, date1)
+	require.NoError(t, err)
+
+	err = dao.RepointDaysByID(nil, []int64{day1.ID}, newSessionID)
+
+	require.NoError(t, err)
+	found1, _ := dao.FindByGroupAndDate(nil, group.ID, date1)
+	require.NotNil(t, found1.SessionID)
+	assert.Equal(t, newSessionID, *found1.SessionID)
+	found2, _ := dao.FindByGroupAndDate(nil, group.ID, date2)
+	require.NotNil(t, found2.SessionID)
+	assert.Equal(t, oldSessionID, *found2.SessionID, "el día no listado en dayIDs debe quedar intacto, aunque comparta group_id y session_id viejo")
+}
+
 func strPtrCal(s string) *string { return &s }

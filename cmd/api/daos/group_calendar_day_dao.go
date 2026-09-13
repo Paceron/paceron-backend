@@ -21,6 +21,8 @@ type GroupCalendarDaoInterface interface {
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	RepointSessionForGroups(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
+	RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
 }
 
 type groupCalendarDayDao struct {
@@ -127,4 +129,20 @@ func (d *groupCalendarDayDao) RepointSessionForGroups(ctx *gin.Context, groupIDs
 
 func (d *groupCalendarDayDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("group_id = ? AND date = ?", groupID, oldDate).Update("date", newDate).Error
+}
+
+func (d *groupCalendarDayDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Where("session_id = ?", sessionID).Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding calendar days by session: %w", err)
+	}
+	return days, nil
+}
+
+func (d *groupCalendarDayDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+	if len(dayIDs) == 0 {
+		return nil
+	}
+	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id IN ?", dayIDs).Update("session_id", newSessionID).Error
 }

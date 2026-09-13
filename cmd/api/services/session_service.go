@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -172,7 +173,33 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 		return nil, err
 	}
 
-	if req.ExcludeGroupIDs == nil || len(*req.ExcludeGroupIDs) == 0 {
+	referencingDays, err := s.groupCalendarDayDao.FindBySessionID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding calendar days referencing session", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión")
+	}
+
+	excludeGroupIDs := []int64{}
+	if req.ExcludeGroupIDs != nil {
+		excludeGroupIDs = *req.ExcludeGroupIDs
+	}
+	excludeSet := make(map[int64]bool, len(excludeGroupIDs))
+	for _, gid := range excludeGroupIDs {
+		excludeSet[gid] = true
+	}
+
+	now := time.Now()
+	var autoClosedDayIDs []int64
+	for _, day := range referencingDays {
+		if excludeSet[day.GroupID] {
+			continue
+		}
+		if isCalendarDayClosed(day, now) {
+			autoClosedDayIDs = append(autoClosedDayIDs, day.ID)
+		}
+	}
+
+	if len(excludeGroupIDs) == 0 && len(autoClosedDayIDs) == 0 {
 		existing.Name = req.Name
 		existing.Description = req.Description
 		if err := s.sessionDao.Update(ctx, existing); err != nil {
@@ -186,7 +213,6 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 		return s.toResponse(ctx, existing)
 	}
 
-	excludeGroupIDs := *req.ExcludeGroupIDs
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txSessionDao := daos.NewSessionDao(tx)
 		txSessionExerciseDao := daos.NewSessionExerciseDao(tx)
@@ -196,8 +222,15 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 		if err != nil {
 			return err
 		}
-		if err := txCalendarDao.RepointSessionForGroups(ctx, excludeGroupIDs, id, clone.ID); err != nil {
-			return fmt.Errorf("error al repuntear grupos excluidos")
+		if len(excludeGroupIDs) > 0 {
+			if err := txCalendarDao.RepointSessionForGroups(ctx, excludeGroupIDs, id, clone.ID); err != nil {
+				return fmt.Errorf("error al repuntear grupos excluidos")
+			}
+		}
+		if len(autoClosedDayIDs) > 0 {
+			if err := txCalendarDao.RepointDaysByID(ctx, autoClosedDayIDs, clone.ID); err != nil {
+				return fmt.Errorf("error al repuntear días ya cerrados")
+			}
 		}
 		existing.Name = req.Name
 		existing.Description = req.Description
@@ -211,6 +244,28 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 		return nil, fmt.Errorf("error al editar sesión con exclusión de grupos")
 	}
 	return s.toResponse(ctx, existing)
+}
+
+// isCalendarDayClosed decide si un GroupCalendarDay ya no debe recibir la
+// edición en vivo de la sesión que referencia — ver D13 del change de
+// calendario. Sin cron: se calcula al vuelo contra `now` en cada PUT.
+func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
+	if dayDate.Before(today) {
+		return true
+	}
+	if dayDate.After(today) {
+		return false
+	}
+	if !day.IsPresencial {
+		return true
+	}
+	if day.PresencialTime == nil {
+		return false
+	}
+	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTime.Hour(), day.PresencialTime.Minute(), 0, 0, now.Location())
+	return !now.Before(threshold)
 }
 
 func (s *sessionService) Delete(ctx *gin.Context, id, callerID int64) error {

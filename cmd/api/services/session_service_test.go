@@ -331,3 +331,284 @@ func TestSessionService_Update_WithExcludeGroupIDs_ClonesAndRepoints(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, newName, updatedOriginal.Name)
 }
+
+// TestSessionService_Update_AutoLocksPastDayWithoutExclusion prueba contra
+// Postgres real: el día ya pasado dispara la rama de divergencia (igual que
+// exclude_group_ids) aunque el llamado no incluya ningún grupo excluido —
+// no es mockeable de forma significativa porque, una vez dentro de
+// s.db.Transaction, Update usa DAOs frescas atadas a la tx (mismo motivo que
+// TestSessionService_Update_WithExcludeGroupIDs_ClonesAndRepoints).
+func TestSessionService_Update_AutoLocksPastDayWithoutExclusion(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	exerciseDao := daos.NewExerciseDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, calendarDao, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "session-autolock-past-owner@test.com", DNI: "50000092", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	warmup := &dbs.Exercise{OwnerID: owner.ID, Name: "Trote", Kind: "jogging"}
+	require.NoError(t, db.Create(warmup).Error)
+	main := &dbs.Exercise{OwnerID: owner.ID, Name: "Serie", Kind: "running"}
+	require.NoError(t, db.Create(main).Error)
+	cooldown := &dbs.Exercise{OwnerID: owner.ID, Name: "Elongación", Kind: "elongation"}
+	require.NoError(t, db.Create(cooldown).Error)
+
+	original := &dbs.Session{OwnerID: owner.ID, Name: "Sesión original"}
+	require.NoError(t, sessionDao.Create(nil, original))
+	require.NoError(t, sessionExerciseDao.ReplaceForSession(nil, original.ID, []dbs.SessionExercise{
+		{ExerciseID: warmup.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0},
+		{ExerciseID: main.ID, Role: "main", RepeatCount: 3, RestMinutes: 2},
+		{ExerciseID: cooldown.ID, Role: "cooldown", RepeatCount: 1, RestMinutes: 0},
+	}))
+
+	team := &dbs.Team{Name: "Equipo autolock past", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo autolock past", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	pastDate := time.Now().AddDate(0, 0, -3).Truncate(24 * time.Hour)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", IsPresencial: false, SessionID: &original.ID}))
+
+	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
+		OwnerID: owner.ID, Name: "Editada",
+		Exercises: []session.SessionExerciseRequest{
+			{ExerciseID: warmup.ID, Role: "warmup"},
+			{ExerciseID: main.ID, Role: "main"},
+			{ExerciseID: cooldown.ID, Role: "cooldown"},
+		},
+	})
+
+	require.NoError(t, err)
+	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
+	require.NoError(t, err)
+	require.NotNil(t, pastDay.SessionID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe auto-clonarse aunque no venga en exclude_group_ids")
+}
+
+func TestSessionService_Update_FutureDayStaysLiveWithoutExclusion(t *testing.T) {
+	futureDate := time.Now().AddDate(0, 0, 5)
+	repointCalled := false
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 502, GroupID: 1, Date: futureDate, Kind: "training", IsPresencial: false}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointCalled = true
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+	}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, exerciseDao, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.False(t, repointCalled, "un día futuro no debe clonarse ni entrar a la transacción")
+}
+
+func TestSessionService_Update_TodayPresencialBeforeStartTimeStaysLive(t *testing.T) {
+	future := time.Now().Add(2 * time.Hour)
+	presencialTime := time.Date(0, 1, 1, future.Hour(), future.Minute(), 0, 0, time.UTC)
+	repointCalled := false
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 503, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: true, PresencialTime: &presencialTime}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointCalled = true
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+	}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, exerciseDao, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.False(t, repointCalled, "presencial de hoy antes de su horario sigue en vivo")
+}
+
+// TestSessionService_Update_TodayPresencialAfterStartTimeLocks — mismo motivo
+// que TestSessionService_Update_AutoLocksPastDayWithoutExclusion para usar
+// Postgres real en vez de mocks: la rama de auto-lock corre dentro de
+// s.db.Transaction con DAOs frescas atadas a la tx.
+func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	exerciseDao := daos.NewExerciseDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, calendarDao, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "session-autolock-presencial-owner@test.com", DNI: "50000093", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	warmup := &dbs.Exercise{OwnerID: owner.ID, Name: "Trote", Kind: "jogging"}
+	require.NoError(t, db.Create(warmup).Error)
+	main := &dbs.Exercise{OwnerID: owner.ID, Name: "Serie", Kind: "running"}
+	require.NoError(t, db.Create(main).Error)
+	cooldown := &dbs.Exercise{OwnerID: owner.ID, Name: "Elongación", Kind: "elongation"}
+	require.NoError(t, db.Create(cooldown).Error)
+
+	original := &dbs.Session{OwnerID: owner.ID, Name: "Sesión original"}
+	require.NoError(t, sessionDao.Create(nil, original))
+	require.NoError(t, sessionExerciseDao.ReplaceForSession(nil, original.ID, []dbs.SessionExercise{
+		{ExerciseID: warmup.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0},
+		{ExerciseID: main.ID, Role: "main", RepeatCount: 3, RestMinutes: 2},
+		{ExerciseID: cooldown.ID, Role: "cooldown", RepeatCount: 1, RestMinutes: 0},
+	}))
+
+	team := &dbs.Team{Name: "Equipo autolock presencial", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo autolock presencial", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	today := time.Now().Truncate(24 * time.Hour)
+	past := time.Now().Add(-2 * time.Hour)
+	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
+		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTime: &presencialTime, SessionID: &original.ID,
+	}))
+
+	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
+		OwnerID: owner.ID, Name: "Editada",
+		Exercises: []session.SessionExerciseRequest{
+			{ExerciseID: warmup.ID, Role: "warmup"},
+			{ExerciseID: main.ID, Role: "main"},
+			{ExerciseID: cooldown.ID, Role: "cooldown"},
+		},
+	})
+
+	require.NoError(t, err)
+	day, err := calendarDao.FindByGroupAndDate(nil, group.ID, today)
+	require.NoError(t, err)
+	require.NotNil(t, day.SessionID)
+	assert.NotEqual(t, original.ID, *day.SessionID, "presencial de hoy después de su horario debe congelarse")
+}
+
+// TestSessionService_Update_TodayAsyncAlwaysLocks — mismo motivo que los dos
+// tests anteriores para usar Postgres real.
+func TestSessionService_Update_TodayAsyncAlwaysLocks(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	exerciseDao := daos.NewExerciseDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, calendarDao, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "session-autolock-async-owner@test.com", DNI: "50000094", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	warmup := &dbs.Exercise{OwnerID: owner.ID, Name: "Trote", Kind: "jogging"}
+	require.NoError(t, db.Create(warmup).Error)
+	main := &dbs.Exercise{OwnerID: owner.ID, Name: "Serie", Kind: "running"}
+	require.NoError(t, db.Create(main).Error)
+	cooldown := &dbs.Exercise{OwnerID: owner.ID, Name: "Elongación", Kind: "elongation"}
+	require.NoError(t, db.Create(cooldown).Error)
+
+	original := &dbs.Session{OwnerID: owner.ID, Name: "Sesión original"}
+	require.NoError(t, sessionDao.Create(nil, original))
+	require.NoError(t, sessionExerciseDao.ReplaceForSession(nil, original.ID, []dbs.SessionExercise{
+		{ExerciseID: warmup.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0},
+		{ExerciseID: main.ID, Role: "main", RepeatCount: 3, RestMinutes: 2},
+		{ExerciseID: cooldown.ID, Role: "cooldown", RepeatCount: 1, RestMinutes: 0},
+	}))
+
+	team := &dbs.Team{Name: "Equipo autolock async", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo autolock async", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	today := time.Now().Truncate(24 * time.Hour)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
+		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: false, SessionID: &original.ID,
+	}))
+
+	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
+		OwnerID: owner.ID, Name: "Editada",
+		Exercises: []session.SessionExerciseRequest{
+			{ExerciseID: warmup.ID, Role: "warmup"},
+			{ExerciseID: main.ID, Role: "main"},
+			{ExerciseID: cooldown.ID, Role: "cooldown"},
+		},
+	})
+
+	require.NoError(t, err)
+	day, err := calendarDao.FindByGroupAndDate(nil, group.ID, today)
+	require.NoError(t, err)
+	require.NotNil(t, day.SessionID)
+	assert.NotEqual(t, original.ID, *day.SessionID, "asíncrono de hoy se congela aunque el día no haya terminado")
+}
+
+func TestSessionService_Update_AutoLocksPastDay_RealDB(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	exerciseDao := daos.NewExerciseDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, calendarDao, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "session-autolock-owner@test.com", DNI: "50000091", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+
+	warmup := &dbs.Exercise{OwnerID: owner.ID, Name: "Trote", Kind: "jogging"}
+	require.NoError(t, db.Create(warmup).Error)
+	main := &dbs.Exercise{OwnerID: owner.ID, Name: "Serie", Kind: "running"}
+	require.NoError(t, db.Create(main).Error)
+	cooldown := &dbs.Exercise{OwnerID: owner.ID, Name: "Elongación", Kind: "elongation"}
+	require.NoError(t, db.Create(cooldown).Error)
+
+	original := &dbs.Session{OwnerID: owner.ID, Name: "Sesión original"}
+	require.NoError(t, sessionDao.Create(nil, original))
+	require.NoError(t, sessionExerciseDao.ReplaceForSession(nil, original.ID, []dbs.SessionExercise{
+		{ExerciseID: warmup.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0},
+		{ExerciseID: main.ID, Role: "main", RepeatCount: 3, RestMinutes: 2},
+		{ExerciseID: cooldown.ID, Role: "cooldown", RepeatCount: 1, RestMinutes: 0},
+	}))
+
+	team := &dbs.Team{Name: "Equipo autolock", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo autolock", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	pastDate := time.Now().AddDate(0, 0, -5).Truncate(24 * time.Hour)
+	futureDate := time.Now().AddDate(0, 0, 5).Truncate(24 * time.Hour)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionID: &original.ID}))
+
+	newName := "Sesión editada sin exclusión manual"
+	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
+		OwnerID: owner.ID, Name: newName,
+		Exercises: []session.SessionExerciseRequest{
+			{ExerciseID: warmup.ID, Role: "warmup"},
+			{ExerciseID: main.ID, Role: "main"},
+			{ExerciseID: cooldown.ID, Role: "cooldown"},
+		},
+	})
+
+	require.NoError(t, err)
+
+	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
+	require.NoError(t, err)
+	require.NotNil(t, pastDay.SessionID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe apuntar a un clon, no a la sesión original ya editada")
+
+	futureDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, futureDate)
+	require.NoError(t, err)
+	require.NotNil(t, futureDay.SessionID)
+	assert.Equal(t, original.ID, *futureDay.SessionID, "el día futuro debe seguir apuntando a la sesión original ya editada")
+
+	updatedOriginal, err := sessionDao.FindByID(nil, original.ID)
+	require.NoError(t, err)
+	assert.Equal(t, newName, updatedOriginal.Name)
+}
