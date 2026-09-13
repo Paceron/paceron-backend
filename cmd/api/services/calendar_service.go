@@ -322,12 +322,22 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 	}
 
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		for i := range rows {
+			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
+		return nil, fmt.Errorf("error al estampar plan")
+	}
+
 	responses := make([]calendar.CalendarDayResponse, len(rows))
 	for i := range rows {
-		if err := s.calendarDao.Upsert(ctx, &rows[i]); err != nil {
-			customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
-			return nil, fmt.Errorf("error al estampar plan")
-		}
 		responses[i] = toCalendarDayResponse(rows[i])
 	}
 	return responses, nil
@@ -344,20 +354,36 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		return nil, err
 	}
 	responses := make([]calendar.CalendarDayResponse, 0, len(req.Dates))
-	for _, dateStr := range req.Dates {
-		date, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			return nil, fmt.Errorf("fecha inválida en dates: %s", dateStr)
+	// validationErr distingue un error de validación de request (fecha/día
+	// inválido) de un error real de DB — GORM's Transaction solo devuelve el
+	// error del closure, sin tipo propio para diferenciarlos afuera.
+	var validationErr error
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		for _, dateStr := range req.Dates {
+			date, err := time.Parse("2006-01-02", dateStr)
+			if err != nil {
+				validationErr = fmt.Errorf("fecha inválida en dates: %s", dateStr)
+				return validationErr
+			}
+			row, err := s.buildRow(ctx, groupID, date, dayReq)
+			if err != nil {
+				validationErr = err
+				return err
+			}
+			if err := txCalendarDao.Upsert(ctx, row); err != nil {
+				return err
+			}
+			responses = append(responses, toCalendarDayResponse(*row))
 		}
-		row, err := s.buildRow(ctx, groupID, date, dayReq)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.calendarDao.Upsert(ctx, row); err != nil {
-			customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
-			return nil, fmt.Errorf("error al aplicar bulk")
-		}
-		responses = append(responses, toCalendarDayResponse(*row))
+		return nil
+	})
+	if validationErr != nil {
+		return nil, validationErr
+	}
+	if err != nil {
+		customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
+		return nil, fmt.Errorf("error al aplicar bulk")
 	}
 	return responses, nil
 }
@@ -412,14 +438,21 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		}
 	}
 	responses := make([]calendar.CalendarDayResponse, len(affected))
-	for i, a := range affected {
-		newDate := a.Date.AddDate(0, 0, req.Days)
-		if err := s.calendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
-			customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
-			return nil, fmt.Errorf("error al correr fechas")
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		for i, a := range affected {
+			newDate := a.Date.AddDate(0, 0, req.Days)
+			if err := txCalendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
+				return err
+			}
+			a.Date = newDate
+			responses[i] = toCalendarDayResponse(a)
 		}
-		a.Date = newDate
-		responses[i] = toCalendarDayResponse(a)
+		return nil
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
+		return nil, fmt.Errorf("error al correr fechas")
 	}
 	return responses, nil
 }
@@ -432,7 +465,9 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	for i, m := range memberships {
 		groupIDs[i] = m.GroupID
 	}
-	day, err := s.calendarDao.FindNextSessionForGroups(ctx, groupIDs, time.Now().Truncate(24*time.Hour))
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	day, err := s.calendarDao.FindNextSessionForGroups(ctx, groupIDs, today)
 	if err != nil {
 		customlogger.Error(ctx, "error finding next session", err, customlogger.TagMethod("NextSession"))
 		return nil, fmt.Errorf("error al buscar próxima sesión")
