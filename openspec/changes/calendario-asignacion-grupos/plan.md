@@ -2172,6 +2172,451 @@ git commit -m "feat(calendar): clear source_plan_id when a training plan is dele
 
 ---
 
+### Task 8b: Congelamiento automático de días ya ejecutados (extiende Task 8, D13)
+
+**Files:**
+- Modify: `cmd/api/daos/group_calendar_day_dao.go` (+2 métodos: `FindBySessionID`, `RepointDaysByID`)
+- Modify: `cmd/api/daos/group_calendar_day_dao_test.go` (+2 tests)
+- Modify: `cmd/api/services/session_service.go` (`Update` detecta días cerrados sin exclusión manual)
+- Modify: `cmd/api/services/session_service_test.go` (+tests unitarios + 1 test de integración con Postgres real)
+
+**Interfaces:**
+- Consumes: `dbs.GroupCalendarDay` (Task 1), `sessionService.groupCalendarDayDao` (ya existe desde Task 8, sin cambio de constructor).
+- Produces: `GroupCalendarDaoInterface.FindBySessionID`/`RepointDaysByID` — usados únicamente por `SessionService.Update` en esta task.
+
+- [ ] **Step 1: Tests del DAO**
+
+Agregar a `cmd/api/daos/group_calendar_day_dao_test.go` (reusa `setupCalendarGroup` ya existente en ese archivo desde Task 3):
+
+```go
+func TestGroupCalendarDayDao_FindBySessionID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group1 := setupCalendarGroup(t, db, "13")
+	group2 := setupCalendarGroup(t, db, "14")
+	sessionID := int64(77)
+	otherSessionID := int64(78)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2027, 2, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 3, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &otherSessionID}))
+
+	found, err := dao.FindBySessionID(nil, sessionID)
+
+	require.NoError(t, err)
+	assert.Len(t, found, 2)
+}
+
+func TestGroupCalendarDayDao_RepointDaysByID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "15")
+	oldSessionID := int64(80)
+	newSessionID := int64(81)
+	date1 := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+	date2 := time.Date(2027, 3, 2, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date1, Kind: "training", SessionID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date2, Kind: "training", SessionID: &oldSessionID}))
+	day1, err := dao.FindByGroupAndDate(nil, group.ID, date1)
+	require.NoError(t, err)
+
+	err = dao.RepointDaysByID(nil, []int64{day1.ID}, newSessionID)
+
+	require.NoError(t, err)
+	found1, _ := dao.FindByGroupAndDate(nil, group.ID, date1)
+	require.NotNil(t, found1.SessionID)
+	assert.Equal(t, newSessionID, *found1.SessionID)
+	found2, _ := dao.FindByGroupAndDate(nil, group.ID, date2)
+	require.NotNil(t, found2.SessionID)
+	assert.Equal(t, oldSessionID, *found2.SessionID, "el día no listado en dayIDs debe quedar intacto, aunque comparta group_id y session_id viejo")
+}
+```
+
+- [ ] **Step 2: Correr, verificar que falla**
+
+Run: `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./cmd/api/daos/... -run "TestGroupCalendarDayDao_FindBySessionID|TestGroupCalendarDayDao_RepointDaysByID" -v -count=1`
+Expected: FAIL (métodos no existen).
+
+- [ ] **Step 3: Implementar los 2 métodos del DAO**
+
+En `cmd/api/daos/group_calendar_day_dao.go`, agregar a la interfaz `GroupCalendarDaoInterface`:
+```go
+	FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
+	RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
+```
+
+Y las implementaciones (junto a `RepointSessionForGroups`):
+```go
+func (d *groupCalendarDayDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Where("session_id = ?", sessionID).Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding calendar days by session: %w", err)
+	}
+	return days, nil
+}
+
+func (d *groupCalendarDayDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+	if len(dayIDs) == 0 {
+		return nil
+	}
+	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id IN ?", dayIDs).Update("session_id", newSessionID).Error
+}
+```
+
+- [ ] **Step 4: Correr, verificar que pasa**
+
+Run: mismo comando del Step 2.
+Expected: PASS.
+
+- [ ] **Step 5: Tests de `SessionService.Update` (unitarios + integración real)**
+
+Agregar a `cmd/api/services/session_service_test.go`:
+
+```go
+func TestSessionService_Update_AutoLocksPastDayWithoutExclusion(t *testing.T) {
+	pastDate := time.Now().AddDate(0, 0, -3)
+	repointedDayIDs := []int64{}
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 501, GroupID: 1, Date: pastDate, Kind: "training", IsPresencial: false}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointedDayIDs = dayIDs
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+		createFn:   func(ctx *gin.Context, s *dbs.Session) error { s.ID = 999; return nil },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{}, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{501}, repointedDayIDs, "el día pasado debe auto-clonarse aunque no venga en exclude_group_ids")
+}
+
+func TestSessionService_Update_FutureDayStaysLiveWithoutExclusion(t *testing.T) {
+	futureDate := time.Now().AddDate(0, 0, 5)
+	repointCalled := false
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 502, GroupID: 1, Date: futureDate, Kind: "training", IsPresencial: false}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointCalled = true
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{}, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.False(t, repointCalled, "un día futuro no debe clonarse ni entrar a la transacción")
+}
+
+func TestSessionService_Update_TodayPresencialBeforeStartTimeStaysLive(t *testing.T) {
+	future := time.Now().Add(2 * time.Hour)
+	presencialTime := time.Date(0, 1, 1, future.Hour(), future.Minute(), 0, 0, time.UTC)
+	repointCalled := false
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 503, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: true, PresencialTime: &presencialTime}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointCalled = true
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{}, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.False(t, repointCalled, "presencial de hoy antes de su horario sigue en vivo")
+}
+
+func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) {
+	past := time.Now().Add(-2 * time.Hour)
+	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
+	repointedDayIDs := []int64{}
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 504, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: true, PresencialTime: &presencialTime}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointedDayIDs = dayIDs
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+		createFn:   func(ctx *gin.Context, s *dbs.Session) error { s.ID = 998; return nil },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{}, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{504}, repointedDayIDs, "presencial de hoy después de su horario debe congelarse")
+}
+
+func TestSessionService_Update_TodayAsyncAlwaysLocks(t *testing.T) {
+	repointedDayIDs := []int64{}
+	calDao := &mockGroupCalendarDao{
+		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+			return []dbs.GroupCalendarDay{{ID: 505, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: false}}, nil
+		},
+		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+			repointedDayIDs = dayIDs
+			return nil
+		},
+	}
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+		createFn:   func(ctx *gin.Context, s *dbs.Session) error { s.ID = 997; return nil },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{}, calDao, nil)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "Editada", Exercises: validSessionExercises()})
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{505}, repointedDayIDs, "asíncrono de hoy se congela aunque el día no haya terminado")
+}
+```
+
+`mockGroupCalendarDao` (definido en `calendar_service_test.go`, Task 4) necesita 2 campos nuevos — agregarlos ahí:
+```go
+	findBySessionIDFn func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
+	repointDaysByIDFn func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
+```
+y sus 2 métodos correspondientes al mock (mismo patrón nil-check-then-delegate que el resto):
+```go
+func (m *mockGroupCalendarDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
+	if m.findBySessionIDFn != nil {
+		return m.findBySessionIDFn(ctx, sessionID)
+	}
+	return nil, nil
+}
+func (m *mockGroupCalendarDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
+	if m.repointDaysByIDFn != nil {
+		return m.repointDaysByIDFn(ctx, dayIDs, newSessionID)
+	}
+	return nil
+}
+```
+
+Agregar también el test de integración real (mismo estilo que Task 8's `TestSessionService_Update_WithExcludeGroupIDs_ClonesAndRepoints`, mismos fixtures):
+
+```go
+func TestSessionService_Update_AutoLocksPastDay_RealDB(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	sessionDao := NewSessionDao(db)
+	sessionExerciseDao := NewSessionExerciseDao(db)
+	exerciseDao := NewExerciseDao(db)
+	calendarDao := NewGroupCalendarDayDao(db)
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, calendarDao, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "session-autolock-owner@test.com", DNI: "50000091", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+
+	warmup := &dbs.Exercise{OwnerID: owner.ID, Name: "Trote", Kind: "jogging"}
+	require.NoError(t, db.Create(warmup).Error)
+	main := &dbs.Exercise{OwnerID: owner.ID, Name: "Serie", Kind: "running"}
+	require.NoError(t, db.Create(main).Error)
+	cooldown := &dbs.Exercise{OwnerID: owner.ID, Name: "Elongación", Kind: "elongation"}
+	require.NoError(t, db.Create(cooldown).Error)
+
+	original := &dbs.Session{OwnerID: owner.ID, Name: "Sesión original"}
+	require.NoError(t, sessionDao.Create(nil, original))
+	require.NoError(t, sessionExerciseDao.ReplaceForSession(nil, original.ID, []dbs.SessionExercise{
+		{ExerciseID: warmup.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0},
+		{ExerciseID: main.ID, Role: "main", RepeatCount: 3, RestMinutes: 2},
+		{ExerciseID: cooldown.ID, Role: "cooldown", RepeatCount: 1, RestMinutes: 0},
+	}))
+
+	team := &dbs.Team{Name: "Equipo autolock", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo autolock", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	pastDate := time.Now().AddDate(0, 0, -5).Truncate(24 * time.Hour)
+	futureDate := time.Now().AddDate(0, 0, 5).Truncate(24 * time.Hour)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionID: &original.ID}))
+
+	newName := "Sesión editada sin exclusión manual"
+	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
+		OwnerID: owner.ID, Name: newName,
+		Exercises: []session.SessionExerciseRequest{
+			{ExerciseID: warmup.ID, Role: "warmup"},
+			{ExerciseID: main.ID, Role: "main"},
+			{ExerciseID: cooldown.ID, Role: "cooldown"},
+		},
+	})
+
+	require.NoError(t, err)
+
+	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
+	require.NoError(t, err)
+	require.NotNil(t, pastDay.SessionID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe apuntar a un clon, no a la sesión original ya editada")
+
+	futureDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, futureDate)
+	require.NoError(t, err)
+	require.NotNil(t, futureDay.SessionID)
+	assert.Equal(t, original.ID, *futureDay.SessionID, "el día futuro debe seguir apuntando a la sesión original ya editada")
+
+	updatedOriginal, err := sessionDao.FindByID(nil, original.ID)
+	require.NoError(t, err)
+	assert.Equal(t, newName, updatedOriginal.Name)
+}
+```
+
+- [ ] **Step 6: Confirmar que los tests fallan contra la implementación actual**
+
+Run: `go test ./cmd/api/services/... -run "TestSessionService_Update_AutoLocks|TestSessionService_Update_FutureDay|TestSessionService_Update_TodayPresencial|TestSessionService_Update_TodayAsync" -v -count=1`
+Expected: FAIL (`Update` todavía no consulta `FindBySessionID` ni conoce días cerrados).
+
+- [ ] **Step 7: Implementar la detección de días cerrados en `SessionService.Update`**
+
+Reemplazar `Update` en `cmd/api/services/session_service.go` con la versión extendida (agrega la consulta de `FindBySessionID`, la función `isCalendarDayClosed`, y el repunteo puntual por `RepointDaysByID` dentro de la transacción, sin tocar el resto de la lógica ya aprobada de Task 8):
+
+```go
+func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req session.SessionRequest) (*session.SessionResponse, error) {
+	existing, err := s.sessionDao.FindByID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding session", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión")
+	}
+	if existing == nil {
+		return nil, ErrSessionNotFound
+	}
+	if existing.OwnerID != callerID {
+		return nil, ErrCatalogForbidden
+	}
+	if err := s.validateExercises(ctx, req.Exercises); err != nil {
+		return nil, err
+	}
+
+	referencingDays, err := s.groupCalendarDayDao.FindBySessionID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding calendar days referencing session", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión")
+	}
+
+	excludeGroupIDs := []int64{}
+	if req.ExcludeGroupIDs != nil {
+		excludeGroupIDs = *req.ExcludeGroupIDs
+	}
+	excludeSet := make(map[int64]bool, len(excludeGroupIDs))
+	for _, gid := range excludeGroupIDs {
+		excludeSet[gid] = true
+	}
+
+	now := time.Now()
+	var autoClosedDayIDs []int64
+	for _, day := range referencingDays {
+		if excludeSet[day.GroupID] {
+			continue
+		}
+		if isCalendarDayClosed(day, now) {
+			autoClosedDayIDs = append(autoClosedDayIDs, day.ID)
+		}
+	}
+
+	if len(excludeGroupIDs) == 0 && len(autoClosedDayIDs) == 0 {
+		existing.Name = req.Name
+		existing.Description = req.Description
+		if err := s.sessionDao.Update(ctx, existing); err != nil {
+			customlogger.Error(ctx, "error updating session", err, customlogger.TagMethod("Update"))
+			return nil, fmt.Errorf("error al editar sesión")
+		}
+		if err := s.sessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises)); err != nil {
+			customlogger.Error(ctx, "error replacing session exercises", err, customlogger.TagMethod("Update"))
+			return nil, fmt.Errorf("error al editar sesión")
+		}
+		return s.toResponse(ctx, existing)
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txSessionDao := daos.NewSessionDao(tx)
+		txSessionExerciseDao := daos.NewSessionExerciseDao(tx)
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+
+		clone, err := cloneSessionInternal(txSessionDao, txSessionExerciseDao, ctx, existing, req.CloneName, req.CloneDescription)
+		if err != nil {
+			return err
+		}
+		if len(excludeGroupIDs) > 0 {
+			if err := txCalendarDao.RepointSessionForGroups(ctx, excludeGroupIDs, id, clone.ID); err != nil {
+				return fmt.Errorf("error al repuntear grupos excluidos")
+			}
+		}
+		if len(autoClosedDayIDs) > 0 {
+			if err := txCalendarDao.RepointDaysByID(ctx, autoClosedDayIDs, clone.ID); err != nil {
+				return fmt.Errorf("error al repuntear días ya cerrados")
+			}
+		}
+		existing.Name = req.Name
+		existing.Description = req.Description
+		if err := txSessionDao.Update(ctx, existing); err != nil {
+			return fmt.Errorf("error al editar sesión original")
+		}
+		return txSessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises))
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error in divergence-clone update", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión con exclusión de grupos")
+	}
+	return s.toResponse(ctx, existing)
+}
+
+// isCalendarDayClosed decide si un GroupCalendarDay ya no debe recibir la
+// edición en vivo de la sesión que referencia — ver D13 del change de
+// calendario. Sin cron: se calcula al vuelo contra `now` en cada PUT.
+func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
+	if dayDate.Before(today) {
+		return true
+	}
+	if dayDate.After(today) {
+		return false
+	}
+	if !day.IsPresencial {
+		return true
+	}
+	if day.PresencialTime == nil {
+		return false
+	}
+	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTime.Hour(), day.PresencialTime.Minute(), 0, 0, now.Location())
+	return !now.Before(threshold)
+}
+```
+
+- [ ] **Step 8: Correr todo, verificar que pasa**
+
+Run: `go build ./... && go vet ./... && TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./cmd/api/services/... -run TestSessionService -v -count=1`
+Expected: PASS (todos los tests de `SessionService`, viejos y nuevos).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add cmd/api/daos/group_calendar_day_dao.go cmd/api/daos/group_calendar_day_dao_test.go cmd/api/services/session_service.go cmd/api/services/session_service_test.go
+git commit -m "feat(calendar): auto-lock past/in-progress calendar days on session edit"
+```
+
+---
+
 ### Task 10: CalendarController
 
 **Files:**

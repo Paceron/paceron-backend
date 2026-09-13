@@ -124,3 +124,19 @@ Mismo criterio que el change 1 — `CalendarService` toca DAOs de varios dominio
 - `cmd/api/controllers/session_controller.go` (extendido — `assigned-groups` handler + el `PUT` existente acepta los 3 campos nuevos)
 - `cmd/api/app/url_mappings.go` / `cmd/api/app/app.go` (wiring)
 - `cmd/api/infrastructure/postgresdb/postgres.go` (AutoMigrate)
+
+## D13 — Congelamiento automático de días ya ejecutados (extiende D8)
+
+Decisión post-implementación (2026-09-13, sesión de ejecución nocturna): D8 solo protegía grupos que el entrenador excluía a mano. Faltaba proteger el historial cuando NO se excluye nada — si un día ya pasó (o está en curso) y el entrenador edita la sesión igual, ese día no debe cambiar retroactivamente lo que realmente se programó/ejecutó.
+
+**Sin cron, sin columna `locked`/`frozen_at` persistida** — el estado "cerrado" de un día se calcula al vuelo, únicamente en el momento de `PUT /sessions/{id}`, comparando `date`/`is_presencial`/`presencial_time` contra `time.Now()`. Decisión explícita del usuario: preferir cómputo al vuelo antes que sumar infraestructura de jobs en background a un repo que hoy no la tiene.
+
+**Regla de cierre** (por `GroupCalendarDay`, solo aplica a `kind=training`):
+- `date < hoy` → cerrado siempre.
+- `date == hoy`, `is_presencial=true` → cerrado si `now >= combinar(hoy, presencial_time)`.
+- `date == hoy`, `is_presencial=false` → cerrado (asíncrono: el corredor pudo haberla hecho en cualquier momento del día).
+- `date > hoy` → nunca cerrado.
+
+**Mecanismo — extiende D8, no lo reemplaza**: `Update` ahora SIEMPRE consulta (nuevo DAO `FindBySessionID`) todas las `GroupCalendarDay` que referencian la sesión, sin importar si vino `exclude_group_ids`. Si hay al menos un día cerrado en un grupo NO excluido, o si `exclude_group_ids` vino no vacío, entra al camino transaccional (antes solo entraba por `exclude_group_ids`). Dentro de la transacción: un único clon compartido (igual que D8), repunteo por grupo entero para `exclude_group_ids` (`RepointSessionForGroups`, sin cambios) y repunteo puntual por fila para los días auto-detectados como cerrados (nuevo `RepointDaysByID(dayIDs, newSessionID)` — no se puede reusar `RepointSessionForGroups` acá porque un mismo grupo puede tener, para la misma sesión, un día ya cerrado y otro todavía abierto en fechas distintas; repuntear por grupo entero rompería el día abierto).
+
+**Fuera de alcance, deliberado** (confirmado con el usuario): registrar qué se hizo realmente (ejercicios/tiempos efectivos, por entrenador o corredor) — sigue diferido tal como ya lo dejaba la spec original (§7 del documento de frontend). Este congelamiento solo evita que una edición futura pise lo que quedó programado para un día ya cerrado; no agrega ningún mecanismo de registro de actividad real. `Stamp`/`UpsertDay`/`Bulk`/`BulkClear`/`Shift` (ediciones directas al calendario, no al catálogo) no llevan este chequeo — son acciones deliberadas del entrenador sobre una fecha puntual, no una propagación amplia desde el catálogo.

@@ -27,3 +27,36 @@ El sistema SHALL, cuando `PUT /sessions/{id}` recibe `exclude_group_ids` no vac�
 #### Scenario: Falla el paso final de la edición
 - **WHEN** el `PUT` de los campos normales de la sesión falla después de haber creado el clon y repunteado los grupos
 - **THEN** el sistema revierte toda la operación — ni el clon ni el repunteo quedan aplicados
+
+### Requirement: Congelamiento automático de días ya ejecutados o en curso
+
+El sistema SHALL, al editar una sesión (`PUT /sessions/{id}`), identificar además — sin que el entrenador tenga que excluirlos a mano — cualquier `GroupCalendarDay` individual que referencie esa sesión y esté "cerrado" según su fecha/horario, y repuntearlo al mismo clon compartido de la edición (creándolo si todavía no existía por no haber `exclude_group_ids`). Un día se considera cerrado si se cumple cualquiera de:
+- Su fecha es anterior a hoy.
+- Es de hoy, `is_presencial=true`, y la hora actual ya pasó `presencial_time`.
+- Es de hoy y `is_presencial=false` (asíncrono) — se considera cerrado todo el día, sin importar la hora.
+
+Un día futuro, o de hoy sin cerrar (presencial antes de su horario), sigue en vivo salvo que su grupo haya sido excluido explícitamente.
+
+#### Scenario: Editar una sesión con un día ya pasado asignado
+- **WHEN** se edita una sesión que tiene un `GroupCalendarDay` con fecha anterior a hoy, sin que su grupo esté en `exclude_group_ids`
+- **THEN** el sistema clona la sesión (mismo clon compartido que usaría por exclusión manual) y repuntea ese día puntual al clon, dejando el resto de las referencias abiertas intacto
+
+#### Scenario: Sesión presencial de hoy, antes de su horario
+- **WHEN** un `GroupCalendarDay` de hoy tiene `is_presencial=true` y la hora actual es anterior a `presencial_time`
+- **THEN** ese día sigue en vivo — la edición se aplica normalmente, sin clonar por ese día
+
+#### Scenario: Sesión presencial de hoy, después de su horario
+- **WHEN** un `GroupCalendarDay` de hoy tiene `is_presencial=true` y la hora actual ya pasó `presencial_time`
+- **THEN** el sistema clona y repuntea ese día, aunque su grupo no haya sido excluido a mano
+
+#### Scenario: Sesión asíncrona de hoy
+- **WHEN** un `GroupCalendarDay` de hoy tiene `is_presencial=false`
+- **THEN** el sistema lo trata como cerrado y lo clona/repuntea, sin esperar a que termine el día — los corredores pueden haberla ya realizado en cualquier momento de hoy
+
+#### Scenario: Múltiples días cerrados y grupos excluidos en la misma edición
+- **WHEN** una edición combina `exclude_group_ids` no vacío con uno o más días cerrados en grupos no excluidos
+- **THEN** el sistema crea un único clon compartido por toda la operación — tanto los grupos excluidos a mano como los días cerrados detectados automáticamente terminan apuntando al mismo clon
+
+#### Scenario: Ningún día cerrado ni grupo excluido
+- **WHEN** todas las referencias a la sesión son días futuros (o de hoy sin cerrar) y no se excluyó ningún grupo
+- **THEN** el sistema no crea ningún clon — aplica la edición directamente a la sesión original, comportamiento sin cambios respecto al caso simple
