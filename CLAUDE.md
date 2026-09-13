@@ -113,5 +113,6 @@ Dos proyectos de Supabase separados — `master` en Render pega a producción, `
 
 ## Quirks conocidos
 
+- `attendances.training_session_id` es una FK **opaca** (BIGINT > 0 validada por la app, sin constraint de base de datos): la tabla `training_sessions` todavía no existe. Un change futuro creará la tabla y el FK real. El QR de asistencia es determinista (`github.com/skip2/go-qrcode`, tamaño/level fijos) y la URL público depende de `ATTENDANCE_BASE_URL` — mismos inputs siempre producen el mismo QR.
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es un error real si el backend "no responde" al toque.
 - El toolchain de Go 1.26 descargado automáticamente por `GOTOOLCHAIN=auto` (módulo `golang.org/toolchain@...go1.26.0...` en el mod cache) no trae el binario `covdata` — falla con `go: no such tool "covdata"` al correr `go test -coverprofile` sobre paquetes sin ningún `_test.go`. Confirmado que no es caché corrupto (persiste tras redescarga limpia). Por eso `make coverage`/`ci.yml` corren coverage solo sobre paquetes con `TestGoFiles` (`go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test ...`), no sobre `./...` directo — no tocar ese patrón sin motivo, evita el bug.
