@@ -319,6 +319,9 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/mercadopago/connect/status` | Mercado Pago connection status of the authenticated user |
 | GET | `/api/v1/platform-settings/marketplace-fee` | Get Paceron marketplace fee percentage |
 | PUT | `/api/v1/platform-settings/marketplace-fee` | Update Paceron marketplace fee percentage (app owner only) |
+| GET | `/api/v1/attendance/qr?team_id=&training_session_id=` | Generate a deterministic QR (base64 + encoded URL) to register attendance for a team's training session (any authenticated user) |
+| POST | `/api/v1/attendance/team/:team_id/session/:training_session_id` | Register attendance (idempotent: `201` first time, `200` if already registered) |
+| GET | `/api/v1/attendance/search?team_id=&training_session_id=&user_id=` | Search attendances applying the ownership matrix (self by default; other users/teams only for the owner or runners from an owned team) |
 
 ## Run
 

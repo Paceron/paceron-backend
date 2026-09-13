@@ -92,6 +92,7 @@ var (
 	MyMP                 MercadoPago
 	TokenEncryptionKey   string
 	MyStorage            StorageConfig
+	AttendanceBaseURL    string
 )
 
 func (d Environment) String() string {
@@ -185,6 +186,10 @@ func loadDBConfig() {
 	JWTAudience = getEnvOrDefault("JWT_AUDIENCE", "paceron-app")
 	AccessTokenDuration = getDurationOrDefault("ACCESS_TOKEN_DURATION", 15*time.Minute)
 	RefreshTokenDuration = getDurationOrDefault("REFRESH_TOKEN_DURATION", 30*24*time.Hour)
+	// AttendanceBaseURL es la URL pública del backend que se embebe en el QR de
+	// asistencia. Cambia por ambiente (localhost en dev, onrender en prod/testing)
+	// porque el QR lo escanea el teléfono del corredor, no el backend.
+	AttendanceBaseURL = getEnvOrDefault("ATTENDANCE_BASE_URL", "http://localhost:8080")
 }
 
 // stagedDatabaseURL resuelve qué proyecto de Supabase usar según IsProductionStage.
