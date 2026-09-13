@@ -999,6 +999,13 @@ definitions:
       team:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo'
     type: object
+  simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration:
+    properties:
+      max_members:
+        type: integer
+      minimum_fee:
+        type: number
+    type: object
   simple-arq-golang_cmd_api_domains_teamuser.AddTeamUserRequest:
     properties:
       role_in_team:
@@ -2945,6 +2952,24 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/team-configuration:
+    get:
+      description: Returns the max members and minimum membership fee allowed for
+        the trainer's tier. Identity comes from the access token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get team configuration by trainer tier
+      tags:
+      - teams
   /api/v1/teams:
     get:
       description: Devuelve equipos activos. Sin filtros, todos. owner_id filtra por
