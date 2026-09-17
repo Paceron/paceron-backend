@@ -600,6 +600,224 @@
                 }
             }
         },
+        "/api/v1/exercises": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Listar ejercicios por propietario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Owner ID",
+                        "name": "owner_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Crear ejercicio",
+                "parameters": [
+                    {
+                        "description": "Datos del ejercicio",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/exercises/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Obtener ejercicio por ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Exercise ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Actualizar ejercicio",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Exercise ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del ejercicio",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Eliminar ejercicio",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Exercise ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/api/v1/exercises/{id}/clone": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exercises"
+                ],
+                "summary": "Clonar ejercicio",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Exercise ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
         "/api/v1/groups": {
             "get": {
                 "description": "Devuelve los grupos de un equipo. Si se filtra por team_id, valida que el usuario autenticado sea miembro",
@@ -868,6 +1086,345 @@
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Calendario de un grupo en un rango de fechas",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha desde (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha hasta (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar/bulk": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Operación masiva de días en el calendario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos de la operación",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.BulkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar/bulk-clear": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Limpiar múltiples días del calendario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos de limpiar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.BulkClearRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar/shift": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Desplazar días del calendario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del desplazamiento",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.ShiftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar/stamp": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Copiar plan al calendario del grupo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del stamp",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.StampRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{id}/calendar/{date}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Crear o actualizar un día en el calendario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del día",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Eliminar un día del calendario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Group ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha (YYYY-MM-DD)",
+                        "name": "date",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
                     }
                 }
             }
@@ -2469,6 +3026,267 @@
                 }
             }
         },
+        "/api/v1/sessions": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Listar sesiones por propietario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Owner ID",
+                        "name": "owner_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Crear sesión",
+                "parameters": [
+                    {
+                        "description": "Datos de la sesión",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Obtener sesión por ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Actualizar sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos de la sesión",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Eliminar sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{id}/assigned-groups": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Grupos con calendario asignados a una sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/api/v1/sessions/{id}/clone": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Clonar sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
         "/api/v1/team-configuration": {
             "get": {
                 "description": "Returns the max members and minimum membership fee allowed for the trainer's tier. Identity comes from the access token.",
@@ -3862,6 +4680,230 @@
                 }
             }
         },
+        "/api/v1/training-plans": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Listar planes de entrenamiento por propietario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Owner ID",
+                        "name": "owner_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Crear plan de entrenamiento",
+                "parameters": [
+                    {
+                        "description": "Datos del plan",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            }
+        },
+        "/api/v1/training-plans/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Obtener plan de entrenamiento por ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training Plan ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Actualizar plan de entrenamiento",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training Plan ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del plan",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Eliminar plan de entrenamiento",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training Plan ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/api/v1/training-plans/{id}/clone": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "training-plans"
+                ],
+                "summary": "Clonar plan de entrenamiento",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Training Plan ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
         "/api/v1/users": {
             "get": {
                 "description": "Resuelve nombre/apellido/email para varios user_id de una sola consulta (evita el fan-out N+1 al mostrar un roster de equipo/grupo). Requiere login, sin restricción adicional de rol. Hasta 50 ids.\nUploads or replaces the authenticated user's own profile photo (self only). Max 5MB, JPEG/PNG/WEBP only (validated by content, not filename)",
@@ -4044,6 +5086,80 @@
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/calendar-summary": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Resumen de calendario del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/next-session": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Próxima sesión del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
                     }
                 }
             }
@@ -5154,6 +6270,196 @@
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_calendar.BulkClearRequest": {
+            "type": "object",
+            "required": [
+                "dates"
+            ],
+            "properties": {
+                "dates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.BulkRequest": {
+            "type": "object",
+            "required": [
+                "dates",
+                "kind"
+            ],
+            "properties": {
+                "dates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "is_presencial": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.CalendarDayRequest": {
+            "type": "object",
+            "required": [
+                "kind"
+            ],
+            "properties": {
+                "cancelled_reason": {
+                    "type": "string"
+                },
+                "is_presencial": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse": {
+            "type": "object",
+            "properties": {
+                "cancelled_reason": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "date": {
+                    "description": "\"YYYY-MM-DD\"",
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_presencial": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                },
+                "source_plan_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem": {
+            "type": "object",
+            "properties": {
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "is_presencial": {
+                    "type": "boolean"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.ShiftRequest": {
+            "type": "object",
+            "required": [
+                "days",
+                "from_date"
+            ],
+            "properties": {
+                "days": {
+                    "type": "integer"
+                },
+                "from_date": {
+                    "description": "\"YYYY-MM-DD\"",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.StampRequest": {
+            "type": "object",
+            "required": [
+                "plan_id",
+                "start_date"
+            ],
+            "properties": {
+                "force": {
+                    "type": "boolean"
+                },
+                "plan_id": {
+                    "type": "integer"
+                },
+                "start_date": {
+                    "description": "\"YYYY-MM-DD\"",
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_dbs.Attendance": {
             "type": "object",
             "properties": {
@@ -5180,6 +6486,87 @@
                 "userID": {
                     "description": "ID del usuario que asiste",
                     "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "name",
+                "owner_id"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "distance_m": {
+                    "type": "integer"
+                },
+                "intensity": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "minutes": {
+                    "type": "integer"
+                },
+                "muscle_group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "speed_kph": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_exercise.ExerciseResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "distance_m": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "intensity": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "minutes": {
+                    "type": "integer"
+                },
+                "muscle_group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "speed_kph": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "video_url": {
+                    "type": "string"
                 }
             }
         },
@@ -6052,6 +7439,114 @@
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest": {
+            "type": "object",
+            "required": [
+                "exercise_id",
+                "role"
+            ],
+            "properties": {
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "repeat_count": {
+                    "type": "integer"
+                },
+                "rest_minutes": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_session.SessionExerciseResponse": {
+            "type": "object",
+            "properties": {
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "repeat_count": {
+                    "type": "integer"
+                },
+                "rest_minutes": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_session.SessionRequest": {
+            "type": "object",
+            "required": [
+                "exercises",
+                "name",
+                "owner_id"
+            ],
+            "properties": {
+                "clone_description": {
+                    "type": "string"
+                },
+                "clone_name": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "exclude_group_ids": {
+                    "description": "Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,\nsolo se usan en PUT, ignorados en POST).",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_session.SessionResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseResponse"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_team.CreateTeamRequest": {
             "type": "object",
             "required": [
@@ -6734,6 +8229,150 @@
                 },
                 "payment_required": {
                     "type": "boolean"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.Location": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "sequence_no"
+            ],
+            "properties": {
+                "default_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "default_presencial": {
+                    "type": "boolean"
+                },
+                "default_time": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "sequence_no": {
+                    "type": "integer"
+                },
+                "session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.PlanDayResponse": {
+            "type": "object",
+            "properties": {
+                "default_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "default_presencial": {
+                    "type": "boolean"
+                },
+                "default_time": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "sequence_no": {
+                    "type": "integer"
+                },
+                "session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanRequest": {
+            "type": "object",
+            "required": [
+                "days",
+                "name",
+                "owner_id"
+            ],
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayResponse"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_trainingplan.TrainingPlanUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.PlanDayRequest"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

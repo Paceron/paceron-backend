@@ -19,7 +19,7 @@ services:
       - key: GIN_MODE
         value: release
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:5173,http://localhost:3000"
       - key: ATTENDANCE_BASE_URL
         value: "https://paceron-backend.onrender.com"
       - key: JWT_SECRET
@@ -48,7 +48,7 @@ services:
       - key: GIN_MODE
         value: release
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,https://paceron-frontend-git-develop-paceron.vercel.app,http://localhost:8081,http://localhost:5173,http://localhost:3000"
+        value: "https://paceron-frontend.onrender.com,https://paceron-frontend.vercel.app,https://paceron-frontend-git-develop-paceron.vercel.app,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:5173,http://localhost:3000"
       - key: ATTENDANCE_BASE_URL
         value: "https://paceron-backend-develop.onrender.com"
       - key: JWT_SECRET

@@ -40,6 +40,10 @@ type Application struct {
 	groupUserController        controllers.GroupUserController
 	invitationController       controllers.InvitationController
 	joinRequestController      controllers.JoinRequestController
+	exerciseController         controllers.ExerciseController
+	sessionController          controllers.SessionController
+	trainingPlanController     controllers.TrainingPlanController
+	calendarController         controllers.CalendarController
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
 	tierSubscriptionController controllers.TierSubscriptionController
@@ -212,6 +216,25 @@ func NewApplication() *Application {
 	joinRequestService := services.NewJoinRequestService(joinRequestDao, teamDao, teamUserDao, userDao, groupDao, groupUserDao, installmentDao, db)
 	joinRequestController := controllers.NewJoinRequestController(joinRequestService)
 
+	// Catalog flow (Exercise/Session/TrainingPlan)
+	exerciseDao := daos.NewExerciseDao(db)
+	sessionDao := daos.NewSessionDao(db)
+	sessionExerciseDao := daos.NewSessionExerciseDao(db)
+	trainingPlanDao := daos.NewTrainingPlanDao(db)
+	planDayDao := daos.NewPlanDayDao(db)
+	groupCalendarDayDao := daos.NewGroupCalendarDayDao(db)
+
+	exerciseService := services.NewExerciseService(exerciseDao)
+	exerciseController := controllers.NewExerciseController(exerciseService)
+
+	sessionService := services.NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, groupCalendarDayDao, db)
+	calendarService := services.NewCalendarService(groupCalendarDayDao, groupDao, teamDao, groupUserDao, teamUserDao, trainingPlanDao, planDayDao, sessionDao, db)
+	sessionController := controllers.NewSessionController(sessionService, calendarService)
+	calendarController := controllers.NewCalendarController(calendarService)
+
+	trainingPlanService := services.NewTrainingPlanService(trainingPlanDao, planDayDao, sessionDao, groupCalendarDayDao)
+	trainingPlanController := controllers.NewTrainingPlanController(trainingPlanService)
+
 	// Push token flow
 	pushTokenService := services.NewPushTokenService(pushTokenDao)
 	pushTokenController := controllers.NewPushTokenController(pushTokenService)
@@ -274,6 +297,10 @@ func NewApplication() *Application {
 		groupUserController:         groupUserController,
 		invitationController:        invitationController,
 		joinRequestController:       joinRequestController,
+		exerciseController:          exerciseController,
+		sessionController:           sessionController,
+		trainingPlanController:      trainingPlanController,
+		calendarController:          calendarController,
 		pushTokenController:         pushTokenController,
 		paymentController:           paymentController,
 		tierSubscriptionController:  tierSubscriptionController,

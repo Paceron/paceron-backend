@@ -129,6 +129,46 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.POST("/api/v1/join-requests/:id/accept", app.joinRequestController.Accept)
 	r.POST("/api/v1/join-requests/:id/reject", app.joinRequestController.Reject)
 
+	// Exercise catalog
+	r.POST("/api/v1/exercises", app.exerciseController.Create)
+	r.GET("/api/v1/exercises", app.exerciseController.List)
+	r.GET("/api/v1/exercises/:id", app.exerciseController.Get)
+	r.PUT("/api/v1/exercises/:id", app.exerciseController.Update)
+	r.DELETE("/api/v1/exercises/:id", app.exerciseController.Delete)
+	r.POST("/api/v1/exercises/:id/clone", app.exerciseController.Clone)
+
+	// Session catalog
+	r.POST("/api/v1/sessions", app.sessionController.Create)
+	r.GET("/api/v1/sessions", app.sessionController.List)
+	r.GET("/api/v1/sessions/:id", app.sessionController.Get)
+	r.PUT("/api/v1/sessions/:id", app.sessionController.Update)
+	r.DELETE("/api/v1/sessions/:id", app.sessionController.Delete)
+	r.POST("/api/v1/sessions/:id/clone", app.sessionController.Clone)
+
+	// TrainingPlan catalog
+	r.POST("/api/v1/training-plans", app.trainingPlanController.Create)
+	r.GET("/api/v1/training-plans", app.trainingPlanController.List)
+	r.GET("/api/v1/training-plans/:id", app.trainingPlanController.Get)
+	r.PUT("/api/v1/training-plans/:id", app.trainingPlanController.Update)
+	r.DELETE("/api/v1/training-plans/:id", app.trainingPlanController.Delete)
+	r.POST("/api/v1/training-plans/:id/clone", app.trainingPlanController.Clone)
+
+	// Group calendar
+	r.GET("/api/v1/groups/:id/calendar", app.calendarController.GetRange)
+	r.PUT("/api/v1/groups/:id/calendar/:date", app.calendarController.PutDay)
+	r.DELETE("/api/v1/groups/:id/calendar/:date", app.calendarController.DeleteDay)
+	r.POST("/api/v1/groups/:id/calendar/stamp", app.calendarController.Stamp)
+	r.POST("/api/v1/groups/:id/calendar/bulk", app.calendarController.Bulk)
+	r.POST("/api/v1/groups/:id/calendar/bulk-clear", app.calendarController.BulkClear)
+	r.POST("/api/v1/groups/:id/calendar/shift", app.calendarController.Shift)
+
+	// Runner calendar views
+	r.GET("/api/v1/users/:id/next-session", app.calendarController.NextSession)
+	r.GET("/api/v1/users/:id/calendar-summary", app.calendarController.CalendarSummary)
+
+	// Session divergence-clone helper
+	r.GET("/api/v1/sessions/:id/assigned-groups", app.sessionController.AssignedGroups)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
