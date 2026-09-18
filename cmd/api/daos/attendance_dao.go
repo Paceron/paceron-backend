@@ -37,13 +37,18 @@ type AttendanceDAOInterface interface {
 }
 
 type attendanceDao struct {
-	DB *gorm.DB
+	DB         *gorm.DB
+	membership TeamMembershipDAOInterface
 }
 
-// NewAttendanceDao crea una nueva instancia de AttendanceDao.
+// NewAttendanceDao crea una nueva instancia de AttendanceDao. Los chequeos de
+// ownership/pertenencia de equipos (TeamExists, IsTeamOwner,
+// ExistsUserInTeamOwnedBy) delegan en TeamMembershipDAO, compartido con otros
+// módulos — ver daos/team_membership_dao.go.
 func NewAttendanceDao(database *gorm.DB) AttendanceDAOInterface {
 	return &attendanceDao{
-		DB: database,
+		DB:         database,
+		membership: NewTeamMembershipDao(database),
 	}
 }
 
@@ -87,26 +92,12 @@ func (d *attendanceDao) Search(ctx *gin.Context, filters AttendanceSearchFilters
 
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.
 func (d *attendanceDao) TeamExists(ctx *gin.Context, teamID int64) (bool, error) {
-	var count int64
-	err := d.DB.Model(&dbs.Team{}).
-		Where("id = ? AND deleted_at IS NULL", teamID).
-		Count(&count).Error
-	if err != nil {
-		return false, fmt.Errorf("error checking team exists: %w", err)
-	}
-	return count > 0, nil
+	return d.membership.TeamExists(ctx, teamID)
 }
 
 // IsTeamOwner indica si userID es el owner del team (teams.owner_id).
 func (d *attendanceDao) IsTeamOwner(ctx *gin.Context, teamID, userID int64) (bool, error) {
-	var count int64
-	err := d.DB.Model(&dbs.Team{}).
-		Where("id = ? AND owner_id = ? AND deleted_at IS NULL", teamID, userID).
-		Count(&count).Error
-	if err != nil {
-		return false, fmt.Errorf("error checking team owner: %w", err)
-	}
-	return count > 0, nil
+	return d.membership.IsTeamOwner(ctx, teamID, userID)
 }
 
 // ExistsUserInTeamOwnedBy indica si targetUserID pertenece (team_users activo) a
@@ -114,13 +105,5 @@ func (d *attendanceDao) IsTeamOwner(ctx *gin.Context, teamID, userID int64) (boo
 // Escenario C de la matriz de búsqueda: un owner puede ver asistencias de un
 // corredor solo si ese corredor está en un equipo que él administra.
 func (d *attendanceDao) ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
-	var count int64
-	err := d.DB.Model(&dbs.TeamUser{}).
-		Joins("JOIN teams ON teams.id = team_users.team_id AND teams.deleted_at IS NULL AND teams.owner_id = ?", ownerUserID).
-		Where("team_users.user_id = ? AND team_users.deleted_at IS NULL", targetUserID).
-		Count(&count).Error
-	if err != nil {
-		return false, fmt.Errorf("error checking user in team owned by: %w", err)
-	}
-	return count > 0, nil
+	return d.membership.ExistsUserInTeamOwnedBy(ctx, targetUserID, ownerUserID)
 }

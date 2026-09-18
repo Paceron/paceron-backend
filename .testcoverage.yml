@@ -27,3 +27,4 @@ exclude:
     - ^cmd/api/domains/user/
     - ^cmd/api/domains/auth/
     - ^cmd/api/domains/exampleweather/
+    - ^cmd/api/domains/workoutfeedback/

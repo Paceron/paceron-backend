@@ -194,4 +194,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/attendance/qr", app.attendanceController.GenerateQR)
 	r.POST("/api/v1/attendance/team/:team_id/session/:training_session_id", app.attendanceController.RegisterAttendance)
 	r.GET("/api/v1/attendance/search", app.attendanceController.Search)
+
+	// Workout Feedback (feedback de entrenamiento)
+	r.GET("/api/v1/workout-feedback/search", app.workoutFeedbackController.Search)
+	r.GET("/api/v1/workout-feedback/:id", app.workoutFeedbackController.GetByID)
+	r.POST("/api/v1/workout-feedback", app.workoutFeedbackController.Create)
+	r.PUT("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Update)
+	r.DELETE("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Delete)
 }

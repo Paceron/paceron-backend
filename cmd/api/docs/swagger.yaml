@@ -1800,6 +1800,178 @@ definitions:
         description: ID del usuario
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.CreateFeedbackRequest:
+    properties:
+      active_duration_ms:
+        type: integer
+      annotations:
+        type: string
+      assigned_exercise_id:
+        type: integer
+      assigned_session_id:
+        type: integer
+      athlete_user_id:
+        type: integer
+      avg_heart_rate:
+        type: integer
+      cadence:
+        type: integer
+      completion_status:
+        type: string
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      elevation_gain_meters:
+        type: number
+      ended_at:
+        type: string
+      max_heart_rate:
+        type: integer
+      media_urls:
+        items:
+          type: string
+        type: array
+      report_source:
+        type: string
+      reps:
+        type: integer
+      rpe:
+        type: integer
+      session_date:
+        type: string
+      set_number:
+        type: integer
+      started_at:
+        type: string
+      team_id:
+        type: integer
+      weight_kg:
+        type: number
+    required:
+    - assigned_exercise_id
+    - assigned_session_id
+    - report_source
+    - session_date
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse'
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.UpdateFeedbackRequest:
+    properties:
+      active_duration_ms:
+        type: integer
+      annotations:
+        type: string
+      assigned_exercise_id:
+        type: integer
+      assigned_session_id:
+        type: integer
+      avg_heart_rate:
+        type: integer
+      cadence:
+        type: integer
+      completion_status:
+        type: string
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      elevation_gain_meters:
+        type: number
+      ended_at:
+        type: string
+      max_heart_rate:
+        type: integer
+      media_urls:
+        items:
+          type: string
+        type: array
+      report_source:
+        type: string
+      reps:
+        type: integer
+      rpe:
+        type: integer
+      session_date:
+        type: string
+      set_number:
+        type: integer
+      started_at:
+        type: string
+      team_id:
+        type: integer
+      weight_kg:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse:
+    properties:
+      active_duration_ms:
+        type: integer
+      annotations:
+        type: string
+      assigned_exercise_id:
+        type: integer
+      assigned_session_id:
+        type: integer
+      athlete_user_id:
+        type: integer
+      avg_heart_rate:
+        type: integer
+      cadence:
+        type: integer
+      completion_status:
+        type: string
+      created_at:
+        type: string
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      elevation_gain_meters:
+        type: number
+      ended_at:
+        type: string
+      feedback_owner_user_id:
+        type: integer
+      id:
+        type: integer
+      max_heart_rate:
+        type: integer
+      media_urls:
+        items:
+          type: string
+        type: array
+      report_source:
+        type: string
+      reps:
+        type: integer
+      rpe:
+        type: integer
+      session_date:
+        type: string
+      set_number:
+        type: integer
+      started_at:
+        type: string
+      team_id:
+        type: integer
+      updated_at:
+        type: string
+      weight_kg:
+        type: number
+    type: object
   simple-arq-golang_cmd_api_services.PermissionsQueryResponse:
     properties:
       roles:
@@ -5816,6 +5988,225 @@ paths:
       summary: Search users
       tags:
       - users
+  /api/v1/workout-feedback:
+    post:
+      consumes:
+      - application/json
+      description: Crea el feedback de un entrenamiento. El reportante es siempre
+        el usuario autenticado; si athlete_user_id viene y es distinto, solo un entrenador
+        (owner de un equipo del atleta) puede reportar por él. Duplicado del mismo
+        set activo → 409.
+      parameters:
+      - description: Datos del feedback
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.CreateFeedbackRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Crear feedback de entrenamiento
+      tags:
+      - workout-feedback
+  /api/v1/workout-feedback/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Da de baja lógicamente el feedback activo (deleted_at = now). No
+        borra filas; un mismo set puede volver a reportarse tras la baja. Utilizable
+        por el atleta, el reportante o el owner del equipo.
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Eliminar feedback (baja lógica)
+      tags:
+      - workout-feedback
+    get:
+      consumes:
+      - application/json
+      description: Devuelve el feedback activo con ese id. Visible solo para el atleta,
+        el reportante o el owner del equipo.
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Obtener feedback por id
+      tags:
+      - workout-feedback
+    put:
+      consumes:
+      - application/json
+      description: Edita parcialmente el feedback activo (solo los campos provistos).
+        Utilizable por el atleta, el reportante o el owner del equipo. athlete_user_id
+        / feedback_owner_user_id no son editables.
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Campos a editar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.UpdateFeedbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Editar feedback
+      tags:
+      - workout-feedback
+  /api/v1/workout-feedback/search:
+    get:
+      consumes:
+      - application/json
+      description: Busca feedbacks aplicando la matriz de autorización. Sin parámetros
+        devuelve los del usuario autenticado (como atleta o reportante); con team_id
+        se requiere ser owner; con athlete_user_id ajeno, owner de un equipo del atleta.
+      parameters:
+      - description: ID del equipo
+        in: query
+        name: team_id
+        type: integer
+      - description: ID del atleta
+        in: query
+        name: athlete_user_id
+        type: integer
+      - description: ID del reportante
+        in: query
+        name: feedback_owner_user_id
+        type: integer
+      - description: ID de la sesión asignada
+        in: query
+        name: assigned_session_id
+        type: integer
+      - description: ID del ejercicio asignado
+        in: query
+        name: assigned_exercise_id
+        type: integer
+      - description: Desde (YYYY-MM-DD)
+        in: query
+        name: session_date_from
+        type: string
+      - description: Hasta (YYYY-MM-DD)
+        in: query
+        name: session_date_to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Buscar feedbacks
+      tags:
+      - workout-feedback
   /callbackauth:
     get:
       description: Loguea todos los query params recibidos (util para debug de OAuth
