@@ -3,8 +3,10 @@ package services
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -33,11 +35,24 @@ type ExerciseServiceInterface interface {
 }
 
 type exerciseService struct {
-	exerciseDao daos.ExerciseDaoInterface
+	exerciseDao         daos.ExerciseDaoInterface
+	sessionDao          daos.SessionDaoInterface
+	sessionExerciseDao  daos.SessionExerciseDaoInterface
+	groupCalendarDayDao daos.GroupCalendarDaoInterface
+	db                  *gorm.DB
 }
 
-func NewExerciseService(exerciseDao daos.ExerciseDaoInterface) ExerciseServiceInterface {
-	return &exerciseService{exerciseDao: exerciseDao}
+func NewExerciseService(
+	exerciseDao daos.ExerciseDaoInterface,
+	sessionDao daos.SessionDaoInterface,
+	sessionExerciseDao daos.SessionExerciseDaoInterface,
+	groupCalendarDayDao daos.GroupCalendarDaoInterface,
+	db *gorm.DB,
+) ExerciseServiceInterface {
+	return &exerciseService{
+		exerciseDao: exerciseDao, sessionDao: sessionDao, sessionExerciseDao: sessionExerciseDao,
+		groupCalendarDayDao: groupCalendarDayDao, db: db,
+	}
 }
 
 func validateExerciseRequest(req exercise.ExerciseRequest) error {
@@ -87,17 +102,72 @@ func (s *exerciseService) Update(ctx *gin.Context, id, callerID int64, req exerc
 	if err := validateExerciseRequest(req); err != nil {
 		return nil, err
 	}
-	existing.Name = req.Name
-	existing.Description = req.Description
-	existing.Kind = req.Kind
-	existing.Intensity = req.Intensity
-	existing.Minutes = req.Minutes
-	existing.DistanceM = req.DistanceM
-	existing.SpeedKph = req.SpeedKph
-	existing.MuscleGroup = req.MuscleGroup
-	if err := s.exerciseDao.Update(ctx, existing); err != nil {
-		customlogger.Error(ctx, "error updating exercise", err, customlogger.TagMethod("Update"))
+
+	referencingDays, err := s.groupCalendarDayDao.FindByExerciseID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding calendar days referencing exercise", err, customlogger.TagMethod("Update"))
 		return nil, fmt.Errorf("error al editar ejercicio")
+	}
+	now := time.Now()
+	closedDayIDsBySession := map[int64][]int64{}
+	for _, day := range referencingDays {
+		if day.SessionID == nil {
+			continue
+		}
+		if isCalendarDayClosed(day, now) {
+			closedDayIDsBySession[*day.SessionID] = append(closedDayIDsBySession[*day.SessionID], day.ID)
+		}
+	}
+
+	applyEdit := func(e *dbs.Exercise) {
+		e.Name = req.Name
+		e.Description = req.Description
+		e.Kind = req.Kind
+		e.Intensity = req.Intensity
+		e.Minutes = req.Minutes
+		e.DistanceM = req.DistanceM
+		e.SpeedKph = req.SpeedKph
+		e.MuscleGroup = req.MuscleGroup
+	}
+
+	if len(closedDayIDsBySession) == 0 {
+		applyEdit(existing)
+		if err := s.exerciseDao.Update(ctx, existing); err != nil {
+			customlogger.Error(ctx, "error updating exercise", err, customlogger.TagMethod("Update"))
+			return nil, fmt.Errorf("error al editar ejercicio")
+		}
+		return toExerciseResponse(existing), nil
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txExerciseDao := daos.NewExerciseDao(tx)
+		txSessionDao := daos.NewSessionDao(tx)
+		txSessionExerciseDao := daos.NewSessionExerciseDao(tx)
+		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+
+		for sessionID, dayIDs := range closedDayIDsBySession {
+			originalSession, err := txSessionDao.FindByID(ctx, sessionID)
+			if err != nil {
+				return fmt.Errorf("error al buscar sesión referenciada")
+			}
+			if originalSession == nil {
+				continue
+			}
+			clone, err := cloneSessionInternal(txSessionDao, txSessionExerciseDao, txExerciseDao, ctx, originalSession, nil, nil, true)
+			if err != nil {
+				return err
+			}
+			if err := txCalendarDao.RepointDaysByID(ctx, dayIDs, clone.ID); err != nil {
+				return fmt.Errorf("error al repuntear días ya cerrados")
+			}
+		}
+
+		applyEdit(existing)
+		return txExerciseDao.Update(ctx, existing)
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error in freeze-on-edit update", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar ejercicio con congelamiento de días cerrados")
 	}
 	return toExerciseResponse(existing), nil
 }

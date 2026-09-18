@@ -38,6 +38,8 @@ Pregunta recurrente: *cuando guardo una sesión, ¿los ejercicios quedan embebid
 
 En síntesis: **el ejercicio vive una sola vez en `exercises`; cada sesión que lo usa agrega una fila en `session_exercises` que apunta a él por ID.** Editar la sesión nunca edita el ejercicio catalogado, y borrar/editar el ejercicio catalogado no rompe sesiones que ya lo referencian (salvo que sea un borrado físico, que no existe para `Exercise`).
 
+**Editar un `Exercise` que ya está en un día de calendario cerrado no pisa el historial** — mismo congelamiento por divergencia que tiene editar una `Session` (§8), extendido un nivel más profundo (§8.5). Antes de esa extensión, este era un gap real: editar el ejercicio (ej. cambiar `distance_m` de 100 a 50) pegaba en vivo incluso sobre días ya pasados, invalidando cualquier feedback ya cargado sobre esa actividad.
+
 ## 3. Modelo de datos
 
 ### 3.1 `exercises` (`Exercise`)
@@ -247,6 +249,19 @@ Sesión "Fartlek 5K" asignada en 3 grupos: A (hoy, presencial 18:00, son las 15:
 - Grupo C: `date < hoy` → **cerrado** → se auto-clona, esa fila queda apuntando al clon con el contenido viejo.
 
 Si en cambio el entrenador edita a las 19:00 (después de las 18:00 de hoy), el Grupo A también queda cerrado y se clona junto con C.
+
+### 8.5 Congelamiento profundo: también protege contra editar el `Exercise` (`congelar-ejercicio-en-clon`)
+
+Gap detectado post-D13 (spec propia: `openspec/changes/congelar-ejercicio-en-clon/`): clonar la `Session` no alcanza si el clon sigue apuntando a los mismos `Exercise` originales por `exercise_id` — editar el `Exercise` directamente (`PUT /exercises/{id}`) pegaba igual sobre días ya congelados, porque el contenido real (`distance_m`, `minutes`, etc.) nunca vivía copiado en ningún lado, solo la referencia.
+
+Fix: el mismo clon de sesión ahora también **clona cada `Exercise`** que la sesión referencia (todos, no solo el editado — si se clonara solo uno, los demás seguirían vivos y reabrirían el mismo bug), y apunta el `SessionExercise` clonado al `Exercise` clonado en vez del original. Esto corre en dos disparadores:
+
+- **`SessionService.Update`** (D8 manual + D13 automático): sin cambios de comportamiento visible, solo el clon ahora es más profundo.
+- **`ExerciseService.Update`** (nuevo): mismo chequeo de días cerrados que D13, pero yendo un salto más — `exercise_id` → `session_exercises` (qué sesiones lo usan) → `group_calendar_days` (qué días usan esas sesiones) → filtrar cerrados → agrupar por sesión → clonar cada sesión afectada (con todos sus ejercicios) → repuntear solo esos día IDs. Sesiones del mismo ejercicio sin ningún día cerrado no se tocan.
+
+El clonado manual explícito (`POST /sessions/{id}/clone` y `POST /exercises/{id}/clone`, "duplicar para editar") **no** cambia — sigue compartiendo `exercise_id`/catálogo con el original a propósito, no es congelamiento histórico.
+
+Sin cambio de schema ni backfill: no había datos reales dependiendo de la protección faltante (gap detectado antes de que la feature de feedback tuviera uso real).
 
 ## 9. Detalles de implementación relevantes
 

@@ -238,4 +238,25 @@ func TestGroupCalendarDayDao_RepointDaysByID(t *testing.T) {
 	assert.Equal(t, oldSessionID, *found2.SessionID, "el día no listado en dayIDs debe quedar intacto, aunque comparta group_id y session_id viejo")
 }
 
+func TestGroupCalendarDayDao_FindByExerciseID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "16")
+	sessionID := int64(90)
+	otherSessionID := int64(91)
+	exerciseID := int64(500)
+	otherExerciseID := int64(501)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: sessionID, ExerciseID: exerciseID, Role: "main", RepeatCount: 1, RestMinutes: 0}).Error)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: otherSessionID, ExerciseID: otherExerciseID, Role: "main", RepeatCount: 1, RestMinutes: 0}).Error)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &otherSessionID}))
+
+	found, err := dao.FindByExerciseID(nil, exerciseID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	require.NotNil(t, found[0].SessionID)
+	assert.Equal(t, sessionID, *found[0].SessionID)
+}
+
 func strPtrCal(s string) *string { return &s }
