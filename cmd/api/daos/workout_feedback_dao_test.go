@@ -85,7 +85,10 @@ func TestWorkoutFeedbackDao_Create_DuplicateActiveSet(t *testing.T) {
 	}
 	require.NoError(t, dao.Create(nil, base))
 
+	// ID se reinicia a 0: el duplicado debe chocar contra el índice único parcial
+	// (mismo set activo), no contra la primary key.
 	dup := *base
+	dup.ID = 0
 	err := dao.Create(nil, &dup)
 
 	require.ErrorIs(t, err, ErrWorkoutFeedbackDuplicate)
@@ -110,7 +113,11 @@ func TestWorkoutFeedbackDao_Create_AfterSoftDeleteAllowed(t *testing.T) {
 	require.NoError(t, dao.Create(nil, base))
 	require.NoError(t, dao.SoftDelete(nil, base.ID))
 
+	// El set original queda soft-deleteado (deleted_at NOT NULL) → el índice único
+	// parcial (WHERE deleted_at IS NULL) ya no lo ocupa y recrear el set es válido.
+	// ID a 0: el insert debe generar una primary key nueva, no tocar la original.
 	again := *base
+	again.ID = 0
 	err := dao.Create(nil, &again)
 
 	require.NoError(t, err)
