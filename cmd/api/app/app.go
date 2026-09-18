@@ -52,6 +52,7 @@ type Application struct {
 	platformSettingController   controllers.PlatformSettingControllerInterface
 	teamSubscriptionController  controllers.TeamSubscriptionControllerInterface
 	teamConfigurationController controllers.TeamConfigurationControllerInterface
+	attendanceController        controllers.AttendanceController
 }
 
 func NewApplication() *Application {
@@ -272,6 +273,11 @@ func NewApplication() *Application {
 	teamConfigurationService := services.NewTeamConfigurationService(roleDao, userRoleDao, tierSubscriptionDao, tierDao)
 	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
 
+	// Attendance flow (asistencia por QR)
+	attendanceDao := daos.NewAttendanceDao(db)
+	attendanceService := services.NewAttendanceService(attendanceDao, config.AttendanceBaseURL)
+	attendanceController := controllers.NewAttendanceController(attendanceService)
+
 	return &Application{
 		pingController:              controllers.NewPingController(),
 		userController:              userController,
@@ -302,5 +308,6 @@ func NewApplication() *Application {
 		platformSettingController:   platformSettingController,
 		teamSubscriptionController:  teamSubscriptionController,
 		teamConfigurationController: teamConfigurationController,
+		attendanceController:        attendanceController,
 	}
 }

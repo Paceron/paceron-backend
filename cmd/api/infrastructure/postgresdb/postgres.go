@@ -89,6 +89,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.Installment{},
 		&dbs.SellerConnection{},
 		&dbs.PlatformSetting{},
+		&dbs.Attendance{},
 		&dbs.Exercise{},
 		&dbs.Session{},
 		&dbs.SessionExercise{},

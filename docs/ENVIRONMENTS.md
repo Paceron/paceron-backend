@@ -22,6 +22,10 @@ Dos proyectos de Supabase separados — DB y storage S3, mismo split. **Default 
 
 `DATABASE_URL` genérico ya no se lee — `loadDBConfig()` elige entre las dos de arriba según `IsProductionStage()`. Si ninguna está seteada, cae al fallback histórico de `db_host`/`db_port`/`db_user`/`db_password`/`db_name` (sin distinción de stage, legacy).
 
+| Variable | Descripción |
+|---|---|
+| `ATTENDANCE_BASE_URL` | URL pública del backend que se embebe en el QR de asistencia (`GET /api/v1/attendance/qr`). Se usa default `http://localhost:8080` en dev; en Render (ver `render.yaml`) apunta a la URL pública de cada service (`paceron-backend.onrender.com` en producción, `paceron-backend-develop.onrender.com` en la preview de develop).
+
 ## Deploys en Render
 
 Dos services (`render.yaml`), mismo repo:

@@ -9,6 +9,27 @@ definitions:
       status_code:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_attendance.QRResponse:
+    properties:
+      qr_code_base64:
+        description: Imagen PNG en base64
+        type: string
+      url_encoded:
+        description: URL codificada en el QR
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.RegisterResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SearchResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.Attendance'
+        type: array
+    type: object
   simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest:
     properties:
       email:
@@ -291,6 +312,27 @@ definitions:
     required:
     - plan_id
     - start_date
+    type: object
+  simple-arq-golang_cmd_api_domains_dbs.Attendance:
+    properties:
+      createdAt:
+        description: Fecha de registro
+        type: string
+      id:
+        description: ID único de la asistencia (autoincremental)
+        type: integer
+      teamID:
+        description: ID del equipo
+        type: integer
+      trainingSessionID:
+        description: ID de la sesión de entrenamiento (FK opaca, ver doc)
+        type: integer
+      updatedAt:
+        description: Fecha de última actualización
+        type: string
+      userID:
+        description: ID del usuario que asiste
+        type: integer
     type: object
   simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest:
     properties:
@@ -1793,6 +1835,140 @@ info:
   title: Simple Arq Golang API
   version: 1.0.0
 paths:
+  /api/v1/attendance/qr:
+    get:
+      consumes:
+      - application/json
+      description: Genera el código QR determinista para registrar asistencias de
+        una sesión de entrenamiento de un equipo. Requiere autenticación. Mismos inputs
+        siempre producen el mismo QR.
+      parameters:
+      - description: ID del equipo
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: ID de la sesión de entrenamiento
+        in: query
+        name: training_session_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.QRResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Generar QR de asistencia
+      tags:
+      - attendance
+  /api/v1/attendance/search:
+    get:
+      consumes:
+      - application/json
+      description: Busca asistencias aplicando la matriz de autorización. Sin parámetros
+        consulta las del usuario autenticado; con user_id ajeno o team_id debe ser
+        owner (o corredor de un equipo del owner) para verlas.
+      parameters:
+      - description: ID del equipo
+        in: query
+        name: team_id
+        type: integer
+      - description: ID de la sesión de entrenamiento
+        in: query
+        name: training_session_id
+        type: integer
+      - description: ID del usuario
+        in: query
+        name: user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Buscar asistencias
+      tags:
+      - attendance
+  /api/v1/attendance/team/{team_id}/session/{training_session_id}:
+    post:
+      consumes:
+      - application/json
+      description: 'Registra la asistencia del usuario autenticado a la sesión de
+        entrenamiento. Idempotente: la primera vez responde 201, si ya estaba registrada
+        responde 200 sin duplicar.'
+      parameters:
+      - description: ID del equipo
+        in: path
+        name: team_id
+        required: true
+        type: integer
+      - description: ID de la sesión de entrenamiento
+        in: path
+        name: training_session_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.RegisterResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.RegisterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Registrar asistencia
+      tags:
+      - attendance
   /api/v1/auth/forgot-password:
     post:
       consumes:

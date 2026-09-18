@@ -17,6 +17,199 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/v1/attendance/qr": {
+            "get": {
+                "description": "Genera el código QR determinista para registrar asistencias de una sesión de entrenamiento de un equipo. Requiere autenticación. Mismos inputs siempre producen el mismo QR.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Generar QR de asistencia",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión de entrenamiento",
+                        "name": "training_session_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.QRResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/attendance/search": {
+            "get": {
+                "description": "Busca asistencias aplicando la matriz de autorización. Sin parámetros consulta las del usuario autenticado; con user_id ajeno o team_id debe ser owner (o corredor de un equipo del owner) para verlas.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Buscar asistencias",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión de entrenamiento",
+                        "name": "training_session_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario",
+                        "name": "user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/attendance/team/{team_id}/session/{training_session_id}": {
+            "post": {
+                "description": "Registra la asistencia del usuario autenticado a la sesión de entrenamiento. Idempotente: la primera vez responde 201, si ya estaba registrada responde 200 sin duplicar.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Registrar asistencia",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión de entrenamiento",
+                        "name": "training_session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.RegisterResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.RegisterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/auth/forgot-password": {
             "post": {
                 "description": "Sends a 6-digit OTP code by email if it belongs to an active user. Always responds with the same generic message, to avoid leaking whether an email is registered.",
@@ -5808,6 +6001,38 @@
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_attendance.QRResponse": {
+            "type": "object",
+            "properties": {
+                "qr_code_base64": {
+                    "description": "Imagen PNG en base64",
+                    "type": "string"
+                },
+                "url_encoded": {
+                    "description": "URL codificada en el QR",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.RegisterResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SearchResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dbs.Attendance"
+                    }
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest": {
             "type": "object",
             "required": [
@@ -6232,6 +6457,35 @@
                 "start_date": {
                     "description": "\"YYYY-MM-DD\"",
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dbs.Attendance": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "description": "Fecha de registro",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID único de la asistencia (autoincremental)",
+                    "type": "integer"
+                },
+                "teamID": {
+                    "description": "ID del equipo",
+                    "type": "integer"
+                },
+                "trainingSessionID": {
+                    "description": "ID de la sesión de entrenamiento (FK opaca, ver doc)",
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "description": "Fecha de última actualización",
+                    "type": "string"
+                },
+                "userID": {
+                    "description": "ID del usuario que asiste",
+                    "type": "integer"
                 }
             }
         },

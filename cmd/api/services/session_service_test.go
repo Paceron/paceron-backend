@@ -414,8 +414,16 @@ func TestSessionService_Update_FutureDayStaysLiveWithoutExclusion(t *testing.T) 
 }
 
 func TestSessionService_Update_TodayPresencialBeforeStartTimeStaysLive(t *testing.T) {
-	future := time.Now().Add(2 * time.Hour)
-	presencialTime := time.Date(0, 1, 1, future.Hour(), future.Minute(), 0, 0, time.UTC)
+	// El horario de inicio debe ser estrictamente posterior a ahora dentro del
+	// día actual. `now+2h` cruza la medianoche de noche y quedaría ANTES en el
+	// reloj — para no depender de la hora de corrida, en ese caso se usa el
+	// cierre del día (23:59) como horario de la presencial.
+	now := time.Now()
+	startClock := now.Add(2 * time.Hour)
+	if startClock.Hour()*60+startClock.Minute() <= now.Hour()*60+now.Minute() {
+		startClock = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, now.Location())
+	}
+	presencialTime := time.Date(0, 1, 1, startClock.Hour(), startClock.Minute(), 0, 0, time.UTC)
 	repointCalled := false
 	calDao := &mockGroupCalendarDao{
 		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
@@ -474,9 +482,16 @@ func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) 
 	group := &dbs.Group{Name: "Grupo autolock presencial", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 
+	// El horario de inicio debe estar estrictamente ANTES de ahora dentro del
+	// día actual. `now-2h` cruza la medianoche de madrugada y quedaría DESPUÉS
+	// en el reloj; en ese caso se usa el inicio del día (00:00) como horario
+	// de la presencial para no depender de la hora de corrida.
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	past := now.Add(-2 * time.Hour)
+	if past.Hour()*60+past.Minute() >= now.Hour()*60+now.Minute() {
+		past = today
+	}
 	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
 		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTime: &presencialTime, SessionID: &original.ID,
