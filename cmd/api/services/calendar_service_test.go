@@ -29,6 +29,7 @@ type mockGroupCalendarDao struct {
 	updateDatesForShiftFn         func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
 	findBySessionIDFn             func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
 	repointDaysByIDFn             func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
+	findByExerciseIDFn            func(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error)
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -103,6 +104,12 @@ func (m *mockGroupCalendarDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64,
 		return m.repointDaysByIDFn(ctx, dayIDs, newSessionID)
 	}
 	return nil
+}
+func (m *mockGroupCalendarDao) FindByExerciseID(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error) {
+	if m.findByExerciseIDFn != nil {
+		return m.findByExerciseIDFn(ctx, exerciseID)
+	}
+	return nil, nil
 }
 
 // mockGroupDao and mockGroupUserDao are already declared in

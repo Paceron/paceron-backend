@@ -23,6 +23,7 @@ type GroupCalendarDaoInterface interface {
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
 	FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
 	RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
+	FindByExerciseID(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error)
 }
 
 type groupCalendarDayDao struct {
@@ -145,4 +146,22 @@ func (d *groupCalendarDayDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, 
 		return nil
 	}
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id IN ?", dayIDs).Update("session_id", newSessionID).Error
+}
+
+// FindByExerciseID devuelve todos los días de calendario cuya sesión asignada
+// referencia el ejercicio dado (join por session_exercises.session_id) —
+// usado para congelar sesiones con días cerrados cuando se edita un Exercise
+// directamente, no solo cuando se edita la Session (ver design.md D5 de
+// congelar-ejercicio-en-clon).
+func (d *groupCalendarDayDao) FindByExerciseID(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error) {
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Table("group_calendar_days").
+		Select("group_calendar_days.*").
+		Joins("JOIN session_exercises ON session_exercises.session_id = group_calendar_days.session_id").
+		Where("session_exercises.exercise_id = ?", exerciseID).
+		Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding calendar days by exercise: %w", err)
+	}
+	return days, nil
 }
