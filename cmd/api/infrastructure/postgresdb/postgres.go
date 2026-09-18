@@ -96,6 +96,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.TrainingPlan{},
 		&dbs.PlanDay{},
 		&dbs.GroupCalendarDay{},
+		&dbs.WorkoutFeedback{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)
@@ -153,6 +154,28 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 			customlogger.Error(nil, "error migrating seller_connections unique key", err)
 			return nil, err
 		}
+	}
+
+	// 5. workout_feedback: "un feedback activo por set" vía índice único parcial
+	// (WHERE deleted_at IS NULL) — la spec original pedía UNIQUE plano, pero eso
+	// bloquearía recrear un set tras su baja lógica; ver design.md del change
+	// workout-feedback-api. Idempotente (IF NOT EXISTS).
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS unique_feedback_per_set
+		ON workout_feedback (assigned_session_id, assigned_exercise_id,
+		athlete_user_id, feedback_owner_user_id, set_number) WHERE deleted_at IS NULL;`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial unique index on workout_feedback", err)
+		return nil, err
+	}
+
+	// 6. workout_feedback.rpe: CHECK 1..10 (doble control con la validación del service).
+	if err := db.Exec(`DO $$ BEGIN
+		IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_workout_feedback_rpe') THEN
+			ALTER TABLE workout_feedback ADD CONSTRAINT chk_workout_feedback_rpe
+			CHECK (rpe IS NULL OR (rpe >= 1 AND rpe <= 10));
+		END IF;
+	END $$;`).Error; err != nil {
+		customlogger.Error(nil, "error creating rpe check on workout_feedback", err)
+		return nil, err
 	}
 
 	customlogger.Info(nil, "DB initialized successfully",

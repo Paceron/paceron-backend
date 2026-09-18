@@ -5951,6 +5951,322 @@
                 }
             }
         },
+        "/api/v1/workout-feedback": {
+            "post": {
+                "description": "Crea el feedback de un entrenamiento. El reportante es siempre el usuario autenticado; si athlete_user_id viene y es distinto, solo un entrenador (owner de un equipo del atleta) puede reportar por él. Duplicado del mismo set activo → 409.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Crear feedback de entrenamiento",
+                "parameters": [
+                    {
+                        "description": "Datos del feedback",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.CreateFeedbackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workout-feedback/search": {
+            "get": {
+                "description": "Busca feedbacks aplicando la matriz de autorización. Sin parámetros devuelve los del usuario autenticado (como atleta o reportante); con team_id se requiere ser owner; con athlete_user_id ajeno, owner de un equipo del atleta.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Buscar feedbacks",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del atleta",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del reportante",
+                        "name": "feedback_owner_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión asignada",
+                        "name": "assigned_session_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del ejercicio asignado",
+                        "name": "assigned_exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD)",
+                        "name": "session_date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD)",
+                        "name": "session_date_to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/workout-feedback/{id}": {
+            "get": {
+                "description": "Devuelve el feedback activo con ese id. Visible solo para el atleta, el reportante o el owner del equipo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Obtener feedback por id",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del feedback",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Edita parcialmente el feedback activo (solo los campos provistos). Utilizable por el atleta, el reportante o el owner del equipo. athlete_user_id / feedback_owner_user_id no son editables.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Editar feedback",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del feedback",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a editar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.UpdateFeedbackRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Da de baja lógicamente el feedback activo (deleted_at = now). No borra filas; un mismo set puede volver a reportarse tras la baja. Utilizable por el atleta, el reportante o el owner del equipo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Eliminar feedback (baja lógica)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del feedback",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/callbackauth": {
             "get": {
                 "description": "Loguea todos los query params recibidos (util para debug de OAuth callback)",
@@ -8629,6 +8945,265 @@
                 "user_id": {
                     "description": "ID del usuario",
                     "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.CreateFeedbackRequest": {
+            "type": "object",
+            "required": [
+                "assigned_exercise_id",
+                "assigned_session_id",
+                "report_source",
+                "session_date"
+            ],
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "annotations": {
+                    "type": "string"
+                },
+                "assigned_exercise_id": {
+                    "type": "integer"
+                },
+                "assigned_session_id": {
+                    "type": "integer"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "avg_heart_rate": {
+                    "type": "integer"
+                },
+                "cadence": {
+                    "type": "integer"
+                },
+                "completion_status": {
+                    "type": "string"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "elevation_gain_meters": {
+                    "type": "number"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "max_heart_rate": {
+                    "type": "integer"
+                },
+                "media_urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "report_source": {
+                    "type": "string"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "rpe": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "weight_kg": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.UpdateFeedbackRequest": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "annotations": {
+                    "type": "string"
+                },
+                "assigned_exercise_id": {
+                    "type": "integer"
+                },
+                "assigned_session_id": {
+                    "type": "integer"
+                },
+                "avg_heart_rate": {
+                    "type": "integer"
+                },
+                "cadence": {
+                    "type": "integer"
+                },
+                "completion_status": {
+                    "type": "string"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "elevation_gain_meters": {
+                    "type": "number"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "max_heart_rate": {
+                    "type": "integer"
+                },
+                "media_urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "report_source": {
+                    "type": "string"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "rpe": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "weight_kg": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "annotations": {
+                    "type": "string"
+                },
+                "assigned_exercise_id": {
+                    "type": "integer"
+                },
+                "assigned_session_id": {
+                    "type": "integer"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "avg_heart_rate": {
+                    "type": "integer"
+                },
+                "cadence": {
+                    "type": "integer"
+                },
+                "completion_status": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "elevation_gain_meters": {
+                    "type": "number"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "feedback_owner_user_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "max_heart_rate": {
+                    "type": "integer"
+                },
+                "media_urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "report_source": {
+                    "type": "string"
+                },
+                "reps": {
+                    "type": "integer"
+                },
+                "rpe": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "weight_kg": {
+                    "type": "number"
                 }
             }
         },

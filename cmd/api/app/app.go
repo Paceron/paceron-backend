@@ -53,6 +53,7 @@ type Application struct {
 	teamSubscriptionController  controllers.TeamSubscriptionControllerInterface
 	teamConfigurationController controllers.TeamConfigurationControllerInterface
 	attendanceController        controllers.AttendanceController
+	workoutFeedbackController   controllers.WorkoutFeedbackController
 }
 
 func NewApplication() *Application {
@@ -278,6 +279,11 @@ func NewApplication() *Application {
 	attendanceService := services.NewAttendanceService(attendanceDao, config.AttendanceBaseURL)
 	attendanceController := controllers.NewAttendanceController(attendanceService)
 
+	// Workout Feedback flow (feedback de entrenamiento)
+	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
+	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao)
+	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService)
+
 	return &Application{
 		pingController:              controllers.NewPingController(),
 		userController:              userController,
@@ -309,5 +315,6 @@ func NewApplication() *Application {
 		teamSubscriptionController:  teamSubscriptionController,
 		teamConfigurationController: teamConfigurationController,
 		attendanceController:        attendanceController,
+		workoutFeedbackController:   workoutFeedbackController,
 	}
 }
