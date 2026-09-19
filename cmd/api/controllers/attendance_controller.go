@@ -175,11 +175,11 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 
 // Search godoc
 // @Summary      Buscar asistencias
-// @Description  Busca asistencias aplicando la matriz de autorización. Sin parámetros consulta las del usuario autenticado; con user_id ajeno o team_id debe ser owner (o corredor de un equipo del owner) para verlas.
+// @Description  Busca asistencias de un equipo. Obligatorio enviar al menos un query param y el team_id. El usuario del token debe ser entrenador o corredor del equipo: el entrenador ve todas las asistencias del equipo, el corredor solo las suyas.
 // @Tags         attendance
 // @Accept       json
 // @Produce      json
-// @Param        team_id              query  int  false  "ID del equipo"
+// @Param        team_id              query  int  true  "ID del equipo (obligatorio)"
 // @Param        training_session_id  query  int  false  "ID de la sesión de entrenamiento"
 // @Param        user_id              query  int  false  "ID del usuario"
 // @Success      200  {object}  attendance.SearchResponse
@@ -223,6 +223,24 @@ func (ac *attendanceController) Search(c *gin.Context) {
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
 			Message:    err.Error(),
+		})
+		return
+	}
+
+	if teamID == nil && sessionID == nil && userID == nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "debe venir al menos un query param",
+		})
+		return
+	}
+
+	if teamID == nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "team_id es obligatorio",
 		})
 		return
 	}

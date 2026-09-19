@@ -181,6 +181,30 @@ func TestAttendanceController_RegisterAttendance_InternalError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
 
+func TestAttendanceController_Search_MandatoryParam(t *testing.T) {
+	controller := NewAttendanceController(&mockAttendanceService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search", nil)
+	setAuthUserID(c, 1)
+
+	controller.Search(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestAttendanceController_Search_MissingTeamID(t *testing.T) {
+	controller := NewAttendanceController(&mockAttendanceService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?training_session_id=9", nil)
+	setAuthUserID(c, 1)
+
+	controller.Search(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
 func TestAttendanceController_Search_Success(t *testing.T) {
 	mock := &mockAttendanceService{
 		searchFn: func(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error) {
@@ -191,7 +215,7 @@ func TestAttendanceController_Search_Success(t *testing.T) {
 	controller := NewAttendanceController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=5", nil)
 	setAuthUserID(c, 1)
 
 	controller.Search(c)
@@ -221,7 +245,7 @@ func TestAttendanceController_Search_Forbidden(t *testing.T) {
 	controller := NewAttendanceController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
-	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?user_id=99", nil)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=5&user_id=99", nil)
 	setAuthUserID(c, 1)
 
 	controller.Search(c)

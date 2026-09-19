@@ -11,6 +11,7 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/attendance"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -18,8 +19,11 @@ import (
 // status HTTP correspondientes vía errors.Is.
 var (
 	// ErrForbiddenAttendance indica que el usuario autenticado no tiene permiso
-	// para ver las asistencias solicitadas (falla de los escenarios B o C).
+	// para ver las asistencias solicitadas (no es entrenador ni corredor del team,
+	// o siendo corredor pidió asistencias de otro).
 	ErrForbiddenAttendance = errors.New("no tenés permisos para ver estas asistencias")
+	// ErrTeamIDRequired indica que no se envió el team_id obligatorio.
+	ErrTeamIDRequired = errors.New("team_id es obligatorio para buscar asistencias")
 )
 
 // Observations sobre el determinismo del QR: se usan tamaño (256px), nivel de
@@ -87,58 +91,60 @@ func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID
 	return true, nil
 }
 
-// Search aplica la matriz de autorización (escenarios A/B/C del spec) y delega la
-// búsqueda al DAO con los filtros ya autorizados.
+// Search valida las restricciones de la búsqueda de asistencias y delega al DAO
+// con los filtros ya autorizados. team_id es obligatorio y el usuario autenticado
+// debe pertenecer al equipo como entrenador o corredor:
 //
-//	Escenario A: user_id propio o sin parámetros -> scope self.
-//	Escenario B: solo team_id (o team_id + training_session_id) -> el auth_user_id
-//	  debe ser el owner del team (404 si no existe, 403 si no es owner).
-//	Escenario C: user_id ajeno -> el auth_user_id debe ser owner de al menos un
-//	  team al que pertenezca el usuario objetivo (403 si no hay relación).
+//	Entrenador -> ve todas las asistencias del equipo.
+//	Corredor  -> ve solo las suyas (se fuerza user_id = authUserID en la query).
 func (s *attendanceService) Search(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error) {
-	if filters.UserID != nil {
-		if *filters.UserID != authUserID {
-			inOwnedTeam, err := s.attendanceDao.ExistsUserInTeamOwnedBy(ctx, *filters.UserID, authUserID)
-			if err != nil {
-				return nil, err
-			}
-			if !inOwnedTeam {
-				return nil, ErrForbiddenAttendance
-			}
-		}
-		return s.attendanceDao.Search(ctx, daos.AttendanceSearchFilters{
-			TeamID:            filters.TeamID,
-			TrainingSessionID: filters.TrainingSessionID,
-			UserID:            filters.UserID,
-		})
+	if filters.TeamID == nil {
+		return nil, ErrTeamIDRequired
 	}
 
-	if filters.TeamID != nil {
-		exists, err := s.attendanceDao.TeamExists(ctx, *filters.TeamID)
-		if err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, ErrTeamNotFound
-		}
+	exists, err := s.attendanceDao.TeamExists(ctx, *filters.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrTeamNotFound
+	}
 
-		isOwner, err := s.attendanceDao.IsTeamOwner(ctx, *filters.TeamID, authUserID)
+	// Un usuario es entrenador del team si es el owner (teams.owner_id) o si tiene
+	// rol "entrenador" en team_users. El owner puede no tener fila en team_users
+	// en equipos creados antes de que se registrara la membresía del owner.
+	isCoach, err := s.attendanceDao.IsTeamOwner(ctx, *filters.TeamID, authUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !isCoach {
+		role, err := s.attendanceDao.GetTeamUserRole(ctx, *filters.TeamID, authUserID)
 		if err != nil {
 			return nil, err
 		}
-		if !isOwner {
+		if role == "" {
 			return nil, ErrForbiddenAttendance
 		}
-
-		return s.attendanceDao.Search(ctx, daos.AttendanceSearchFilters{
-			TeamID:            filters.TeamID,
-			TrainingSessionID: filters.TrainingSessionID,
-		})
+		isCoach = role == string(constants.TeamUserRoleEntrenador)
 	}
 
-	// Sin parámetros: el usuario consulta sus propias asistencias.
-	return s.attendanceDao.Search(ctx, daos.AttendanceSearchFilters{
+	daoFilters := daos.AttendanceSearchFilters{
+		TeamID:            filters.TeamID,
 		TrainingSessionID: filters.TrainingSessionID,
-		UserID:            &authUserID,
-	})
+	}
+
+	if isCoach {
+		// Entrenador: puede ver todas las asistencias del equipo, opcionalmente
+		// filtrando por un corredor puntual vía user_id.
+		daoFilters.UserID = filters.UserID
+		return s.attendanceDao.Search(ctx, daoFilters)
+	}
+
+	// Corredor: solo sus propias asistencias. Un user_id ajeno en la request no
+	// tiene permitido ver data de otros miembros.
+	if filters.UserID != nil && *filters.UserID != authUserID {
+		return nil, ErrForbiddenAttendance
+	}
+	daoFilters.UserID = &authUserID
+	return s.attendanceDao.Search(ctx, daoFilters)
 }

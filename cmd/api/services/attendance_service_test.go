@@ -10,6 +10,7 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/attendance"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -19,6 +20,7 @@ type mockAttendanceDao struct {
 	teamExistsFn        func(ctx *gin.Context, teamID int64) (bool, error)
 	isTeamOwnerFn       func(ctx *gin.Context, teamID, userID int64) (bool, error)
 	userInTeamOwnedByFn func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
+	getTeamUserRoleFn   func(ctx *gin.Context, teamID, userID int64) (string, error)
 }
 
 func (m *mockAttendanceDao) Create(ctx *gin.Context, a *dbs.Attendance) error {
@@ -54,6 +56,13 @@ func (m *mockAttendanceDao) ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUser
 		return m.userInTeamOwnedByFn(ctx, targetUserID, ownerUserID)
 	}
 	return false, nil
+}
+
+func (m *mockAttendanceDao) GetTeamUserRole(ctx *gin.Context, teamID, userID int64) (string, error) {
+	if m.getTeamUserRoleFn != nil {
+		return m.getTeamUserRoleFn(ctx, teamID, userID)
+	}
+	return "", nil
 }
 
 func TestAttendanceService_GenerateQR_DeterministicAndURL(t *testing.T) {
@@ -122,70 +131,17 @@ func TestAttendanceService_Register_DAOError(t *testing.T) {
 	assert.False(t, created)
 }
 
-func TestAttendanceService_Search_NoFilters_OwnScope(t *testing.T) {
-	expected := []dbs.Attendance{{ID: 1, UserID: 42}}
-	mock := &mockAttendanceDao{
-		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
-			require.NotNil(t, f.UserID)
-			assert.Equal(t, int64(42), *f.UserID)
-			return expected, nil
-		},
-	}
+func TestAttendanceService_Search_TeamIDRequired(t *testing.T) {
+	mock := &mockAttendanceDao{}
 	svc := NewAttendanceService(mock, "http://localhost:8080")
 
-	atts, err := svc.Search(nil, 42, attendance.SearchFilters{})
+	_, err := svc.Search(nil, 42, attendance.SearchFilters{})
 
-	require.NoError(t, err)
-	assert.Equal(t, expected, atts)
+	require.ErrorIs(t, err, ErrTeamIDRequired)
 }
 
-func TestAttendanceService_Search_OwnUserID(t *testing.T) {
-	mock := &mockAttendanceDao{
-		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
-			require.NotNil(t, f.UserID)
-			assert.Equal(t, int64(42), *f.UserID)
-			return nil, nil
-		},
-	}
-	svc := NewAttendanceService(mock, "http://localhost:8080")
-
-	_, err := svc.Search(nil, 42, attendance.SearchFilters{UserID: int64Ptr(42)})
-	require.NoError(t, err)
-}
-
-func TestAttendanceService_Search_TargetInOwnedTeam(t *testing.T) {
-	mock := &mockAttendanceDao{
-		userInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
-			assert.Equal(t, int64(7), targetUserID)
-			assert.Equal(t, int64(42), ownerUserID)
-			return true, nil
-		},
-		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
-			require.NotNil(t, f.UserID)
-			assert.Equal(t, int64(7), *f.UserID)
-			return nil, nil
-		},
-	}
-	svc := NewAttendanceService(mock, "http://localhost:8080")
-
-	_, err := svc.Search(nil, 42, attendance.SearchFilters{UserID: int64Ptr(7)})
-	require.NoError(t, err)
-}
-
-func TestAttendanceService_Search_TargetNotInOwnedTeam_Forbidden(t *testing.T) {
-	mock := &mockAttendanceDao{
-		userInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
-			return false, nil
-		},
-	}
-	svc := NewAttendanceService(mock, "http://localhost:8080")
-
-	_, err := svc.Search(nil, 42, attendance.SearchFilters{UserID: int64Ptr(7)})
-
-	require.ErrorIs(t, err, ErrForbiddenAttendance)
-}
-
-func TestAttendanceService_Search_TeamOwner(t *testing.T) {
+func TestAttendanceService_Search_CoachSeesAllTeam(t *testing.T) {
+	expected := []dbs.Attendance{{ID: 1, TeamID: 5, UserID: 7}}
 	mock := &mockAttendanceDao{
 		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) {
 			assert.Equal(t, int64(5), teamID)
@@ -199,6 +155,30 @@ func TestAttendanceService_Search_TeamOwner(t *testing.T) {
 		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
 			require.NotNil(t, f.TeamID)
 			assert.Equal(t, int64(5), *f.TeamID)
+			assert.Nil(t, f.UserID)
+			return expected, nil
+		},
+	}
+	svc := NewAttendanceService(mock, "http://localhost:8080")
+
+	atts, err := svc.Search(nil, 42, attendance.SearchFilters{TeamID: int64Ptr(5)})
+
+	require.NoError(t, err)
+	assert.Equal(t, expected, atts)
+}
+
+func TestAttendanceService_Search_CoachByRoleWithoutOwnerRow(t *testing.T) {
+	mock := &mockAttendanceDao{
+		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
+		isTeamOwnerFn: func(ctx *gin.Context, teamID, userID int64) (bool, error) {
+			return false, nil
+		},
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return string(constants.TeamUserRoleEntrenador), nil
+		},
+		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
+			require.NotNil(t, f.TeamID)
+			assert.Nil(t, f.UserID)
 			return nil, nil
 		},
 	}
@@ -208,11 +188,63 @@ func TestAttendanceService_Search_TeamOwner(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAttendanceService_Search_CoachFiltersByRunner(t *testing.T) {
+	mock := &mockAttendanceDao{
+		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return string(constants.TeamUserRoleEntrenador), nil
+		},
+		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
+			require.NotNil(t, f.UserID)
+			assert.Equal(t, int64(7), *f.UserID)
+			return nil, nil
+		},
+	}
+	svc := NewAttendanceService(mock, "http://localhost:8080")
+
+	_, err := svc.Search(nil, 42, attendance.SearchFilters{TeamID: int64Ptr(5), UserID: int64Ptr(7)})
+	require.NoError(t, err)
+}
+
+func TestAttendanceService_Search_RunnerSeesOnlyOwn(t *testing.T) {
+	mock := &mockAttendanceDao{
+		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return string(constants.TeamUserRoleCorredor), nil
+		},
+		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
+			require.NotNil(t, f.TeamID)
+			require.NotNil(t, f.UserID)
+			assert.Equal(t, int64(5), *f.TeamID)
+			assert.Equal(t, int64(42), *f.UserID)
+			return nil, nil
+		},
+	}
+	svc := NewAttendanceService(mock, "http://localhost:8080")
+
+	_, err := svc.Search(nil, 42, attendance.SearchFilters{TeamID: int64Ptr(5)})
+	require.NoError(t, err)
+}
+
+func TestAttendanceService_Search_RunnerCannotFilterAnotherRunner(t *testing.T) {
+	mock := &mockAttendanceDao{
+		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return string(constants.TeamUserRoleCorredor), nil
+		},
+	}
+	svc := NewAttendanceService(mock, "http://localhost:8080")
+
+	_, err := svc.Search(nil, 42, attendance.SearchFilters{TeamID: int64Ptr(5), UserID: int64Ptr(7)})
+
+	require.ErrorIs(t, err, ErrForbiddenAttendance)
+}
+
 func TestAttendanceService_Search_TeamWithSession(t *testing.T) {
 	mock := &mockAttendanceDao{
 		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
-		isTeamOwnerFn: func(ctx *gin.Context, teamID, userID int64) (bool, error) {
-			return true, nil
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return string(constants.TeamUserRoleEntrenador), nil
 		},
 		searchFn: func(ctx *gin.Context, f daos.AttendanceSearchFilters) ([]dbs.Attendance, error) {
 			require.NotNil(t, f.TeamID)
@@ -241,11 +273,11 @@ func TestAttendanceService_Search_TeamNotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrTeamNotFound)
 }
 
-func TestAttendanceService_Search_TeamNotOwner_Forbidden(t *testing.T) {
+func TestAttendanceService_Search_NotMember_Forbidden(t *testing.T) {
 	mock := &mockAttendanceDao{
 		teamExistsFn: func(ctx *gin.Context, teamID int64) (bool, error) { return true, nil },
-		isTeamOwnerFn: func(ctx *gin.Context, teamID, userID int64) (bool, error) {
-			return false, nil
+		getTeamUserRoleFn: func(ctx *gin.Context, teamID, userID int64) (string, error) {
+			return "", nil
 		},
 	}
 	svc := NewAttendanceService(mock, "http://localhost:8080")

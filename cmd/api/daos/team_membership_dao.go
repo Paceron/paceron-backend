@@ -1,6 +1,7 @@
 package daos
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,9 @@ type TeamMembershipDAOInterface interface {
 	// ExistsUserInTeamOwnedBy indica si targetUserID pertenece a al menos un team
 	// cuyo owner sea ownerUserID.
 	ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
+	// GetTeamUserRole devuelve el rol (entrenador/corredor) de userID en teamID si
+	// la membresía está activa (deleted_at IS NULL). Devuelve "" si no pertenece.
+	GetTeamUserRole(ctx *gin.Context, teamID, userID int64) (string, error)
 }
 
 type teamMembershipDao struct {
@@ -72,4 +76,22 @@ func (d *teamMembershipDao) ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUser
 		return false, fmt.Errorf("error checking user in team owned by: %w", err)
 	}
 	return count > 0, nil
+}
+
+// GetTeamUserRole devuelve el rol activo (entrenador/corredor) de userID en teamID.
+// Devuelve "" si el usuario no tiene una membresía activa en ese equipo. Aplica el
+// mismo criterio de membresía que el resto del módulo: team_users activo
+// (deleted_at IS NULL).
+func (d *teamMembershipDao) GetTeamUserRole(ctx *gin.Context, teamID, userID int64) (string, error) {
+	var member dbs.TeamUser
+	err := d.DB.Model(&dbs.TeamUser{}).
+		Where("team_id = ? AND user_id = ? AND deleted_at IS NULL", teamID, userID).
+		First(&member).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("error getting team user role: %w", err)
+	}
+	return member.RoleInTeam, nil
 }

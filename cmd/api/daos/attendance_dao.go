@@ -19,8 +19,8 @@ var ErrAttendanceAlreadyExists = errors.New("esta asistencia fue previamente reg
 const postgresUniqueViolation = "23505"
 
 // AttendanceSearchFilters agrupa los filtros opcionales de búsqueda de asistencias.
-// Los valores llegan ya autorizados por la matriz de autorización del service
-// (escenarios A/B/C): el DAO solo construye el WHERE.
+// Los valores llegan ya autorizados por el service (team_id obligatorio + rol en el
+// team): el DAO solo construye el WHERE.
 type AttendanceSearchFilters struct {
 	TeamID            *int64
 	TrainingSessionID *int64
@@ -34,6 +34,7 @@ type AttendanceDAOInterface interface {
 	TeamExists(ctx *gin.Context, teamID int64) (bool, error)
 	IsTeamOwner(ctx *gin.Context, teamID, userID int64) (bool, error)
 	ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
+	GetTeamUserRole(ctx *gin.Context, teamID, userID int64) (string, error)
 }
 
 type attendanceDao struct {
@@ -106,4 +107,10 @@ func (d *attendanceDao) IsTeamOwner(ctx *gin.Context, teamID, userID int64) (boo
 // corredor solo si ese corredor está en un equipo que él administra.
 func (d *attendanceDao) ExistsUserInTeamOwnedBy(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
 	return d.membership.ExistsUserInTeamOwnedBy(ctx, targetUserID, ownerUserID)
+}
+
+// GetTeamUserRole devuelve el rol (entrenador/corredor) de userID en teamID si
+// pertenece activamente ("" si no es miembro).
+func (d *attendanceDao) GetTeamUserRole(ctx *gin.Context, teamID, userID int64) (string, error) {
+	return d.membership.GetTeamUserRole(ctx, teamID, userID)
 }

@@ -349,7 +349,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | PUT | `/api/v1/platform-settings/marketplace-fee` | Update Paceron marketplace fee percentage (app owner only) |
 | GET | `/api/v1/attendance/qr?team_id=&training_session_id=` | Generate a deterministic QR (base64 + encoded URL) to register attendance for a team's training session (any authenticated user) |
 | POST | `/api/v1/attendance/team/:team_id/session/:training_session_id` | Register attendance (idempotent: `201` first time, `200` if already registered) |
-| GET | `/api/v1/attendance/search?team_id=&training_session_id=&user_id=` | Search attendances applying the ownership matrix (self by default; other users/teams only for the owner or runners from an owned team) |
+| GET | `/api/v1/attendance/search` | Search attendances. `team_id` is mandatory (plus at least one query param, 400 otherwise). The token user must be a coach or runner of that team: coaches see all team attendances, runners only their own |
 | POST | `/api/v1/workout-feedback` | Create workout feedback (reporter is always the authenticated user; a trainer can report for an athlete of one of their teams) |
 | GET | `/api/v1/workout-feedback/:id` | Get a workout feedback (only the athlete, the reporter or the team owner) |
 | GET | `/api/v1/workout-feedback/search?team_id=&athlete_user_id=&feedback_owner_user_id=&assigned_session_id=&assigned_exercise_id=&session_date_from=&session_date_to=` | Search workout feedbacks applying the ownership matrix (self by default; teams only for their owner) |
