@@ -23,7 +23,7 @@ Puntos clave de esta jerarquía:
 
 - **`Exercise` y `Session` son catálogo reusable de un entrenador (`owner_id`)**, no atado a ningún plan ni calendario. Un mismo `Exercise` puede estar en N `Session`; una misma `Session` puede estar en N `PlanDay` de N planes distintos, y estampada en N días de calendario de N grupos distintos.
 - **`TrainingPlan` es un template** — sus `PlanDay` dicen "día 3 = training con `Session` X, presencial a las 18:00" pero no tiene fecha real. Estampar (`stamp`) es lo que traduce ese template a fechas concretas en `GroupCalendarDay`.
-- **`GroupCalendarDay` es la única entidad con fecha real.** Es dispersa: si no hay fila para `(group_id, date)`, ese día está vacío. No repite datos por referencia únicamente — copia físicamente `kind`, `session_id`, `is_presencial`, `presencial_time`, `presencial_location` al momento del stamp (ver §7).
+- **`GroupCalendarDay` es la única entidad con fecha real.** Es dispersa: si no hay fila para `(group_id, date)`, ese día está vacío. No repite datos por referencia únicamente — copia físicamente `kind`, `session_id`, `is_presencial`, `presencial_time_from`, `presencial_time_to`, `presencial_location` al momento del stamp (ver §7).
 
 ## 2. Dónde "viven" los ejercicios de una sesión (aclaración habitual)
 
@@ -72,7 +72,7 @@ Sin reglas cruzadas entre campos — cualquier combinación de opcionales es vá
 
 `training_plans`: `id`, `owner_id`, `name`, `description`, timestamps. **Sin `deleted_at` — borrado físico** (única entidad del dominio catálogo con delete físico; decisión explícita, ver D1 en `catalogo-planes-entrenamiento/design.md`).
 
-`plan_days`: `id`, `plan_id`, `sequence_no` (1..N sin huecos/repetidos), `kind` (enum `PlanDayKind`: `rest`/`other`/`training`), `other_name`, `session_id`, `default_presencial` (bool, default false), `default_time` (`time`, nullable), `default_location` (`jsonb`, nullable — shape `Location{lat,lng,label?}`).
+`plan_days`: `id`, `plan_id`, `sequence_no` (1..N sin huecos/repetidos), `kind` (enum `PlanDayKind`: `rest`/`other`/`training`), `other_name`, `session_id`, `default_presencial` (bool, default false), `default_time_from`/`default_time_to` (`time`, nullable, `to > from` si presencial), `default_location` (`jsonb`, nullable — shape `Location{lat,lng,label?}`).
 
 `default_*` son **informativos para el momento del stamp** — no afectan nada del template en sí, solo se copian a `GroupCalendarDay` cuando se estampa (§7).
 
@@ -85,7 +85,7 @@ Tabla dispersa: una fila por `(group_id, date)` **con contenido**. `UNIQUE(group
 | `group_id`, `date` | únicos juntos |
 | `kind` | enum `GroupCalendarDayKind`: `rest`/`other`/`training`/`cancelled` (4to valor, `cancelled`, solo existe acá — no tiene sentido en un template) |
 | `other_name`, `session_id`, `cancelled_reason` | según `kind` |
-| `is_presencial`, `presencial_time`, `presencial_location` | igual shape que `default_*` de `PlanDay` |
+| `is_presencial`, `presencial_time_from`, `presencial_time_to`, `presencial_location` | igual shape que `default_*` de `PlanDay`, `to > from` obligatorio si presencial |
 | `source_plan_id` | nullable — de qué plan vino este día si fue estampado; se limpia a `null` (no se borra la fila) si el plan origen se borra |
 | `created_at`/`updated_at` | |
 
@@ -161,9 +161,9 @@ Errores `422` propios: rol faltante (`la sesión debe tener al menos un ejercici
 | DELETE | `/api/v1/training-plans/{id}` | — | `204` (**físico**) | `403`, `404` |
 | POST | `/api/v1/training-plans/{id}/clone` | — | `201` | `403`, `404` |
 
-`TrainingPlanRequest`: `owner_id*`, `name*`, `description`, `days*` (2..31 items). Cada `PlanDayRequest`: `sequence_no*`, `kind*`, `other_name`, `session_id`, `default_presencial`, `default_time` (`"HH:MM"`), `default_location` (`{lat,lng,label?}`).
+`TrainingPlanRequest`: `owner_id*`, `name*`, `description`, `days*` (2..31 items). Cada `PlanDayRequest`: `sequence_no*`, `kind*`, `other_name`, `session_id`, `default_presencial`, `default_time_from`/`default_time_to` (`"HH:MM"`, `to > from`), `default_location` (`{lat,lng,label?}`).
 
-Errores `422` propios: cantidad de días fuera de 2..31, `sequence_no` con hueco/repetido, `kind` inválido, combinación de campos inválida para el `kind` (ver §6.4), `session_id` inexistente, `default_time` con formato inválido.
+Errores `422` propios: cantidad de días fuera de 2..31, `sequence_no` con hueco/repetido, `kind` inválido, combinación de campos inválida para el `kind` (ver §6.4), `session_id` inexistente, `default_time_from`/`default_time_to` con formato inválido o `default_time_to` no posterior a `default_time_from`.
 
 ### 6.4 Combinación de campos por `kind` (`PlanDay` y `GroupCalendarDay`)
 
@@ -174,7 +174,7 @@ Errores `422` propios: cantidad de días fuera de 2..31, `sequence_no` con hueco
 | `rest` | — | `other_name`, `session_id` |
 | `cancelled` (solo `GroupCalendarDay`) | `cancelled_reason` | — |
 
-Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` → `presencial_time`/`default_time` y `presencial_location`/`default_location` son obligatorios (si no, `422`); si es `false`, ambos se limpian a `null`.
+Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` → `presencial_time_from`/`presencial_time_to` (o `default_time_from`/`default_time_to`) y `presencial_location`/`default_location` son obligatorios, con `time_to > time_from` (si no, `422`); si es `false`, todos se limpian a `null`.
 
 `cancelled` solo se puede aplicar sobre un día que **actualmente** está en `training` (`ErrCalendarInvalidCancelTransition` si no) — es una transición, no un estado inicial.
 
@@ -186,7 +186,7 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 | PUT | `/api/v1/groups/{id}/calendar/{date}` | `CalendarDayRequest` | `200` (upsert) | `400`, `403`, `422` |
 | DELETE | `/api/v1/groups/{id}/calendar/{date}` | — | `204` | `400`, `403` |
 | POST | `/api/v1/groups/{id}/calendar/stamp` | `StampRequest{plan_id*, start_date*, force?}` | `201` array | `400`, `403`, `404` (plan), `409` (conflicto) |
-| POST | `/api/v1/groups/{id}/calendar/bulk` | `BulkRequest{dates*, kind*, session_id?, other_name?, is_presencial?, presencial_time?, presencial_location?}` | `200` array | `400`, `403`, `422` |
+| POST | `/api/v1/groups/{id}/calendar/bulk` | `BulkRequest{dates*, kind*, session_id?, other_name?, is_presencial?, presencial_time_from?, presencial_time_to?, presencial_location?}` | `200` array | `400`, `403`, `422` |
 | POST | `/api/v1/groups/{id}/calendar/bulk-clear` | `BulkClearRequest{dates*}` | `204` | `400`, `403` |
 | POST | `/api/v1/groups/{id}/calendar/shift` | `ShiftRequest{from_date*, days*}` | `200` array | `400`, `403`, `409` (colisión) |
 | GET | `/api/v1/users/{id}/next-session` | — | `200` / `204` sin próxima | `400`, `403` |
@@ -200,7 +200,7 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 
 ## 7. Stamp — copiado físico, no por referencia
 
-Al estampar (`Stamp`) un plan, cada `GroupCalendarDay` generado copia **por valor** `kind`, `other_name`, `session_id`, `is_presencial`, `presencial_time`, `presencial_location` desde el `PlanDay` correspondiente — no queda ligado a "vivir" del `TrainingPlan`. Por eso:
+Al estampar (`Stamp`) un plan, cada `GroupCalendarDay` generado copia **por valor** `kind`, `other_name`, `session_id`, `is_presencial`, `presencial_time_from`, `presencial_time_to`, `presencial_location` desde el `PlanDay` correspondiente — no queda ligado a "vivir" del `TrainingPlan`. Por eso:
 
 - Borrar el `TrainingPlan` origen (`DELETE /training-plans/{id}`) **no** rompe ni borra los días de calendario ya estampados — solo limpia `source_plan_id` a `null` en esas filas (`ClearSourcePlan`, corrido antes del delete físico del plan). El contenido copiado queda intacto.
 - Editar el `TrainingPlan` (sus `PlanDay`) después de estampar **no** propaga nada a calendarios ya estampados — el stamp es una foto en un momento dado, no una referencia viva.
@@ -226,7 +226,7 @@ Independiente de `exclude_group_ids`, **cada día individual** (no grupo entero)
 |---|---|
 | `date < hoy` | Sí, siempre |
 | `date > hoy` | No, nunca |
-| `date == hoy` y `is_presencial = true` | Sí **a partir de** `presencial_time` de ese día (antes, sigue abierto — el entrenador puede seguir ajustando la sesión de hoy antes de que empiece) |
+| `date == hoy` y `is_presencial = true` | Sí **a partir de** `presencial_time_from` de ese día (antes, sigue abierto — el entrenador puede seguir ajustando la sesión de hoy antes de que empiece) |
 | `date == hoy` y `is_presencial = false` (async) | Sí, siempre — los corredores pueden hacerla en distintos momentos del mismo día, no hay forma de saber si ya la arrancaron |
 
 **Por qué existe:** preservar fidelidad histórica de lo que realmente estuvo programado/hecho en cada día, de cara a una futura funcionalidad de "registrar qué se hizo realmente" (por el entrenador a posteriori, o por el corredor en tiempo real) — **esa funcionalidad de logging no está implementada todavía**, esto solo prepara el terreno para que editar una sesión no pise el historial.
@@ -244,7 +244,7 @@ Independiente de `exclude_group_ids`, **cada día individual** (no grupo entero)
 
 Sesión "Fartlek 5K" asignada en 3 grupos: A (hoy, presencial 18:00, son las 15:00), B (mañana), C (ayer). El entrenador edita la sesión sin marcar `exclude_group_ids`:
 
-- Grupo A: `date == hoy`, presencial, `now < presencial_time` → **no** cerrado → recibe la edición en vivo.
+- Grupo A: `date == hoy`, presencial, `now < presencial_time_from` → **no** cerrado → recibe la edición en vivo.
 - Grupo B: `date > hoy` → **no** cerrado → recibe la edición en vivo.
 - Grupo C: `date < hoy` → **cerrado** → se auto-clona, esa fila queda apuntando al clon con el contenido viejo.
 
@@ -266,7 +266,8 @@ Sin cambio de schema ni backfill: no había datos reales dependiendo de la prote
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.
-- **`default_time`/`presencial_time` viajan como string `"HH:MM"`** en JSON, se parsean con `time.Parse("15:04", ...)` al guardar y se formatean igual al responder — la columna Postgres es `time`, la parte de fecha (`0000-01-01`) se ignora.
+- **`default_time_from`/`default_time_to`/`presencial_time_from`/`presencial_time_to` viajan como string `"HH:MM"`** en JSON, se parsean con `time.Parse("15:04", ...)` al guardar (queda tagueado UTC, fecha `0000-01-01`) — la columna Postgres real es `timestamptz`, no `time` (GORM no aplica `type:time` para este dialecto, se mantiene timestamptz a propósito, ver el punto siguiente). `to` debe ser posterior a `from` (`422` si no).
+- **Bug real encontrado y corregido (`fix/presencial-time-from-to`, 2026-09-19): siempre leer estos campos con `.UTC()` antes de `.Hour()/.Minute()/.Format(...)`, nunca confiar en `.Location()` del valor recién leído de la DB.** Postgres devuelve `timestamptz` convertido al `TimeZone` de la sesión, y el driver lo escanea en `time.Local` — como estos valores siempre se escriben en UTC (por el default de `time.Parse`), leerlos sin normalizar corrompe la hora por el offset de `time.Local` en cada round-trip (en `America/Argentina/Cordoba` esto rompía silenciosamente el corte de D13 dependiendo de la hora del día en que corriera el proceso). Los 4 puntos de lectura (`toCalendarDayResponse`, `toPlanDayResponse`, `isCalendarDayClosed`, `NextSession`) ya aplican `.UTC()` — replicar el patrón en cualquier lectura nueva de estos campos.
 - **`Location{lat,lng,label?}`** (paquete `trainingplan`) es compartida entre `PlanDay.default_location` y `GroupCalendarDay.presencial_location` — se persiste como `jsonb` vía marshal/unmarshal manual en el service, no hay tipo custom de GORM.
 - **Transacciones:** siempre se instancian DAOs *nuevos* atados al `*gorm.DB` de la transacción (`daos.NewXDao(tx)`) — nunca se pasa `tx` a una instancia de DAO ya creada, este patrón de DAO no lo soporta.
 - **`Stamp`/`Bulk`/`Shift`** escriben múltiples filas dentro de una única transacción — si falla la fila N, ninguna de las N-1 anteriores queda aplicada.
@@ -300,7 +301,8 @@ Sin cambio de schema ni backfill: no había datos reales dependiendo de la prote
 | kind de día inválido | 422 |
 | combinación de campos inválida | 422 |
 | session_id referenciado no encontrado | 422 |
-| default_time formato inválido | 422 |
+| default_time_from/default_time_to formato inválido | 422 |
+| default_time_to no posterior a default_time_from | 422 |
 | no autorizado | 403 |
 
 ### Calendar (`mapCalendarError`)
@@ -313,6 +315,8 @@ Sin cambio de schema ni backfill: no había datos reales dependiendo de la prote
 | kind inválido | 422 |
 | combinación de campos inválida | 422 |
 | transición de cancelación inválida | 422 |
+| presencial_time_from/presencial_time_to formato inválido | 422 |
+| presencial_time_to no posterior a presencial_time_from | 422 |
 | conflicto de fechas en stamp | 409 |
 | colisión de fechas en shift | 409 |
 | no podés consultar datos de otro usuario | 403 (chequeado en el controller, no en el service) |

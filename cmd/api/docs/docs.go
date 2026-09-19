@@ -6631,7 +6631,10 @@ const docTemplate = `{
                 "presencial_location": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
                 },
-                "presencial_time": {
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
                     "type": "string"
                 },
                 "session_id": {
@@ -6660,7 +6663,10 @@ const docTemplate = `{
                 "presencial_location": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
                 },
-                "presencial_time": {
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
                     "type": "string"
                 },
                 "session_id": {
@@ -6699,7 +6705,10 @@ const docTemplate = `{
                 "presencial_location": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
                 },
-                "presencial_time": {
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
                     "type": "string"
                 },
                 "session_id": {
@@ -6739,7 +6748,10 @@ const docTemplate = `{
                 "presencial_location": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
                 },
-                "presencial_time": {
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
                     "type": "string"
                 },
                 "session_id": {
@@ -8581,7 +8593,10 @@ const docTemplate = `{
                 "default_presencial": {
                     "type": "boolean"
                 },
-                "default_time": {
+                "default_time_from": {
+                    "type": "string"
+                },
+                "default_time_to": {
                     "type": "string"
                 },
                 "kind": {
@@ -8607,7 +8622,10 @@ const docTemplate = `{
                 "default_presencial": {
                     "type": "boolean"
                 },
-                "default_time": {
+                "default_time_from": {
+                    "type": "string"
+                },
+                "default_time_to": {
                     "type": "string"
                 },
                 "id": {
