@@ -42,7 +42,15 @@ El sistema SHALL exponer el endpoint `POST /api/v1/attendance/team/{team_id}/ses
 
 ### Requirement: El sistema SHALL validar los parámetros del endpoint de búsqueda
 
-El sistema SHALL exponer el endpoint `GET /api/v1/attendance/search` (detrás del `AuthMiddleware`) con los query params opcionales `team_id`, `training_session_id` y `user_id`. Si se envía cualquiera de ellos, su valor SHALL ser estrictamente mayor a 0; de lo contrario el sistema responde `400 Bad Request`.
+El sistema SHALL exponer el endpoint `GET /api/v1/attendance/search` (detrás del `AuthMiddleware`). Al menos un query param SHALL ser obligatorio y `team_id` SHALL ser obligatorio; de lo contrario el sistema responde `400 Bad Request`. `training_session_id` y `user_id` son opcionales. Si se envía cualquiera de ellos, su valor SHALL ser estrictamente mayor a 0; de lo contrario el sistema responde `400 Bad Request`.
+
+#### Scenario: Búsqueda sin query params
+- **WHEN** se envía `GET /api/v1/attendance/search` sin ningún query param
+- **THEN** el sistema responde `400 Bad Request`
+
+#### Scenario: Búsqueda sin team_id
+- **WHEN** se envía `GET /api/v1/attendance/search?training_session_id=5` (u otro param) sin `team_id`
+- **THEN** el sistema responde `400 Bad Request`
 
 #### Scenario: Parámetro con valor menor o igual a cero
 - **WHEN** se envía `GET /api/v1/attendance/search?team_id=0`
@@ -54,31 +62,30 @@ El sistema SHALL exponer el endpoint `GET /api/v1/attendance/search` (detrás de
 
 ### Requirement: El sistema SHALL aplicar la matriz de autorización a la búsqueda de asistencias
 
-El sistema SHALL evaluar los parámetros de `GET /api/v1/attendance/search` contra el `auth_user_id` extraído del token según la siguiente matriz estricta. `auth_user_id` es el owner de un team cuando es igual al `teams.owner_id` de ese team; un usuario pertenece a un team cuando existe un registro activo en `team_users`.
+El sistema SHALL evaluar la búsqueda de `GET /api/v1/attendance/search` contra el `auth_user_id` extraído del token según la siguiente matriz estricta. El `auth_user_id` SHALL pertenecer al team como entrenador o corredor (un usuario pertenece a un team cuando existe un registro activo en `team_users`; el rol entrenador corresponde al owner del team). Si no es entrenador ni corredor del team, el sistema responde `403 Forbidden`.
 
-#### Scenario: Búsqueda sin parámetros
-- **WHEN** se envía `GET /api/v1/attendance/search` sin ningún query param
-- **THEN** el sistema busca las asistencias del propio `auth_user_id` y responde `200 OK`
+- Si el `auth_user_id` es **entrenador** del team, SHALL ver las asistencias de todo el equipo (aplicando `training_session_id` y opcionalmente `user_id` si vienen).
+- Si el `auth_user_id` es **corredor** del team, SHALL ver solo sus propias asistencias: la query a la base de datos SHALL forzar `user_id = auth_user_id`, y un `user_id` ajeno en la request responde `403 Forbidden`.
 
-#### Scenario: Búsqueda con user_id propio
-- **WHEN** se envía `GET /api/v1/attendance/search?user_id={auth_user_id}`
-- **THEN** el sistema busca las asistencias de ese user_id y responde `200 OK`
-
-#### Scenario: Búsqueda con user_id ajeno
-- **WHEN** se envía `GET /api/v1/attendance/search?user_id=X` donde X es distinto del `auth_user_id`
-- **THEN** el sistema responde `403 Forbidden` a menos que el `auth_user_id` sea owner de al menos un equipo al que pertenezca el usuario X
-
-#### Scenario: Búsqueda como owner por team
-- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` y el `auth_user_id` es el owner del team T
+#### Scenario: Búsqueda como entrenador por team
+- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` y el `auth_user_id` es entrenador del team T
 - **THEN** el sistema busca las asistencias del team T (aplicando `training_session_id` si viene) y responde `200 OK`
 
-#### Scenario: Búsqueda como no-owner por team
-- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` y el `auth_user_id` NO es el owner del team T
+#### Scenario: Búsqueda como entrenador filtrando por corredor
+- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T&user_id=X` y el `auth_user_id` es entrenador del team T
+- **THEN** el sistema busca las asistencias de X dentro del team T y responde `200 OK`
+
+#### Scenario: Búsqueda como corredor por team
+- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` y el `auth_user_id` es corredor del team T
+- **THEN** el sistema busca solo las asistencias del propio `auth_user_id` (con `user_id` forzado al token en la query) y responde `200 OK`
+
+#### Scenario: Búsqueda como corredor pidiendo otro user_id
+- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T&user_id=X` con X distinto del `auth_user_id`, siendo el `auth_user_id` corredor del team T
 - **THEN** el sistema responde `403 Forbidden`
 
-#### Scenario: Búsqueda de un corredor que pertenece a un equipo del owner
-- **WHEN** se envía `GET /api/v1/attendance/search?user_id=X` con X distinto del `auth_user_id`, y X pertenece a un team cuyo owner es el `auth_user_id`
-- **THEN** el sistema busca las asistencias de X (aplicando `team_id`/`training_session_id` si vienen) y responde `200 OK`
+#### Scenario: Búsqueda como no miembro del team
+- **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` y el `auth_user_id` no es ni entrenador ni corredor del team T
+- **THEN** el sistema responde `403 Forbidden`
 
 #### Scenario: Búsqueda con team inexistente
 - **WHEN** se envía `GET /api/v1/attendance/search?team_id=T` donde el team T no existe en la base de datos

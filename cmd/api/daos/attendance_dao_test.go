@@ -225,3 +225,34 @@ func TestAttendanceDao_ExistsUserInTeamOwnedBy_OwnerOfOtherTeam(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 }
+
+func TestAttendanceDao_GetTeamUserRole(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAttendanceDao(db)
+	coach := persistUser(db, "att-coach3@test.com", "30000012")
+	runner := persistUser(db, "att-runner3@test.com", "30000013")
+	team := testTeam(db, "att_role_team", coach.ID)
+	db.Create(&dbs.TeamUser{TeamID: team.ID, UserID: coach.ID, RoleInTeam: "entrenador", AssignmentDate: time.Now()})
+	db.Create(&dbs.TeamUser{TeamID: team.ID, UserID: runner.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()})
+
+	role, err := dao.GetTeamUserRole(nil, team.ID, coach.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "entrenador", role)
+
+	role, err = dao.GetTeamUserRole(nil, team.ID, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "corredor", role)
+}
+
+func TestAttendanceDao_GetTeamUserRole_NotMember(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAttendanceDao(db)
+	coach := persistUser(db, "att-coach4@test.com", "30000014")
+	outside := persistUser(db, "att-outside4@test.com", "30000015")
+	team := testTeam(db, "att_role_team2", coach.ID)
+	db.Create(&dbs.TeamUser{TeamID: team.ID, UserID: coach.ID, RoleInTeam: "entrenador", AssignmentDate: time.Now()})
+
+	role, err := dao.GetTeamUserRole(nil, team.ID, outside.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "", role)
+}

@@ -76,7 +76,7 @@
         },
         "/api/v1/attendance/search": {
             "get": {
-                "description": "Busca asistencias aplicando la matriz de autorización. Sin parámetros consulta las del usuario autenticado; con user_id ajeno o team_id debe ser owner (o corredor de un equipo del owner) para verlas.",
+                "description": "Busca asistencias de un equipo. Obligatorio enviar al menos un query param y el team_id. El usuario del token debe ser entrenador o corredor del equipo: el entrenador ve todas las asistencias del equipo, el corredor solo las suyas.",
                 "consumes": [
                     "application/json"
                 ],
@@ -90,9 +90,10 @@
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "ID del equipo",
+                        "description": "ID del equipo (obligatorio)",
                         "name": "team_id",
-                        "in": "query"
+                        "in": "query",
+                        "required": true
                     },
                     {
                         "type": "integer",
