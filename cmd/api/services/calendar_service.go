@@ -28,6 +28,8 @@ var (
 	ErrCalendarStampConflict           = errors.New("hay fechas con contenido existente")
 	ErrCalendarShiftCollision          = errors.New("el corrimiento haría chocar dos fechas")
 	ErrCalendarUserMismatch            = errors.New("no podés consultar los datos de otro usuario")
+	ErrCalendarInvalidTimeFormat       = errors.New("presencial_time_from/presencial_time_to deben tener formato HH:MM")
+	ErrCalendarInvalidTimeRange        = errors.New("presencial_time_to debe ser posterior a presencial_time_from")
 )
 
 // CalendarServiceInterface se completa en Tasks 5-7 (Stamp, Bulk/BulkClear/
@@ -134,8 +136,21 @@ func (s *calendarService) validateDayFields(req calendar.CalendarDayRequest, cur
 		}
 	}
 	isPresencial := req.IsPresencial != nil && *req.IsPresencial
-	if isPresencial && (req.PresencialTime == nil || req.PresencialLocation == nil) {
+	if isPresencial && (req.PresencialTimeFrom == nil || req.PresencialTimeTo == nil || req.PresencialLocation == nil) {
 		return ErrCalendarFieldMismatch
+	}
+	if isPresencial {
+		from, err := time.Parse("15:04", *req.PresencialTimeFrom)
+		if err != nil {
+			return ErrCalendarInvalidTimeFormat
+		}
+		to, err := time.Parse("15:04", *req.PresencialTimeTo)
+		if err != nil {
+			return ErrCalendarInvalidTimeFormat
+		}
+		if !to.After(from) {
+			return ErrCalendarInvalidTimeRange
+		}
 	}
 	return nil
 }
@@ -152,11 +167,16 @@ func (s *calendarService) buildRow(ctx *gin.Context, groupID int64, date time.Ti
 	}
 	if req.IsPresencial != nil && *req.IsPresencial {
 		row.IsPresencial = true
-		parsedTime, err := time.Parse("15:04", *req.PresencialTime)
+		parsedFrom, err := time.Parse("15:04", *req.PresencialTimeFrom)
 		if err != nil {
-			return nil, fmt.Errorf("presencial_time debe tener formato HH:MM")
+			return nil, fmt.Errorf("presencial_time_from debe tener formato HH:MM")
 		}
-		row.PresencialTime = &parsedTime
+		parsedTo, err := time.Parse("15:04", *req.PresencialTimeTo)
+		if err != nil {
+			return nil, fmt.Errorf("presencial_time_to debe tener formato HH:MM")
+		}
+		row.PresencialTimeFrom = &parsedFrom
+		row.PresencialTimeTo = &parsedTo
 		locationJSON, err := jsonMarshalLocation(req.PresencialLocation)
 		if err != nil {
 			return nil, err
@@ -226,9 +246,13 @@ func toCalendarDayResponse(d dbs.GroupCalendarDay) calendar.CalendarDayResponse 
 		OtherName: d.OtherName, SessionID: d.SessionID, CancelledReason: d.CancelledReason,
 		IsPresencial: d.IsPresencial, SourcePlanID: d.SourcePlanID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
-	if d.PresencialTime != nil {
-		formatted := d.PresencialTime.Format("15:04")
-		resp.PresencialTime = &formatted
+	if d.PresencialTimeFrom != nil {
+		formatted := d.PresencialTimeFrom.UTC().Format("15:04")
+		resp.PresencialTimeFrom = &formatted
+	}
+	if d.PresencialTimeTo != nil {
+		formatted := d.PresencialTimeTo.UTC().Format("15:04")
+		resp.PresencialTimeTo = &formatted
 	}
 	if d.PresencialLocation != nil {
 		loc, err := jsonUnmarshalLocation(*d.PresencialLocation)
@@ -286,7 +310,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		targetDates[i] = date
 		row := dbs.GroupCalendarDay{
 			GroupID: groupID, Date: date, Kind: pd.Kind, OtherName: pd.OtherName, SessionID: pd.SessionID,
-			IsPresencial: pd.DefaultPresencial, PresencialTime: pd.DefaultTime, PresencialLocation: pd.DefaultLocation,
+			IsPresencial: pd.DefaultPresencial, PresencialTimeFrom: pd.DefaultTimeFrom, PresencialTimeTo: pd.DefaultTimeTo, PresencialLocation: pd.DefaultLocation,
 			SourcePlanID: &req.PlanID,
 		}
 		rows[i] = row
@@ -348,7 +372,7 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	}
 	dayReq := calendar.CalendarDayRequest{
 		Kind: req.Kind, SessionID: req.SessionID, OtherName: req.OtherName,
-		IsPresencial: req.IsPresencial, PresencialTime: req.PresencialTime, PresencialLocation: req.PresencialLocation,
+		IsPresencial: req.IsPresencial, PresencialTimeFrom: req.PresencialTimeFrom, PresencialTimeTo: req.PresencialTimeTo, PresencialLocation: req.PresencialLocation,
 	}
 	if err := s.validateDayFields(dayReq, ""); err != nil {
 		return nil, err
@@ -478,9 +502,13 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	resp := &calendar.NextSessionResponse{
 		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), SessionID: day.SessionID, IsPresencial: day.IsPresencial,
 	}
-	if day.PresencialTime != nil {
-		formatted := day.PresencialTime.Format("15:04")
-		resp.PresencialTime = &formatted
+	if day.PresencialTimeFrom != nil {
+		formatted := day.PresencialTimeFrom.UTC().Format("15:04")
+		resp.PresencialTimeFrom = &formatted
+	}
+	if day.PresencialTimeTo != nil {
+		formatted := day.PresencialTimeTo.UTC().Format("15:04")
+		resp.PresencialTimeTo = &formatted
 	}
 	if day.PresencialLocation != nil {
 		loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
