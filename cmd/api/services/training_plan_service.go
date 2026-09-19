@@ -22,7 +22,8 @@ var (
 	ErrPlanInvalidDayKind    = errors.New("kind de día inválido")
 	ErrPlanDayFieldMismatch  = errors.New("combinación de campos inválida para el kind del día")
 	ErrPlanSessionNotFound   = errors.New("session_id referenciado no encontrado")
-	ErrPlanInvalidTimeFormat = errors.New("default_time debe tener formato HH:MM")
+	ErrPlanInvalidTimeFormat = errors.New("default_time_from/default_time_to deben tener formato HH:MM")
+	ErrPlanInvalidTimeRange  = errors.New("default_time_to debe ser posterior a default_time_from")
 )
 
 type TrainingPlanServiceInterface interface {
@@ -106,14 +107,22 @@ func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trai
 		}
 
 		if defaultPresencial {
-			if d.DefaultTime == nil || d.DefaultLocation == nil {
+			if d.DefaultTimeFrom == nil || d.DefaultTimeTo == nil || d.DefaultLocation == nil {
 				return nil, ErrPlanDayFieldMismatch
 			}
-			parsedTime, err := time.Parse("15:04", *d.DefaultTime)
+			parsedFrom, err := time.Parse("15:04", *d.DefaultTimeFrom)
 			if err != nil {
 				return nil, ErrPlanInvalidTimeFormat
 			}
-			row.DefaultTime = &parsedTime
+			parsedTo, err := time.Parse("15:04", *d.DefaultTimeTo)
+			if err != nil {
+				return nil, ErrPlanInvalidTimeFormat
+			}
+			if !parsedTo.After(parsedFrom) {
+				return nil, ErrPlanInvalidTimeRange
+			}
+			row.DefaultTimeFrom = &parsedFrom
+			row.DefaultTimeTo = &parsedTo
 			locationJSON, err := json.Marshal(d.DefaultLocation)
 			if err != nil {
 				return nil, fmt.Errorf("error al serializar la ubicación del día")
@@ -132,9 +141,13 @@ func toPlanDayResponse(d dbs.PlanDay) trainingplan.PlanDayResponse {
 		ID: d.ID, SequenceNo: d.SequenceNo, Kind: d.Kind, OtherName: d.OtherName,
 		SessionID: d.SessionID, DefaultPresencial: d.DefaultPresencial,
 	}
-	if d.DefaultTime != nil {
-		formatted := d.DefaultTime.Format("15:04")
-		resp.DefaultTime = &formatted
+	if d.DefaultTimeFrom != nil {
+		formatted := d.DefaultTimeFrom.UTC().Format("15:04")
+		resp.DefaultTimeFrom = &formatted
+	}
+	if d.DefaultTimeTo != nil {
+		formatted := d.DefaultTimeTo.UTC().Format("15:04")
+		resp.DefaultTimeTo = &formatted
 	}
 	if d.DefaultLocation != nil {
 		var loc trainingplan.Location
@@ -265,7 +278,7 @@ func (s *trainingPlanService) Clone(ctx *gin.Context, id, callerID int64) (*trai
 	for i, d := range originalDays {
 		clonedDays[i] = dbs.PlanDay{
 			SequenceNo: d.SequenceNo, Kind: d.Kind, OtherName: d.OtherName, SessionID: d.SessionID,
-			DefaultPresencial: d.DefaultPresencial, DefaultTime: d.DefaultTime, DefaultLocation: d.DefaultLocation,
+			DefaultPresencial: d.DefaultPresencial, DefaultTimeFrom: d.DefaultTimeFrom, DefaultTimeTo: d.DefaultTimeTo, DefaultLocation: d.DefaultLocation,
 		}
 	}
 	if err := s.planDayDao.ReplaceForPlan(ctx, clone.ID, clonedDays); err != nil {

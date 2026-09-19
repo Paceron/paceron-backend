@@ -9,7 +9,8 @@ type PlanDayResponse struct {
 	OtherName         *string   `json:"other_name"`
 	SessionID         *int64    `json:"session_id"`
 	DefaultPresencial bool      `json:"default_presencial"`
-	DefaultTime       *string   `json:"default_time"`
+	DefaultTimeFrom   *string   `json:"default_time_from"`
+	DefaultTimeTo     *string   `json:"default_time_to"`
 	DefaultLocation   *Location `json:"default_location"`
 }
 

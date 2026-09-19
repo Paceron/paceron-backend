@@ -47,14 +47,15 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 	}
 	day.ID = existing.ID
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
-		"kind":                day.Kind,
-		"other_name":          day.OtherName,
-		"session_id":          day.SessionID,
-		"cancelled_reason":    day.CancelledReason,
-		"is_presencial":       day.IsPresencial,
-		"presencial_time":     day.PresencialTime,
-		"presencial_location": day.PresencialLocation,
-		"source_plan_id":      day.SourcePlanID,
+		"kind":                 day.Kind,
+		"other_name":           day.OtherName,
+		"session_id":           day.SessionID,
+		"cancelled_reason":     day.CancelledReason,
+		"is_presencial":        day.IsPresencial,
+		"presencial_time_from": day.PresencialTimeFrom,
+		"presencial_time_to":   day.PresencialTimeTo,
+		"presencial_location":  day.PresencialLocation,
+		"source_plan_id":       day.SourcePlanID,
 	}).Error
 }
 

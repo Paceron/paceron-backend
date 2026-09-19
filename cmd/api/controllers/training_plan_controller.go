@@ -44,7 +44,9 @@ func mapTrainingPlanError(err error) (int, string) {
 	case errors.Is(err, services.ErrPlanSessionNotFound):
 		return http.StatusUnprocessableEntity, "session_id referenciado no encontrado"
 	case errors.Is(err, services.ErrPlanInvalidTimeFormat):
-		return http.StatusUnprocessableEntity, "default_time debe tener formato HH:MM"
+		return http.StatusUnprocessableEntity, "default_time_from/default_time_to deben tener formato HH:MM"
+	case errors.Is(err, services.ErrPlanInvalidTimeRange):
+		return http.StatusUnprocessableEntity, "default_time_to debe ser posterior a default_time_from"
 	case errors.Is(err, services.ErrCatalogForbidden):
 		return http.StatusForbidden, "no autorizado"
 	default:

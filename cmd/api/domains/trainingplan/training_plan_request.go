@@ -1,14 +1,16 @@
 package trainingplan
 
-// PlanDayRequest.DefaultTime viaja como "HH:MM" (string) — el service lo
-// parsea con time.Parse("15:04", ...).
+// PlanDayRequest.DefaultTimeFrom/DefaultTimeTo viajan como "HH:MM" (string) —
+// el service los parsea con time.Parse("15:04", ...). DefaultTimeTo debe ser
+// posterior a DefaultTimeFrom.
 type PlanDayRequest struct {
 	SequenceNo        int       `json:"sequence_no" binding:"required"`
 	Kind              string    `json:"kind" binding:"required"`
 	OtherName         *string   `json:"other_name"`
 	SessionID         *int64    `json:"session_id"`
 	DefaultPresencial *bool     `json:"default_presencial"`
-	DefaultTime       *string   `json:"default_time"`
+	DefaultTimeFrom   *string   `json:"default_time_from"`
+	DefaultTimeTo     *string   `json:"default_time_to"`
 	DefaultLocation   *Location `json:"default_location"`
 }
 

@@ -49,6 +49,10 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusUnprocessableEntity, "combinación de campos inválida"
 	case errors.Is(err, services.ErrCalendarInvalidCancelTransition):
 		return http.StatusUnprocessableEntity, "solo se puede cancelar un día en training"
+	case errors.Is(err, services.ErrCalendarInvalidTimeFormat):
+		return http.StatusUnprocessableEntity, "presencial_time_from/presencial_time_to deben tener formato HH:MM"
+	case errors.Is(err, services.ErrCalendarInvalidTimeRange):
+		return http.StatusUnprocessableEntity, "presencial_time_to debe ser posterior a presencial_time_from"
 	case errors.Is(err, services.ErrCalendarStampConflict):
 		return http.StatusConflict, "hay fechas con contenido existente"
 	case errors.Is(err, services.ErrCalendarShiftCollision):

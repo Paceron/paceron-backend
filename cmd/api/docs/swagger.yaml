@@ -210,7 +210,9 @@ definitions:
         type: string
       presencial_location:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
-      presencial_time:
+      presencial_time_from:
+        type: string
+      presencial_time_to:
         type: string
       session_id:
         type: integer
@@ -230,7 +232,9 @@ definitions:
         type: string
       presencial_location:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
-      presencial_time:
+      presencial_time_from:
+        type: string
+      presencial_time_to:
         type: string
       session_id:
         type: integer
@@ -258,7 +262,9 @@ definitions:
         type: string
       presencial_location:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
-      presencial_time:
+      presencial_time_from:
+        type: string
+      presencial_time_to:
         type: string
       session_id:
         type: integer
@@ -284,7 +290,9 @@ definitions:
         type: boolean
       presencial_location:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
-      presencial_time:
+      presencial_time_from:
+        type: string
+      presencial_time_to:
         type: string
       session_id:
         type: integer
@@ -1548,7 +1556,9 @@ definitions:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
       default_presencial:
         type: boolean
-      default_time:
+      default_time_from:
+        type: string
+      default_time_to:
         type: string
       kind:
         type: string
@@ -1568,7 +1578,9 @@ definitions:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
       default_presencial:
         type: boolean
-      default_time:
+      default_time_from:
+        type: string
+      default_time_to:
         type: string
       id:
         type: integer

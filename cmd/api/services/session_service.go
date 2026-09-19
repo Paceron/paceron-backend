@@ -295,10 +295,10 @@ func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 	if !day.IsPresencial {
 		return true
 	}
-	if day.PresencialTime == nil {
+	if day.PresencialTimeFrom == nil {
 		return false
 	}
-	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTime.Hour(), day.PresencialTime.Minute(), 0, 0, now.Location())
+	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTimeFrom.UTC().Hour(), day.PresencialTimeFrom.UTC().Minute(), 0, 0, now.Location())
 	return !now.Before(threshold)
 }
 
