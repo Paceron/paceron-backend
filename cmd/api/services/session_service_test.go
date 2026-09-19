@@ -427,7 +427,7 @@ func TestSessionService_Update_TodayPresencialBeforeStartTimeStaysLive(t *testin
 	repointCalled := false
 	calDao := &mockGroupCalendarDao{
 		findBySessionIDFn: func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
-			return []dbs.GroupCalendarDay{{ID: 503, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: true, PresencialTime: &presencialTime}}, nil
+			return []dbs.GroupCalendarDay{{ID: 503, GroupID: 1, Date: time.Now(), Kind: "training", IsPresencial: true, PresencialTimeFrom: &presencialTime}}, nil
 		},
 		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
 			repointCalled = true
@@ -494,7 +494,7 @@ func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) 
 	}
 	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
-		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTime: &presencialTime, SessionID: &original.ID,
+		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &presencialTime, SessionID: &original.ID,
 	}))
 
 	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{

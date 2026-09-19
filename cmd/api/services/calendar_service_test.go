@@ -532,9 +532,10 @@ func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
 	}}
 	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 	isPresencial := true
-	presencialTime := "18:30"
+	timeFrom := "18:30"
+	timeTo := "19:30"
 	req := calendar.CalendarDayRequest{
-		Kind: "rest", IsPresencial: &isPresencial, PresencialTime: &presencialTime,
+		Kind: "rest", IsPresencial: &isPresencial, PresencialTimeFrom: &timeFrom, PresencialTimeTo: &timeTo,
 		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
 	}
 
@@ -543,8 +544,10 @@ func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.True(t, resp.IsPresencial)
-	require.NotNil(t, resp.PresencialTime)
-	assert.Equal(t, "18:30", *resp.PresencialTime)
+	require.NotNil(t, resp.PresencialTimeFrom)
+	assert.Equal(t, "18:30", *resp.PresencialTimeFrom)
+	require.NotNil(t, resp.PresencialTimeTo)
+	assert.Equal(t, "19:30", *resp.PresencialTimeTo)
 	require.NotNil(t, resp.PresencialLocation)
 	assert.Equal(t, -34.6, resp.PresencialLocation.Lat)
 }
@@ -558,15 +561,37 @@ func TestCalendarService_UpsertDay_PresencialInvalidTimeFormat(t *testing.T) {
 	}}
 	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 	isPresencial := true
-	presencialTime := "not-a-time"
+	timeFrom := "not-a-time"
+	timeTo := "19:30"
 	req := calendar.CalendarDayRequest{
-		Kind: "rest", IsPresencial: &isPresencial, PresencialTime: &presencialTime,
+		Kind: "rest", IsPresencial: &isPresencial, PresencialTimeFrom: &timeFrom, PresencialTimeTo: &timeTo,
 		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
 	}
 
 	_, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
 
 	require.Error(t, err)
+}
+
+func TestCalendarService_UpsertDay_PresencialTimeToBeforeFrom(t *testing.T) {
+	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+		return &dbs.Group{ID: id, TeamID: 1}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+	isPresencial := true
+	timeFrom := "19:30"
+	timeTo := "18:30"
+	req := calendar.CalendarDayRequest{
+		Kind: "rest", IsPresencial: &isPresencial, PresencialTimeFrom: &timeFrom, PresencialTimeTo: &timeTo,
+		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
+	}
+
+	_, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
+
+	assert.ErrorIs(t, err, ErrCalendarInvalidTimeRange)
 }
 
 func TestCalendarService_AssignedGroups_Distinct(t *testing.T) {

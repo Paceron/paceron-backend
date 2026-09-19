@@ -196,14 +196,30 @@ func TestTrainingPlanService_Create_InvalidTimeFormat(t *testing.T) {
 	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
 	presencial := true
 	badTime := "25:99"
+	validTime := "20:00"
 	loc := &trainingplan.Location{Lat: 1, Lng: 2}
 
 	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "rest"},
-		{SequenceNo: 2, Kind: "other", OtherName: strPtrTP("Elongación"), DefaultPresencial: &presencial, DefaultTime: &badTime, DefaultLocation: loc},
+		{SequenceNo: 2, Kind: "other", OtherName: strPtrTP("Elongación"), DefaultPresencial: &presencial, DefaultTimeFrom: &badTime, DefaultTimeTo: &validTime, DefaultLocation: loc},
 	}})
 
 	assert.ErrorIs(t, err, ErrPlanInvalidTimeFormat)
+}
+
+func TestTrainingPlanService_Create_TimeToBeforeFrom(t *testing.T) {
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, &mockSessionDao{}, &mockGroupCalendarDao{})
+	presencial := true
+	timeFrom := "20:00"
+	timeTo := "19:00"
+	loc := &trainingplan.Location{Lat: 1, Lng: 2}
+
+	_, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
+		{SequenceNo: 1, Kind: "rest"},
+		{SequenceNo: 2, Kind: "other", OtherName: strPtrTP("Elongación"), DefaultPresencial: &presencial, DefaultTimeFrom: &timeFrom, DefaultTimeTo: &timeTo, DefaultLocation: loc},
+	}})
+
+	assert.ErrorIs(t, err, ErrPlanInvalidTimeRange)
 }
 
 func TestTrainingPlanService_Create_DefaultPresencialSuccess_RoundTripsThroughGet(t *testing.T) {
@@ -235,21 +251,24 @@ func TestTrainingPlanService_Create_DefaultPresencialSuccess_RoundTripsThroughGe
 	}
 	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 	presencial := true
-	validTime := "07:30"
+	validTimeFrom := "07:30"
+	validTimeTo := "08:30"
 	label := "Plaza Central"
 	loc := &trainingplan.Location{Lat: -34.6, Lng: -58.4, Label: &label}
 
 	resp, err := svc.Create(nil, 7, trainingplan.TrainingPlanRequest{OwnerID: 7, Name: "Plan", Days: []trainingplan.PlanDayRequest{
 		{SequenceNo: 1, Kind: "rest"},
-		{SequenceNo: 2, Kind: "other", OtherName: strPtrTP("Elongación"), DefaultPresencial: &presencial, DefaultTime: &validTime, DefaultLocation: loc},
+		{SequenceNo: 2, Kind: "other", OtherName: strPtrTP("Elongación"), DefaultPresencial: &presencial, DefaultTimeFrom: &validTimeFrom, DefaultTimeTo: &validTimeTo, DefaultLocation: loc},
 	}})
 
 	require.NoError(t, err)
 	require.Len(t, resp.Days, 2)
 	presencialDay := resp.Days[1]
 	assert.True(t, presencialDay.DefaultPresencial)
-	require.NotNil(t, presencialDay.DefaultTime)
-	assert.Equal(t, validTime, *presencialDay.DefaultTime)
+	require.NotNil(t, presencialDay.DefaultTimeFrom)
+	assert.Equal(t, validTimeFrom, *presencialDay.DefaultTimeFrom)
+	require.NotNil(t, presencialDay.DefaultTimeTo)
+	assert.Equal(t, validTimeTo, *presencialDay.DefaultTimeTo)
 	require.NotNil(t, presencialDay.DefaultLocation)
 	assert.Equal(t, loc.Lat, presencialDay.DefaultLocation.Lat)
 	assert.Equal(t, loc.Lng, presencialDay.DefaultLocation.Lng)
@@ -261,8 +280,10 @@ func TestTrainingPlanService_Create_DefaultPresencialSuccess_RoundTripsThroughGe
 	require.NoError(t, err)
 	require.Len(t, got.Days, 2)
 	assert.True(t, got.Days[1].DefaultPresencial)
-	require.NotNil(t, got.Days[1].DefaultTime)
-	assert.Equal(t, validTime, *got.Days[1].DefaultTime)
+	require.NotNil(t, got.Days[1].DefaultTimeFrom)
+	assert.Equal(t, validTimeFrom, *got.Days[1].DefaultTimeFrom)
+	require.NotNil(t, got.Days[1].DefaultTimeTo)
+	assert.Equal(t, validTimeTo, *got.Days[1].DefaultTimeTo)
 }
 
 func TestTrainingPlanService_Get_NotFound(t *testing.T) {
