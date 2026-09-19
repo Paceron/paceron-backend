@@ -15,7 +15,8 @@ type CalendarDayResponse struct {
 	SessionID          *int64                 `json:"session_id"`
 	CancelledReason    *string                `json:"cancelled_reason"`
 	IsPresencial       bool                   `json:"is_presencial"`
-	PresencialTime     *string                `json:"presencial_time"`
+	PresencialTimeFrom *string                `json:"presencial_time_from"`
+	PresencialTimeTo   *string                `json:"presencial_time_to"`
 	PresencialLocation *trainingplan.Location `json:"presencial_location"`
 	SourcePlanID       *int64                 `json:"source_plan_id"`
 	CreatedAt          time.Time              `json:"created_at"`

@@ -13,7 +13,11 @@ type PlanDay struct {
 	OtherName         *string    `gorm:"column:other_name"`
 	SessionID         *int64     `gorm:"column:session_id"`
 	DefaultPresencial bool       `gorm:"column:default_presencial;not null;default:false"`
-	DefaultTime       *time.Time `gorm:"column:default_time;type:time"`
+	// DefaultTimeFrom/DefaultTimeTo: mismo caveat de UTC que
+	// GroupCalendarDay.PresencialTimeFrom/To — siempre leer con .UTC() antes de
+	// extraer Hour()/Minute(), nunca confiar en el time.Local del valor leído.
+	DefaultTimeFrom   *time.Time `gorm:"column:default_time_from"`
+	DefaultTimeTo     *time.Time `gorm:"column:default_time_to"`
 	DefaultLocation   *string    `gorm:"column:default_location;type:jsonb"`
 }
 

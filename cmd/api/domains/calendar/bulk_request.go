@@ -10,7 +10,8 @@ type BulkRequest struct {
 	SessionID          *int64                 `json:"session_id"`
 	OtherName          *string                `json:"other_name"`
 	IsPresencial       *bool                  `json:"is_presencial"`
-	PresencialTime     *string                `json:"presencial_time"`
+	PresencialTimeFrom *string                `json:"presencial_time_from"`
+	PresencialTimeTo   *string                `json:"presencial_time_to"`
 	PresencialLocation *trainingplan.Location `json:"presencial_location"`
 }
 

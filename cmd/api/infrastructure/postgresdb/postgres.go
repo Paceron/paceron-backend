@@ -178,6 +178,21 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	// 7. presencial_time/default_time (single) -> *_from/*_to (par obligatorio,
+	// to > from) — ver docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md 2026-09-19.
+	// Las columnas viejas se dropean: no hay migración limpia de un único valor
+	// a un rango (no se puede inferir el horario de fin a partir del de inicio).
+	migPresencialTimeRange := []string{
+		`ALTER TABLE group_calendar_days DROP COLUMN IF EXISTS presencial_time;`,
+		`ALTER TABLE plan_days DROP COLUMN IF EXISTS default_time;`,
+	}
+	for _, stmt := range migPresencialTimeRange {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error dropping legacy presencial/default time columns", err)
+			return nil, err
+		}
+	}
+
 	customlogger.Info(nil, "DB initialized successfully",
 		customlogger.Tag("db_name", configDB.Name))
 

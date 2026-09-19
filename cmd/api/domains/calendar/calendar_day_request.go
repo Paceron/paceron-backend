@@ -3,14 +3,16 @@ package calendar
 import "simple-arq-golang/cmd/api/domains/trainingplan"
 
 // CalendarDayRequest es el body de PUT /groups/{id}/calendar/{date} — upsert
-// de un día individual. PresencialTime viaja como "HH:MM".
+// de un día individual. PresencialTimeFrom/PresencialTimeTo viajan como
+// "HH:MM"; TimeTo debe ser posterior a TimeFrom.
 type CalendarDayRequest struct {
 	Kind               string                 `json:"kind" binding:"required"`
 	OtherName          *string                `json:"other_name"`
 	SessionID          *int64                 `json:"session_id"`
 	CancelledReason    *string                `json:"cancelled_reason"`
 	IsPresencial       *bool                  `json:"is_presencial"`
-	PresencialTime     *string                `json:"presencial_time"`
+	PresencialTimeFrom *string                `json:"presencial_time_from"`
+	PresencialTimeTo   *string                `json:"presencial_time_to"`
 	PresencialLocation *trainingplan.Location `json:"presencial_location"`
 }
 
