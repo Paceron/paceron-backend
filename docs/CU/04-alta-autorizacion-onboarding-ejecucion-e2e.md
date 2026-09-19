@@ -106,15 +106,19 @@ Header: Authorization: Bearer {{coach_token}}
 **Respuesta:**
 ```json
 {
-  "auth_url": "https://auth.mercadopago.com/authorization?client_id=...&response_type=code&redirect_uri=...&state=<coach_user_id>-<timestamp>",
-  "state": "<coach_user_id>-<timestamp>"
+  "auth_url": "https://auth.mercadopago.com/authorization?client_id=...&response_type=code&redirect_uri=...&state=<coach_user_id>-<timestamp>-<target>",
+  "state": "<coach_user_id>-<timestamp>-<target>"
 }
 ```
 
 **Chequear:**
 - `200`, `auth_url` y `state` no vacíos.
 - El `redirect_uri` dentro de `auth_url` **coincide** con `MP_OAUTH_REDIRECT_URI` y con el de tu app MP.
-- El `state` empieza con el `coach_user_id`.
+- El `state` empieza con el `coach_user_id` y termina con el target (`web` o `app`).
+
+El target sale de `?platform=web|app` (default `web`) y define a dónde redirige el backend
+después de procesar el callback: al origen web (`MP_OAUTH_WEB_RETURN_URL`) o al deep link de
+la app (`MP_OAUTH_APP_RETURN_URL`). Cualquier valor desconocido colapsa a `web`.
 
 **Si da error "configuración de Mercado Pago incompleta":** faltan `MP_OAUTH_CLIENT_ID` o
 `MP_OAUTH_REDIRECT_URI` en el backend (Render).
@@ -125,15 +129,24 @@ Esto NO es por Bruno ni por API (lo hace MP en el navegador). Abrí la `auth_url
 
 1. Logueate con el **test seller** (cuenta de prueba del "entrenador").
 2. Completá la pantalla de autorización (Es Infinity / aprobar).
-3. MP redirige el navegador (y lo deja en) el callback:
+3. MP redirige el navegador al callback del backend:
 
 ```
-{{BASE_URL}}/api/v1/mercadopago/connect/callback?code=DGTZ-XXXXXXXX&state=<coach_user_id>-<timestamp>
+{{BASE_URL}}/api/v1/mercadopago/connect/callback?code=DGTZ-XXXXXXXX&state=<coach_user_id>-<timestamp>-web
+```
+
+4. El backend lo procesa y hace un **segundo salto (302)** hacia el frontend. El navegador
+   termina en la URL de retorno, no en el callback:
+
+```
+<MP_OAUTH_WEB_RETURN_URL>?status=success
+<MP_OAUTH_WEB_RETURN_URL>?status=error&reason=exchange_failed   # si algo falló
 ```
 
 > Si MP muestra **"Aplicación no está lista"**, es mismatch de `redirect_uri` (ver Pre-requisitos).
-> En el navegador se ve la URL final con el `code`: **copiá ese `code`** (no el state). El `code` es
-> de un solo uso y vence rápido; hay que ejecutar el Paso 4 enseguida.
+> **El `code` ya no queda visible al final del flujo** — el redirect del backend no lo propaga, a
+> propósito. Si lo necesitás para dispararlo a mano (Paso 4), copialo de la URL intermedia antes
+> de que el navegador siga, o sacalo de los logs. Es de un solo uso y vence rápido.
 
 ### Paso 4 — El backend procesa el callback (Exchange)
 
@@ -154,10 +167,18 @@ Internamente el backend, en `HandleCallback`:
 5. Valida la identidad del vendedor: `GET /users/me` → obtiene su `mp_user_id`.
 6. Cifra access/refresh con AES-GCM (`TOKEN_ENCRYPTION_KEY`).
 7. `Upsert` en `seller_connections` (`status=authorized`, `token_expires_at`).
+8. Redirige (`302`) al frontend con `?status=success`, o `?status=error&reason=<slug>` si algo
+   falló. El destino sale del target del `state`.
 
-**Chequear:** la respuesta sea `200 {"success":true, ...}` y, en los **logs** del backend de Render,
+**Chequear:** la respuesta sea `302` con header `Location` apuntando a la URL de retorno con
+`status=success` (con `curl -i` se ve sin seguir el redirect), y que el `code` **no** aparezca en
+ese `Location`. En los **logs** del backend de Render,
 ver los `[DEBUG]` del flujo (con secretos ofuscados): `Token exchange OK`, `Token refresh OK`,
 `User info OK`, `Seller connection guardada`.
+
+> Si el backend responde `200` con JSON en vez de `302`, es que `MP_OAUTH_WEB_RETURN_URL` /
+> `MP_OAUTH_APP_RETURN_URL` no están configuradas: el callback degrada al comportamiento anterior
+> a propósito, para no redirigir a una URL vacía.
 
 ### Paso 5 — Verificar estado de conexión
 
@@ -220,15 +241,35 @@ miembro pasa a `active`.
 
 El backend expone el flujo completo; el frontend solo necesita:
 
-1. **Disparar el alta** cuando el entrenador esté logueado:
-   `GET /api/v1/mercadopago/connect` (con el access token del entrenador) → devuelve `{ auth_url, state }`.
-2. **Redirigir** al entrenador a `auth_url` (apertura del OAuth de MP). El `state` ya viene en la URL;
-   no hace falta guardarlo en el front — el backend lo valida.
-3. **MQ MP redirige de vuelta** al `MP_OAUTH_REDIRECT_URI` (que apunta al **backend**), con `code`+`state`.
-   El frontend **no** toca el `code`: el callback del backend completa el alta automáticamente
-   (exchange → refresh → cifrar → `seller_connections`).
-4. **Mostrar el estado** con `GET /api/v1/mercadopago/connect/status` → `connected` /
-   `account_status`. Si está `authorized`, el entrenador ya puede cobrar funciones.
+1. **Pedir la URL** con el entrenador logueado, declarando desde dónde abre el flujo:
+   `GET /api/v1/mercadopago/connect?platform=web|app` → `{ auth_url, state }`.
+   El `platform` define a dónde vuelve el navegador al final; default `web`.
+2. **Abrir `auth_url`**. En web, una ventana emergente (`window.open`) conserva la pantalla que el
+   usuario tenía abierta. En nativo, **Chrome Custom Tabs / Safari View Controller** — Mercado Pago
+   [deprecó el login dentro de WebView embebida](https://www.mercadopago.com.ar/developers/es/news/2023/11/30/WebView-integrations-have-been-deprecated)
+   (discontinuado el 10/12/2024), así que un `<WebView>` propio **no sirve** para este paso.
+   El `state` viaja en la URL; no hace falta guardarlo en el front, lo valida el backend.
+3. **MP redirige al backend** (`MP_OAUTH_REDIRECT_URI`) con `code`+`state`. El backend completa el
+   alta (exchange → refresh → cifrar → `seller_connections`) y **redirige (302) de vuelta al
+   frontend**, a `MP_OAUTH_WEB_RETURN_URL` o `MP_OAUTH_APP_RETURN_URL` según el target del `state`:
 
-Regla clave: **el `code` del OAuth nunca pasa por el frontend** — el callback va directo al backend.
-El front solo abre `auth_url` y consulta `status`.
+   ```
+   <URL de retorno>?status=success
+   <URL de retorno>?status=error&reason=<slug>
+   ```
+
+   Los `reason` posibles: `bad_request`, `missing_params`, `invalid_state`, `expired_state`,
+   `authorization_denied`, `config_error`, `exchange_failed`, `save_failed`, `unknown_error`.
+   Son un contrato estable — mapealos a un mensaje en español en el front, no muestres el slug.
+4. **Confirmar contra el backend**, siempre: `GET /api/v1/mercadopago/connect/status` →
+   `connected` / `account_status`. El `status` de la query sirve para el mensaje inmediato, pero la
+   fuente de verdad es este endpoint — así el flujo no se rompe si el canal de retorno falla
+   (ventana emergente bloqueada, deep link que no resuelve, usuario que cierra a mitad).
+
+Reglas clave:
+
+- **El `code` del OAuth nunca pasa por el frontend.** El callback va directo al backend, y el
+  redirect de vuelta no lo propaga.
+- **Las URLs de retorno no se registran en Mercado Pago.** MP solo conoce `MP_OAUTH_REDIRECT_URI`
+  (el backend); el salto al frontend es interno.
+- Si el entrenador cancela o cierra la ventana, no llega ningún redirect: consultá `status` igual.

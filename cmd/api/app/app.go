@@ -249,7 +249,8 @@ func NewApplication() *Application {
 	// MP Connect flow
 	mpConnectService := services.NewMPConnectService(sellerConnDao, mpClient, encryptor,
 		config.MyMP.OAuthClientID, config.MyMP.OAuthClientSecret, config.MyMP.OAuthRedirectURI)
-	mpConnectController := controllers.NewMPConnectController(mpConnectService)
+	mpConnectController := controllers.NewMPConnectController(mpConnectService,
+		config.MyMP.OAuthWebReturnURL, config.MyMP.OAuthAppReturnURL)
 
 	// Platform Settings flow
 	platformSettingService := services.NewPlatformSettingService(settingDao, userDao)

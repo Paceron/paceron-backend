@@ -98,6 +98,40 @@ El comando usa `-coverpkg=./...` (no solo `-coverprofile` sobre los paquetes tes
 
 `CORSMiddleware()` en [`cmd/api/app/middleware.go`](cmd/api/app/middleware.go) lee `CORS_ALLOWED_ORIGINS` (env var, orígenes separados por coma). Si no está seteada, cae a una lista default hardcodeada en el código (hoy incluye localhost de desarrollo + los dominios de Vercel del frontend). En producción (Render, ver [`render.yaml`](render.yaml)) se configura explícitamente vía esa env var — al agregar un nuevo dominio de frontend, actualizar **ambos** lugares (el fallback en código y `render.yaml`) para que quede documentado en el repo, no solo en el dashboard de Render.
 
+## Callback de OAuth de Mercado Pago (mp-connect)
+
+`GET /api/v1/mercadopago/connect/callback` es una **navegación del navegador**, no una
+llamada de API: Mercado Pago redirige ahí al entrenador al terminar de autorizar. Por eso
+responde **302 hacia el frontend** (`?status=success`, o `?status=error&reason=<slug>`) en vez
+de JSON — antes devolvía JSON y el usuario quedaba varado mirando `{"success":true}` sin forma
+de volver a la app.
+
+- **El destino viaja adentro del `state`** (`"<userID>-<timestampNanos>-<target>"`, con
+  `target ∈ {web, app}`), porque `MP_OAUTH_REDIRECT_URI` es fijo y tiene que coincidir exacto
+  con lo registrado en el panel de MP. El frontend elige el target con
+  `GET /api/v1/mercadopago/connect?platform=web|app`. Todo el formato vive en
+  [`cmd/api/domains/mpconnect/state.go`](cmd/api/domains/mpconnect/state.go) — no reimplementarlo
+  con `fmt.Sprintf`/`Sscanf` en otro lado.
+- **`MP_OAUTH_WEB_RETURN_URL` y `MP_OAUTH_APP_RETURN_URL`** son el destino de cada target. Mismo
+  criterio que CORS: hay que mantenerlas sincronizadas en `.env.example` y en **los dos services**
+  de [`render.yaml`](render.yaml), no solo en el dashboard de Render. La web apunta al origen de
+  Vercel del entorno; la app a un deep link (`paceron://` en producción, `paceron-dev://` en la
+  variante de desarrollo — los schemes los define `app.config.js` del frontend).
+- **Estas dos URLs no se registran en Mercado Pago.** MP siempre redirige al backend; el salto al
+  frontend es un segundo hop interno que MP nunca ve.
+- Si quedan vacías, el callback responde el JSON de antes — degradación deliberada, para que un
+  entorno mal configurado no redirija a `""`.
+- Los `reason` son slugs ASCII estables (`invalid_state`, `expired_state`, `exchange_failed`, …),
+  no el texto del error: esa URL termina en el historial del navegador y en los logs de acceso de
+  Vercel, y el mensaje crudo puede arrastrar la respuesta de MP.
+
+**Riesgo conocido, decidido no arreglar por ahora:** el `state` no está firmado, no se persiste y
+no es single-use — solo tiene expiry de 10 min. Como el callback es público, alguien puede
+autorizar su propia cuenta de MP y reenviar su `code` con un `state` forjado con el `user_id` de
+otro (son secuenciales), quedándose con los cobros de ese entrenador. Está documentado en
+[`openspec/changes/redirect-callback-mp-connect-al-frontend/design.md`](openspec/changes/redirect-callback-mp-connect-al-frontend/design.md).
+**Revisar antes de cualquier uso con dinero real.**
+
 ## Stages de Supabase (testing / production)
 
 Dos proyectos de Supabase separados — `master` en Render pega a producción, `develop`/local/todo lo demás pega a testing **por default**. Producción exige un flag explícito (`--stage=production`) al arrancar el binario; sin él, siempre es testing, a propósito (falla seguro). Detalle completo, variables de entorno, y checklist de Render: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md). No confundir con `ENVIRONMENT` (esa gobierna cómo se carga la config local/test/prod, no a qué proyecto de Supabase apunta — son ejes independientes).
@@ -107,6 +141,7 @@ Dos proyectos de Supabase separados — `master` en Render pega a producción, `
 - Repo separado (Expo/React Native + React Native Web), no vive en este working directory, lo mantiene otro miembro del equipo.
 - Se comunica vía REST, ver tabla de endpoints en [`README.md`](README.md).
 - Deploy: producción en Vercel (`https://paceron-frontend.vercel.app`), preview de `develop` en `https://paceron-frontend-git-develop-paceron.vercel.app` — ambos dominios deben estar en `CORS_ALLOWED_ORIGINS`.
+- La app nativa registra los schemes `paceron://` (producción) y `paceron-dev://` (variante de desarrollo). El backend los usa como destino del redirect del callback de Mercado Pago — ver sección arriba.
 
 ## Herramientas de conversión de documentación
 

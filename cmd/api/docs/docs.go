@@ -1932,6 +1932,19 @@ const docTemplate = `{
                     "mercadopago-connect"
                 ],
                 "summary": "Get Mercado Pago OAuth authorization URL",
+                "parameters": [
+                    {
+                        "enum": [
+                            "web",
+                            "app"
+                        ],
+                        "type": "string",
+                        "default": "web",
+                        "description": "Destino de retorno tras el callback",
+                        "name": "platform",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1956,7 +1969,7 @@ const docTemplate = `{
         },
         "/api/v1/mercadopago/connect/callback": {
             "get": {
-                "description": "Processes the OAuth callback from Mercado Pago, exchanges code for tokens, and stores the connection.",
+                "description": "Processes the OAuth callback from Mercado Pago, exchanges code for tokens, stores the connection and redirects the browser back to the frontend with the result.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1985,21 +1998,21 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Solo si no hay URLs de retorno configuradas",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.CallbackResponse"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "302": {
+                        "description": "Redirect al frontend: ?status=success, o ?status=error\u0026reason=\u003cslug\u003e si falló",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                            "type": "string"
+                        },
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "URL de retorno (origen web o deep link de la app)"
+                            }
                         }
                     }
                 }

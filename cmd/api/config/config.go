@@ -71,6 +71,12 @@ type MercadoPago struct {
 	OAuthClientSecret string
 	OAuthRedirectURI  string
 	OAuthTestToken    bool
+	// A dónde vuelve el navegador tras el callback de OAuth. Dos valores
+	// porque los destinos son de naturaleza distinta (origen HTTPS vs. deep
+	// link de la app) y cambian por separado entre entornos. Cuál se usa lo
+	// decide el target codificado en el state — ver domains/mpconnect/state.go.
+	OAuthWebReturnURL string
+	OAuthAppReturnURL string
 }
 
 type StorageConfig struct {
@@ -244,6 +250,10 @@ func loadMercadoPagoConfig() {
 	MyMP.OAuthClientSecret = os.Getenv("MP_OAUTH_CLIENT_SECRET")
 	MyMP.OAuthRedirectURI = os.Getenv("MP_OAUTH_REDIRECT_URI")
 	MyMP.OAuthTestToken = envBoolDefaultTrue("MP_OAUTH_TEST_TOKEN")
+	// Defaults pensados para correr local sin .env: 8081 es el puerto default
+	// de Expo web, paceron-dev el scheme de la variante de desarrollo.
+	MyMP.OAuthWebReturnURL = getEnvOrDefault("MP_OAUTH_WEB_RETURN_URL", "http://localhost:8081/mp-connect/callback")
+	MyMP.OAuthAppReturnURL = getEnvOrDefault("MP_OAUTH_APP_RETURN_URL", "paceron-dev://mp-connect/callback")
 	TokenEncryptionKey = os.Getenv("TOKEN_ENCRYPTION_KEY")
 }
 

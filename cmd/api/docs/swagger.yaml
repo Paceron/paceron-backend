@@ -3294,6 +3294,15 @@ paths:
       - application/json
       description: Returns the authorization URL to connect a Mercado Pago account
         for split payments.
+      parameters:
+      - default: web
+        description: Destino de retorno tras el callback
+        enum:
+        - web
+        - app
+        in: query
+        name: platform
+        type: string
       produces:
       - application/json
       responses:
@@ -3317,7 +3326,8 @@ paths:
       consumes:
       - application/json
       description: Processes the OAuth callback from Mercado Pago, exchanges code
-        for tokens, and stores the connection.
+        for tokens, stores the connection and redirects the browser back to the frontend
+        with the result.
       parameters:
       - description: Authorization code
         in: query
@@ -3333,17 +3343,18 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Solo si no hay URLs de retorno configuradas
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_mpconnect.CallbackResponse'
-        "400":
-          description: Bad Request
+        "302":
+          description: 'Redirect al frontend: ?status=success, o ?status=error&reason=<slug>
+            si falló'
+          headers:
+            Location:
+              description: URL de retorno (origen web o deep link de la app)
+              type: string
           schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+            type: string
       summary: Handle Mercado Pago OAuth callback
       tags:
       - mercadopago-connect
