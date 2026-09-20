@@ -27,7 +27,6 @@ type mockCalendarService struct {
 	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error)
 	nextSessionFn     func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
 	calendarSummaryFn func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
-	assignedGroupsFn  func(ctx *gin.Context, sessionID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
 func (m *mockCalendarService) GetRange(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error) {
@@ -57,10 +56,6 @@ func (m *mockCalendarService) NextSession(ctx *gin.Context, userID int64) (*cale
 func (m *mockCalendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
 	return m.calendarSummaryFn(ctx, userID)
 }
-func (m *mockCalendarService) AssignedGroups(ctx *gin.Context, sessionID int64) ([]calendar.CalendarSummaryItem, error) {
-	return m.assignedGroupsFn(ctx, sessionID)
-}
-
 func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -590,4 +585,11 @@ func TestMapCalendarError_InvalidCancelTransition(t *testing.T) {
 	status, _ := mapCalendarError(services.ErrCalendarInvalidCancelTransition)
 
 	assert.Equal(t, http.StatusUnprocessableEntity, status)
+}
+
+func TestMapCalendarError_ClosedDay(t *testing.T) {
+	status, message := mapCalendarError(services.ErrCalendarDayClosed)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.Contains(t, message, "cerrado")
 }

@@ -17,19 +17,18 @@ import (
 )
 
 type mockGroupCalendarDao struct {
-	upsertFn                      func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
-	findByGroupAndDateFn          func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
-	findByGroupAndRangeFn         func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
-	deleteFn                      func(ctx *gin.Context, groupID int64, date time.Time) error
-	deleteByDatesFn               func(ctx *gin.Context, groupID int64, dates []time.Time) error
-	findNextSessionForGroupsFn    func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
-	findDistinctGroupsBySessionFn func(ctx *gin.Context, sessionID int64) ([]int64, error)
-	clearSourcePlanFn             func(ctx *gin.Context, planID int64) error
-	repointSessionForGroupsFn     func(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
-	updateDatesForShiftFn         func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
-	findBySessionIDFn             func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
-	repointDaysByIDFn             func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
-	findByExerciseIDFn            func(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error)
+	upsertFn                   func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
+	findByGroupAndDateFn       func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
+	findByGroupAndRangeFn      func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	deleteFn                   func(ctx *gin.Context, groupID int64, date time.Time) error
+	deleteByDatesFn            func(ctx *gin.Context, groupID int64, dates []time.Time) error
+	findNextSessionForGroupsFn func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
+	clearSourcePlanFn          func(ctx *gin.Context, planID int64) error
+	repointSessionForGroupsFn  func(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
+	updateDatesForShiftFn      func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	findBySessionIDFn          func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
+	repointDaysByIDFn          func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
+	findByExerciseIDFn         func(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error)
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -66,12 +65,6 @@ func (m *mockGroupCalendarDao) DeleteByDates(ctx *gin.Context, groupID int64, da
 func (m *mockGroupCalendarDao) FindNextSessionForGroups(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error) {
 	if m.findNextSessionForGroupsFn != nil {
 		return m.findNextSessionForGroupsFn(ctx, groupIDs, fromDate)
-	}
-	return nil, nil
-}
-func (m *mockGroupCalendarDao) FindDistinctGroupsBySession(ctx *gin.Context, sessionID int64) ([]int64, error) {
-	if m.findDistinctGroupsBySessionFn != nil {
-		return m.findDistinctGroupsBySessionFn(ctx, sessionID)
 	}
 	return nil, nil
 }
@@ -246,10 +239,15 @@ func TestCalendarService_Stamp_Success(t *testing.T) {
 	require.NoError(t, db.Create(team).Error)
 	group := &dbs.Group{Name: "Grupo stamp", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
+	exercise := &dbs.Exercise{OwnerID: owner.ID, Name: "Ejercicio stamp", Kind: "running"}
+	require.NoError(t, db.Create(exercise).Error)
+	session := &dbs.Session{OwnerID: owner.ID, Name: "Sesión stamp"}
+	require.NoError(t, db.Create(session).Error)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: session.ID, ExerciseID: exercise.ID, Role: "main"}).Error)
 
 	plan := &dbs.TrainingPlan{OwnerID: owner.ID, Name: "Plan stamp"}
 	require.NoError(t, db.Create(plan).Error)
-	sessionID := int64(3)
+	sessionID := session.ID
 	planDays := []dbs.PlanDay{
 		{PlanID: plan.ID, SequenceNo: 1, Kind: "rest"},
 		{PlanID: plan.ID, SequenceNo: 2, Kind: "training", SessionID: &sessionID},
@@ -397,12 +395,11 @@ func TestCalendarService_NextSession_Found(t *testing.T) {
 	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
 	}}
-	sessionID := int64(3)
 	nextDate, _ := time.Parse("2006-01-02", "2026-10-10")
 	var capturedFromDate time.Time
 	calDao := &mockGroupCalendarDao{findNextSessionForGroupsFn: func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error) {
 		capturedFromDate = fromDate
-		return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training", SessionInstanceID: &sessionID}, nil
+		return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training"}, nil
 	}}
 	svc := NewCalendarService(calDao, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 
@@ -447,8 +444,7 @@ func TestCalendarService_NextSession_FindsTodaysSession(t *testing.T) {
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	sessionID := int64(3)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training"}))
 
 	resp, err := svc.NextSession(nil, owner.ID)
 
@@ -592,19 +588,4 @@ func TestCalendarService_UpsertDay_PresencialTimeToBeforeFrom(t *testing.T) {
 	_, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
 
 	assert.ErrorIs(t, err, ErrCalendarInvalidTimeRange)
-}
-
-func TestCalendarService_AssignedGroups_Distinct(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)}, nil
-	}}
-	calDao := &mockGroupCalendarDao{findDistinctGroupsBySessionFn: func(ctx *gin.Context, sessionID int64) ([]int64, error) {
-		return []int64{1, 2}, nil
-	}}
-	svc := NewCalendarService(calDao, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
-
-	resp, err := svc.AssignedGroups(nil, 99)
-
-	require.NoError(t, err)
-	assert.Len(t, resp, 2)
 }

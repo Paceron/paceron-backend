@@ -26,4 +26,5 @@ func TestPingRouteExists(t *testing.T) {
 	assert.True(t, routes[http.MethodGet+":"+"/user/:user_id/weather"], "GET /user/:user_id/weather route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/swagger/index.html"], "GET /swagger/index.html route should exist")
 	assert.True(t, routes[http.MethodGet+":"+"/swagger/doc.json"], "GET /swagger/doc.json route should exist")
+	assert.False(t, routes[http.MethodGet+":"+"/api/v1/sessions/:id/assigned-groups"], "assigned-groups route should have been removed")
 }

@@ -280,28 +280,6 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 	return s.toResponse(ctx, existing)
 }
 
-// isCalendarDayClosed decide si un GroupCalendarDay ya no debe recibir la
-// edición en vivo de la sesión que referencia — ver D13 del change de
-// calendario. Sin cron: se calcula al vuelo contra `now` en cada PUT.
-func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
-	if dayDate.Before(today) {
-		return true
-	}
-	if dayDate.After(today) {
-		return false
-	}
-	if !day.IsPresencial {
-		return true
-	}
-	if day.PresencialTimeFrom == nil {
-		return false
-	}
-	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTimeFrom.UTC().Hour(), day.PresencialTimeFrom.UTC().Minute(), 0, 0, now.Location())
-	return !now.Before(threshold)
-}
-
 func (s *sessionService) Delete(ctx *gin.Context, id, callerID int64) error {
 	existing, err := s.sessionDao.FindByID(ctx, id)
 	if err != nil {

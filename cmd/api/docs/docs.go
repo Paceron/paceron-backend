@@ -3236,43 +3236,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/sessions/{id}/assigned-groups": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sessions"
-                ],
-                "summary": "Grupos con calendario asignados a una sesión",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Session ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request"
-                    },
-                    "500": {
-                        "description": "Internal Server Error"
-                    }
-                }
-            }
-        },
         "/api/v1/sessions/{id}/clone": {
             "post": {
                 "produces": [

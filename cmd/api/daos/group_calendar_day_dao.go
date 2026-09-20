@@ -17,7 +17,6 @@ type GroupCalendarDaoInterface interface {
 	Delete(ctx *gin.Context, groupID int64, date time.Time) error
 	DeleteByDates(ctx *gin.Context, groupID int64, dates []time.Time) error
 	FindNextSessionForGroups(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
-	FindDistinctGroupsBySession(ctx *gin.Context, sessionID int64) ([]int64, error)
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	RepointSessionForGroups(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
@@ -105,15 +104,6 @@ func (d *groupCalendarDayDao) FindNextSessionForGroups(ctx *gin.Context, groupID
 		return nil, fmt.Errorf("error finding next session: %w", err)
 	}
 	return &day, nil
-}
-
-func (d *groupCalendarDayDao) FindDistinctGroupsBySession(ctx *gin.Context, sessionID int64) ([]int64, error) {
-	var groupIDs []int64
-	err := d.DB.Model(&dbs.GroupCalendarDay{}).Where("session_instance_id = ?", sessionID).Distinct().Pluck("group_id", &groupIDs).Error
-	if err != nil {
-		return nil, fmt.Errorf("error finding groups by session: %w", err)
-	}
-	return groupIDs, nil
 }
 
 func (d *groupCalendarDayDao) ClearSourcePlan(ctx *gin.Context, planID int64) error {

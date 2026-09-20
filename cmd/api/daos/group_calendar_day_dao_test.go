@@ -125,22 +125,6 @@ func TestGroupCalendarDayDao_FindNextSessionForGroups(t *testing.T) {
 	assert.True(t, found.Date.Equal(future))
 }
 
-func TestGroupCalendarDayDao_FindDistinctGroupsBySession(t *testing.T) {
-	db := testutils.SetupTestDB(t)
-	dao := NewGroupCalendarDayDao(db)
-	group1 := setupCalendarGroup(t, db, "7")
-	group2 := setupCalendarGroup(t, db, "8")
-	sessionID := int64(42)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
-
-	groupIDs, err := dao.FindDistinctGroupsBySession(nil, sessionID)
-
-	require.NoError(t, err)
-	assert.ElementsMatch(t, []int64{group1.ID, group2.ID}, groupIDs)
-}
-
 func TestGroupCalendarDayDao_ClearSourcePlan(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupCalendarDayDao(db)
