@@ -42,6 +42,7 @@ active ──ChangeTier──► ended
 - `ended` y `canceled` quedan fuera del conjunto vigente: no cuentan para el índice ni para `FindActiveByUserRole`.
 - **`ChangeTier` bloqueado con primer pago impago**: si existe sub `first_payment_pending` para el `(user_id, role_id)`, el `PUT tier` responde `409 SUBSCRIPTION_PENDING_FIRST_PAYMENT`. La vía de salida es cancelarla (DELETE) y reintentar.
 - El acceso al tier pago se habilita recién en `active` (cuota #1 pagada).
+- Los endpoints que reportan el tier de un rol (`GET /api/v1/auth/permissions`, `GET /api/v1/team-configuration`) resuelven el mismo criterio que `GetCurrentSubscription`: sub vigente primero, fallback a `user_roles.tier_id`. El `tier_id` de la asignación es un caché del ledger, no la fuente de verdad.
 
 ---
 
