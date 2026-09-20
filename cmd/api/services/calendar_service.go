@@ -161,7 +161,7 @@ func (s *calendarService) buildRow(ctx *gin.Context, groupID int64, date time.Ti
 	case string(constants.GroupCalendarDayKindOther):
 		row.OtherName = req.OtherName
 	case string(constants.GroupCalendarDayKindTraining):
-		row.SessionID = req.SessionID
+		row.SessionInstanceID = req.SessionID
 	case string(constants.GroupCalendarDayKindCancelled):
 		row.CancelledReason = req.CancelledReason
 	}
@@ -243,7 +243,7 @@ func (s *calendarService) DeleteDay(ctx *gin.Context, groupID, callerID int64, d
 func toCalendarDayResponse(d dbs.GroupCalendarDay) calendar.CalendarDayResponse {
 	resp := calendar.CalendarDayResponse{
 		ID: d.ID, GroupID: d.GroupID, Date: d.Date.Format("2006-01-02"), Kind: d.Kind,
-		OtherName: d.OtherName, SessionID: d.SessionID, CancelledReason: d.CancelledReason,
+		OtherName: d.OtherName, SessionID: d.SessionInstanceID, CancelledReason: d.CancelledReason,
 		IsPresencial: d.IsPresencial, SourcePlanID: d.SourcePlanID, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 	if d.PresencialTimeFrom != nil {
@@ -309,7 +309,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		date := startDate.AddDate(0, 0, pd.SequenceNo-1)
 		targetDates[i] = date
 		row := dbs.GroupCalendarDay{
-			GroupID: groupID, Date: date, Kind: pd.Kind, OtherName: pd.OtherName, SessionID: pd.SessionID,
+			GroupID: groupID, Date: date, Kind: pd.Kind, OtherName: pd.OtherName, SessionInstanceID: pd.SessionID,
 			IsPresencial: pd.DefaultPresencial, PresencialTimeFrom: pd.DefaultTimeFrom, PresencialTimeTo: pd.DefaultTimeTo, PresencialLocation: pd.DefaultLocation,
 			SourcePlanID: &req.PlanID,
 		}
@@ -500,7 +500,7 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 		return nil, nil
 	}
 	resp := &calendar.NextSessionResponse{
-		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), SessionID: day.SessionID, IsPresencial: day.IsPresencial,
+		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), SessionID: day.SessionInstanceID, IsPresencial: day.IsPresencial,
 	}
 	if day.PresencialTimeFrom != nil {
 		formatted := day.PresencialTimeFrom.UTC().Format("15:04")

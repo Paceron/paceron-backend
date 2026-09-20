@@ -295,8 +295,8 @@ func TestSessionService_Update_WithExcludeGroupIDs_ClonesAndRepoints(t *testing.
 	require.NoError(t, db.Create(keptGroup).Error)
 
 	date := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: excludedGroup.ID, Date: date, Kind: "training", SessionID: &original.ID}))
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: keptGroup.ID, Date: date, Kind: "training", SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: excludedGroup.ID, Date: date, Kind: "training", SessionInstanceID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: keptGroup.ID, Date: date, Kind: "training", SessionInstanceID: &original.ID}))
 
 	excludeIDs := []int64{excludedGroup.ID}
 	newName := "Sesión editada"
@@ -314,18 +314,18 @@ func TestSessionService_Update_WithExcludeGroupIDs_ClonesAndRepoints(t *testing.
 
 	excludedDay, err := calendarDao.FindByGroupAndDate(nil, excludedGroup.ID, date)
 	require.NoError(t, err)
-	require.NotNil(t, excludedDay.SessionID)
-	assert.NotEqual(t, original.ID, *excludedDay.SessionID, "el grupo excluido debe apuntar al clon, no a la sesión original")
+	require.NotNil(t, excludedDay.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *excludedDay.SessionInstanceID, "el grupo excluido debe apuntar al clon, no a la sesión original")
 
-	clonedSessionID := *excludedDay.SessionID
+	clonedSessionID := *excludedDay.SessionInstanceID
 	clonedExercises, err := sessionExerciseDao.FindBySession(nil, clonedSessionID)
 	require.NoError(t, err)
 	assert.Len(t, clonedExercises, 3, "el clon debe tener copia profunda de los 3 ejercicios")
 
 	keptDay, err := calendarDao.FindByGroupAndDate(nil, keptGroup.ID, date)
 	require.NoError(t, err)
-	require.NotNil(t, keptDay.SessionID)
-	assert.Equal(t, original.ID, *keptDay.SessionID, "el grupo no excluido debe seguir apuntando a la sesión original")
+	require.NotNil(t, keptDay.SessionInstanceID)
+	assert.Equal(t, original.ID, *keptDay.SessionInstanceID, "el grupo no excluido debe seguir apuntando a la sesión original")
 
 	updatedOriginal, err := sessionDao.FindByID(nil, original.ID)
 	require.NoError(t, err)
@@ -369,7 +369,7 @@ func TestSessionService_Update_AutoLocksPastDayWithoutExclusion(t *testing.T) {
 	require.NoError(t, db.Create(group).Error)
 
 	pastDate := time.Now().AddDate(0, 0, -3).Truncate(24 * time.Hour)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", IsPresencial: false, SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", IsPresencial: false, SessionInstanceID: &original.ID}))
 
 	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
 		OwnerID: owner.ID, Name: "Editada",
@@ -383,8 +383,8 @@ func TestSessionService_Update_AutoLocksPastDayWithoutExclusion(t *testing.T) {
 	require.NoError(t, err)
 	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
 	require.NoError(t, err)
-	require.NotNil(t, pastDay.SessionID)
-	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe auto-clonarse aunque no venga en exclude_group_ids")
+	require.NotNil(t, pastDay.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionInstanceID, "el día pasado debe auto-clonarse aunque no venga en exclude_group_ids")
 }
 
 func TestSessionService_Update_FutureDayStaysLiveWithoutExclusion(t *testing.T) {
@@ -494,7 +494,7 @@ func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) 
 	}
 	presencialTime := time.Date(0, 1, 1, past.Hour(), past.Minute(), 0, 0, time.UTC)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
-		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &presencialTime, SessionID: &original.ID,
+		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &presencialTime, SessionInstanceID: &original.ID,
 	}))
 
 	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
@@ -509,8 +509,8 @@ func TestSessionService_Update_TodayPresencialAfterStartTimeLocks(t *testing.T) 
 	require.NoError(t, err)
 	day, err := calendarDao.FindByGroupAndDate(nil, group.ID, today)
 	require.NoError(t, err)
-	require.NotNil(t, day.SessionID)
-	assert.NotEqual(t, original.ID, *day.SessionID, "presencial de hoy después de su horario debe congelarse")
+	require.NotNil(t, day.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *day.SessionInstanceID, "presencial de hoy después de su horario debe congelarse")
 }
 
 // TestSessionService_Update_TodayAsyncAlwaysLocks — mismo motivo que los dos
@@ -548,7 +548,7 @@ func TestSessionService_Update_TodayAsyncAlwaysLocks(t *testing.T) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{
-		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: false, SessionID: &original.ID,
+		GroupID: group.ID, Date: today, Kind: "training", IsPresencial: false, SessionInstanceID: &original.ID,
 	}))
 
 	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
@@ -563,8 +563,8 @@ func TestSessionService_Update_TodayAsyncAlwaysLocks(t *testing.T) {
 	require.NoError(t, err)
 	day, err := calendarDao.FindByGroupAndDate(nil, group.ID, today)
 	require.NoError(t, err)
-	require.NotNil(t, day.SessionID)
-	assert.NotEqual(t, original.ID, *day.SessionID, "asíncrono de hoy se congela aunque el día no haya terminado")
+	require.NotNil(t, day.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *day.SessionInstanceID, "asíncrono de hoy se congela aunque el día no haya terminado")
 }
 
 func TestSessionService_Update_AutoLocksPastDay_RealDB(t *testing.T) {
@@ -600,8 +600,8 @@ func TestSessionService_Update_AutoLocksPastDay_RealDB(t *testing.T) {
 
 	pastDate := time.Now().AddDate(0, 0, -5).Truncate(24 * time.Hour)
 	futureDate := time.Now().AddDate(0, 0, 5).Truncate(24 * time.Hour)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionID: &original.ID}))
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionInstanceID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionInstanceID: &original.ID}))
 
 	newName := "Sesión editada sin exclusión manual"
 	_, err := svc.Update(nil, original.ID, owner.ID, session.SessionRequest{
@@ -617,13 +617,13 @@ func TestSessionService_Update_AutoLocksPastDay_RealDB(t *testing.T) {
 
 	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
 	require.NoError(t, err)
-	require.NotNil(t, pastDay.SessionID)
-	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe apuntar a un clon, no a la sesión original ya editada")
+	require.NotNil(t, pastDay.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionInstanceID, "el día pasado debe apuntar a un clon, no a la sesión original ya editada")
 
 	futureDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, futureDate)
 	require.NoError(t, err)
-	require.NotNil(t, futureDay.SessionID)
-	assert.Equal(t, original.ID, *futureDay.SessionID, "el día futuro debe seguir apuntando a la sesión original ya editada")
+	require.NotNil(t, futureDay.SessionInstanceID)
+	assert.Equal(t, original.ID, *futureDay.SessionInstanceID, "el día futuro debe seguir apuntando a la sesión original ya editada")
 
 	updatedOriginal, err := sessionDao.FindByID(nil, original.ID)
 	require.NoError(t, err)
