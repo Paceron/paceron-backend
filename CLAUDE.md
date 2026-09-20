@@ -1,5 +1,7 @@
 # Paceron Backend — Guía de trabajo
 
+> **Nota (2026-09-19):** el desarrollo de este repo se mudó a OpenCode — ver [`AGENTS.md`](AGENTS.md) (mismo contenido, adaptado). Claude Code queda reservado para `paceron-frontend`. Si una sesión de Claude Code resume trabajo acá, tratarla como secundaria/ocasional — revisar `git log` antes de asumir el estado descripto en este archivo sigue vigente.
+
 Convenciones de workflow, git y decisiones para trabajar en este repo — humanos y agentes de IA por igual. **Si tomás una decisión relevante para el equipo (workflow, arquitectura, configuración de proyecto), reflejala acá** para que aplique a todos, no solo a la sesión donde se decidió.
 
 Esto incluye, sin limitarse a: cambios de contexto relevantes en backend o frontend (ej. el frontend depende de un modelo de roles que hoy no existe acá), incorporar una tecnología/librería nueva de peso, o configuración a nivel proyecto que afecte a todo el equipo. Si en el momento no amerita su propia sección, al menos dejar una línea en "Quirks conocidos" — mejor una nota corta que nada.
@@ -11,7 +13,8 @@ Go 1.26 + Gin (HTTP) + GORM (ORM sobre PostgreSQL/Supabase) + JWT (`golang-jwt/j
 Documentación técnica detallada ya existe en [`.agentics/`](.agentics/) (en inglés) y en `cmd/api/docs/documentationdetail/` (en español) — este archivo **no la duplica**, es la capa de convenciones de trabajo/git sobre esa base:
 
 - [`docs/STATE_MACHINES.md`](docs/STATE_MACHINES.md) — referencia única de estados, transiciones, disparadores e invariantes por entidad (suscripciones, cuotas, usuarios, equipos, invitaciones, etc.). La fuente de verdad del valor de los estados son `cmd/api/domains/constants/`; este doc es la lectura navegable.
-- [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) — modelo de datos, guards, endpoints y reglas del catálogo (`Exercise`/`Session`/`TrainingPlan`) y del calendario de grupos (`GroupCalendarDay`), incluyendo el clon por divergencia al editar una sesión ya asignada.
+- [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) — modelo de datos, guards, endpoints y reglas del catálogo (`Exercise`/`Session`/`TrainingPlan`) y del calendario de grupos (`GroupCalendarDay`), incluyendo el clon por divergencia al editar una sesión ya asignada. **En proceso de rework hacia instanciación** — ver `openspec/changes/asignacion-por-instanciacion/`.
+- [`docs/DEUDA_TECNICA_Y_PENDIENTES.md`](docs/DEUDA_TECNICA_Y_PENDIENTES.md) — bugs conocidos, datos desactualizados en testing, features deferidas con diseño ya charlado. Este repo ahora se desarrolla desde OpenCode ([`AGENTS.md`](AGENTS.md)) — este doc es el conocimiento que antes solo vivía en memoria de sesiones de Claude Code, para que no se pierda.
 - [`.agentics/CONVENTIONS.md`](.agentics/CONVENTIONS.md) — convenciones de código, capas, qué no está permitido (ej. service-to-service imports, DAO directo desde controller).
 - [`.agentics/STRUCTURE.md`](.agentics/STRUCTURE.md) — estructura de carpetas.
 - [`.agentics/WORKFLOW.md`](.agentics/WORKFLOW.md) — cómo correr, testear, buildear, regenerar swagger, agregar una feature paso a paso.
