@@ -87,9 +87,11 @@ Los artefactos se crean en `openspec/changes/<change-name>/`:
 
 ### OpenCode
 
-El proyecto incluye skills y comandos preconfigurados en `.opencode/`.
+**Desde 2026-09-19, este repo se desarrolla principalmente desde OpenCode — leer [`AGENTS.md`](AGENTS.md) primero** (equivalente de `CLAUDE.md`, con la guía de trabajo completa + estrategia de subagentes/modelos).
 
-Skills disponibles:
+El proyecto incluye skills y comandos preconfigurados en `.opencode/`, más el plugin `superpowers` (`opencode.json`, ver AGENTS.md §9) para la librería completa de skills de desarrollo (brainstorming, TDD, systematic-debugging, subagent-driven-development, etc.).
+
+Skills de OpenSpec disponibles:
 - `openspec-propose` — crear propuestas
 - `openspec-apply-change` — implementar cambios
 - `openspec-archive-change` — archivar cambios completados
