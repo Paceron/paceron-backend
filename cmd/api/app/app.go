@@ -179,7 +179,11 @@ func NewApplication() *Application {
 	userRoleController := controllers.NewUserRoleController(userRoleService)
 
 	// Permissions Query flow
-	permissionsQueryService := services.NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermissionDao, permissionDao)
+	// tierSubscriptionDao (ledger de suscripciones de tier) se declara acá porque
+	// permissionsQueryService lo necesita para resolver el tier por sub vigente;
+	// se reutiliza en el flujo de tier subscriptions más abajo.
+	tierSubscriptionDao := daos.NewTierSubscriptionDao(db)
+	permissionsQueryService := services.NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermissionDao, permissionDao, tierSubscriptionDao)
 	permissionsQueryController := controllers.NewPermissionsQueryController(permissionsQueryService)
 
 	// Group flow (groupDao/groupUserDao también los necesita teamService para
@@ -263,7 +267,6 @@ func NewApplication() *Application {
 	paymentController := controllers.NewPaymentController(paymentService)
 
 	// Tier subscription flow (ledger de suscripciones de tier por usuario/rol)
-	tierSubscriptionDao := daos.NewTierSubscriptionDao(db)
 	tierSubscriptionService := services.NewTierSubscriptionService(db, userRoleDao, roleDao, tierDao, tierSubscriptionDao, installmentDao)
 	tierSubscriptionController := controllers.NewTierSubscriptionController(tierSubscriptionService)
 

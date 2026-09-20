@@ -33,6 +33,7 @@ type permissionsQueryService struct {
 	tierDao             daos.TierDaoInterface
 	tierPermissionDao   daos.TierPermissionDaoInterface
 	permissionDao       daos.PermissionDaoInterface
+	tierSubDao          daos.TierSubscriptionDaoInterface
 }
 
 func NewPermissionsQueryService(
@@ -42,6 +43,7 @@ func NewPermissionsQueryService(
 	tierDao daos.TierDaoInterface,
 	tierPermissionDao daos.TierPermissionDaoInterface,
 	permissionDao daos.PermissionDaoInterface,
+	tierSubDao daos.TierSubscriptionDaoInterface,
 ) PermissionsQueryServiceInterface {
 	return &permissionsQueryService{
 		userDao:           userDao,
@@ -50,6 +52,7 @@ func NewPermissionsQueryService(
 		tierDao:           tierDao,
 		tierPermissionDao: tierPermissionDao,
 		permissionDao:     permissionDao,
+		tierSubDao:        tierSubDao,
 	}
 }
 
@@ -94,12 +97,28 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 			continue
 		}
 
-		tier, err := s.tierDao.FindByID(ctx, ur.TierID)
+		// El tier se resuelve igual que GetCurrentSubscription/resolveEntrenadorTier:
+		// sub vigente (active | first_payment_pending) primero, fallback a
+		// user_roles.tier_id. El índice único parcial garantiza a lo sumo una sub.
+		tierID := ur.TierID
+		sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, ur.RoleID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding active tier subscription", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
+				customlogger.TagMethod("GetUserPermissions"))
+			return nil, fmt.Errorf("error al obtener permisos")
+		}
+		if sub != nil {
+			tierID = sub.TierID
+		}
+
+		tier, err := s.tierDao.FindByID(ctx, tierID)
 		if err != nil || tier == nil {
-			missingData = append(missingData, fmt.Sprintf("tier_id=%d no configurado para el rol %s", ur.TierID, role.Name))
+			missingData = append(missingData, fmt.Sprintf("tier_id=%d no configurado para el rol %s", tierID, role.Name))
 			customlogger.Error(ctx, "tier not found for user role assignment", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-				customlogger.Tag("tier_id", fmt.Sprintf("%d", ur.TierID)),
+				customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
 				customlogger.TagMethod("GetUserPermissions"))
 			continue
 		}

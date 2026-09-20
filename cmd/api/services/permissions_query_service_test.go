@@ -205,6 +205,53 @@ func (m *mockPermissionDaoForQuery) GetAll(ctx *gin.Context) ([]dbs.Permission, 
 	return nil, nil
 }
 
+type mockTierSubscriptionDaoForQuery struct {
+	findActiveFn func(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error)
+}
+
+func (m *mockTierSubscriptionDaoForQuery) Create(ctx *gin.Context, sub *dbs.UserRoleTierSubscription) error {
+	return nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) FindByID(ctx *gin.Context, id int64) (*dbs.UserRoleTierSubscription, error) {
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) FindActiveByUserRole(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
+	if m.findActiveFn != nil {
+		return m.findActiveFn(ctx, userID, roleID, statuses...)
+	}
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) FindLatestByUserRole(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error) {
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) FindPendingByUserRoleTier(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) FindByUserRoleTier(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error) {
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) SetEnded(ctx *gin.Context, id int64) error {
+	return nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) SetCanceled(ctx *gin.Context, id int64) error {
+	return nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) Activate(ctx *gin.Context, id int64) error {
+	return nil
+}
+
+func (m *mockTierSubscriptionDaoForQuery) IncrementPaidInstallments(ctx *gin.Context, id int64) error {
+	return nil
+}
+
 func TestPermissionsQueryService_GetUserPermissions_Success(t *testing.T) {
 	userDao := &mockUserDaoForQuery{
 		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -241,7 +288,7 @@ func TestPermissionsQueryService_GetUserPermissions_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao)
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, &mockTierSubscriptionDaoForQuery{})
 	resp, err := svc.GetUserPermissions(nil, 1)
 
 	assert.NoError(t, err)
@@ -260,7 +307,7 @@ func TestPermissionsQueryService_GetUserPermissions_UserNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, &mockUserRoleDaoForQuery{}, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, &mockUserRoleDaoForQuery{}, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 999)
 
 	assert.Error(t, err)
@@ -279,7 +326,7 @@ func TestPermissionsQueryService_GetUserPermissions_NoRoles(t *testing.T) {
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	resp, err := svc.GetUserPermissions(nil, 1)
 
 	assert.NoError(t, err)
@@ -307,7 +354,7 @@ func TestPermissionsQueryService_GetUserPermissions_MissingRole(t *testing.T) {
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -338,7 +385,7 @@ func TestPermissionsQueryService_GetUserPermissions_MissingTier(t *testing.T) {
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -381,7 +428,7 @@ func TestPermissionsQueryService_GetUserPermissions_MissingPermission(t *testing
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao)
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -395,7 +442,7 @@ func TestPermissionsQueryService_GetUserPermissions_UserFindError(t *testing.T) 
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, &mockUserRoleDaoForQuery{}, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, &mockUserRoleDaoForQuery{}, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -431,7 +478,7 @@ func TestPermissionsQueryService_GetUserPermissions_EmptyTierPermissions(t *test
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -450,7 +497,7 @@ func TestPermissionsQueryService_GetUserPermissions_UserRolesFindError(t *testin
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, &mockRoleDaoForQuery{}, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -476,7 +523,7 @@ func TestPermissionsQueryService_GetUserPermissions_RoleFindByIDError(t *testing
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, &mockTierDaoForQuery{}, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -507,7 +554,7 @@ func TestPermissionsQueryService_GetUserPermissions_TierFindByIDError(t *testing
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
@@ -543,7 +590,7 @@ func TestPermissionsQueryService_GetUserPermissions_TierPermissionFindByTierIDEr
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{})
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	resp, err := svc.GetUserPermissions(nil, 1)
 
 	assert.NoError(t, err)
@@ -587,9 +634,202 @@ func TestPermissionsQueryService_GetUserPermissions_PermissionFindByIDError(t *t
 		},
 	}
 
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao)
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, &mockTierSubscriptionDaoForQuery{})
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "datos faltantes")
+}
+
+func TestPermissionsQueryService_GetUserPermissions_ActiveSubBeatsUserRoleTier(t *testing.T) {
+	userDao := &mockUserDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDaoForQuery{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{
+				{ID: 1, UserID: 1, RoleID: 1, TierID: 2},
+			}, nil
+		},
+	}
+	roleDao := &mockRoleDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	tierDao := &mockTierDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			if id == 1 {
+				return &dbs.Tier{ID: 1, Name: "base"}, nil
+			}
+			return &dbs.Tier{ID: 2, Name: "premium_entrenador"}, nil
+		},
+	}
+	tierPermDao := &mockTierPermissionDaoForQuery{
+		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
+			return []dbs.TierPermission{
+				{ID: 1, TierID: tierID, PermissionID: 1},
+			}, nil
+		},
+	}
+	permDao := &mockPermissionDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
+			return &dbs.Permission{ID: 1, Name: "crear_equipos"}, nil
+		},
+	}
+	tierSubDao := &mockTierSubscriptionDaoForQuery{
+		findActiveFn: func(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 7, UserID: userID, RoleID: roleID, TierID: 1, Status: "active"}, nil
+		},
+	}
+
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, tierSubDao)
+	resp, err := svc.GetUserPermissions(nil, 1)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Len(t, resp.Roles, 1)
+	assert.Equal(t, "entrenador", resp.Roles[0].Name)
+	assert.Equal(t, "base", resp.Roles[0].Tier)
+	assert.Contains(t, resp.Roles[0].Permissions, "crear_equipos")
+}
+
+func TestPermissionsQueryService_GetUserPermissions_PendingSubReportsPaidTier(t *testing.T) {
+	userDao := &mockUserDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDaoForQuery{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{
+				{ID: 1, UserID: 1, RoleID: 1, TierID: 1},
+			}, nil
+		},
+	}
+	roleDao := &mockRoleDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	tierDao := &mockTierDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			if id == 2 {
+				return &dbs.Tier{ID: 2, Name: "premium_entrenador"}, nil
+			}
+			return &dbs.Tier{ID: 1, Name: "base"}, nil
+		},
+	}
+	tierPermDao := &mockTierPermissionDaoForQuery{
+		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
+			return []dbs.TierPermission{
+				{ID: 1, TierID: tierID, PermissionID: 1},
+			}, nil
+		},
+	}
+	permDao := &mockPermissionDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
+			return &dbs.Permission{ID: 1, Name: "crear_equipos"}, nil
+		},
+	}
+	tierSubDao := &mockTierSubscriptionDaoForQuery{
+		findActiveFn: func(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 8, UserID: userID, RoleID: roleID, TierID: 2, Status: "first_payment_pending"}, nil
+		},
+	}
+
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, tierSubDao)
+	resp, err := svc.GetUserPermissions(nil, 1)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Len(t, resp.Roles, 1)
+	assert.Equal(t, "premium_entrenador", resp.Roles[0].Tier)
+}
+
+func TestPermissionsQueryService_GetUserPermissions_FallbackToUserRoleTier(t *testing.T) {
+	userDao := &mockUserDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDaoForQuery{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{
+				{ID: 1, UserID: 1, RoleID: 1, TierID: 2},
+			}, nil
+		},
+	}
+	roleDao := &mockRoleDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	tierDao := &mockTierDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			if id == 2 {
+				return &dbs.Tier{ID: 2, Name: "premium_entrenador"}, nil
+			}
+			return &dbs.Tier{ID: 1, Name: "base"}, nil
+		},
+	}
+	tierPermDao := &mockTierPermissionDaoForQuery{
+		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
+			return []dbs.TierPermission{
+				{ID: 1, TierID: tierID, PermissionID: 1},
+			}, nil
+		},
+	}
+	permDao := &mockPermissionDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
+			return &dbs.Permission{ID: 1, Name: "crear_equipos"}, nil
+		},
+	}
+
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, &mockTierSubscriptionDaoForQuery{})
+	resp, err := svc.GetUserPermissions(nil, 1)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.Len(t, resp.Roles, 1)
+	assert.Equal(t, "premium_entrenador", resp.Roles[0].Tier)
+}
+
+func TestPermissionsQueryService_GetUserPermissions_SubTierNotConfigured(t *testing.T) {
+	userDao := &mockUserDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDaoForQuery{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{
+				{ID: 1, UserID: 1, RoleID: 1, TierID: 1},
+			}, nil
+		},
+	}
+	roleDao := &mockRoleDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}
+	tierDao := &mockTierDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return nil, nil
+		},
+	}
+	tierSubDao := &mockTierSubscriptionDaoForQuery{
+		findActiveFn: func(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
+			return &dbs.UserRoleTierSubscription{ID: 9, UserID: userID, RoleID: roleID, TierID: 99, Status: "active"}, nil
+		},
+	}
+
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, &mockTierPermissionDaoForQuery{}, &mockPermissionDaoForQuery{}, tierSubDao)
+	_, err := svc.GetUserPermissions(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "datos faltantes")
+	assert.Contains(t, err.Error(), "tier_id=99")
 }
