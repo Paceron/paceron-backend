@@ -4,6 +4,16 @@ Equivalente de [`CLAUDE.md`](CLAUDE.md) para sesiones de OpenCode — mismo cont
 
 **Si tomás una decisión relevante para el equipo (workflow, arquitectura, configuración de proyecto), reflejala en ambos archivos** (`AGENTS.md` y `CLAUDE.md`) para que aplique a todos, no solo a la sesión donde se decidió.
 
+## 0. Cómo interpretar un comentario — discusión vs. orden de implementar
+
+No todo lo que se dice en una conversación es un pedido de cambiar código. Antes de editar/crear/borrar un archivo, distinguir:
+
+- **Discusión/exploración** ("¿no sería mejor...", "che, esto está raro", "estuve pensando en...", una pregunta): responder, opinar, investigar si hace falta — **no** tocar código todavía.
+- **Pedido explícito de acción** ("hacé X", "implementá Y", "arreglá Z", confirmar una propuesta ya discutida): ahí sí, implementar.
+- **Ambiguo:** confirmar el alcance antes de escribir nada, aunque sea con una pregunta corta — más barato que revertir un cambio no pedido.
+
+Esto aplica en cualquier agente/modo, no es exclusivo de un modo "plan" separado — un comentario casual no debería disparar una edición de archivo por las dudas. Igualar el alcance de la acción al pedido real, no al máximo que se podría inferir.
+
 ## 1. Stack
 
 Go 1.26 + Gin (HTTP) + GORM (ORM sobre PostgreSQL/Supabase) + JWT (`golang-jwt/jwt`) + Swagger (`swaggo/swag`). Arquitectura en capas: Controllers → Delegates → Services → DAOs/RestClients → Infrastructure (diagrama completo en [`README.md`](README.md)). Frontend separado (Expo/React Native, otro repo, otro agente — ver §8).
