@@ -105,3 +105,54 @@ Desde 2026-09-19, `paceron-backend` se desarrolla desde OpenCode; Claude Code qu
 - `PUT /sessions/{id}` pierde `exclude_group_ids`/`clone_name`/`clone_description`.
 - El shape de lo que devuelve el calendario puede cambiar si se decide embeber el detalle de la instancia en la respuesta (a definir en implementación, ver `tasks.md` Task 3).
 - `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` §5 (clonado por divergencia, spec del lado frontend) queda obsoleto una vez implementado esto — coordinar su actualización con quien mantiene ese repo.
+
+## 9. Skills, subagentes y modelos
+
+### Superpowers (plugin de skills)
+
+`opencode.json` ya incluye `"plugin": ["superpowers@git+https://github.com/obra/superpowers.git"]` — trae la misma librería de skills que se usó para diseñar este repo en Claude Code (`brainstorming`, `systematic-debugging`, `test-driven-development`, `writing-plans`, `subagent-driven-development`, `verification-before-completion`, `requesting-code-review`/`receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`), mapeadas 1:1 a las herramientas nativas de OpenCode (`task`, `skill`, `todowrite`, `bash`, `grep`/`glob`, `webfetch` — ver `docs/README.opencode.md` del propio plugin). Reiniciar OpenCode después de este cambio para que lo cargue. Verificar con "Tell me about your superpowers" o "use skill tool to list skills".
+
+Es un plugin de terceros (corre JS instalado vía git) — reversible con solo sacar la línea de `opencode.json` si no convence.
+
+### Subagentes: cuándo sí, cuándo no
+
+OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`plan`) y **subagentes** (invocables por el primary automáticamente o a mano con `@nombre`), cada uno con su propio modelo configurable en `opencode.json` (`agent.<nombre>.model`, formato `provider/model-id`). Si un agente no especifica modelo, el primary usa el global configurado y el subagente hereda el del primary que lo invocó.
+
+**Para el rework de `asignacion-por-instanciacion` específicamente: usar `subagent-driven-development`, no todo inline con un solo modelo.** El `tasks.md` de ese change ya está partido en 7 tareas acotadas (modelos+migración, DAOs, service de calendario, remover mecanismo viejo, tests, docs, verificación final) — exactamente la forma que esa skill espera. Mismo patrón que ya funcionó en esta sesión para construir todo el dominio de catálogo/calendario: modelo barato/rápido para tareas mecánicas y bien especificadas (DTOs, DAOs simples, wiring), modelo fuerte para las tareas con juicio real (la lógica de instanciación en `calendar_service.go`, la interacción con `workout_feedback` en el borrado de instancia superada) y para el review de cada tarea + un review final de toda la rama.
+
+**Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente primary, el overhead de armar el paquete de review no se paga solo.
+
+### Configuración sugerida (completar modelos según el plan de OpenCode Go)
+
+```json
+{
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "<modelo fuerte de tu plan — arquitectura, servicios, review>"
+    },
+    "plan": {
+      "mode": "primary",
+      "permission": { "edit": "deny", "bash": "deny" }
+    },
+    "task-mechanico": {
+      "description": "Tareas acotadas y bien especificadas: DTOs, DAOs simples, tests que siguen un patrón ya establecido",
+      "mode": "subagent",
+      "model": "<modelo barato/rápido de tu plan>"
+    },
+    "code-reviewer": {
+      "description": "Revisa un diff/tarea ya implementada, no escribe código",
+      "mode": "subagent",
+      "model": "<modelo fuerte de tu plan>",
+      "permission": { "edit": "deny" }
+    }
+  }
+}
+```
+
+Sin saber qué modelos vienen incluidos en el plan "OpenCode Go" no completo los IDs a ciegas — decime cuáles tenés disponibles (`opencode models` lista los del provider activo) y termino este bloque.
+
+### Economía de tokens
+
+- Usar `/opsx-explore` (o el agente `plan`, `edit:deny`) para la fase de pensar/ajustar diseño — recién pasar a `build` cuando el plan esté firme. Ya lo tenés como hábito con `/opsx-propose`/`/opsx-apply`, solo hay que no saltear `explore` cuando el alcance todavía no está cerrado.
+- No agregar plugins/MCP nuevos "por las dudas" — este repo ya tiene lo que hace falta (`mercadopago` MCP, `openspec-*` skills/commands, ahora `superpowers`). Cada plugin/MCP nuevo es contexto que se carga en cada sesión.
