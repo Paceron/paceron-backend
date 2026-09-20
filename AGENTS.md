@@ -136,6 +136,8 @@ OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`pl
 
 **Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente `build`, el overhead de armar el paquete de review no se paga solo.
 
+**No confiar en que `build` despache solo a `@implementer-mecanico`/`@code-reviewer` por su cuenta** — la autonomía de dispatch no está garantizada hoy. Comando personal `~/.config/opencode/commands/hacer-tarea.md` (namespace `user:`, se invoca `/user:hacer-tarea <tarea o número>`) fuerza el ciclo explícito: ubicar la tarea → decidir tier (mecánica → `@implementer-mecanico`, con juicio → el agente actual) → `@code-reviewer` obligatorio contra esa tarea puntual → si hay hallazgos, corregir y repetir el review → recién ahí tildar en `tasks.md`. Es personal (vive en tu config global, no en `.opencode/commands/` de este repo) porque referencia nombres de agentes que solo existen en tu config — un compañero sin esos agentes no podría correrlo.
+
 ### Configuración personal recomendada (config global, no `opencode.json` de este repo)
 
 IDs confirmados contra `opencode models` (namespace real `opencode-go/`, plan del usuario, 2026-09-20):
