@@ -97,6 +97,11 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.PlanDay{},
 		&dbs.GroupCalendarDay{},
 		&dbs.WorkoutFeedback{},
+		// Instancias de asignacion-por-instanciacion (design.md D1): copias
+		// inmutables del catálogo, separadas de exercises/sessions.
+		&dbs.ExerciseInstance{},
+		&dbs.SessionInstance{},
+		&dbs.SessionExerciseInstance{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)
@@ -191,6 +196,14 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 			customlogger.Error(nil, "error dropping legacy presencial/default time columns", err)
 			return nil, err
 		}
+	}
+
+	// 8. asignacion-por-instanciacion (design.md D11): group_calendar_days.session_id
+	// apuntaba al catálogo — sin backfill posible. La columna vieja se dropea
+	// junto con su índice si lo hubiera; session_instance_id la reemplaza.
+	if err := db.Exec(`ALTER TABLE group_calendar_days DROP COLUMN IF EXISTS session_id;`).Error; err != nil {
+		customlogger.Error(nil, "error dropping legacy group_calendar_days.session_id", err)
+		return nil, err
 	}
 
 	customlogger.Info(nil, "DB initialized successfully",
