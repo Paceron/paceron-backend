@@ -6,14 +6,16 @@ import "time"
 // sin fila para una fecha significa día vacío. UNIQUE(group_id, date) se
 // aplica vía índice compuesto (Step siguiente), no acá.
 type GroupCalendarDay struct {
-	ID                 int64      `gorm:"column:id;primaryKey"`
-	GroupID            int64      `gorm:"column:group_id;not null;uniqueIndex:idx_group_calendar_day_group_date"`
-	Date               time.Time  `gorm:"column:date;type:date;not null;uniqueIndex:idx_group_calendar_day_group_date"`
-	Kind               string     `gorm:"column:kind;not null"`
-	OtherName          *string    `gorm:"column:other_name"`
-	SessionID          *int64     `gorm:"column:session_id"`
-	CancelledReason    *string    `gorm:"column:cancelled_reason"`
-	IsPresencial       bool       `gorm:"column:is_presencial;not null;default:false"`
+	ID        int64     `gorm:"column:id;primaryKey"`
+	GroupID   int64     `gorm:"column:group_id;not null;uniqueIndex:idx_group_calendar_day_group_date"`
+	Date      time.Time `gorm:"column:date;type:date;not null;uniqueIndex:idx_group_calendar_day_group_date"`
+	Kind      string    `gorm:"column:kind;not null"`
+	OtherName *string   `gorm:"column:other_name"`
+	// SessionInstanceID apunta a una copia inmutable de la Session del catálogo
+	// (design.md asignacion-por-instanciacion D1) — nunca al catálogo.
+	SessionInstanceID *int64  `gorm:"column:session_instance_id"`
+	CancelledReason   *string `gorm:"column:cancelled_reason"`
+	IsPresencial      bool    `gorm:"column:is_presencial;not null;default:false"`
 	// PresencialTimeFrom/PresencialTimeTo son horarios sueltos (sin fecha real)
 	// persistidos como timestamptz con fecha 0000-01-01 — Postgres siempre
 	// devuelve timestamptz convertido al TimeZone de la sesión, y el driver lo
