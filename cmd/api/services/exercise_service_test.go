@@ -190,7 +190,7 @@ func TestExerciseService_Update_OnlyFutureDay_StaysLiveNoClone(t *testing.T) {
 	calDao := &mockGroupCalendarDao{
 		findByExerciseIDFn: func(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error) {
 			sessionID := int64(10)
-			return []dbs.GroupCalendarDay{{ID: 900, GroupID: 1, SessionID: &sessionID, Date: futureDate, Kind: "training", IsPresencial: false}}, nil
+			return []dbs.GroupCalendarDay{{ID: 900, GroupID: 1, SessionInstanceID: &sessionID, Date: futureDate, Kind: "training", IsPresencial: false}}, nil
 		},
 		repointDaysByIDFn: func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
 			repointCalled = true
@@ -240,7 +240,7 @@ func TestExerciseService_Update_PastDayLocks_ClonesSessionAndExercise(t *testing
 	group := &dbs.Group{Name: "Grupo freeze ejercicio", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 	pastDate := time.Now().AddDate(0, 0, -3).Truncate(24 * time.Hour)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", IsPresencial: false, SessionID: &original.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", IsPresencial: false, SessionInstanceID: &original.ID}))
 
 	_, err := svc.Update(nil, target.ID, owner.ID, exercise.ExerciseRequest{OwnerID: owner.ID, Name: "Correr 50mts", Kind: "running", DistanceM: intPtrEx(50)})
 
@@ -256,10 +256,10 @@ func TestExerciseService_Update_PastDayLocks_ClonesSessionAndExercise(t *testing
 	// clonado que conserva el valor viejo (100mts).
 	pastDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
 	require.NoError(t, err)
-	require.NotNil(t, pastDay.SessionID)
-	assert.NotEqual(t, original.ID, *pastDay.SessionID, "el día pasado debe repuntear a una sesión clonada")
+	require.NotNil(t, pastDay.SessionInstanceID)
+	assert.NotEqual(t, original.ID, *pastDay.SessionInstanceID, "el día pasado debe repuntear a una sesión clonada")
 
-	clonedExercises, err := sessionExerciseDao.FindBySession(nil, *pastDay.SessionID)
+	clonedExercises, err := sessionExerciseDao.FindBySession(nil, *pastDay.SessionInstanceID)
 	require.NoError(t, err)
 	require.Len(t, clonedExercises, 3, "el clon debe congelar los 3 ejercicios de la sesión, no solo el editado")
 
@@ -308,8 +308,8 @@ func TestExerciseService_Update_UsedInTwoSessions_OnlyClosedSessionClones(t *tes
 
 	pastDate := time.Now().AddDate(0, 0, -2).Truncate(24 * time.Hour)
 	futureDate := time.Now().AddDate(0, 0, 10)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionID: &sessionClosed.ID}))
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionID: &sessionOpen.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: pastDate, Kind: "training", SessionInstanceID: &sessionClosed.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: futureDate, Kind: "training", SessionInstanceID: &sessionOpen.ID}))
 
 	_, err := svc.Update(nil, target.ID, owner.ID, exercise.ExerciseRequest{OwnerID: owner.ID, Name: "Sprint editado", Kind: "running"})
 
@@ -317,13 +317,13 @@ func TestExerciseService_Update_UsedInTwoSessions_OnlyClosedSessionClones(t *tes
 
 	closedDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, pastDate)
 	require.NoError(t, err)
-	require.NotNil(t, closedDay.SessionID)
-	assert.NotEqual(t, sessionClosed.ID, *closedDay.SessionID, "la sesión con día cerrado debe clonarse")
+	require.NotNil(t, closedDay.SessionInstanceID)
+	assert.NotEqual(t, sessionClosed.ID, *closedDay.SessionInstanceID, "la sesión con día cerrado debe clonarse")
 
 	openDay, err := calendarDao.FindByGroupAndDate(nil, group.ID, futureDate)
 	require.NoError(t, err)
-	require.NotNil(t, openDay.SessionID)
-	assert.Equal(t, sessionOpen.ID, *openDay.SessionID, "la sesión sin días cerrados no debe clonarse")
+	require.NotNil(t, openDay.SessionInstanceID)
+	assert.Equal(t, sessionOpen.ID, *openDay.SessionInstanceID, "la sesión sin días cerrados no debe clonarse")
 }
 
 // TestExerciseService_Update_SameSessionClosedInOneGroupOpenInAnother cubre
@@ -356,8 +356,8 @@ func TestExerciseService_Update_SameSessionClosedInOneGroupOpenInAnother(t *test
 
 	pastDate := time.Now().AddDate(0, 0, -1).Truncate(24 * time.Hour)
 	futureDate := time.Now().AddDate(0, 0, 7)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: closedGroup.ID, Date: pastDate, Kind: "training", SessionID: &shared.ID}))
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: openGroup.ID, Date: futureDate, Kind: "training", SessionID: &shared.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: closedGroup.ID, Date: pastDate, Kind: "training", SessionInstanceID: &shared.ID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: openGroup.ID, Date: futureDate, Kind: "training", SessionInstanceID: &shared.ID}))
 
 	_, err := svc.Update(nil, target.ID, owner.ID, exercise.ExerciseRequest{OwnerID: owner.ID, Name: "Fartlek editado", Kind: "running"})
 
@@ -365,13 +365,13 @@ func TestExerciseService_Update_SameSessionClosedInOneGroupOpenInAnother(t *test
 
 	closedDay, err := calendarDao.FindByGroupAndDate(nil, closedGroup.ID, pastDate)
 	require.NoError(t, err)
-	require.NotNil(t, closedDay.SessionID)
-	assert.NotEqual(t, shared.ID, *closedDay.SessionID, "el día cerrado debe repuntear a un clon")
+	require.NotNil(t, closedDay.SessionInstanceID)
+	assert.NotEqual(t, shared.ID, *closedDay.SessionInstanceID, "el día cerrado debe repuntear a un clon")
 
 	openDay, err := calendarDao.FindByGroupAndDate(nil, openGroup.ID, futureDate)
 	require.NoError(t, err)
-	require.NotNil(t, openDay.SessionID)
-	assert.Equal(t, shared.ID, *openDay.SessionID, "el día abierto de la misma sesión no debe repuntear")
+	require.NotNil(t, openDay.SessionInstanceID)
+	assert.Equal(t, shared.ID, *openDay.SessionInstanceID, "el día abierto de la misma sesión no debe repuntear")
 }
 
 func intPtrEx(v int) *int { return &v }

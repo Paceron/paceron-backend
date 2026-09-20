@@ -49,7 +49,7 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
 		"kind":                 day.Kind,
 		"other_name":           day.OtherName,
-		"session_id":           day.SessionID,
+		"session_instance_id":  day.SessionInstanceID,
 		"cancelled_reason":     day.CancelledReason,
 		"is_presencial":        day.IsPresencial,
 		"presencial_time_from": day.PresencialTimeFrom,
@@ -109,7 +109,7 @@ func (d *groupCalendarDayDao) FindNextSessionForGroups(ctx *gin.Context, groupID
 
 func (d *groupCalendarDayDao) FindDistinctGroupsBySession(ctx *gin.Context, sessionID int64) ([]int64, error) {
 	var groupIDs []int64
-	err := d.DB.Model(&dbs.GroupCalendarDay{}).Where("session_id = ?", sessionID).Distinct().Pluck("group_id", &groupIDs).Error
+	err := d.DB.Model(&dbs.GroupCalendarDay{}).Where("session_instance_id = ?", sessionID).Distinct().Pluck("group_id", &groupIDs).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding groups by session: %w", err)
 	}
@@ -125,8 +125,8 @@ func (d *groupCalendarDayDao) RepointSessionForGroups(ctx *gin.Context, groupIDs
 		return nil
 	}
 	return d.DB.Model(&dbs.GroupCalendarDay{}).
-		Where("group_id IN ? AND session_id = ?", groupIDs, oldSessionID).
-		Update("session_id", newSessionID).Error
+		Where("group_id IN ? AND session_instance_id = ?", groupIDs, oldSessionID).
+		Update("session_instance_id", newSessionID).Error
 }
 
 func (d *groupCalendarDayDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
@@ -135,7 +135,7 @@ func (d *groupCalendarDayDao) UpdateDatesForShift(ctx *gin.Context, groupID int6
 
 func (d *groupCalendarDayDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
 	var days []dbs.GroupCalendarDay
-	err := d.DB.Where("session_id = ?", sessionID).Find(&days).Error
+	err := d.DB.Where("session_instance_id = ?", sessionID).Find(&days).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding calendar days by session: %w", err)
 	}
@@ -146,7 +146,7 @@ func (d *groupCalendarDayDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, 
 	if len(dayIDs) == 0 {
 		return nil
 	}
-	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id IN ?", dayIDs).Update("session_id", newSessionID).Error
+	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id IN ?", dayIDs).Update("session_instance_id", newSessionID).Error
 }
 
 // FindByExerciseID devuelve todos los días de calendario cuya sesión asignada
@@ -158,7 +158,7 @@ func (d *groupCalendarDayDao) FindByExerciseID(ctx *gin.Context, exerciseID int6
 	var days []dbs.GroupCalendarDay
 	err := d.DB.Table("group_calendar_days").
 		Select("group_calendar_days.*").
-		Joins("JOIN session_exercises ON session_exercises.session_id = group_calendar_days.session_id").
+		Joins("JOIN session_exercises ON session_exercises.session_id = group_calendar_days.session_instance_id").
 		Where("session_exercises.exercise_id = ?", exerciseID).
 		Find(&days).Error
 	if err != nil {

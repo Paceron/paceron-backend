@@ -201,7 +201,7 @@ func TestCalendarService_UpsertDay_CancelFromTrainingAccepted(t *testing.T) {
 	}}
 	sessionID := int64(3)
 	calDao := &mockGroupCalendarDao{findByGroupAndDateFn: func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
-		return &dbs.GroupCalendarDay{GroupID: groupID, Date: date, Kind: "training", SessionID: &sessionID}, nil
+		return &dbs.GroupCalendarDay{GroupID: groupID, Date: date, Kind: "training", SessionInstanceID: &sessionID}, nil
 	}}
 	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 	reason := "lluvia"
@@ -402,7 +402,7 @@ func TestCalendarService_NextSession_Found(t *testing.T) {
 	var capturedFromDate time.Time
 	calDao := &mockGroupCalendarDao{findNextSessionForGroupsFn: func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error) {
 		capturedFromDate = fromDate
-		return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training", SessionID: &sessionID}, nil
+		return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training", SessionInstanceID: &sessionID}, nil
 	}}
 	svc := NewCalendarService(calDao, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 
@@ -448,7 +448,7 @@ func TestCalendarService_NextSession_FindsTodaysSession(t *testing.T) {
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	sessionID := int64(3)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", SessionInstanceID: &sessionID}))
 
 	resp, err := svc.NextSession(nil, owner.ID)
 

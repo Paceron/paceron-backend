@@ -111,11 +111,11 @@ func (s *exerciseService) Update(ctx *gin.Context, id, callerID int64, req exerc
 	now := time.Now()
 	closedDayIDsBySession := map[int64][]int64{}
 	for _, day := range referencingDays {
-		if day.SessionID == nil {
+		if day.SessionInstanceID == nil {
 			continue
 		}
 		if isCalendarDayClosed(day, now) {
-			closedDayIDsBySession[*day.SessionID] = append(closedDayIDsBySession[*day.SessionID], day.ID)
+			closedDayIDsBySession[*day.SessionInstanceID] = append(closedDayIDsBySession[*day.SessionInstanceID], day.ID)
 		}
 	}
 

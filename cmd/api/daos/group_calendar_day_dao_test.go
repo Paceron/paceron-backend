@@ -115,8 +115,8 @@ func TestGroupCalendarDayDao_FindNextSessionForGroups(t *testing.T) {
 	past := time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour)
 	future := time.Now().UTC().AddDate(0, 0, 3).Truncate(24 * time.Hour)
 	sessionID := int64(1)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training", SessionInstanceID: &sessionID}))
 
 	found, err := dao.FindNextSessionForGroups(nil, []int64{group.ID}, time.Now().UTC().Truncate(24*time.Hour))
 
@@ -131,9 +131,9 @@ func TestGroupCalendarDayDao_FindDistinctGroupsBySession(t *testing.T) {
 	group1 := setupCalendarGroup(t, db, "7")
 	group2 := setupCalendarGroup(t, db, "8")
 	sessionID := int64(42)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
 
 	groupIDs, err := dao.FindDistinctGroupsBySession(nil, sessionID)
 
@@ -166,18 +166,18 @@ func TestGroupCalendarDayDao_RepointSessionForGroups(t *testing.T) {
 	newSessionID := int64(6)
 	dateA := time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC)
 	dateB := time.Date(2026, 12, 6, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: dateA, Kind: "training", SessionID: &oldSessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: dateB, Kind: "training", SessionID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: dateA, Kind: "training", SessionInstanceID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: dateB, Kind: "training", SessionInstanceID: &oldSessionID}))
 
 	err := dao.RepointSessionForGroups(nil, []int64{groupA.ID}, oldSessionID, newSessionID)
 
 	require.NoError(t, err)
 	foundA, _ := dao.FindByGroupAndDate(nil, groupA.ID, dateA)
-	require.NotNil(t, foundA.SessionID)
-	assert.Equal(t, newSessionID, *foundA.SessionID)
+	require.NotNil(t, foundA.SessionInstanceID)
+	assert.Equal(t, newSessionID, *foundA.SessionInstanceID)
 	foundB, _ := dao.FindByGroupAndDate(nil, groupB.ID, dateB)
-	require.NotNil(t, foundB.SessionID)
-	assert.Equal(t, oldSessionID, *foundB.SessionID, "groupB no estaba en la lista a repuntear, debe quedar intacto")
+	require.NotNil(t, foundB.SessionInstanceID)
+	assert.Equal(t, oldSessionID, *foundB.SessionInstanceID, "groupB no estaba en la lista a repuntear, debe quedar intacto")
 }
 
 func TestGroupCalendarDayDao_UpdateDatesForShift(t *testing.T) {
@@ -204,9 +204,9 @@ func TestGroupCalendarDayDao_FindBySessionID(t *testing.T) {
 	group2 := setupCalendarGroup(t, db, "14")
 	sessionID := int64(77)
 	otherSessionID := int64(78)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2027, 2, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 3, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &otherSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: time.Date(2027, 2, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group1.ID, Date: time.Date(2027, 2, 3, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &otherSessionID}))
 
 	found, err := dao.FindBySessionID(nil, sessionID)
 
@@ -222,8 +222,8 @@ func TestGroupCalendarDayDao_RepointDaysByID(t *testing.T) {
 	newSessionID := int64(81)
 	date1 := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
 	date2 := time.Date(2027, 3, 2, 0, 0, 0, 0, time.UTC)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date1, Kind: "training", SessionID: &oldSessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date2, Kind: "training", SessionID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date1, Kind: "training", SessionInstanceID: &oldSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date2, Kind: "training", SessionInstanceID: &oldSessionID}))
 	day1, err := dao.FindByGroupAndDate(nil, group.ID, date1)
 	require.NoError(t, err)
 
@@ -231,11 +231,11 @@ func TestGroupCalendarDayDao_RepointDaysByID(t *testing.T) {
 
 	require.NoError(t, err)
 	found1, _ := dao.FindByGroupAndDate(nil, group.ID, date1)
-	require.NotNil(t, found1.SessionID)
-	assert.Equal(t, newSessionID, *found1.SessionID)
+	require.NotNil(t, found1.SessionInstanceID)
+	assert.Equal(t, newSessionID, *found1.SessionInstanceID)
 	found2, _ := dao.FindByGroupAndDate(nil, group.ID, date2)
-	require.NotNil(t, found2.SessionID)
-	assert.Equal(t, oldSessionID, *found2.SessionID, "el día no listado en dayIDs debe quedar intacto, aunque comparta group_id y session_id viejo")
+	require.NotNil(t, found2.SessionInstanceID)
+	assert.Equal(t, oldSessionID, *found2.SessionInstanceID, "el día no listado en dayIDs debe quedar intacto, aunque comparta group_id y session_id viejo")
 }
 
 func TestGroupCalendarDayDao_FindByExerciseID(t *testing.T) {
@@ -248,15 +248,15 @@ func TestGroupCalendarDayDao_FindByExerciseID(t *testing.T) {
 	otherExerciseID := int64(501)
 	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: sessionID, ExerciseID: exerciseID, Role: "main", RepeatCount: 1, RestMinutes: 0}).Error)
 	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: otherSessionID, ExerciseID: otherExerciseID, Role: "main", RepeatCount: 1, RestMinutes: 0}).Error)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &sessionID}))
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionID: &otherSessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &sessionID}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Date(2027, 4, 2, 0, 0, 0, 0, time.UTC), Kind: "training", SessionInstanceID: &otherSessionID}))
 
 	found, err := dao.FindByExerciseID(nil, exerciseID)
 
 	require.NoError(t, err)
 	require.Len(t, found, 1)
-	require.NotNil(t, found[0].SessionID)
-	assert.Equal(t, sessionID, *found[0].SessionID)
+	require.NotNil(t, found[0].SessionInstanceID)
+	assert.Equal(t, sessionID, *found[0].SessionInstanceID)
 }
 
 func strPtrCal(s string) *string { return &s }
