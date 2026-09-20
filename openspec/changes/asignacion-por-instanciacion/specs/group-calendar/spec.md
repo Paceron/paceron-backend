@@ -21,9 +21,11 @@ El sistema SHALL crear una instancia **por día asignado**, sin deduplicar aunqu
 
 ### Requirement: Reasignar o borrar un día ya cerrado está prohibido
 
-El sistema SHALL rechazar (`422`) cualquier intento de asignar, reasignar o borrar contenido de un `GroupCalendarDay` cuya fecha ya está "cerrada": `date` pasada, `date` de hoy con `is_presencial=true` y `now >= presencial_time_from`, o `date` de hoy con `is_presencial=false` (async). La transición a `kind=cancelled` sobre un día que ya estaba en `training` SHALL seguir permitida sobre un día cerrado (no reinstancia nada, solo marca `cancelled_reason` conservando el `session_instance_id` existente).
+El sistema SHALL rechazar (`422`) cualquier intento de asignar, reasignar o borrar contenido de un `GroupCalendarDay` cuya fecha ya está "cerrada": `date` pasada, `date` de hoy con `is_presencial=true` y `now >= presencial_time_from`, o `date` de hoy con `is_presencial=false` (async). `is_presencial` participa **solo** en decidir si el día está cerrado — una vez que un día es cerrado, la única operación permitida sobre él es la transición a `kind=cancelled` (sin excepción, independientemente de si era presencial o no); ninguna otra operación de escritura tiene trato especial por `is_presencial`.
 
-`stamp`/`bulk` SHALL validar todas las fechas del lote contra esta regla antes de escribir cualquiera — si alguna fecha objetivo ya existe y está cerrada, el sistema rechaza el lote completo (`422`, con la lista de fechas cerradas en conflicto), sin aplicar ningún cambio parcial.
+Este guard aplica a los **5** endpoints de escritura del calendario: `PUT` de un día individual, `DeleteDay`, `stamp`, `bulk` y `bulk-clear`, y a `shift` sobre cualquier fila que el corrimiento afecte. La transición a `kind=cancelled` sobre un día que ya estaba en `training` SHALL seguir permitida sobre un día cerrado (no reinstancia nada, solo marca `cancelled_reason` conservando el `session_instance_id` existente).
+
+`stamp`/`bulk`/`bulk-clear`/`shift` SHALL validar todas las fechas/filas afectadas contra esta regla antes de escribir cualquiera — si alguna ya está cerrada, el sistema rechaza la operación completa (`422`, con la lista de fechas en conflicto), sin aplicar ningún cambio parcial.
 
 #### Scenario: Reasignar un día pasado
 - **WHEN** el entrenador dueño intenta `PUT /groups/{id}/calendar/{date}` sobre una fecha pasada que ya tenía `kind=training`
@@ -41,6 +43,14 @@ El sistema SHALL rechazar (`422`) cualquier intento de asignar, reasignar o borr
 - **WHEN** el entrenador dueño manda `bulk` con 5 fechas, una de ellas ya pasada
 - **THEN** el sistema responde `422` con la fecha pasada señalada, sin aplicar el cambio a ninguna de las 5
 
+#### Scenario: Bulk-clear con una fecha cerrada
+- **WHEN** el entrenador dueño manda `bulk-clear` con fechas que incluyen un día ya cerrado
+- **THEN** el sistema responde `422` con esa fecha señalada, sin borrar ninguna de las fechas del lote
+
+#### Scenario: Shift que movería una fila ya cerrada
+- **WHEN** el entrenador dueño corre `shift` desde una fecha tal que al menos una fila con `date >= from_date` ya está cerrada
+- **THEN** el sistema responde `422` con esa fila señalada, sin mover ninguna fecha del lote
+
 ### Requirement: Borrado de instancia superada respeta feedback existente
 
 El sistema SHALL, al reasignar un día futuro que ya tenía una `SessionInstance`, borrar físicamente la `SessionInstance`/`SessionExerciseInstance`/`ExerciseInstance` superadas — salvo que algún registro de `workout_feedback` (`assigned_session_id`/`assigned_exercise_id`) ya las referencie, en cuyo caso SHALL conservarlas (huérfanas, sin ningún `GroupCalendarDay` activo apuntándolas).
@@ -52,6 +62,18 @@ El sistema SHALL, al reasignar un día futuro que ya tenía una `SessionInstance
 #### Scenario: Reasignar un día futuro con feedback ya cargado (caso raro)
 - **WHEN** se reasigna un día futuro cuya `SessionInstance` anterior sí tiene algún `workout_feedback` asociado
 - **THEN** el sistema conserva la `SessionInstance`/`ExerciseInstance` anteriores (no las borra), y de todas formas crea la nueva instancia y repuntea el día
+
+### Requirement: Las respuestas de calendario embeben el detalle de la instancia, no un ID bare
+
+El sistema SHALL incluir en `CalendarDayResponse` y `NextSessionResponse` el detalle completo de la `SessionInstance` asignada (nombre, descripción, y cada `ExerciseInstance` con todos sus campos + `role`/`repeat_count`/`rest_minutes`) en vez de un `session_id` plano — no existe endpoint público que resuelva una instancia por ID, y resolverla contra el catálogo (`GET /sessions/{id}`) devolvería contenido en vivo, no el congelado para ese día.
+
+#### Scenario: Consultar un día con sesión asignada
+- **WHEN** se pide `GET /groups/{id}/calendar?from=...&to=...` y algún día tiene `kind=training`
+- **THEN** la fila de ese día incluye un objeto `session_instance` con `name`/`description` y la lista completa de `exercises` (cada uno con su contenido congelado)
+
+#### Scenario: Día sin sesión asignada
+- **WHEN** un día tiene `kind` distinto de `training`/`cancelled`
+- **THEN** `session_instance` viene `null`
 
 ### Requirement: Estampar un plan sobre el calendario
 
