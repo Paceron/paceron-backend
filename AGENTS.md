@@ -118,39 +118,45 @@ Es un plugin de terceros (corre JS instalado vía git) — reversible con solo s
 
 OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`plan`) y **subagentes** (invocables por el primary automáticamente o a mano con `@nombre`), cada uno con su propio modelo configurable en `opencode.json` (`agent.<nombre>.model`, formato `provider/model-id`). Si un agente no especifica modelo, el primary usa el global configurado y el subagente hereda el del primary que lo invocó.
 
-**Para el rework de `asignacion-por-instanciacion` específicamente: usar `subagent-driven-development`, no todo inline con un solo modelo.** El `tasks.md` de ese change ya está partido en 7 tareas acotadas (modelos+migración, DAOs, service de calendario, remover mecanismo viejo, tests, docs, verificación final) — exactamente la forma que esa skill espera. Mismo patrón que ya funcionó en esta sesión para construir todo el dominio de catálogo/calendario: modelo barato/rápido para tareas mecánicas y bien especificadas (DTOs, DAOs simples, wiring), modelo fuerte para las tareas con juicio real (la lógica de instanciación en `calendar_service.go`, la interacción con `workout_feedback` en el borrado de instancia superada) y para el review de cada tarea + un review final de toda la rama.
+**No existe selección de modelo dinámica por tarea todavía** (a la fecha de este documento, 2026-09-20) — hay issues abiertas en el repo de OpenCode pidiendo exactamente eso (parámetro `model` en el `task` tool, sintaxis `@agent:provider/model`), sin shippear. Lo que sí funciona hoy: armar una lista fija de subagentes con nombre, cada uno con su modelo, y `description`s claras — el agente primary decide **a cuál de esos** despachar según la tarea, de forma autónoma. Es autonomía acotada a la lista que vos armás de antemano, no elección libre modelo-por-modelo en cada llamada (eso sí lo tenía Claude Code en esta sesión vía el parámetro `model` del tool `Agent`, no es 1:1 portable a OpenCode hoy).
 
-**Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente primary, el overhead de armar el paquete de review no se paga solo.
+**Para el rework de `asignacion-por-instanciacion` específicamente: usar `subagent-driven-development`, no todo inline con un solo modelo.** El `tasks.md` de ese change ya está partido en 7 tareas acotadas — exactamente la forma que esa skill espera. Mismo patrón que ya funcionó en esta sesión para construir todo el dominio de catálogo/calendario: modelo barato/rápido para tareas mecánicas (DTOs, DAOs simples, wiring, tests que siguen un patrón), modelo fuerte para las tareas con juicio real (la lógica de instanciación en `calendar_service.go`, la interacción con `workout_feedback` en el borrado de instancia superada) y para el review de cada tarea + un review final de toda la rama.
 
-### Configuración sugerida (completar modelos según el plan de OpenCode Go)
+**Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente `build`, el overhead de armar el paquete de review no se paga solo.
+
+### Configuración actual (`opencode.json`)
 
 ```json
 {
   "agent": {
-    "build": {
-      "mode": "primary",
-      "model": "<modelo fuerte de tu plan — arquitectura, servicios, review>"
-    },
-    "plan": {
-      "mode": "primary",
-      "permission": { "edit": "deny", "bash": "deny" }
-    },
-    "task-mechanico": {
-      "description": "Tareas acotadas y bien especificadas: DTOs, DAOs simples, tests que siguen un patrón ya establecido",
-      "mode": "subagent",
-      "model": "<modelo barato/rápido de tu plan>"
-    },
-    "code-reviewer": {
-      "description": "Revisa un diff/tarea ya implementada, no escribe código",
-      "mode": "subagent",
-      "model": "<modelo fuerte de tu plan>",
-      "permission": { "edit": "deny" }
-    }
+    "build":               { "mode": "primary", "model": "openai/gpt-5.6-luna" },
+    "plan":                { "mode": "primary", "model": "openai/gpt-5.6-luna", "permission": { "edit": "deny", "bash": "deny" } },
+    "implementer-mecanico": { "mode": "subagent", "model": "zhipuai/glm-5.3-flash" },
+    "code-reviewer":       { "mode": "subagent", "model": "xai/grok-4.6", "permission": { "edit": "deny" } }
   }
 }
 ```
 
-Sin saber qué modelos vienen incluidos en el plan "OpenCode Go" no completo los IDs a ciegas — decime cuáles tenés disponibles (`opencode models` lista los del provider activo) y termino este bloque.
+Criterio de asignación (juicio propio sobre nombres de modelos de 2026 que no tengo forma de benchmarkear directamente — **verificar con uso real, no tomar como verdad de laboratorio**):
+
+- **`build`/`plan` (orquestación, diseño, decisiones de arquitectura):** `openai/gpt-5.6-luna` — flagship de propósito general del plan, mejor apuesta por defecto para razonamiento no trivial. `xai/grok-4.6` es la alternativa más plausible si querés comparar.
+- **`implementer-mecanico` (tareas acotadas tipo receta):** `zhipuai/glm-5.3-flash` — variante rápida/barata de una familia que en la práctica rinde bien en código estructurado. Candidatos a probar en paralelo: `deepseek/deepseek-v4-flash`, `alibaba/qwen3.8-flash`, y el especializado `moonshot/kimi-k2.7-code` (branding "Code" — vale la pena testear específicamente contra tareas Go de este repo, podría rendir mejor que los Flash genéricos justo por ser coding-specific).
+- **`code-reviewer` (segunda opinión, busca lo que el implementador/orquestador no vio):** `xai/grok-4.6`, deliberadamente **distinto** del modelo de `build` — dos familias de modelo distintas reducen puntos ciegos correlacionados (si `build` y el reviewer fueran el mismo modelo, comparten los mismos sesgos/huecos de razonamiento).
+- **Evitar por ahora en roles críticos** hasta validar: `tencent/hy4-preview` (estado preview, probable inestabilidad) y la familia `meta/muse-spark-*-contributor` (el sufijo "Contributor" sugiere un tier de distillation/comunidad, no el flagship).
+
+**Los `provider/model-id` de arriba son mi mejor estimación del slug, no están verificados contra tu instalación real.** Corré `opencode models` y confirmá/corregí cada string antes de dar por buena esta config — es la única parte de este archivo que puede estar mal por construcción (nombres de modelos y providers de 2026, sin forma de chequearlos desde acá).
+
+### Contexto y compactación — por qué "se marea"
+
+Config de compactación (`compaction.auto`/`prune`/reserved buffer) existe en OpenCode pero no hay evidencia clara de qué tan bien preserva detalle fino al resumir — no es el lever principal para esto. El lever que sí funciona, y que ya tenés armado:
+
+1. **Mantené la sesión primary corta — delegá a subagentes en vez de acumular todo en un solo hilo largo.** Un subagente arranca con contexto limpio (no hereda la historia pesada del primary), hace su tarea acotada, devuelve un resultado corto. El primary nunca necesita comprimir 50 mensajes de implementación de detalle si esos 50 mensajes pasaron en subagentes aparte.
+2. **Persistí estado en archivos, no solo en la conversación** — exactamente lo que ya hace este repo: `tasks.md` con checkboxes marcados a medida que se completa cada tarea (mismo patrón usado en `congelar-ejercicio-en-clon`), y si usás `subagent-driven-development` completo, esa skill arma su propio ledger (`progress.md`) en disco. Si el contexto se comprime o se pierde el hilo, una sesión nueva (o vos mismo) puede reorientarse leyendo el archivo en vez de depender de que la compactación haya conservado el detalle correcto.
+3. Para el rework puntual de `asignacion-por-instanciacion`: al ejecutar `/opsx-apply` o `subagent-driven-development` sobre ese `tasks.md`, tildar cada tarea en el archivo apenas se completa (no solo mentalmente/en el chat) — es la memoria persistente real, la conversación no lo es.
+
+### Config global vs. de proyecto — no se pisan
+
+Confirmado: los config sources se **mergean**, no se reemplazan — orden `Remote → Global (~/.config/opencode/opencode.json) → Custom → Project (opencode.json de este repo)`, cada nivel posterior gana **solo en las claves que se solapan**. Si tenés algo en tu config global (otro MCP, otro modelo default, tuning de compactación), sigue aplicando acá salvo que este `opencode.json` defina esa misma clave puntual. No hace falta duplicar nada global en este archivo — solo lo que sea específico de este repo (los 4 agentes de arriba, el plugin de superpowers, el MCP de Mercado Pago).
 
 ### Economía de tokens
 
