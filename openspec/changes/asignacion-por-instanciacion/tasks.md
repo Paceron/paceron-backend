@@ -21,12 +21,15 @@
 ### 3. `calendar_service.go` — instanciación en vez de referencia
 
 - [ ] Extraer un helper `instantiateSession(ctx, sessionID) (*dbs.SessionInstance, error)` que resuelve `Session`+`SessionExercise`+`Exercise` del catálogo y crea la instancia completa (1 `SessionInstance` + N `SessionExerciseInstance` + N `ExerciseInstance`), reusable desde `UpsertDay`/`Bulk`/`Stamp`.
-- [ ] `UpsertDay`: si `kind=training`, llamar al helper en vez de guardar `req.session_id` tal cual; si el día ya existía con otra instancia y la fecha es futura, borrar la superada (con el chequeo de feedback de D3); si la fecha está cerrada, `422` antes de tocar nada.
-- [ ] Mover `isCalendarDayClosed` de `session_service.go` a `calendar_service.go`, reusarla como guard (no como trigger de clonado) en `UpsertDay`/`DeleteDay`/`Bulk`/`Stamp`.
+- [ ] `UpsertDay`: si `kind=training`, llamar al helper en vez de guardar `req.session_id` tal cual; el orden dentro de la transacción es: crear instancia nueva → repuntear `GroupCalendarDay.session_instance_id` → chequear feedback contra la instancia vieja → si no hay, borrar vieja (`SessionExerciseInstance` → `ExerciseInstance` → `SessionInstance`, D10); si la fecha está cerrada, `422` antes de tocar nada (D8).
+- [ ] Mover `isCalendarDayClosed` de `session_service.go` a `calendar_service.go`, reusarla como guard (no como trigger de clonado) en `UpsertDay`/`DeleteDay`/`Bulk`/`BulkClear`/`Stamp`/`Shift` (D8 — los 5 endpoints de escritura, no solo 3).
 - [ ] `Bulk`: mismo guard por cada fecha del lote, todo o nada (422 con lista si alguna está cerrada).
+- [ ] `BulkClear`: mismo guard (D8) — rechazar el lote completo si alguna fecha está cerrada.
+- [ ] `Shift`: mismo guard sobre las filas afectadas (`date >= from_date`) — rechazar el corrimiento completo si alguna fila afectada está cerrada.
 - [ ] `Stamp`: mismo guard sobre las fechas resultantes del plan, instanciar por cada `PlanDay` con `kind=training`.
-- [ ] `DeleteDay`: bloquear sobre día cerrado; si el día tenía instancia, borrarla (mismo chequeo de feedback).
-- [ ] `GetRange`/`NextSession`: devolver el contenido resuelto desde la instancia (name/description/exercises si hace falta embeberlos — evaluar con el frontend qué shape espera ahora).
+- [ ] `DeleteDay`: bloquear sobre día cerrado; si el día tenía instancia, borrarla (mismo chequeo de feedback, D10).
+- [ ] `GetRange`/`NextSession`: devolver el detalle completo de la instancia embebido (D9, ya decidido — `session_instance: {id, name, description, exercises: [...]}`, no un ID bare). Actualizar `CalendarDayResponse`/`NextSessionResponse` en `domains/calendar/`.
+- [ ] Eliminar `GET /sessions/{id}/assigned-groups`: `CalendarServiceInterface.AssignedGroups`, `GroupCalendarDaoInterface.FindDistinctGroupsBySession`, el handler en `session_controller.go`, la ruta en `url_mappings.go` (D7).
 
 ### 4. Remover el mecanismo viejo
 
@@ -45,7 +48,7 @@
 
 - [ ] Reescribir §8 de `docs/CATALOGO_Y_CALENDARIO.md` (clon por divergencia → instanciación).
 - [ ] Nota cruzada en `calendario-asignacion-grupos/design.md` y `congelar-ejercicio-en-clon/design.md` apuntando a este change como reemplazo.
-- [ ] Avisar a la sesión de frontend: `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` §5 (clonado por divergencia) queda obsoleto, `PUT /sessions/{id}` pierde `exclude_group_ids`/`clone_name`/`clone_description`, y el shape de lo que devuelve el calendario puede cambiar si se decide embeber el detalle de la instancia (ver Task 3, GetRange/NextSession).
+- [ ] Avisar a la sesión de frontend (cambios de contrato confirmados, no "puede cambiar"): `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` §5 (clonado por divergencia) queda obsoleto; `PUT /sessions/{id}` pierde `exclude_group_ids`/`clone_name`/`clone_description`; `GET /sessions/{id}/assigned-groups` se elimina sin reemplazo; `CalendarDayResponse`/`NextSessionResponse` cambian `session_id` por `session_instance: {id, name, description, exercises: [...]}` (D9).
 
 ### 7. Verificación final
 
