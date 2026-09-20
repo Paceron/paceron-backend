@@ -108,15 +108,17 @@ Desde 2026-09-19, `paceron-backend` se desarrolla desde OpenCode; Claude Code qu
 
 ## 9. Skills, subagentes y modelos
 
+**Todo lo de esta sección es config personal, no de repo.** `opencode.json` (este archivo, tracked, compartido con el equipo) solo tiene el MCP de Mercado Pago — nada acá pisa el flujo de un compañero que también use OpenCode en este repo. Lo que sigue va en tu config global (`~/.config/opencode/opencode.jsonc` en tu caso), que aplica a vos en cualquier repo sin tocar la máquina/el setup de nadie más.
+
 ### Superpowers (plugin de skills)
 
-`opencode.json` ya incluye `"plugin": ["superpowers@git+https://github.com/obra/superpowers.git"]` — trae la misma librería de skills que se usó para diseñar este repo en Claude Code (`brainstorming`, `systematic-debugging`, `test-driven-development`, `writing-plans`, `subagent-driven-development`, `verification-before-completion`, `requesting-code-review`/`receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`), mapeadas 1:1 a las herramientas nativas de OpenCode (`task`, `skill`, `todowrite`, `bash`, `grep`/`glob`, `webfetch` — ver `docs/README.opencode.md` del propio plugin). Reiniciar OpenCode después de este cambio para que lo cargue. Verificar con "Tell me about your superpowers" o "use skill tool to list skills".
+Agregar `"superpowers@git+https://github.com/obra/superpowers.git"` al array `plugin` de tu config global — trae la misma librería de skills que se usó para diseñar este repo en Claude Code (`brainstorming`, `systematic-debugging`, `test-driven-development`, `writing-plans`, `subagent-driven-development`, `verification-before-completion`, `requesting-code-review`/`receiving-code-review`, `using-git-worktrees`, `finishing-a-development-branch`), mapeadas 1:1 a las herramientas nativas de OpenCode (`task`, `skill`, `todowrite`, `bash`, `grep`/`glob`, `webfetch` — ver `docs/README.opencode.md` del propio plugin). Reiniciar OpenCode después para que cargue. Verificar con "Tell me about your superpowers" o "use skill tool to list skills".
 
-Es un plugin de terceros (corre JS instalado vía git) — reversible con solo sacar la línea de `opencode.json` si no convence.
+Es un plugin de terceros (corre JS instalado vía git) — reversible con solo sacar la entrada del array si no convence.
 
 ### Subagentes: cuándo sí, cuándo no
 
-OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`plan`) y **subagentes** (invocables por el primary automáticamente o a mano con `@nombre`), cada uno con su propio modelo configurable en `opencode.json` (`agent.<nombre>.model`, formato `provider/model-id`). Si un agente no especifica modelo, el primary usa el global configurado y el subagente hereda el del primary que lo invocó.
+OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`plan`) y **subagentes** (invocables por el primary automáticamente o a mano con `@nombre`), cada uno con su propio modelo configurable en `agent.<nombre>.model` (formato `provider/model-id`, en tu config global — no acá). Si un agente no especifica modelo, el primary usa el global configurado y el subagente hereda el del primary que lo invocó.
 
 **No existe selección de modelo dinámica por tarea todavía** (a la fecha de este documento, 2026-09-20) — hay issues abiertas en el repo de OpenCode pidiendo exactamente eso (parámetro `model` en el `task` tool, sintaxis `@agent:provider/model`), sin shippear. Lo que sí funciona hoy: armar una lista fija de subagentes con nombre, cada uno con su modelo, y `description`s claras — el agente primary decide **a cuál de esos** despachar según la tarea, de forma autónoma. Es autonomía acotada a la lista que vos armás de antemano, no elección libre modelo-por-modelo en cada llamada (eso sí lo tenía Claude Code en esta sesión vía el parámetro `model` del tool `Agent`, no es 1:1 portable a OpenCode hoy).
 
@@ -124,27 +126,27 @@ OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`pl
 
 **Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente `build`, el overhead de armar el paquete de review no se paga solo.
 
-### Configuración actual (`opencode.json`)
+### Configuración personal recomendada (config global, no `opencode.json` de este repo)
+
+IDs confirmados contra `opencode models` (namespace real `opencode-go/`, plan del usuario, 2026-09-20):
 
 ```json
 {
   "agent": {
-    "build":               { "mode": "primary", "model": "openai/gpt-5.6-luna" },
-    "plan":                { "mode": "primary", "model": "openai/gpt-5.6-luna", "permission": { "edit": "deny", "bash": "deny" } },
-    "implementer-mecanico": { "mode": "subagent", "model": "zhipuai/glm-5.3-flash" },
-    "code-reviewer":       { "mode": "subagent", "model": "xai/grok-4.6", "permission": { "edit": "deny" } }
+    "build":                { "mode": "primary", "model": "opencode-go/gpt-5.6-luna" },
+    "plan":                 { "mode": "primary", "model": "opencode-go/gpt-5.6-luna", "permission": { "edit": "deny", "bash": "deny" } },
+    "implementer-mecanico": { "mode": "subagent", "model": "opencode-go/glm-5.3-flash" },
+    "code-reviewer":        { "mode": "subagent", "model": "opencode-go/grok-4.6", "permission": { "edit": "deny" } }
   }
 }
 ```
 
-Criterio de asignación (juicio propio sobre nombres de modelos de 2026 que no tengo forma de benchmarkear directamente — **verificar con uso real, no tomar como verdad de laboratorio**):
+Criterio de asignación (juicio propio sobre modelos de 2026 sin benchmarks propios — **verificar con uso real, no tomar como verdad de laboratorio**):
 
-- **`build`/`plan` (orquestación, diseño, decisiones de arquitectura):** `openai/gpt-5.6-luna` — flagship de propósito general del plan, mejor apuesta por defecto para razonamiento no trivial. `xai/grok-4.6` es la alternativa más plausible si querés comparar.
-- **`implementer-mecanico` (tareas acotadas tipo receta):** `zhipuai/glm-5.3-flash` — variante rápida/barata de una familia que en la práctica rinde bien en código estructurado. Candidatos a probar en paralelo: `deepseek/deepseek-v4-flash`, `alibaba/qwen3.8-flash`, y el especializado `moonshot/kimi-k2.7-code` (branding "Code" — vale la pena testear específicamente contra tareas Go de este repo, podría rendir mejor que los Flash genéricos justo por ser coding-specific).
-- **`code-reviewer` (segunda opinión, busca lo que el implementador/orquestador no vio):** `xai/grok-4.6`, deliberadamente **distinto** del modelo de `build` — dos familias de modelo distintas reducen puntos ciegos correlacionados (si `build` y el reviewer fueran el mismo modelo, comparten los mismos sesgos/huecos de razonamiento).
-- **Evitar por ahora en roles críticos** hasta validar: `tencent/hy4-preview` (estado preview, probable inestabilidad) y la familia `meta/muse-spark-*-contributor` (el sufijo "Contributor" sugiere un tier de distillation/comunidad, no el flagship).
-
-**Los `provider/model-id` de arriba son mi mejor estimación del slug, no están verificados contra tu instalación real.** Corré `opencode models` y confirmá/corregí cada string antes de dar por buena esta config — es la única parte de este archivo que puede estar mal por construcción (nombres de modelos y providers de 2026, sin forma de chequearlos desde acá).
+- **`build`/`plan` (orquestación, diseño, decisiones de arquitectura):** `gpt-5.6-luna` — flagship de propósito general del plan, mejor apuesta por defecto para razonamiento no trivial.
+- **`implementer-mecanico` (tareas acotadas tipo receta):** `glm-5.3-flash` — variante rápida/barata de una familia que en la práctica rinde bien en código estructurado. Candidatos a probar en paralelo dentro del mismo plan: `deepseek-v4-flash`, `qwen3.8-flash`, y el especializado `kimi-k2.7-code` (branding "Code" — vale la pena testear específicamente contra tareas Go de este repo, podría rendir mejor que los Flash genéricos justo por ser coding-specific).
+- **`code-reviewer` (segunda opinión, busca lo que el implementador/orquestador no vio):** `grok-4.6`, deliberadamente **distinto** del modelo de `build` — dos familias de modelo distintas reducen puntos ciegos correlacionados.
+- **Evitar por ahora en roles críticos** hasta validar informalmente: `hy4-preview` (estado preview, probable inestabilidad), la familia `muse-spark-*-contributor` (sufijo "Contributor" sugiere tier de distillation/comunidad, no flagship), y los `opencode/*-free` (tier gratuito de OpenCode, no del plan pago — probablemente modelos más débiles reservados para tareas triviales o fallback).
 
 ### Contexto y compactación — por qué "se marea"
 
@@ -156,9 +158,11 @@ Config de compactación (`compaction.auto`/`prune`/reserved buffer) existe en Op
 
 ### Config global vs. de proyecto — no se pisan
 
-Confirmado: los config sources se **mergean**, no se reemplazan — orden `Remote → Global (~/.config/opencode/opencode.json) → Custom → Project (opencode.json de este repo)`, cada nivel posterior gana **solo en las claves que se solapan**. Si tenés algo en tu config global (otro MCP, otro modelo default, tuning de compactación), sigue aplicando acá salvo que este `opencode.json` defina esa misma clave puntual. No hace falta duplicar nada global en este archivo — solo lo que sea específico de este repo (los 4 agentes de arriba, el plugin de superpowers, el MCP de Mercado Pago).
+Confirmado: los config sources se **mergean**, no se reemplazan — orden `Remote → Global (~/.config/opencode/) → Custom → Project (opencode.json de este repo)`, cada nivel posterior gana **solo en las claves que se solapan**. Por eso los agentes/modelos de §9 van en tu config global y no acá: aplican a vos en cualquier repo, sin que un compañero que también use OpenCode en `paceron-backend` herede tus preferencias de modelo o el plugin de superpowers — el `opencode.json` de este repo se mantiene con solo lo que es genuinamente compartido (hoy: el MCP de Mercado Pago).
+
+**Ojo si tenés más de un archivo de config en el mismo directorio** (`opencode.json` y `opencode.jsonc` conviven, por ejemplo): ambos se leen, pero la clave `plugin` (un array) colisionando entre los dos no tiene precedencia clara documentada — más seguro consolidar todo en un solo archivo por directorio que confiar en el merge para esa clave puntual.
 
 ### Economía de tokens
 
 - Usar `/opsx-explore` (o el agente `plan`, `edit:deny`) para la fase de pensar/ajustar diseño — recién pasar a `build` cuando el plan esté firme. Ya lo tenés como hábito con `/opsx-propose`/`/opsx-apply`, solo hay que no saltear `explore` cuando el alcance todavía no está cerrado.
-- No agregar plugins/MCP nuevos "por las dudas" — este repo ya tiene lo que hace falta (`mercadopago` MCP, `openspec-*` skills/commands, ahora `superpowers`). Cada plugin/MCP nuevo es contexto que se carga en cada sesión.
+- No agregar plugins/MCP nuevos "por las dudas" — este repo ya tiene lo que hace falta a nivel compartido (`mercadopago` MCP, `openspec-*` skills/commands). Cada plugin/MCP nuevo es contexto que se carga en cada sesión; las preferencias personales (superpowers, agentes, otros MCP) van en tu config global, no acá.

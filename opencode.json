@@ -1,34 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["superpowers@git+https://github.com/obra/superpowers.git"],
   "mcp": {
     "mercadopago": {
       "type": "remote",
       "url": "https://mcp.mercadopago.com/mcp",
       "enabled": true,
       "oauth": {}
-    }
-  },
-  "agent": {
-    "build": {
-      "mode": "primary",
-      "model": "openai/gpt-5.6-luna"
-    },
-    "plan": {
-      "mode": "primary",
-      "model": "openai/gpt-5.6-luna",
-      "permission": { "edit": "deny", "bash": "deny" }
-    },
-    "implementer-mecanico": {
-      "description": "Tareas acotadas y bien especificadas: DTOs, DAOs simples, wiring, tests que siguen un patrón ya establecido en el repo. No usar para lógica de negocio nueva ni decisiones de diseño.",
-      "mode": "subagent",
-      "model": "zhipuai/glm-5.3-flash"
-    },
-    "code-reviewer": {
-      "description": "Revisa un diff o una tarea ya implementada contra su spec/tasks.md — no escribe código, solo reporta hallazgos.",
-      "mode": "subagent",
-      "model": "xai/grok-4.6",
-      "permission": { "edit": "deny" }
     }
   }
 }
