@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"fmt"
 	"time"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
@@ -60,9 +61,10 @@ func NewExerciseResponse(link dbs.SessionExerciseInstance, ex dbs.ExerciseInstan
 }
 
 // NewSessionResponse mapea una SessionInstance más sus links y ejercicios
-// (paralelos por índice, como devuelve el DAO ordenado por id de link) al
-// shape embebido de D9.
-func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseInstance, exercises []dbs.ExerciseInstance) SessionInstanceResponse {
+// al shape embebido de D9. Los links y ejercicios se resuelven por ID (no se
+// requiere orden paralelo); si algún link referencia un ExerciseInstance que
+// no vino en la carga, devuelve error en vez de producir un D9 incompleto.
+func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseInstance, exercises []dbs.ExerciseInstance) (SessionInstanceResponse, error) {
 	result := SessionInstanceResponse{
 		ID:          sess.ID,
 		Name:        sess.Name,
@@ -75,9 +77,11 @@ func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseIns
 		byID[ex.ID] = ex
 	}
 	for _, link := range links {
-		if ex, ok := byID[link.ExerciseInstanceID]; ok {
-			result.Exercises = append(result.Exercises, NewExerciseResponse(link, ex))
+		ex, ok := byID[link.ExerciseInstanceID]
+		if !ok {
+			return SessionInstanceResponse{}, fmt.Errorf("session instance %d: ejercicio instancia %d faltante (link %d)", sess.ID, link.ExerciseInstanceID, link.ID)
 		}
+		result.Exercises = append(result.Exercises, NewExerciseResponse(link, ex))
 	}
-	return result
+	return result, nil
 }

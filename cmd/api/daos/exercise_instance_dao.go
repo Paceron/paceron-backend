@@ -14,6 +14,10 @@ import (
 type ExerciseInstanceDaoInterface interface {
 	Create(ctx *gin.Context, e *dbs.ExerciseInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.ExerciseInstance, error)
+	// FindByIDs trae varios ejercicios de instancia en una sola consulta —
+	// evita el N+1 al armar el detalle D9 de una SessionInstance (los links
+	// vienen de FindBySessionInstance y resuelven sus ejercicios por lote).
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.ExerciseInstance, error)
 	Delete(ctx *gin.Context, id int64) error
 	// HasFeedback reporta si algún workout_feedback activo referencia esta
 	// instancia vía assigned_exercise_id (FK opaca, design.md D3).
@@ -45,6 +49,18 @@ func (d *exerciseInstanceDao) FindByID(ctx *gin.Context, id int64) (*dbs.Exercis
 		return nil, fmt.Errorf("error finding exercise instance: %w", err)
 	}
 	return &e, nil
+}
+
+func (d *exerciseInstanceDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.ExerciseInstance, error) {
+	var rows []dbs.ExerciseInstance
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	err := d.DB.Where("id IN ?", ids).Order("id").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding exercise instances by ids: %w", err)
+	}
+	return rows, nil
 }
 
 func (d *exerciseInstanceDao) Delete(ctx *gin.Context, id int64) error {

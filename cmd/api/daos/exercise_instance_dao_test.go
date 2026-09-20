@@ -49,6 +49,25 @@ func TestExerciseInstanceDao_FindByID_NotFound_ReturnsNil(t *testing.T) {
 	assert.Nil(t, found)
 }
 
+func TestExerciseInstanceDao_FindByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewExerciseInstanceDao(db)
+	inst1 := &dbs.ExerciseInstance{Name: "Trote", Kind: "jogging"}
+	require.NoError(t, dao.Create(nil, inst1))
+	inst2 := &dbs.ExerciseInstance{Name: "Serie", Kind: "running"}
+	require.NoError(t, dao.Create(nil, inst2))
+
+	rows, err := dao.FindByIDs(nil, []int64{inst2.ID, inst1.ID})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, inst1.ID, rows[0].ID)
+	assert.Equal(t, inst2.ID, rows[1].ID)
+
+	rows, err = dao.FindByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}
+
 func TestExerciseInstanceDao_Delete_Physical(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewExerciseInstanceDao(db)
