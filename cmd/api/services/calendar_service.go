@@ -68,6 +68,19 @@ func newCalendarClosedDaysError(dates []string) error {
 	return &calendarClosedDaysError{dates: dates}
 }
 
+func isCalendarValidationError(err error) bool {
+	for _, target := range []error{
+		ErrCalendarInvalidKind, ErrCalendarFieldMismatch, ErrCalendarInvalidCancelTransition,
+		ErrCalendarInvalidTimeFormat, ErrCalendarInvalidTimeRange, ErrCalendarSessionNotFound,
+		ErrSessionExerciseNotFound,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
 type calendarStampConflictError struct {
 	dates []string
 }
@@ -234,6 +247,30 @@ func (s *calendarService) buildRow(ctx *gin.Context, groupID int64, date time.Ti
 		row.PresencialLocation = locationJSON
 	}
 	return row, nil
+}
+
+func calendarRequestFromPlanDay(day dbs.PlanDay) (calendar.CalendarDayRequest, error) {
+	req := calendar.CalendarDayRequest{Kind: day.Kind, SessionID: day.SessionID, OtherName: day.OtherName}
+	if day.DefaultPresencial {
+		isPresencial := true
+		req.IsPresencial = &isPresencial
+		if day.DefaultTimeFrom != nil {
+			from := day.DefaultTimeFrom.UTC().Format("15:04")
+			req.PresencialTimeFrom = &from
+		}
+		if day.DefaultTimeTo != nil {
+			to := day.DefaultTimeTo.UTC().Format("15:04")
+			req.PresencialTimeTo = &to
+		}
+		if day.DefaultLocation != nil {
+			location, err := jsonUnmarshalLocation(*day.DefaultLocation)
+			if err != nil {
+				return calendar.CalendarDayRequest{}, ErrCalendarFieldMismatch
+			}
+			req.PresencialLocation = location
+		}
+	}
+	return req, nil
 }
 
 // instantiateSession copies catalog content into the instance tables. The
@@ -612,6 +649,15 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 	for i, pd := range planDays {
 		targetDates[i] = startDate.AddDate(0, 0, pd.SequenceNo-1)
 	}
+	for _, planDay := range planDays {
+		planReq, err := calendarRequestFromPlanDay(planDay)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.validateDayFields(planReq, ""); err != nil {
+			return nil, err
+		}
+	}
 	if s.db == nil {
 		minDate, maxDate := targetDates[0], targetDates[0]
 		for _, date := range targetDates[1:] {
@@ -651,17 +697,22 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 				return err
 			}
 			existingByDate[date.Format("2006-01-02")] = existing
+			planReq, err := calendarRequestFromPlanDay(planDays[i])
+			if err != nil {
+				return err
+			}
+			currentKind := ""
+			if existing != nil {
+				currentKind = existing.Kind
+			}
+			if err := s.validateDayFields(planReq, currentKind); err != nil {
+				return err
+			}
 			row := dbs.GroupCalendarDay{
 				GroupID: groupID, Date: date, Kind: planDays[i].Kind, OtherName: planDays[i].OtherName,
 				IsPresencial: planDays[i].DefaultPresencial, PresencialTimeFrom: planDays[i].DefaultTimeFrom,
 				PresencialTimeTo: planDays[i].DefaultTimeTo, PresencialLocation: planDays[i].DefaultLocation,
 				SourcePlanID: &req.PlanID,
-			}
-			if planDays[i].Kind == string(constants.GroupCalendarDayKindTraining) && planDays[i].SessionID == nil {
-				return ErrCalendarFieldMismatch
-			}
-			if planDays[i].Kind == string(constants.GroupCalendarDayKindOther) && planDays[i].OtherName == nil {
-				return ErrCalendarFieldMismatch
 			}
 			rows[i] = row
 		}
@@ -704,7 +755,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarStampConflict) || errors.Is(err, ErrCalendarSessionNotFound) || errors.Is(err, ErrSessionExerciseNotFound) {
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarStampConflict) || isCalendarValidationError(err) {
 			return nil, err
 		}
 		customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
@@ -744,16 +795,16 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			if err != nil {
 				return nil, err
 			}
-			rows[i], err = s.buildRow(ctx, groupID, date, dayReq)
-			if err != nil {
-				return nil, err
-			}
 			if err := s.validateDayFields(dayReq, func() string {
 				if existing[i] == nil {
 					return ""
 				}
 				return existing[i].Kind
 			}()); err != nil {
+				return nil, err
+			}
+			rows[i], err = s.buildRow(ctx, groupID, date, dayReq)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -795,12 +846,6 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			if err != nil {
 				return err
 			}
-			builtRow, buildErr := s.buildRow(ctx, groupID, date, dayReq)
-			err = buildErr
-			if err != nil {
-				return err
-			}
-			rows[i] = *builtRow
 			if err := s.validateDayFields(dayReq, func() string {
 				if existing[i] == nil {
 					return ""
@@ -809,6 +854,11 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			}()); err != nil {
 				return err
 			}
+			builtRow, err := s.buildRow(ctx, groupID, date, dayReq)
+			if err != nil {
+				return err
+			}
+			rows[i] = *builtRow
 		}
 		closed := make([]string, 0)
 		for i := range rows {
@@ -841,7 +891,7 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarSessionNotFound) || errors.Is(err, ErrSessionExerciseNotFound) || errors.Is(err, ErrCalendarInvalidCancelTransition) {
+		if errors.Is(err, ErrCalendarDayClosed) || isCalendarValidationError(err) {
 			return nil, err
 		}
 		customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
@@ -936,29 +986,43 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		return nil, fmt.Errorf("days debe ser un entero positivo")
 	}
 	farFuture := time.Date(9999, 12, 31, 0, 0, 0, 0, fromDate.Location())
-	affected, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, fromDate, farFuture)
-	if err != nil {
-		return nil, fmt.Errorf("error al buscar filas a correr")
-	}
-	closed := make([]string, 0)
-	for _, a := range affected {
-		if isCalendarDayClosed(a, time.Now()) {
-			closed = append(closed, a.Date.Format("2006-01-02"))
-		}
-	}
-	if len(closed) > 0 {
-		return nil, newCalendarClosedDaysError(closed)
-	}
-	responses := make([]calendar.CalendarDayResponse, len(affected))
 	if s.db == nil {
+		affected, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, fromDate, farFuture)
+		if err != nil {
+			return nil, fmt.Errorf("error al buscar filas a correr")
+		}
+		closed := make([]string, 0)
+		for _, a := range affected {
+			if isCalendarDayClosed(a, time.Now()) {
+				closed = append(closed, a.Date.Format("2006-01-02"))
+			}
+		}
+		if len(closed) > 0 {
+			return nil, newCalendarClosedDaysError(closed)
+		}
 		return nil, fmt.Errorf("no hay DB disponible para correr fechas")
 	}
+	var affected []dbs.GroupCalendarDay
 	// Updating from the latest date backwards avoids transient unique-key
 	// collisions while shifting several rows forward by the same amount.
-	ordered := append([]dbs.GroupCalendarDay(nil), affected...)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Date.After(ordered[j].Date) })
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		var err error
+		affected, err = txCalendarDao.FindByGroupAndRange(ctx, groupID, fromDate, farFuture)
+		if err != nil {
+			return err
+		}
+		closed := make([]string, 0)
+		for _, a := range affected {
+			if isCalendarDayClosed(a, time.Now()) {
+				closed = append(closed, a.Date.Format("2006-01-02"))
+			}
+		}
+		if len(closed) > 0 {
+			return newCalendarClosedDaysError(closed)
+		}
+		ordered := append([]dbs.GroupCalendarDay(nil), affected...)
+		sort.Slice(ordered, func(i, j int) bool { return ordered[i].Date.After(ordered[j].Date) })
 		for _, a := range ordered {
 			newDate := a.Date.AddDate(0, 0, req.Days)
 			if err := txCalendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
@@ -968,9 +1032,13 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, ErrCalendarDayClosed) {
+			return nil, err
+		}
 		customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
 		return nil, fmt.Errorf("error al correr fechas")
 	}
+	responses := make([]calendar.CalendarDayResponse, len(affected))
 	for i := range affected {
 		a := affected[i]
 		a.Date = a.Date.AddDate(0, 0, req.Days)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -152,6 +153,39 @@ func TestCalendarController_Stamp_Conflict(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestCalendarController_Stamp_ConflictIncludesDates(t *testing.T) {
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, fmt.Errorf("%w: 2026-10-01, 2026-10-03", services.ErrCalendarStampConflict)
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "2026-10-01")
+	assert.Contains(t, rec.Body.String(), "2026-10-03")
+}
+
+func TestCalendarController_Stamp_ClosedDayReturns422(t *testing.T) {
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, fmt.Errorf("%w: 2026-09-19", services.ErrCalendarDayClosed)
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-09-19"})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	assert.Contains(t, rec.Body.String(), "2026-09-19")
 }
 
 func TestCalendarController_NextSession_NoContent(t *testing.T) {
@@ -592,4 +626,10 @@ func TestMapCalendarError_ClosedDay(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnprocessableEntity, status)
 	assert.Contains(t, message, "cerrado")
+}
+
+func TestMapCalendarError_SessionExerciseNotFound(t *testing.T) {
+	status, _ := mapCalendarError(services.ErrSessionExerciseNotFound)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
 }

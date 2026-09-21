@@ -49,6 +49,8 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusUnprocessableEntity, "combinación de campos inválida"
 	case errors.Is(err, services.ErrCalendarSessionNotFound):
 		return http.StatusUnprocessableEntity, "sesión referenciada no encontrada"
+	case errors.Is(err, services.ErrSessionExerciseNotFound):
+		return http.StatusUnprocessableEntity, "ejercicio referenciado no encontrado"
 	case errors.Is(err, services.ErrCalendarInvalidCancelTransition):
 		return http.StatusUnprocessableEntity, "solo se puede cancelar un día en training"
 	case errors.Is(err, services.ErrCalendarInvalidTimeFormat):
@@ -58,7 +60,7 @@ func mapCalendarError(err error) (int, string) {
 	case errors.Is(err, services.ErrCalendarDayClosed):
 		return http.StatusUnprocessableEntity, err.Error()
 	case errors.Is(err, services.ErrCalendarStampConflict):
-		return http.StatusConflict, "hay fechas con contenido existente"
+		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
 		return http.StatusConflict, "el corrimiento haría chocar dos fechas"
 	default:
