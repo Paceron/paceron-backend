@@ -61,6 +61,8 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusUnprocessableEntity, err.Error()
 	case errors.Is(err, services.ErrCalendarTrainingWithoutInstance):
 		return http.StatusUnprocessableEntity, err.Error()
+	case errors.Is(err, services.ErrCalendarInvalidDate):
+		return http.StatusUnprocessableEntity, err.Error()
 	case errors.Is(err, services.ErrCalendarStampConflict):
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
@@ -189,13 +191,13 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path  int                    true  "Group ID"
-// @Param        body  body  calendar.StampRequest  true  "Datos del stamp"
+// @Param        body  body  calendar.StampRequest  true  "Datos del stamp. exclude_dates (opcional): fechas YYYY-MM-DD del rango que se saltan por completo — no cuentan para el 409 de conflictos ni para el 422 de día cerrado, y no aparecen en la respuesta"
 // @Success      201  {array}  calendar.CalendarDayResponse
 // @Failure      400
 // @Failure      403
 // @Failure      404
 // @Failure      409
-// @Failure      422
+// @Failure      422  {string}  string "Día cerrado, o exclude_dates con formato inválido"
 // @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)

@@ -1322,7 +1322,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Datos del stamp",
+                        "description": "Datos del stamp. exclude_dates (opcional): fechas YYYY-MM-DD del rango que se saltan por completo — no cuentan para el 409 de conflictos ni para el 422 de día cerrado, y no aparecen en la respuesta",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1354,7 +1354,10 @@ const docTemplate = `{
                         "description": "Conflict"
                     },
                     "422": {
-                        "description": "Unprocessable Entity"
+                        "description": "Día cerrado, o exclude_dates con formato inválido",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -6777,6 +6780,13 @@ const docTemplate = `{
                 "start_date"
             ],
             "properties": {
+                "exclude_dates": {
+                    "description": "opcionales, \"YYYY-MM-DD\"",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "force": {
                     "type": "boolean"
                 },
