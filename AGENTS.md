@@ -21,7 +21,7 @@ Go 1.26 + Gin (HTTP) + GORM (ORM sobre PostgreSQL/Supabase) + JWT (`golang-jwt/j
 Documentación técnica detallada:
 
 - [`docs/STATE_MACHINES.md`](docs/STATE_MACHINES.md) — estados/transiciones/invariantes por entidad. Fuente de verdad de los valores: `cmd/api/domains/constants/`.
-- [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) — modelo de datos, guards, endpoints del catálogo (`Exercise`/`Session`/`TrainingPlan`) y calendario de grupos (`GroupCalendarDay`). **En proceso de rework, ver §7.**
+- [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) — modelo de datos, guards, endpoints del catálogo (`Exercise`/`Session`/`TrainingPlan`) y calendario de grupos (`GroupCalendarDay`), incluyendo el mecanismo de instanciación al asignar (§8). Actualizado al modelo de `asignacion-por-instanciacion`.
 - [`docs/DEUDA_TECNICA_Y_PENDIENTES.md`](docs/DEUDA_TECNICA_Y_PENDIENTES.md) — **leer antes de arrancar**: bugs conocidos no arreglados, datos desactualizados en testing, features deferidas con diseño ya charlado, decisiones de "no tocar X". Conocimiento que vivía solo en memoria de sesiones previas de Claude Code, volcado acá para no perderlo al migrar a OpenCode.
 - [`.agentics/CONVENTIONS.md`](.agentics/CONVENTIONS.md) — convenciones de código y capas (qué no está permitido: service-to-service imports, DAO directo desde controller).
 - [`.agentics/STRUCTURE.md`](.agentics/STRUCTURE.md) / [`STRUCTURE_FOLDERS.md`](STRUCTURE_FOLDERS.md) / [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) — estructura de carpetas (hay 3 versiones con distinto nivel de detalle, se solapan a propósito — cualquiera de las 3 sirve, `.agentics/STRUCTURE.md` es la que referencia `CLAUDE.md`).
@@ -95,26 +95,26 @@ TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=
 
 - `gh pr edit` puede fallar con `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)` — es un bug del CLI leyendo un campo ajeno, no un error real del edit. Workaround: `gh api repos/<owner>/<repo>/pulls/<n> -X PATCH -f title="..." -f body="..."`.
 - El toolchain de Go 1.26 vía `GOTOOLCHAIN=auto` no trae `covdata` — falla `go test -coverprofile` sobre paquetes sin `_test.go`. Por eso `make coverage`/`ci.yml` filtran a paquetes con `TestGoFiles` (`go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test ...`), no `./...` directo.
-- `attendances.training_session_id` y `workout_feedback.assigned_session_id`/`assigned_exercise_id` son FK **opacas** (BIGINT > 0, sin constraint de DB) — anticipan tablas/entidades que todavía no existen del todo. Ver §7, `asignacion-por-instanciacion` es probablemente la pieza que las tablas de `workout_feedback` estaban esperando.
+- `attendances.training_session_id` y `workout_feedback.assigned_session_id`/`assigned_exercise_id` son FK **opacas** (BIGINT > 0, sin constraint de DB) — anticipan tablas/entidades que todavía no existen del todo. Ver §7: `asignacion-por-instanciacion` es la pieza a la que apuntaban las columnas de `workout_feedback` (el borrado de instancia superada ya las consulta), aunque la FK real sigue siendo deuda.
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es error real.
 - Dos proyectos de Supabase separados (testing/producción) — `master` en Render pega a producción, todo lo demás (`develop`/local) pega a testing por default, sin flag. Detalle: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
 
-## 7. Trabajo en curso — rework de catálogo/calendario (instanciación)
+## 7. Rework de catálogo/calendario — instanciación (implementado)
 
-Decisión de equipo (2026-09-19), spec ya escrita en `openspec/changes/asignacion-por-instanciacion/` (proposal.md/design.md/specs/tasks.md — **leer antes de tocar nada de `services/calendar_service.go`, `services/session_service.go`, `services/exercise_service.go` o `dbs/group_calendar_day.go`**):
+Decisión de equipo (2026-09-19), spec en `openspec/changes/asignacion-por-instanciacion/` — **implementada en esta rama** (`feature/asignacion-por-instanciacion`):
 
-- El mecanismo actual (`calendario-asignacion-grupos` D8/D13 + `congelar-ejercicio-en-clon`) calcula, en el momento de editar `Session`/`Exercise` del catálogo, si algún día de calendario ya "cerrado" necesita clonarse para no recibir la edición. Se juzgó demasiado complejo/frágil de razonar y mantener.
-- **Se reemplaza por instanciación proactiva**: `Exercise`/`Session`/`TrainingPlan` quedan 100% template. Asignar contenido a un día de calendario crea copias inmutables en tablas propias (`session_instances`/`session_exercise_instances`/`exercise_instances`, separadas del catálogo) en el momento del `save`, no al editar después. `GroupCalendarDay.session_id` pasa a `session_instance_id`.
-- El chequeo de "día cerrado" (`isCalendarDayClosed`, misma regla de fecha/horario) se reusa pero cambia de rol: de "trigger de clonado" pasa a "guard de escritura" — no se puede asignar/reasignar/borrar contenido de un día ya cerrado, punto.
-- Todo el mecanismo de clonado por divergencia (D8/D13/`congelar-ejercicio-en-clon`) se borra, no convive con el nuevo.
-- Ver `openspec/changes/asignacion-por-instanciacion/tasks.md` para el checklist de implementación (todavía no ejecutado al momento de escribir esto).
+- El mecanismo anterior (`calendario-asignacion-grupos` D8/D13 + `congelar-ejercicio-en-clon`) — clonado por divergencia al editar `Session`/`Exercise` del catálogo — se juzgó demasiado complejo/frágil de razonar y mantener, y **fue eliminado por completo** (no convive con el nuevo).
+- **Reemplazado por instanciación proactiva**: `Exercise`/`Session`/`TrainingPlan` son 100% template. Asignar contenido a un día de calendario crea copias inmutables en tablas propias (`session_instances`/`session_exercise_instances`/`exercise_instances`, separadas del catálogo) en el momento del `save`, no al editar después. `GroupCalendarDay.session_id` pasó a `session_instance_id`.
+- El chequeo de "día cerrado" (`isCalendarDayClosed`, misma regla de fecha/horario, ahora vive en `calendar_service.go`) cambió de rol: de "trigger de clonado" a "guard de escritura" — no se puede asignar/reasignar/borrar contenido de un día ya cerrado; `cancelled` sigue permitido sobre cerrado.
+- Las respuestas de calendario (`CalendarDayResponse`/`NextSessionResponse`) embeben el detalle completo de la instancia (`session_instance` con `exercises`), sin `session_id` bare.
+- Impacto para el frontend resumido en [`docs/FRONTEND_IMPACTO_INSTANCIACION.md`](docs/FRONTEND_IMPACTO_INSTANCIACION.md); la doc de dominio viviente es [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) §8.
 
 ## 8. Coordinación con Claude Code (paceron-frontend)
 
-Desde 2026-09-19, `paceron-backend` se desarrolla desde OpenCode; Claude Code quedó reservado para `paceron-frontend` (juzgado más complejo). Si algo de este rework (o cualquier cambio de contrato de API) afecta al frontend, avisar explícitamente — no asumir que la sesión de Claude en el otro repo se entera sola. Puntos concretos que el rework de §7 va a romper del lado frontend:
+Desde 2026-09-19, `paceron-backend` se desarrolla desde OpenCode; Claude Code quedó reservado para `paceron-frontend` (juzgado más complejo). Si algo del rework de §7 (o cualquier cambio de contrato de API) afecta al frontend, avisar explícitamente — no asumir que la sesión de Claude en el otro repo se entera sola. Puntos concretos que el rework de §7 rompió del lado frontend (**confirmados en código**, detalle en [`docs/FRONTEND_IMPACTO_INSTANCIACION.md`](docs/FRONTEND_IMPACTO_INSTANCIACION.md)):
 - `PUT /sessions/{id}` pierde `exclude_group_ids`/`clone_name`/`clone_description`.
-- El shape de lo que devuelve el calendario puede cambiar si se decide embeber el detalle de la instancia en la respuesta (a definir en implementación, ver `tasks.md` Task 3).
-- `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` §5 (clonado por divergencia, spec del lado frontend) queda obsoleto una vez implementado esto — coordinar su actualización con quien mantiene ese repo.
+- El shape de lo que devuelve el calendario cambió: `session_id` bare fue reemplazado por `session_instance` embebido (detalle completo en D9/design) — decisión "a definir en implementación" cerrada como embebido.
+- `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` §5 (clonado por divergencia, spec del lado frontend) quedó obsoleto — coordinar su actualización con quien mantiene ese repo.
 
 ## 9. Skills, subagentes y modelos
 
