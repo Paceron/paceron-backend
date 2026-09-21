@@ -21,15 +21,15 @@
 
 ### Task 4: Tests de servicio y DAO
 
-- [ ] 4.1 DAO/Postgres real: `instantiateSession` persiste `source_session_id`/`source_exercise_id` correctos.
-- [ ] 4.2 Service real-Postgres: PUT training sin `session_id` sobre día con instancia conserva el mismo `session_instance_id`, no crea ni borra filas de instancia, y la respuesta embebe `session_id`/`exercise_id` de origen.
-- [ ] 4.3 Service: PUT training sin `session_id` sobre día sin instancia → `422` `ErrCalendarFieldMismatch`.
-- [ ] 4.4 Bulk real-Postgres: sin `session_id` sobre N fechas con instancia → cada una conserva la suya, cero filas nuevas/borradas; con una fecha sin instancia → `422` con la lista de fechas y ninguna fila modificada (all-or-nothing).
-- [ ] 4.5 Regresión: PUT con `session_id` presente sigue reinstanciando y borrando/conservando huérfana según feedback (los tests existentes de Task 3/5 del change anterior deben seguir verdes sin cambios semánticos).
-- [ ] 4.6 Instancia con origen `NULL` (fila creada directo en DB) responde `session_id: null`/`exercise_id: null` sin error.
+- [x] 4.1 DAO/Postgres real: `instantiateSession` persiste `source_session_id`/`source_exercise_id` correctos.
+- [x] 4.2 Service real-Postgres: PUT training sin `session_id` sobre día con instancia conserva el mismo `session_instance_id`, no crea ni borra filas de instancia, y la respuesta embebe `session_id`/`exercise_id` de origen.
+- [x] 4.3 Service: PUT training sin `session_id` sobre día sin instancia → `422` `ErrCalendarFieldMismatch`.
+- [x] 4.4 Bulk real-Postgres: sin `session_id` sobre N fechas con instancia → cada una conserva la suya, cero filas nuevas/borradas; con una fecha sin instancia → `422` con la lista de fechas y ninguna fila modificada (all-or-nothing).
+- [x] 4.5 Regresión: PUT con `session_id` presente sigue reinstanciando y borrando/conservando huérfana según feedback (los tests existentes de Task 3/5 del change anterior deben seguir verdes sin cambios semánticos).
+- [x] 4.6 Instancia con origen `NULL` (fila creada directo en DB) responde `session_id: null`/`exercise_id: null` sin error.
 
 ### Task 5: Documentación y verificación final
 
-- [ ] 5.1 `docs/CATALOGO_Y_CALENDARIO.md` §8: documentar columnas de origen + conservación en PUT individual y bulk.
-- [ ] 5.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: nota de cambio aditivo (Gap 7 cerrado, qué puede hacer el frontend ahora; sin acción obligatoria para clientes viejos).
-- [ ] 5.3 `openspec validate instancia-referencia-catalogo --strict`, `gofmt`, `go build ./...`, `go vet ./...`, `go test ./...` con Postgres real, `make coverage-with-db` (gate 80 sin tocar el umbral).
+- [x] 5.1 `docs/CATALOGO_Y_CALENDARIO.md` §8: documentar columnas de origen + conservación en PUT individual y bulk.
+- [x] 5.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: nota de cambio aditivo (Gap 7 cerrado, qué puede hacer el frontend ahora; sin acción obligatoria para clientes viejos).
+- [x] 5.3 `openspec validate instancia-referencia-catalogo --strict`, `gofmt`, `go build ./...`, `go vet ./...`, `go test ./...` con Postgres real, `make coverage-with-db` (gate 80 sin tocar el umbral).

@@ -235,6 +235,10 @@ Sin deduplicación: asignar la misma `Session` a 10 días crea 10 instancias ind
 
 El request sigue usando `session_id` de catálogo (y sigue validando que exista, `422` si no); lo que persiste en el día es `session_instance_id`.
 
+**`session_id` es opcional en `PUT`/`Bulk` `kind=training` sobre un día que ya tiene instancia** (change `instancia-referencia-catalogo`): sin `session_id` y con instancia previa, el día **conserva su instancia tal cual** — no se reinstancia ni se borra nada (mismo mecanismo que `cancelled`, §8.3). Sin `session_id` y sin instancia previa, `422` (`ErrCalendarFieldMismatch` individual; en lote `ErrCalendarTrainingWithoutInstance` listando las fechas sin instancia, all-or-nothing). `Stamp` no admite omisión: cada `PlanDay` de entrenamiento referencia el catálogo por definición.
+
+Cada instancia guarda además su **origen de catálogo**: `session_instances.source_session_id` y `exercise_instances.source_exercise_id` — referencias opacas app-managed (sin FK, mismo patrón que `source_plan_id`), puramente informativas: se pueblan al instanciar y **no se limpian** si la `Session`/`Exercise` de catálogo se soft-borra después (la fila de catálogo nunca desaparece físicamente, solo deja de listarse). Instancias anteriores al change tienen `NULL` y las respuestas D9 exponen ambos campos (`session_id`/`exercise_id`) como `null` — ver §8.5.
+
 ### 8.3 Guard de día cerrado — restricción de escritura, no de edición de catálogo
 
 La regla de cuándo un día está "cerrado" (calculada al vuelo contra `time.Now()`, sin cron ni columna persistida) es la misma que la del change original:
@@ -281,11 +285,12 @@ Reasignar un día **futuro** que ya tenía instancia sí está permitido (nunca 
   "other_name": null,
   "session_instance": {
     "id": 123,
+    "session_id": 77,
     "name": "Fartlek 5K",
     "description": null,
     "created_at": "2026-09-20T10:00:00Z",
     "exercises": [
-      {"id": 456, "name": "Trote", "kind": "jogging", "description": null, "intensity": null,
+      {"id": 456, "exercise_id": 501, "name": "Trote", "kind": "jogging", "description": null, "intensity": null,
        "minutes": 10, "distance_m": null, "speed_kph": null, "muscle_group": null, "video_url": null,
        "role": "warmup", "repeat_count": 1, "rest_minutes": 0}
     ]
@@ -365,6 +370,7 @@ Detalle del reemplazo y sus decisiones: `openspec/changes/asignacion-por-instanc
 | transición de cancelación inválida | 422 |
 | sesión referenciada no encontrada | 422 |
 | día cerrado (asignar/reasignar/borrar/correr contenido) | 422 — en lote, el message lista las fechas en conflicto |
+| training sin `session_id` y sin instancia previa que conservar | 422 (individual: combinación de campos; lote: el message lista las fechas sin instancia, all-or-nothing) |
 | presencial_time_from/presencial_time_to formato inválido | 422 |
 | presencial_time_to no posterior a presencial_time_from | 422 |
 | conflicto de fechas en stamp | 409 |
