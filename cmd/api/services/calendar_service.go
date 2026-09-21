@@ -1023,16 +1023,40 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		}
 		ordered := append([]dbs.GroupCalendarDay(nil), affected...)
 		sort.Slice(ordered, func(i, j int) bool { return ordered[i].Date.After(ordered[j].Date) })
+		// Collision guard: re-chequear dentro de la tx que ninguna fecha destino
+		// esté ocupada por una fila que NO va a moverse en este shift (p. ej.
+		// escritura concurrente). Si lo está, rollback con 409 en vez de
+		// explotar contra idx_group_calendar_day_group_date como 500.
+		movedDates := make(map[string]bool, len(ordered))
+		for _, a := range ordered {
+			movedDates[a.Date.Format("2006-01-02")] = true
+		}
+		for _, a := range ordered {
+			newDate := a.Date.AddDate(0, 0, req.Days)
+			occupant, ferr := txCalendarDao.FindByGroupAndDate(ctx, groupID, newDate)
+			if ferr != nil {
+				return ferr
+			}
+			if occupant != nil && !movedDates[occupant.Date.Format("2006-01-02")] {
+				return ErrCalendarShiftCollision
+			}
+		}
 		for _, a := range ordered {
 			newDate := a.Date.AddDate(0, 0, req.Days)
 			if err := txCalendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
+				// Defensivo: una escritura concurrente puede chocar el unique
+				// index a pesar del guard de arriba (ventana entre el SELECT del
+				// guard y el UPDATE). Mapear a colisión, no a 500.
+				if strings.Contains(err.Error(), "duplicate key") {
+					return ErrCalendarShiftCollision
+				}
 				return err
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) {
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarShiftCollision) {
 			return nil, err
 		}
 		customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))

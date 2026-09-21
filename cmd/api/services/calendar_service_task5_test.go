@@ -751,3 +751,35 @@ func TestCalendarService_Task5_DeleteSupersededInstance_ZeroIDIsNoop(t *testing.
 	require.NoError(t, findErr)
 	assert.NotNil(t, found)
 }
+
+// El test siguiente simula escritura concurrente: la fila destino existía
+// físicamente en la tabla al momento de correr el shift, pero queda fuera de
+// las SELECTs del service (condición global en el handle de gorm usado como
+// s.db) — la ventana exacta de un INSERT concurrente entre el fetch y los
+// UPDATEs: el shift choca contra el unique index al escribir el destino.
+func calStrPtr(s string) *string { return &s }
+
+func TestCalendarService_Task5_ShiftDestinationOccupiedReturnsCollisionAndRollsBack(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "shif5x")
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	from := time.Now().AddDate(0, 0, 5)
+	destination := from.AddDate(0, 0, 2)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: from, Kind: "rest"}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: destination, Kind: "other", OtherName: calStrPtr("ocupado")}))
+	svcDB := db.Where("date <> ?", destination)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, svcDB)
+
+	_, err := svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: from.Format("2006-01-02"), Days: 2})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrCalendarShiftCollision, "la colisión debe mapear al sentinel, no a un 500")
+
+	keptFrom, ferr := calendarDao.FindByGroupAndDate(nil, group.ID, from)
+	require.NoError(t, ferr)
+	assert.NotNil(t, keptFrom, "el rollback no debe mover ninguna fila")
+	keptDest, derr := calendarDao.FindByGroupAndDate(nil, group.ID, destination)
+	require.NoError(t, derr)
+	require.NotNil(t, keptDest)
+	assert.Equal(t, "ocupado", *keptDest.OtherName, "la fila destino no debe ser tocada")
+}

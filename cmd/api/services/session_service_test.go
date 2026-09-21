@@ -236,12 +236,14 @@ func TestSessionService_Clone_CopiesSessionAndExercises(t *testing.T) {
 	original := &dbs.Session{ID: 1, OwnerID: 7, Name: "Original"}
 	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return original, nil }}
 	replaced := false
+	var copiedRows []dbs.SessionExercise
 	sessionExerciseDao := &mockSessionExerciseDao{
 		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
 			return []dbs.SessionExercise{{ExerciseID: 1, Role: "warmup"}}, nil
 		},
 		replaceForSessionFn: func(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error {
 			replaced = true
+			copiedRows = rows
 			return nil
 		},
 	}
@@ -252,4 +254,6 @@ func TestSessionService_Clone_CopiesSessionAndExercises(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Original (copia)", resp.Name)
 	assert.True(t, replaced)
+	require.Len(t, copiedRows, 1)
+	assert.Equal(t, int64(1), copiedRows[0].ExerciseID, "el clon conserva el ExerciseID del original")
 }
