@@ -297,7 +297,7 @@ Reasignar un día **futuro** que ya tenía instancia sí está permitido (nunca 
 }
 ```
 
-`session_instance` es `null` cuando `kind` no es `training`. Es el único shape posible: no existe endpoint que resuelva una instancia por ID, y resolverla contra `GET /sessions/{id}` devolvería el catálogo en vivo, no lo congelado para ese día.
+`session_instance` es `null` cuando el día no tiene instancia: `kind=rest`/`other` (o día `cancelled` sin sesión previa, caso que no debería darse dado que `cancelled` solo se alcanza desde `training`). Con `kind=cancelled` la instancia **sigue embebida** (`calendar_service.go` conserva el `session_instance_id` existente al cancelar): el alumno ve qué sesión era la que se canceló. Es el único detalle posible: no existe endpoint que resuelva una instancia por ID, y resolverla contra `GET /sessions/{id}` devolvería el catálogo en vivo, no lo congelado para ese día.
 
 ### 8.6 Lo que ya no existe (mecanismo anterior)
 

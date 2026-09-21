@@ -18,7 +18,7 @@ Responde 404 (ruta no registrada). No hay endpoint alternativo, y tampoco hace f
 
 ## 3. `CalendarDayResponse` / `NextSessionResponse`: `session_id` → `session_instance` embebido
 
-`session_id` (ID bare de catálogo) ya no existe. Ahora el día embebe la copia congelada asignada. `session_instance: null` cuando `kind` no es `training`.
+`session_id` (ID bare de catálogo) ya no existe. Ahora el día embebe la copia congelada asignada. `session_instance: null` cuando el día no tiene instancia (`kind=rest`/`other`); con `kind=cancelled` la instancia **sigue embebida** (el código conserva el `session_instance_id` original al cancelar, ver abajo).
 
 Ejemplo real (shape de `calendar.CalendarDayResponse` + `instance.SessionInstanceResponse`):
 
@@ -69,7 +69,7 @@ Ejemplo real (shape de `calendar.CalendarDayResponse` + `instance.SessionInstanc
 
 Notas:
 
-- **Días con `kind=cancelled`** (solo alcanzable desde `training`) **conservan** el `session_instance_id` original como contexto — `session_instance` puede no ser `null` ahí.
+- **Días con `kind=cancelled`** (solo alcanzable desde `training`) **conservan** el `session_instance_id` original como contexto — `session_instance` NO es `null` ahí: sigue embebida para que el alumno vea qué sesión se canceló.
 - Los horarios `presencial_time_from`/`presencial_time_to` viajan `"HH:MM"` (UTC) como siempre — sin cambio. `stamp` con `force=true` reemplaza el contenido instanciando de nuevo y borrando la instancia vieja (salvo feedback, D10).
 
 ## 4. Guard de día cerrado: `422` con la lista de fechas
@@ -83,7 +83,7 @@ HTTP 422
 {"message": "el día de calendario está cerrado: 2026-09-19, 2026-09-22"}
 ```
 
-(O día individual: `{"message": "el día de calendario está cerrado"}` — una sola fecha no se concatena.)
+El mensaje del 422 **siempre incluye la fecha** también en el caso individual: `{"message": "el día de calendario está cerrado: 2026-09-19"}` — lo que cambia en lote es que el mensaje lista **todas** las fechas conflictivas, no una sola.
 
 **La única operación exenta: la transición a `kind=cancelled`** (desde `training`). Sigue permitida incluso sobre un día ya cerrado — cancelar no repuntea nada, solo marca `cancelled_reason` y conserva la instancia. Reasignar, borrar o correr un día cerrado: prohibido, siempre.
 
