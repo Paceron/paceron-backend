@@ -77,7 +77,9 @@ func (e *calendarTrainingWithoutInstanceError) Error() string {
 	return fmt.Sprintf("%s: %s", ErrCalendarTrainingWithoutInstance, strings.Join(e.dates, ", "))
 }
 
-func (e *calendarTrainingWithoutInstanceError) Unwrap() error { return ErrCalendarTrainingWithoutInstance }
+func (e *calendarTrainingWithoutInstanceError) Unwrap() error {
+	return ErrCalendarTrainingWithoutInstance
+}
 
 func newCalendarTrainingWithoutInstanceError(dates []string) error {
 	if len(dates) == 0 {
