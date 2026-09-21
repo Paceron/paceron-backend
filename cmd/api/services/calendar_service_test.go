@@ -24,11 +24,7 @@ type mockGroupCalendarDao struct {
 	deleteByDatesFn            func(ctx *gin.Context, groupID int64, dates []time.Time) error
 	findNextSessionForGroupsFn func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
 	clearSourcePlanFn          func(ctx *gin.Context, planID int64) error
-	repointSessionForGroupsFn  func(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error
 	updateDatesForShiftFn      func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
-	findBySessionIDFn          func(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error)
-	repointDaysByIDFn          func(ctx *gin.Context, dayIDs []int64, newSessionID int64) error
-	findByExerciseIDFn         func(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error)
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -74,35 +70,11 @@ func (m *mockGroupCalendarDao) ClearSourcePlan(ctx *gin.Context, planID int64) e
 	}
 	return nil
 }
-func (m *mockGroupCalendarDao) RepointSessionForGroups(ctx *gin.Context, groupIDs []int64, oldSessionID, newSessionID int64) error {
-	if m.repointSessionForGroupsFn != nil {
-		return m.repointSessionForGroupsFn(ctx, groupIDs, oldSessionID, newSessionID)
-	}
-	return nil
-}
 func (m *mockGroupCalendarDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
 	if m.updateDatesForShiftFn != nil {
 		return m.updateDatesForShiftFn(ctx, groupID, oldDate, newDate)
 	}
 	return nil
-}
-func (m *mockGroupCalendarDao) FindBySessionID(ctx *gin.Context, sessionID int64) ([]dbs.GroupCalendarDay, error) {
-	if m.findBySessionIDFn != nil {
-		return m.findBySessionIDFn(ctx, sessionID)
-	}
-	return nil, nil
-}
-func (m *mockGroupCalendarDao) RepointDaysByID(ctx *gin.Context, dayIDs []int64, newSessionID int64) error {
-	if m.repointDaysByIDFn != nil {
-		return m.repointDaysByIDFn(ctx, dayIDs, newSessionID)
-	}
-	return nil
-}
-func (m *mockGroupCalendarDao) FindByExerciseID(ctx *gin.Context, exerciseID int64) ([]dbs.GroupCalendarDay, error) {
-	if m.findByExerciseIDFn != nil {
-		return m.findByExerciseIDFn(ctx, exerciseID)
-	}
-	return nil, nil
 }
 
 // mockGroupDao and mockGroupUserDao are already declared in
