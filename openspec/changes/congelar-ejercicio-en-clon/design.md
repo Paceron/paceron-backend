@@ -1,3 +1,5 @@
+> **Nota (2026-09-20):** este change nunca fue archivado, pero **fue reemplazado y su mecanismo eliminado** por `openspec/changes/asignacion-por-instanciacion/` (implementado): el congelamiento por divergencia en `ExerciseService.Update` ya no existe — el historial se preserva con copias inmutables (`ExerciseInstance`) creadas al momento de asignar, no con clonado reactivo al editar. El documento permanece tal cual se escribió, sin reescribir la historia.
+
 ## D1: El punto de congelamiento correcto es el cierre del día, no la asignación ni la carga de feedback
 
 Se descartaron dos alternativas antes de llegar a esta:

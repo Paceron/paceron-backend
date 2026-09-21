@@ -1,3 +1,5 @@
+> **Nota (2026-09-20):** este change nunca fue archivado, pero parte de su diseño fue reemplazado por `openspec/changes/asignacion-por-instanciacion/` (implementado). En particular, **D8 (edición de Session con exclusión manual/clonado) y D13 (clonado automático de días cerrados) ya no están vigentes** — el documento permanece tal cual se escribió, sin reescribir la historia; ver el change de reemplazo para el mecanismo actual (instanciación por asignación con guard de día cerrado).
+
 ## D1 — Modelo de datos: `group_calendar_days`
 
 | Campo | Tipo Go/GORM | Notas |
