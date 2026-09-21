@@ -1062,19 +1062,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_session.SessionRequest:
     properties:
-      clone_description:
-        type: string
-      clone_name:
-        type: string
       description:
         type: string
-      exclude_group_ids:
-        description: |-
-          Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,
-          solo se usan en PUT, ignorados en POST).
-        items:
-          type: integer
-        type: array
       exercises:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest'

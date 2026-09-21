@@ -7866,21 +7866,8 @@ const docTemplate = `{
                 "owner_id"
             ],
             "properties": {
-                "clone_description": {
-                    "type": "string"
-                },
-                "clone_name": {
-                    "type": "string"
-                },
                 "description": {
                     "type": "string"
-                },
-                "exclude_group_ids": {
-                    "description": "Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,\nsolo se usan en PUT, ignorados en POST).",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 },
                 "exercises": {
                     "type": "array",
