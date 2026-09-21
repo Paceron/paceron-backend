@@ -3,10 +3,8 @@ package services
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -32,39 +30,29 @@ type SessionServiceInterface interface {
 }
 
 type sessionService struct {
-	sessionDao          daos.SessionDaoInterface
-	sessionExerciseDao  daos.SessionExerciseDaoInterface
-	exerciseDao         daos.ExerciseDaoInterface
-	groupCalendarDayDao daos.GroupCalendarDaoInterface
-	db                  *gorm.DB
+	sessionDao         daos.SessionDaoInterface
+	sessionExerciseDao daos.SessionExerciseDaoInterface
+	exerciseDao        daos.ExerciseDaoInterface
 }
 
 func NewSessionService(
 	sessionDao daos.SessionDaoInterface,
 	sessionExerciseDao daos.SessionExerciseDaoInterface,
 	exerciseDao daos.ExerciseDaoInterface,
-	groupCalendarDayDao daos.GroupCalendarDaoInterface,
-	db *gorm.DB,
 ) SessionServiceInterface {
 	return &sessionService{
 		sessionDao: sessionDao, sessionExerciseDao: sessionExerciseDao, exerciseDao: exerciseDao,
-		groupCalendarDayDao: groupCalendarDayDao, db: db,
 	}
 }
 
 // cloneSessionInternal crea una copia de original (sesión + ejercicios) usando
 // las DAOs recibidas — permite reusar la misma lógica tanto sobre las DAOs
 // "normales" del service (Clone) como sobre DAOs frescas atadas a una
-// transacción (rama de divergencia en Update).
-//
-// deepCloneExercises controla si además se clona cada Exercise referenciado
-// (congelamiento histórico, ver design.md D4/D6 de congelar-ejercicio-en-clon):
-// false para el clonado manual (POST /sessions/{id}/clone, comparte
-// exercise_id a propósito), true para cualquier congelamiento por cierre de
-// día (D8 manual, D13 automático, o el trigger nuevo desde Exercise.Update) —
-// sin esto, el clon de sesión seguiría apuntando a Exercise vivos y el
-// congelamiento no protegería contra editar el Exercise directamente.
-func cloneSessionInternal(sessionDao daos.SessionDaoInterface, sessionExerciseDao daos.SessionExerciseDaoInterface, exerciseDao daos.ExerciseDaoInterface, ctx *gin.Context, original *dbs.Session, name, description *string, deepCloneExercises bool) (*dbs.Session, error) {
+// transacción. Los ejercicios se copian por referencia: el clon comparte
+// exercise_id con la original (POST /sessions/{id}/clone es duplicar-para-
+// editar, no congelamiento histórico — el contenido congelado del calendario
+// vive en session_exercise_instances, ver asignacion-por-instanciacion).
+func cloneSessionInternal(sessionDao daos.SessionDaoInterface, sessionExerciseDao daos.SessionExerciseDaoInterface, ctx *gin.Context, original *dbs.Session, name, description *string) (*dbs.Session, error) {
 	rows, err := sessionExerciseDao.FindBySession(ctx, original.ID)
 	if err != nil {
 		return nil, fmt.Errorf("error al leer ejercicios de la sesión original")
@@ -81,34 +69,9 @@ func cloneSessionInternal(sessionDao daos.SessionDaoInterface, sessionExerciseDa
 	if err := sessionDao.Create(ctx, clone); err != nil {
 		return nil, fmt.Errorf("error al crear sesión clonada")
 	}
-	clonedExerciseIDs := map[int64]int64{}
 	clonedRows := make([]dbs.SessionExercise, len(rows))
 	for i, r := range rows {
-		exerciseID := r.ExerciseID
-		if deepCloneExercises {
-			if cachedID, ok := clonedExerciseIDs[r.ExerciseID]; ok {
-				exerciseID = cachedID
-			} else {
-				originalExercise, err := exerciseDao.FindByID(ctx, r.ExerciseID)
-				if err != nil {
-					return nil, fmt.Errorf("error al leer ejercicio original para congelar")
-				}
-				if originalExercise != nil {
-					clonedExercise := &dbs.Exercise{
-						OwnerID: originalExercise.OwnerID, Name: originalExercise.Name, Description: originalExercise.Description,
-						Kind: originalExercise.Kind, Intensity: originalExercise.Intensity, Minutes: originalExercise.Minutes,
-						DistanceM: originalExercise.DistanceM, SpeedKph: originalExercise.SpeedKph, MuscleGroup: originalExercise.MuscleGroup,
-						VideoURL: originalExercise.VideoURL,
-					}
-					if err := exerciseDao.Create(ctx, clonedExercise); err != nil {
-						return nil, fmt.Errorf("error al congelar ejercicio de la sesión")
-					}
-					exerciseID = clonedExercise.ID
-				}
-				clonedExerciseIDs[r.ExerciseID] = exerciseID
-			}
-		}
-		clonedRows[i] = dbs.SessionExercise{ExerciseID: exerciseID, Role: r.Role, RepeatCount: r.RepeatCount, RestMinutes: r.RestMinutes}
+		clonedRows[i] = dbs.SessionExercise{ExerciseID: r.ExerciseID, Role: r.Role, RepeatCount: r.RepeatCount, RestMinutes: r.RestMinutes}
 	}
 	if err := sessionExerciseDao.ReplaceForSession(ctx, clone.ID, clonedRows); err != nil {
 		return nil, fmt.Errorf("error al copiar ejercicios al clon")
@@ -206,76 +169,15 @@ func (s *sessionService) Update(ctx *gin.Context, id, callerID int64, req sessio
 		return nil, err
 	}
 
-	referencingDays, err := s.groupCalendarDayDao.FindBySessionID(ctx, id)
-	if err != nil {
-		customlogger.Error(ctx, "error finding calendar days referencing session", err, customlogger.TagMethod("Update"))
+	existing.Name = req.Name
+	existing.Description = req.Description
+	if err := s.sessionDao.Update(ctx, existing); err != nil {
+		customlogger.Error(ctx, "error updating session", err, customlogger.TagMethod("Update"))
 		return nil, fmt.Errorf("error al editar sesión")
 	}
-
-	excludeGroupIDs := []int64{}
-	if req.ExcludeGroupIDs != nil {
-		excludeGroupIDs = *req.ExcludeGroupIDs
-	}
-	excludeSet := make(map[int64]bool, len(excludeGroupIDs))
-	for _, gid := range excludeGroupIDs {
-		excludeSet[gid] = true
-	}
-
-	now := time.Now()
-	var autoClosedDayIDs []int64
-	for _, day := range referencingDays {
-		if excludeSet[day.GroupID] {
-			continue
-		}
-		if isCalendarDayClosed(day, now) {
-			autoClosedDayIDs = append(autoClosedDayIDs, day.ID)
-		}
-	}
-
-	if len(excludeGroupIDs) == 0 && len(autoClosedDayIDs) == 0 {
-		existing.Name = req.Name
-		existing.Description = req.Description
-		if err := s.sessionDao.Update(ctx, existing); err != nil {
-			customlogger.Error(ctx, "error updating session", err, customlogger.TagMethod("Update"))
-			return nil, fmt.Errorf("error al editar sesión")
-		}
-		if err := s.sessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises)); err != nil {
-			customlogger.Error(ctx, "error replacing session exercises", err, customlogger.TagMethod("Update"))
-			return nil, fmt.Errorf("error al editar sesión")
-		}
-		return s.toResponse(ctx, existing)
-	}
-
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		txSessionDao := daos.NewSessionDao(tx)
-		txSessionExerciseDao := daos.NewSessionExerciseDao(tx)
-		txExerciseDao := daos.NewExerciseDao(tx)
-		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-
-		clone, err := cloneSessionInternal(txSessionDao, txSessionExerciseDao, txExerciseDao, ctx, existing, req.CloneName, req.CloneDescription, true)
-		if err != nil {
-			return err
-		}
-		if len(excludeGroupIDs) > 0 {
-			if err := txCalendarDao.RepointSessionForGroups(ctx, excludeGroupIDs, id, clone.ID); err != nil {
-				return fmt.Errorf("error al repuntear grupos excluidos")
-			}
-		}
-		if len(autoClosedDayIDs) > 0 {
-			if err := txCalendarDao.RepointDaysByID(ctx, autoClosedDayIDs, clone.ID); err != nil {
-				return fmt.Errorf("error al repuntear días ya cerrados")
-			}
-		}
-		existing.Name = req.Name
-		existing.Description = req.Description
-		if err := txSessionDao.Update(ctx, existing); err != nil {
-			return fmt.Errorf("error al editar sesión original")
-		}
-		return txSessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises))
-	})
-	if err != nil {
-		customlogger.Error(ctx, "error in divergence-clone update", err, customlogger.TagMethod("Update"))
-		return nil, fmt.Errorf("error al editar sesión con exclusión de grupos")
+	if err := s.sessionExerciseDao.ReplaceForSession(ctx, id, toSessionExerciseRows(req.Exercises)); err != nil {
+		customlogger.Error(ctx, "error replacing session exercises", err, customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al editar sesión")
 	}
 	return s.toResponse(ctx, existing)
 }
@@ -311,7 +213,7 @@ func (s *sessionService) Clone(ctx *gin.Context, id, callerID int64) (*session.S
 	if existing.OwnerID != callerID {
 		return nil, ErrCatalogForbidden
 	}
-	clone, err := cloneSessionInternal(s.sessionDao, s.sessionExerciseDao, s.exerciseDao, ctx, existing, nil, nil, false)
+	clone, err := cloneSessionInternal(s.sessionDao, s.sessionExerciseDao, ctx, existing, nil, nil)
 	if err != nil {
 		customlogger.Error(ctx, "error cloning session", err, customlogger.TagMethod("Clone"))
 		return nil, fmt.Errorf("error al clonar sesión")
