@@ -416,13 +416,14 @@ func TestCalendarService_Task3_BulkClearClosedDayRollsBackWithRealDB(t *testing.
 }
 
 func TestCalendarService_Task3_CurrentDayClosureVariants(t *testing.T) {
-	now := time.Now()
+	// `now` fijo al mediodía local: con time.Now() real este test era flaky entre
+	// 00:00 y 01:00 (now.Add(-1h) cruzaba a la víspera y el umbral HH:MM invertía
+	// el resultado esperado).
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.Local)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "async current day must be closed")
-	futureNow := now.Add(time.Hour)
-	pastNow := now.Add(-time.Hour)
-	futureTime := time.Date(0, 1, 1, futureNow.Hour(), futureNow.Minute(), 0, 0, time.UTC)
-	pastTime := time.Date(0, 1, 1, pastNow.Hour(), pastNow.Minute(), 0, 0, time.UTC)
+	futureTime := time.Date(0, 1, 1, 13, 0, 0, 0, time.UTC)
+	pastTime := time.Date(0, 1, 1, 11, 0, 0, 0, time.UTC)
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &futureTime}, now))
 	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now))
 }

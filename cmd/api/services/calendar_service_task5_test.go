@@ -294,23 +294,24 @@ func TestCalendarService_Task5_ValidateDayFields_Direct(t *testing.T) {
 	sessionID := int64(3)
 	otherName := "gym"
 
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "mystery"}, ""), ErrCalendarInvalidKind)
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "other"}, ""), ErrCalendarFieldMismatch)
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "training"}, ""), ErrCalendarFieldMismatch)
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled"}, ""), ErrCalendarFieldMismatch)
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled", CancelledReason: &reason}, "other"), ErrCalendarInvalidCancelTransition)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "mystery"}, "", false), ErrCalendarInvalidKind)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "other"}, "", false), ErrCalendarFieldMismatch)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "training"}, "", false), ErrCalendarFieldMismatch)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled"}, "", false), ErrCalendarFieldMismatch)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled", CancelledReason: &reason}, "other", false), ErrCalendarInvalidCancelTransition)
 
-	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "other", OtherName: &otherName}, ""))
-	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "training", SessionID: &sessionID}, ""))
-	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled", CancelledReason: &reason}, "training"))
+	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "other", OtherName: &otherName}, "", false))
+	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "training", SessionID: &sessionID}, "", false))
+	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "training"}, "", true))
+	require.NoError(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "cancelled", CancelledReason: &reason}, "training", false))
 
 	isPresencial := true
-	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "rest", IsPresencial: &isPresencial}, ""), ErrCalendarFieldMismatch)
+	assert.ErrorIs(t, svc.validateDayFields(calendar.CalendarDayRequest{Kind: "rest", IsPresencial: &isPresencial}, "", false), ErrCalendarFieldMismatch)
 
 	timeFrom := "19:00"
 	timeTo := "not-a-time"
 	badTo := calendar.CalendarDayRequest{Kind: "rest", IsPresencial: &isPresencial, PresencialTimeFrom: &timeFrom, PresencialTimeTo: &timeTo, PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4}}
-	assert.ErrorIs(t, svc.validateDayFields(badTo, ""), ErrCalendarInvalidTimeFormat)
+	assert.ErrorIs(t, svc.validateDayFields(badTo, "", false), ErrCalendarInvalidTimeFormat)
 }
 
 func TestCalendarService_Task5_IsCalendarDayClosed_Variants(t *testing.T) {

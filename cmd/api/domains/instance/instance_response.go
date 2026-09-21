@@ -13,6 +13,7 @@ import (
 // role/repeat_count/rest_minutes de SessionExerciseInstance.
 type InstanceExerciseResponse struct {
 	ID          int64    `json:"id"`
+	ExerciseID  *int64   `json:"exercise_id"`
 	Name        string   `json:"name"`
 	Kind        string   `json:"kind"`
 	Description *string  `json:"description"`
@@ -33,6 +34,7 @@ type InstanceExerciseResponse struct {
 // kind != training).
 type SessionInstanceResponse struct {
 	ID          int64                      `json:"id"`
+	SessionID   *int64                     `json:"session_id"`
 	Name        string                     `json:"name"`
 	Description *string                    `json:"description"`
 	CreatedAt   time.Time                  `json:"created_at"`
@@ -54,6 +56,7 @@ func NewExerciseResponse(link dbs.SessionExerciseInstance, ex dbs.ExerciseInstan
 		SpeedKph:    ex.SpeedKph,
 		MuscleGroup: ex.MuscleGroup,
 		VideoURL:    ex.VideoURL,
+		ExerciseID:  ex.SourceExerciseID,
 		Role:        link.Role,
 		RepeatCount: link.RepeatCount,
 		RestMinutes: link.RestMinutes,
@@ -67,6 +70,7 @@ func NewExerciseResponse(link dbs.SessionExerciseInstance, ex dbs.ExerciseInstan
 func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseInstance, exercises []dbs.ExerciseInstance) (SessionInstanceResponse, error) {
 	result := SessionInstanceResponse{
 		ID:          sess.ID,
+		SessionID:   sess.SourceSessionID,
 		Name:        sess.Name,
 		Description: sess.Description,
 		CreatedAt:   sess.CreatedAt,

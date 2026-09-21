@@ -63,7 +63,7 @@ Ejemplo real (shape de `calendar.CalendarDayResponse` + `instance.SessionInstanc
 }
 ```
 
-`exercises` es un array (puede venir vacío, pero nunca `null`), y cada elemento es la `ExerciseInstance` congelada + el `role`/`repeat_count`/`rest_minutes` del vínculo (`session_exercise_instances`).
+`exercises` es un array (puede venir vacío, pero nunca `null`), y cada elemento es la `ExerciseInstance` congelada + el `role`/`repeat_count`/`rest_minutes` del vínculo (`session_exercise_instances`). Desde el change `instancia-referencia-catalogo` el objeto embebido trae además `session_id`/`exercise_id` (origen de catálogo, puede ser `null`) — ver §6, no requiere regenerar este ejemplo.
 
 **IMPORTANTE — Rompe el contrato actual, no es aditivo:** el frontend (que ya no puede resolver contenido por `session_id`) debe renderizar el evento a partir del objeto embebido.
 
@@ -89,4 +89,29 @@ El mensaje del 422 **siempre incluye la fecha** también en el caso individual: 
 
 ## 5. Sobre `docs/BACKEND_CALENDAR_ASSIGNMENTS_SPEC.md` (repo frontend)
 
-El **§5** de ese documento (clonado por divergencia al editar sesión) **queda obsoleto** — describe el mecanismo eliminado. Coordina su actualización/eliminación desde el repo de `paceron-frontend`; este repo no lo tocará.
+El **§5** de ese documento (clonado por divergencia al editar sesión) **queda obsoleto** — describe el mecanismo eliminado. Coordina su actualización/eliminación desde el repo de `paceron-frontend`; este repo no lo tocará. Su **Gap 7** (referencias al catálogo de origen + PUT sin `session_id` conservando instancia) **queda cerrado** por el change `instancia-referencia-catalogo` — ver §6 abajo, aditivo.
+
+## 6. Cambio aditivo: origen de catálogo + `session_id` opcional (`instancia-referencia-catalogo`)
+
+Cerrado el Gap 7. **Todo lo de esta sección es aditivo — clientes viejos no tienen acción obligatoria** (ningún campo existente cambió de nombre/semántica; nada que antes funcionaba deja de hacerlo).
+
+1. **`session_instance.session_id` y `session_instance.exercises[].exercise_id`** (`int64 | null`): referencia al `Session`/`Exercise` del catálogo de origen. Poblada en toda instancia creada desde ahora; **`null` en instancias anteriores** al change (legado — no hay backfill). Informativa: no es FK, puede apuntar a una fila de catálogo soft-borrada (deja de figurar en `GET /sessions`/`GET /exercises` pero el ID sigue resolviendo por `GET /sessions/{id}` mientras no se borre físicamente).
+
+   ```json
+   "session_instance": {
+     "id": 123,
+     "session_id": 77,
+     "name": "Fartlek 5K",
+     "exercises": [ { "id": 456, "exercise_id": 501, "name": "Trote", "…": "…" } ]
+   }
+   ```
+
+2. **`PUT /groups/{id}/calendar/{date}` con `kind=training` ya no exige `session_id` si el día ya tiene instancia**: omitirlo conserva la instancia tal cual (no reinstancia, no borra nada) — sirve para editar `is_presencial`/horarios/otros campos del día sin tocar el contenido. Si el día **no** tiene instancia y se omite, `422` (combinación de campos, como antes).
+3. **`bulk` mismo criterio por fecha**: `kind=training` sin `session_id` conserva la instancia de cada fecha. Si **alguna** fecha no tiene instancia, se rechaza el lote entero (`422`, all-or-nothing) listando las fechas:
+
+   ```json
+   HTTP 422
+   {"message": "los días indicados no tienen una sesión instanciada que conservar: 2026-09-22, 2026-09-23"}
+   ```
+
+4. **`stamp` invariable**: los días de plan de entrenamiento referencian el catálogo por definición, `session_id` sigue siendo requerido ahí.

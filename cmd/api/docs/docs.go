@@ -1169,7 +1169,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Datos de la operación",
+                        "description": "Datos de la operación. En kind=training, session_id es opcional: cada fecha con instancia previa la conserva; si alguna fecha no tiene instancia que conservar se rechaza el lote completo",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1387,7 +1387,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Datos del día",
+                        "description": "Datos del día. En kind=training, session_id es opcional: si se omite y el día ya tiene instancia, se conserva sin reinstanciar",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1410,7 +1410,10 @@ const docTemplate = `{
                         "description": "Forbidden"
                     },
                     "422": {
-                        "description": "Unprocessable Entity"
+                        "description": "Día cerrado, o kind=training sin session_id y sin instancia previa que conservar",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -7043,6 +7046,9 @@ const docTemplate = `{
                 "distance_m": {
                     "type": "integer"
                 },
+                "exercise_id": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -7098,6 +7104,9 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "session_id": {
+                    "type": "integer"
                 }
             }
         },

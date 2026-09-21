@@ -59,6 +59,8 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusUnprocessableEntity, "presencial_time_to debe ser posterior a presencial_time_from"
 	case errors.Is(err, services.ErrCalendarDayClosed):
 		return http.StatusUnprocessableEntity, err.Error()
+	case errors.Is(err, services.ErrCalendarTrainingWithoutInstance):
+		return http.StatusUnprocessableEntity, err.Error()
 	case errors.Is(err, services.ErrCalendarStampConflict):
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
@@ -121,11 +123,11 @@ func (cc *calendarController) GetRange(c *gin.Context) {
 // @Produce      json
 // @Param        id    path   int                       true   "Group ID"
 // @Param        date  path   string                    true   "Fecha (YYYY-MM-DD)"
-// @Param        body  body   calendar.CalendarDayRequest  true   "Datos del día"
+// @Param        body  body   calendar.CalendarDayRequest  true   "Datos del día. En kind=training, session_id es opcional: si se omite y el día ya tiene instancia, se conserva sin reinstanciar"
 // @Success      200  {object}  calendar.CalendarDayResponse
 // @Failure      400
 // @Failure      403
-// @Failure      422
+// @Failure      422  {string}  string  "Día cerrado, o kind=training sin session_id y sin instancia previa que conservar"
 // @Router       /api/v1/groups/{id}/calendar/{date} [put]
 func (cc *calendarController) PutDay(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -221,7 +223,7 @@ func (cc *calendarController) Stamp(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id    path  int                   true  "Group ID"
-// @Param        body  body  calendar.BulkRequest  true  "Datos de la operación"
+// @Param        body  body  calendar.BulkRequest  true  "Datos de la operación. En kind=training, session_id es opcional: cada fecha con instancia previa la conserva; si alguna fecha no tiene instancia que conservar se rechaza el lote completo"
 // @Success      200  {array}  calendar.CalendarDayResponse
 // @Failure      400
 // @Failure      403
