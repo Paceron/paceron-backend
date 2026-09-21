@@ -310,6 +310,11 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_calendar.StampRequest:
     properties:
+      exclude_dates:
+        description: opcionales, "YYYY-MM-DD"
+        items:
+          type: string
+        type: array
       force:
         type: boolean
       plan_id:
@@ -2991,7 +2996,9 @@ paths:
         name: id
         required: true
         type: integer
-      - description: Datos del stamp
+      - description: 'Datos del stamp. exclude_dates (opcional): fechas YYYY-MM-DD
+          del rango que se saltan por completo — no cuentan para el 409 de conflictos
+          ni para el 422 de día cerrado, y no aparecen en la respuesta'
         in: body
         name: body
         required: true
@@ -3015,7 +3022,9 @@ paths:
         "409":
           description: Conflict
         "422":
-          description: Unprocessable Entity
+          description: Día cerrado, o exclude_dates con formato inválido
+          schema:
+            type: string
       summary: Copiar plan al calendario del grupo
       tags:
       - calendar

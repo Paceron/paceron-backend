@@ -36,6 +36,7 @@ var (
 	ErrCalendarInvalidTimeFormat       = errors.New("presencial_time_from/presencial_time_to deben tener formato HH:MM")
 	ErrCalendarInvalidTimeRange        = errors.New("presencial_time_to debe ser posterior a presencial_time_from")
 	ErrCalendarTrainingWithoutInstance = errors.New("los días indicados no tienen una sesión instanciada que conservar")
+	ErrCalendarInvalidDate             = errors.New("exclude_dates debe tener formato YYYY-MM-DD")
 )
 
 // CalendarServiceInterface reúne las operaciones de lectura y escritura del
@@ -657,6 +658,20 @@ func jsonUnmarshalLocation(s string) (*trainingplan.Location, error) {
 	return &loc, nil
 }
 
+// parseStampExcludeDates convierte exclude_dates en un set por fecha
+// ("YYYY-MM-DD" exacto). Cualquier elemento con otro formato aborta con
+// ErrCalendarInvalidDate antes de que Stamp toque nada.
+func parseStampExcludeDates(dates []string) (map[string]bool, error) {
+	set := make(map[string]bool, len(dates))
+	for _, d := range dates {
+		if _, err := time.Parse("2006-01-02", d); err != nil {
+			return nil, ErrCalendarInvalidDate
+		}
+		set[d] = true
+	}
+	return set, nil
+}
+
 func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
 		return nil, err
@@ -679,16 +694,32 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 	if err != nil {
 		return nil, fmt.Errorf("start_date debe tener formato YYYY-MM-DD")
 	}
+	excluded, err := parseStampExcludeDates(req.ExcludeDates)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(planDays) == 0 {
 		return nil, fmt.Errorf("el plan no tiene días")
 	}
-	targetDates := make([]time.Time, len(planDays))
+	// Subconjunto a estampar: días del plan cuyas fechas objetivo no están
+	// en exclude_dates. Todo lo que sigue (guards, escritura, respuesta)
+	// opera solo sobre este subconjunto; las fechas excluidas no se tocan.
+	idx := make([]int, 0, len(planDays))
+	targetDates := make([]time.Time, 0, len(planDays))
 	for i, pd := range planDays {
-		targetDates[i] = startDate.AddDate(0, 0, pd.SequenceNo-1)
+		date := startDate.AddDate(0, 0, pd.SequenceNo-1)
+		if excluded[date.Format("2006-01-02")] {
+			continue
+		}
+		idx = append(idx, i)
+		targetDates = append(targetDates, date)
 	}
-	for _, planDay := range planDays {
-		planReq, err := calendarRequestFromPlanDay(planDay)
+	if len(idx) == 0 {
+		return []calendar.CalendarDayResponse{}, nil
+	}
+	for _, planDay := range idx {
+		planReq, err := calendarRequestFromPlanDay(planDays[planDay])
 		if err != nil {
 			return nil, err
 		}
@@ -725,11 +756,12 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 		return nil, fmt.Errorf("no hay DB disponible para estampar plan")
 	}
-	rows := make([]dbs.GroupCalendarDay, len(planDays))
+	rows := make([]dbs.GroupCalendarDay, len(idx))
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(planDays))
-		for i, date := range targetDates {
+		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(idx))
+		for j, date := range targetDates {
+			i := idx[j]
 			existing, err := txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
 			if err != nil {
 				return err
@@ -752,7 +784,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 				PresencialTimeTo: planDays[i].DefaultTimeTo, PresencialLocation: planDays[i].DefaultLocation,
 				SourcePlanID: &req.PlanID,
 			}
-			rows[i] = row
+			rows[j] = row
 		}
 
 		closed := make([]string, 0)
@@ -774,8 +806,9 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 
 		for i := range rows {
-			if planDays[i].Kind == string(constants.GroupCalendarDayKindTraining) {
-				newInstance, err := s.instantiateSession(ctx, tx, *planDays[i].SessionID)
+			planDay := planDays[idx[i]]
+			if planDay.Kind == string(constants.GroupCalendarDayKindTraining) {
+				newInstance, err := s.instantiateSession(ctx, tx, *planDay.SessionID)
 				if err != nil {
 					return err
 				}

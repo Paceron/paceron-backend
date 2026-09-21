@@ -17,8 +17,13 @@ type CalendarDayRequest struct {
 }
 
 // StampRequest es el body de POST /groups/{id}/calendar/stamp.
+// ExcludeDates es opcional: fechas "YYYY-MM-DD" del rango objetivo que se
+// saltan por completo (no se crean/modifican/borran, no cuentan para el 409
+// de conflictos ni para el guard de día cerrado, y no aparecen en la
+// respuesta). Ausente o vacío = comportamiento idéntico a siempre.
 type StampRequest struct {
-	PlanID    int64  `json:"plan_id" binding:"required"`
-	StartDate string `json:"start_date" binding:"required"` // "YYYY-MM-DD"
-	Force     bool   `json:"force"`
+	PlanID       int64    `json:"plan_id" binding:"required"`
+	StartDate    string   `json:"start_date" binding:"required"` // "YYYY-MM-DD"
+	Force        bool     `json:"force"`
+	ExcludeDates []string `json:"exclude_dates"` // opcionales, "YYYY-MM-DD"
 }

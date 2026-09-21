@@ -188,7 +188,7 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 | GET | `/api/v1/groups/{id}/calendar?from=&to=` | — | `200` array | `400`, `403` |
 | PUT | `/api/v1/groups/{id}/calendar/{date}` | `CalendarDayRequest` | `200` (upsert) | `400`, `403`, `422` (incl. día cerrado) |
 | DELETE | `/api/v1/groups/{id}/calendar/{date}` | — | `204` | `400`, `403`, `422` (día cerrado) |
-| POST | `/api/v1/groups/{id}/calendar/stamp` | `StampRequest{plan_id*, start_date*, force?}` | `201` array | `400`, `403`, `404` (plan), `409` (conflicto), `422` (día cerrado) |
+| POST | `/api/v1/groups/{id}/calendar/stamp` | `StampRequest{plan_id*, start_date*, force?, exclude_dates?}` | `201` array | `400`, `403`, `404` (plan), `409` (conflicto), `422` (día cerrado o `exclude_dates` con formato inválido) |
 | POST | `/api/v1/groups/{id}/calendar/bulk` | `BulkRequest{dates*, kind*, session_id?, other_name?, is_presencial?, presencial_time_from?, presencial_time_to?, presencial_location?}` | `200` array | `400`, `403`, `422` (incl. día cerrado con lista de fechas) |
 | POST | `/api/v1/groups/{id}/calendar/bulk-clear` | `BulkClearRequest{dates*}` | `204` | `400`, `403`, `422` (día cerrado, lista de fechas) |
 | POST | `/api/v1/groups/{id}/calendar/shift` | `ShiftRequest{from_date*, days*}` | `200` array | `400`, `403`, `409` (colisión), `422` (día cerrado, lista de fechas) |
@@ -196,6 +196,8 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 | GET | `/api/v1/users/{id}/calendar-summary` | — | `200` array `{group_id,group_name}` | `400`, `403` |
 
 `Stamp`: copia cada `PlanDay` del plan a `start_date + (sequence_no - 1)` días, marcando `source_plan_id`. Sin `force=true`, si alguna fecha destino ya tiene contenido → `409 hay fechas con contenido existente` y no escribe nada.
+
+Con `exclude_dates` (opcional, array de fechas `YYYY-MM-DD`; change `stamp-exclude-dates`): cada fecha del set que caiga dentro del rango objetivo se salta **por completo** — su fila e instancia quedan intactas, no cuenta para el `409` de conflictos ni para el `422` de día cerrado, y no aparece en la respuesta. `force` sigue aplicando igual sobre las fechas NO excluidas. Una fecha excluida fuera del rango se ignora; formato inválido → `422 ErrCalendarInvalidDate` sin escribir nada; rango totalmente excluido → `201` con `[]`. Omitir el campo o enviar `[]` = comportamiento idéntico al previo.
 
 `Shift`: mueve todas las filas desde `from_date` en adelante, `days` posiciones (entero positivo). Antes de escribir valida que ninguna fecha destino choque con una fila **anterior a `from_date`** que quede fuera del rango desplazado (`409 el corrimiento haría chocar dos fechas`).
 

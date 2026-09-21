@@ -115,3 +115,18 @@ Cerrado el Gap 7. **Todo lo de esta sección es aditivo — clientes viejos no t
    ```
 
 4. **`stamp` invariable**: los días de plan de entrenamiento referencian el catálogo por definición, `session_id` sigue siendo requerido ahí.
+
+## 7. Cambio aditivo: `exclude_dates` en stamp (`stamp-exclude-dates`)
+
+Cerrado el Gap 8 ("evitar pisar selectivo" en el preview de estampado). **Aditivo — omitir el campo mantiene el comportamiento actual exacto.**
+
+`POST /groups/{id}/calendar/stamp` acepta `exclude_dates` opcional: array de fechas `"YYYY-MM-DD"` del rango objetivo que se saltan por completo.
+
+```json
+{ "plan_id": 5, "start_date": "2026-10-05", "force": true, "exclude_dates": ["2026-10-07", "2026-10-09"] }
+```
+
+- Cada fecha excluida **no se toca**: si el día ya tenía fila/instancia, quedan intactas (mismo `session_instance_id`); si estaba vacío, sigue vacío.
+- No cuenta para el `409` de conflictos ni para el `422` de día cerrado — se ignora antes de evaluar cualquier guarda. `force` sigue aplicando igual sobre las fechas **no** excluidas.
+- La respuesta (`201`, array de días estampados) no incluye las fechas excluidas.
+- Casos borde: fecha excluida fuera del rango del plan → se ignora silenciosamente; formato inválido en el array (`"10/07/2026"`) → `422 "exclude_dates debe tener formato YYYY-MM-DD"` sin escribir nada; rango totalmente excluido → `201` con `[]` (no es error).
