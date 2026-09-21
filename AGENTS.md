@@ -65,6 +65,8 @@ Pasos mínimos. `go test ./...` → todo verde.
 
 Sea cual sea el tamaño: **crear la rama dedicada antes de tocar código**, incluso si se saltea la spec.
 
+**Forma de implementación default para cambios con spec (decisión 2026-09-21):** si el `tasks.md` del change trae varias tareas, implementar con `subagent-driven-development` — fresh implementer por tarea + task review + review final de rama — que es lo que permite asignar modelos distintos según propósito (§9). Inline con el agente `build` solo para lo simple/receta de 1-3 archivos, que para el caso ni llega a necesitar spec.
+
 **Comandos de OpenCode ya configurados** (`.opencode/commands/`, ver también [`SETUP.md`](SETUP.md)):
 - `/opsx-explore` — pensar/investigar sin implementar (no escribe código, puede crear artefactos de OpenSpec).
 - `/opsx-propose "<descripción>"` — crea el change y genera `proposal.md`/`design.md`/`tasks.md` en un paso.
@@ -132,7 +134,7 @@ OpenCode tiene agentes **primary** (con los que hablás directo, ej. `build`/`pl
 
 **No existe selección de modelo dinámica por tarea todavía** (a la fecha de este documento, 2026-09-20) — hay issues abiertas en el repo de OpenCode pidiendo exactamente eso (parámetro `model` en el `task` tool, sintaxis `@agent:provider/model`), sin shippear. Lo que sí funciona hoy: armar una lista fija de subagentes con nombre, cada uno con su modelo, y `description`s claras — el agente primary decide **a cuál de esos** despachar según la tarea, de forma autónoma. Es autonomía acotada a la lista que vos armás de antemano, no elección libre modelo-por-modelo en cada llamada (eso sí lo tenía Claude Code en esta sesión vía el parámetro `model` del tool `Agent`, no es 1:1 portable a OpenCode hoy).
 
-**Para el rework de `asignacion-por-instanciacion` específicamente: usar `subagent-driven-development`, no todo inline con un solo modelo.** El `tasks.md` de ese change ya está partido en 7 tareas acotadas — exactamente la forma que esa skill espera. Mismo patrón que ya funcionó en esta sesión para construir todo el dominio de catálogo/calendario: modelo barato/rápido para tareas mecánicas (DTOs, DAOs simples, wiring, tests que siguen un patrón), modelo fuerte para las tareas con juicio real (la lógica de instanciación en `calendar_service.go`, la interacción con `workout_feedback` en el borrado de instancia superada) y para el review de cada tarea + un review final de toda la rama.
+**Regla general (decisión de equipo, 2026-09-21): para cualquier change de OpenSpec con `tasks.md` de varias tareas, implementar con `subagent-driven-development`, no todo inline con un solo modelo.** Como acá casi siempre se termina escribiendo spec, esto es el default, no la excepción: cada tarea acotada va a un fresh implementer (modelo barato/rápido para las mecánicas — DTOs, DAOs simples, wiring, tests que siguen un patrón ya establecido; modelo fuerte para las de juicio real), con task review y review final de rama en modelos capaces. Se probó dos veces con buen resultado (`asignacion-por-instanciacion`, 7 tareas; y el dominio completo de catálogo/calendario). Sigue vigente el criterio de §3: para algo simple de 1-3 archivos sin spec, inline alcanza y el overhead de review no se paga solo.
 
 **Cuándo NO usar subagentes:** cambios de 1-3 archivos sin ambigüedad (mismo criterio que la tabla de OpenSpec del §3) — ahí es más rápido y más barato en tokens ir directo con el agente `build`, el overhead de armar el paquete de review no se paga solo.
 

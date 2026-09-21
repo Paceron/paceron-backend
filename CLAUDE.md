@@ -83,6 +83,8 @@ El repo ya tiene `openspec/` configurado para spec-driven development (ver [`SET
 
 Sea cual sea el tamaño: **siempre crear la rama dedicada antes de tocar código**, incluso si se saltea la spec — no quedan commits sueltos en `develop`.
 
+**Forma de implementación default para cambios con spec (decisión 2026-09-21):** si el `tasks.md` trae varias tareas, implementar con subagent-driven development (fresh implementer por tarea + task review + review final de rama), asignando modelos distintos según el propósito de cada rol. Detalle del cómo en `AGENTS.md` §9. Inline solo para lo simple de 1-3 archivos sin spec.
+
 ## Testing
 
 `go test ./...` corre sobre archivos `*_test.go` co-ubicados con el código que testean (convención `testify`). La mayoría de las capas (`services`/`controllers`/`delegates`) siguen usando mocks. `daos` es la excepción: desde que hay Postgres real disponible en CI (ver debajo), sus tests corren contra una base real vía `testutils.SetupTestDB(t)` — se skipean solos si no hay `TEST_DB_HOST` seteada, así que `go test ./...` sigue funcionando sin Docker en cualquier máquina. Detalle completo, cómo correrlos localmente contra Postgres, y por qué se descartó sqlmock/SQLite: [`docs/TESTING.md`](docs/TESTING.md). Antes de mergear, la suite completa debe estar en verde (`ci.yml` la corre automáticamente en cada push/PR, con el service de Postgres levantado).
