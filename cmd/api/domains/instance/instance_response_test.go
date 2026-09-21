@@ -49,3 +49,32 @@ func TestNewSessionResponse_NoLinks_ReturnsEmptyExercises(t *testing.T) {
 	assert.NotNil(t, resp.Exercises)
 	assert.Empty(t, resp.Exercises)
 }
+
+func TestNewSessionResponse_MapsCatalogSourceIDs(t *testing.T) {
+	sourceSessionID, sourceExerciseID := int64(7), int64(42)
+	sess := dbs.SessionInstance{ID: 1, Name: "Fartlek 5K", SourceSessionID: &sourceSessionID}
+	ex := dbs.ExerciseInstance{ID: 10, Name: "Trote", Kind: "jogging", SourceExerciseID: &sourceExerciseID}
+	link := dbs.SessionExerciseInstance{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 10, Role: "warmup"}
+
+	resp, err := NewSessionResponse(sess, []dbs.SessionExerciseInstance{link}, []dbs.ExerciseInstance{ex})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp.SessionID)
+	assert.Equal(t, int64(7), *resp.SessionID)
+	require.Len(t, resp.Exercises, 1)
+	require.NotNil(t, resp.Exercises[0].ExerciseID)
+	assert.Equal(t, int64(42), *resp.Exercises[0].ExerciseID)
+}
+
+func TestNewSessionResponse_NullSourceIDs(t *testing.T) {
+	sess := dbs.SessionInstance{ID: 1, Name: "Legado"}
+	ex := dbs.ExerciseInstance{ID: 10, Name: "Trote", Kind: "jogging"}
+	link := dbs.SessionExerciseInstance{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 10, Role: "warmup"}
+
+	resp, err := NewSessionResponse(sess, []dbs.SessionExerciseInstance{link}, []dbs.ExerciseInstance{ex})
+
+	require.NoError(t, err)
+	assert.Nil(t, resp.SessionID)
+	require.Len(t, resp.Exercises, 1)
+	assert.Nil(t, resp.Exercises[0].ExerciseID)
+}

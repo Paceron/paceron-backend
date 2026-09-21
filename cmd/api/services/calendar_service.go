@@ -35,6 +35,7 @@ var (
 	ErrCalendarUserMismatch            = errors.New("no podés consultar los datos de otro usuario")
 	ErrCalendarInvalidTimeFormat       = errors.New("presencial_time_from/presencial_time_to deben tener formato HH:MM")
 	ErrCalendarInvalidTimeRange        = errors.New("presencial_time_to debe ser posterior a presencial_time_from")
+	ErrCalendarTrainingWithoutInstance = errors.New("los días indicados no tienen una sesión instanciada que conservar")
 )
 
 // CalendarServiceInterface reúne las operaciones de lectura y escritura del
@@ -68,11 +69,28 @@ func newCalendarClosedDaysError(dates []string) error {
 	return &calendarClosedDaysError{dates: dates}
 }
 
+type calendarTrainingWithoutInstanceError struct {
+	dates []string
+}
+
+func (e *calendarTrainingWithoutInstanceError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrCalendarTrainingWithoutInstance, strings.Join(e.dates, ", "))
+}
+
+func (e *calendarTrainingWithoutInstanceError) Unwrap() error { return ErrCalendarTrainingWithoutInstance }
+
+func newCalendarTrainingWithoutInstanceError(dates []string) error {
+	if len(dates) == 0 {
+		return ErrCalendarTrainingWithoutInstance
+	}
+	return &calendarTrainingWithoutInstanceError{dates: dates}
+}
+
 func isCalendarValidationError(err error) bool {
 	for _, target := range []error{
 		ErrCalendarInvalidKind, ErrCalendarFieldMismatch, ErrCalendarInvalidCancelTransition,
 		ErrCalendarInvalidTimeFormat, ErrCalendarInvalidTimeRange, ErrCalendarSessionNotFound,
-		ErrSessionExerciseNotFound,
+		ErrSessionExerciseNotFound, ErrCalendarTrainingWithoutInstance,
 	} {
 		if errors.Is(err, target) {
 			return true
@@ -179,7 +197,11 @@ func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 	return !now.Before(threshold)
 }
 
-func (s *calendarService) validateDayFields(req calendar.CalendarDayRequest, currentKind string) error {
+// validateDayFields valida el request contra el kind actual del día.
+// hasExistingInstance indica si el día ya tiene una SessionInstance propia:
+// con training y session_id nil, la instancia existente se conserva (no es
+// error); solo sin instancia previa se exige session_id.
+func (s *calendarService) validateDayFields(req calendar.CalendarDayRequest, currentKind string, hasExistingInstance bool) error {
 	if !constants.IsValidGroupCalendarDayKind(req.Kind) {
 		return ErrCalendarInvalidKind
 	}
@@ -189,7 +211,7 @@ func (s *calendarService) validateDayFields(req calendar.CalendarDayRequest, cur
 			return ErrCalendarFieldMismatch
 		}
 	case string(constants.GroupCalendarDayKindTraining):
-		if req.SessionID == nil {
+		if req.SessionID == nil && !hasExistingInstance {
 			return ErrCalendarFieldMismatch
 		}
 	case string(constants.GroupCalendarDayKindCancelled):
@@ -296,7 +318,10 @@ func (s *calendarService) instantiateSession(ctx *gin.Context, tx *gorm.DB, sess
 		return nil, fmt.Errorf("error al buscar ejercicios para instanciar: %w", err)
 	}
 
-	result := &dbs.SessionInstance{Name: catalogSession.Name, Description: catalogSession.Description}
+	result := &dbs.SessionInstance{
+		Name: catalogSession.Name, Description: catalogSession.Description,
+		SourceSessionID: &sessionID,
+	}
 	if err := sessionInstanceDao.Create(ctx, result); err != nil {
 		return nil, fmt.Errorf("error al crear sesión instancia: %w", err)
 	}
@@ -312,6 +337,7 @@ func (s *calendarService) instantiateSession(ctx *gin.Context, tx *gorm.DB, sess
 			Name: catalogExercise.Name, Description: catalogExercise.Description, Kind: catalogExercise.Kind,
 			Intensity: catalogExercise.Intensity, Minutes: catalogExercise.Minutes, DistanceM: catalogExercise.DistanceM,
 			SpeedKph: catalogExercise.SpeedKph, MuscleGroup: catalogExercise.MuscleGroup, VideoURL: catalogExercise.VideoURL,
+			SourceExerciseID: &catalogLink.ExerciseID,
 		}
 		if err := exerciseInstanceDao.Create(ctx, exerciseInstance); err != nil {
 			return nil, fmt.Errorf("error al crear ejercicio instancia: %w", err)
@@ -441,10 +467,12 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 		return nil, fmt.Errorf("error al buscar día de calendario")
 	}
 	currentKind := ""
+	hasExistingInstance := false
 	if existing != nil {
 		currentKind = existing.Kind
+		hasExistingInstance = existing.SessionInstanceID != nil
 	}
-	if err := s.validateDayFields(req, currentKind); err != nil {
+	if err := s.validateDayFields(req, currentKind, hasExistingInstance); err != nil {
 		return nil, err
 	}
 	row, err := s.buildRow(ctx, groupID, date, req)
@@ -455,7 +483,8 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 		return nil, newCalendarClosedDaysError([]string{date.Format("2006-01-02")})
 	}
 	if s.db == nil {
-		if existing != nil && req.Kind == string(constants.GroupCalendarDayKindCancelled) {
+		if existing != nil && (req.Kind == string(constants.GroupCalendarDayKindCancelled) ||
+			(req.Kind == string(constants.GroupCalendarDayKindTraining) && req.SessionID == nil)) {
 			row.SessionInstanceID = existing.SessionInstanceID
 		}
 		if err := s.calendarDao.Upsert(ctx, row); err != nil {
@@ -477,27 +506,34 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 		if req.Kind != string(constants.GroupCalendarDayKindCancelled) && closedDayForRequest(txExisting, row, time.Now()) {
 			return newCalendarClosedDaysError([]string{date.Format("2006-01-02")})
 		}
+		txHasExistingInstance := txExisting != nil && txExisting.SessionInstanceID != nil
 		if err := s.validateDayFields(req, func() string {
 			if txExisting == nil {
 				return ""
 			}
 			return txExisting.Kind
-		}()); err != nil {
+		}(), txHasExistingInstance); err != nil {
 			return err
 		}
+		preservada := false
 		if req.Kind == string(constants.GroupCalendarDayKindTraining) {
-			newInstance, err := s.instantiateSession(ctx, tx, *req.SessionID)
-			if err != nil {
-				return err
+			if req.SessionID == nil {
+				row.SessionInstanceID = txExisting.SessionInstanceID
+				preservada = true
+			} else {
+				newInstance, err := s.instantiateSession(ctx, tx, *req.SessionID)
+				if err != nil {
+					return err
+				}
+				row.SessionInstanceID = &newInstance.ID
 			}
-			row.SessionInstanceID = &newInstance.ID
 		} else if req.Kind == string(constants.GroupCalendarDayKindCancelled) && txExisting != nil {
 			row.SessionInstanceID = txExisting.SessionInstanceID
 		}
 		if err := txCalendarDao.Upsert(ctx, row); err != nil {
 			return err
 		}
-		if txExisting != nil && txExisting.SessionInstanceID != nil && req.Kind != string(constants.GroupCalendarDayKindCancelled) {
+		if txExisting != nil && txExisting.SessionInstanceID != nil && !preservada && req.Kind != string(constants.GroupCalendarDayKindCancelled) {
 			if err := s.deleteSupersededInstance(ctx, tx, *txExisting.SessionInstanceID); err != nil {
 				return err
 			}
@@ -654,7 +690,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		if err != nil {
 			return nil, err
 		}
-		if err := s.validateDayFields(planReq, ""); err != nil {
+		if err := s.validateDayFields(planReq, "", false); err != nil {
 			return nil, err
 		}
 	}
@@ -705,7 +741,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 			if existing != nil {
 				currentKind = existing.Kind
 			}
-			if err := s.validateDayFields(planReq, currentKind); err != nil {
+			if err := s.validateDayFields(planReq, currentKind, false); err != nil {
 				return err
 			}
 			row := dbs.GroupCalendarDay{
@@ -789,24 +825,36 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	if s.db == nil {
 		existing := make([]*dbs.GroupCalendarDay, len(dates))
 		rows := make([]*dbs.GroupCalendarDay, len(dates))
+		missing := make([]string, 0)
 		for i, date := range dates {
 			var err error
 			existing[i], err = s.calendarDao.FindByGroupAndDate(ctx, groupID, date)
 			if err != nil {
 				return nil, err
 			}
+			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil &&
+				(existing[i] == nil || existing[i].SessionInstanceID == nil) {
+				missing = append(missing, date.Format("2006-01-02"))
+				continue
+			}
 			if err := s.validateDayFields(dayReq, func() string {
 				if existing[i] == nil {
 					return ""
 				}
 				return existing[i].Kind
-			}()); err != nil {
+			}(), existing[i] != nil && existing[i].SessionInstanceID != nil); err != nil {
 				return nil, err
 			}
 			rows[i], err = s.buildRow(ctx, groupID, date, dayReq)
 			if err != nil {
 				return nil, err
 			}
+			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil {
+				rows[i].SessionInstanceID = existing[i].SessionInstanceID
+			}
+		}
+		if len(missing) > 0 {
+			return nil, newCalendarTrainingWithoutInstanceError(missing)
 		}
 		closed := make([]string, 0)
 		for i, date := range dates {
@@ -840,25 +888,37 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
 		existing := make([]*dbs.GroupCalendarDay, len(dates))
+		missing := make([]string, 0)
 		for i, date := range dates {
 			var err error
 			existing[i], err = txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
 			if err != nil {
 				return err
 			}
+			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil &&
+				(existing[i] == nil || existing[i].SessionInstanceID == nil) {
+				missing = append(missing, date.Format("2006-01-02"))
+				continue
+			}
 			if err := s.validateDayFields(dayReq, func() string {
 				if existing[i] == nil {
 					return ""
 				}
 				return existing[i].Kind
-			}()); err != nil {
+			}(), existing[i] != nil && existing[i].SessionInstanceID != nil); err != nil {
 				return err
 			}
 			builtRow, err := s.buildRow(ctx, groupID, date, dayReq)
 			if err != nil {
 				return err
 			}
+			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil {
+				builtRow.SessionInstanceID = existing[i].SessionInstanceID
+			}
 			rows[i] = *builtRow
+		}
+		if len(missing) > 0 {
+			return newCalendarTrainingWithoutInstanceError(missing)
 		}
 		closed := make([]string, 0)
 		for i := range rows {
@@ -870,19 +930,24 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			return newCalendarClosedDaysError(closed)
 		}
 		for i := range rows {
+			preservada := false
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) {
-				newInstance, err := s.instantiateSession(ctx, tx, *req.SessionID)
-				if err != nil {
-					return err
+				if dayReq.SessionID == nil {
+					preservada = true
+				} else {
+					newInstance, err := s.instantiateSession(ctx, tx, *dayReq.SessionID)
+					if err != nil {
+						return err
+					}
+					rows[i].SessionInstanceID = &newInstance.ID
 				}
-				rows[i].SessionInstanceID = &newInstance.ID
 			} else if dayReq.Kind == string(constants.GroupCalendarDayKindCancelled) {
 				rows[i].SessionInstanceID = existing[i].SessionInstanceID
 			}
 			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
 				return err
 			}
-			if existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
+			if !preservada && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
 				if err := s.deleteSupersededInstance(ctx, tx, *existing[i].SessionInstanceID); err != nil {
 					return err
 				}
