@@ -70,6 +70,12 @@ Check-then-act sin lock, en 3 call sites: `team_user_service.go:AddUser`, `invit
 
 Decisión: no parchear un solo call site (evaluado `SELECT ... FOR UPDATE` solo para `join-requests`, descartado por inconsistente). El efecto de la carrera es auto-corregible (el entrenador saca al corredor de más manualmente, sin corrupción de datos/dinero) — se acepta el riesgo hasta poder arreglar los 3 call sites juntos, misma estrategia de lock (`SELECT FOR UPDATE` sobre la fila de equipo dentro de una transacción es la más probable), no uno por uno.
 
+## Pendientes de limpieza
+
+### Archivo trackeado por error: `.superpowers/sdd/tasks/task-3-report.md`
+
+Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change `asignacion-por-instanciacion`, `df18d60`/`2babf15`, por un `git add` amplio del implementador que forzó/bypaseó el ignore del workspace SDD). El workspace `.superpowers/sdd/` es scratch auto-ignoreado (su propio `.gitignore` con `*`) — briefs/reports/ledger de `subagent-driven-development` son artefactos de recuperación intra-sesión, sin valor en el historial. Fix: `git rm .superpowers/sdd/tasks/task-3-report.md`, aprovechado cualquier rama futura (no amerita PR propio). Prevención: en dispatchs de implementadores exigir stageear rutas explícitas por commit, nunca `git add -A`/`git add .` en la raíz del repo ni force-add de rutas ignoradas (registrado también en `AGENTS.md` §9).
+
 ## Decisiones de "no tocar"
 
 - **`utils.StringToInt64`/`Int64ToString`/`Contains`/`IsPositiveInteger`/`ParseInt64`** (`cmd/api/utils/`): cero call sites en todo el repo, confirmado por grep + `git log --diff-filter=A` (vienen del scaffold inicial). Decisión explícita del usuario: **no borrar**, se guardan para trabajo futuro de métricas/pagos que probablemente los necesite. No re-flaguearlos como dead code en una futura limpieza de coverage.
