@@ -39,6 +39,36 @@ Todos los comandos siguientes se ejecutaron desde el repositorio y terminaron co
 - `go vet ./...`
 - `make coverage-with-db`
 
+## Fix Round
+
+Se corrigieron todos los findings obligatorios del review:
+
+- Los conflictos de Stamp conservan `calendarStampConflictError` hasta el
+  controller y responden `409` con las fechas conflictivas.
+- `ErrSessionExerciseNotFound` responde `422` también desde calendario.
+- Bulk y Stamp preservan `InvalidKind`, `FieldMismatch`, `InvalidTime*`,
+  `InvalidCancelTransition` y errores de instanciación tipados, sin convertirlos
+  en `500`. Stamp valida explícitamente cada `PlanDay` antes de escribir.
+- Shift vuelve a consultar y validar las filas afectadas dentro de la misma
+  transacción antes de moverlas.
+- Se agregaron regresiones para reasignación con/sin feedback, Stamp cerrado
+  con rollback, Stamp `force=true`, BulkClear cerrado contra Postgres real,
+  respuestas HTTP y variantes async/presencial del día actual.
+- Swagger se regeneró con `swag init -g cmd/api/main.go -d . -o cmd/api/docs
+  --parseDependency --parseInternal`. Los tres artefactos generados quedaron
+  coherentes: D9 usa `session_instance` y D7 no contiene `assigned-groups`.
+
+Resultados adicionales del fix round:
+
+- `go test ./cmd/api/controllers ./cmd/api/services -count=1`: verde.
+- Tests focalizados de Task 3 con Postgres real: verde.
+- `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./... -count=1`: verde.
+- `go build ./...`: verde.
+- `go vet ./...`: verde.
+- `make coverage-with-db`: verde, coverage total `80.2%`, sin bajar el umbral.
+- `swag init ...`: verde; emitió solo warnings conocidos de parseo del root
+  sin Go files y `runtime/mprof.go`, y generó correctamente los tres archivos.
+
 El coverage total reportado por el gate fue `80.2%`, por encima del umbral de `80%`.
 
 `make test-db-up` inicialmente informó que `paceron-test-db` ya existía; se inició ese contenedor existente con `docker start paceron-test-db` y se usó Postgres real en `localhost:5433`.
