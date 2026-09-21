@@ -1,0 +1,89 @@
+# Task 3 Report
+
+## Alcance
+
+Implementada exclusivamente la Task 3 de `asignacion-por-instanciacion` en `feature/asignacion-por-instanciacion`. No se cambiaron de rama, no se crearon ramas ni se hizo push. `openspec/changes/asignacion-por-instanciacion/tasks.md` ya estaba modificado al iniciar la sesión y no fue editado.
+
+## Archivos
+
+- `cmd/api/services/calendar_service.go`: instanciación transaccional, guards de días cerrados, borrado D10, respuestas D9 y eliminación de `AssignedGroups`.
+- `cmd/api/services/session_service.go`: traslado de `isCalendarDayClosed`.
+- `cmd/api/domains/calendar/calendar_day_response.go` y `next_session_response.go`: `session_instance` embebido.
+- `cmd/api/controllers/calendar_controller.go`: mapeo de cerrado a `422`.
+- `cmd/api/controllers/session_controller.go`: eliminación del handler y dependencia de `AssignedGroups`.
+- `cmd/api/app/app.go` y `cmd/api/app/url_mappings.go`: wiring y ruta retirada.
+- `cmd/api/daos/group_calendar_day_dao.go`: retiro de `FindDistinctGroupsBySession`.
+- `cmd/api/docs/docs.go`: retiro de la operación Swagger obsoleta.
+- Tests de services, controllers, app y DAO actualizados o agregados para el contrato nuevo.
+- `.superpowers/sdd/tasks/task-3-report.md`: este reporte.
+
+## Decisiones
+
+- Cada asignación `training` crea una `SessionInstance`, una `ExerciseInstance` por vínculo de catálogo y un `SessionExerciseInstance`. `Bulk` y `Stamp` no deduplican.
+- Las operaciones que escriben calendario usan DAOs nuevos construidos con el `tx` de la transacción.
+- La reasignación crea y repuntea la instancia nueva antes de revisar feedback y borrar la anterior. El borrado sigue hijo antes que padre.
+- Una instancia vieja se conserva si hay feedback activo asociado a la sesión o a cualquiera de sus ejercicios.
+- `cancelled` sobre un día cerrado queda permitido y conserva el `session_instance_id` anterior.
+- `Bulk`, `BulkClear`, `Stamp` y `Shift` validan todos los conflictos de cierre antes de escribir. Las fechas conflictivas se incluyen en el error.
+- `GetRange` y `NextSession` resuelven el detalle congelado mediante `FindByIDs` y propagan el error de `instance.NewSessionResponse`.
+- `Shift` actualiza fechas de mayor a menor para evitar colisiones transitorias de la restricción única al mover fechas hacia adelante.
+
+## Verificacion
+
+Todos los comandos siguientes se ejecutaron desde el repositorio y terminaron con código `0`, salvo el primer intento de levantar Docker indicado abajo:
+
+- `go test ./cmd/api/services -run 'TestCalendarService_Task3_' -count=1`
+- `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./cmd/api/services -run 'TestCalendarService_Task3_' -count=1`
+- `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./... -count=1`
+- `go build ./...`
+- `go vet ./...`
+- `make coverage-with-db`
+
+## Fix Round
+
+Se corrigieron todos los findings obligatorios del review:
+
+- Los conflictos de Stamp conservan `calendarStampConflictError` hasta el
+  controller y responden `409` con las fechas conflictivas.
+- `ErrSessionExerciseNotFound` responde `422` también desde calendario.
+- Bulk y Stamp preservan `InvalidKind`, `FieldMismatch`, `InvalidTime*`,
+  `InvalidCancelTransition` y errores de instanciación tipados, sin convertirlos
+  en `500`. Stamp valida explícitamente cada `PlanDay` antes de escribir.
+- Shift vuelve a consultar y validar las filas afectadas dentro de la misma
+  transacción antes de moverlas.
+- Se agregaron regresiones para reasignación con/sin feedback, Stamp cerrado
+  con rollback, Stamp `force=true`, BulkClear cerrado contra Postgres real,
+  respuestas HTTP y variantes async/presencial del día actual.
+- Swagger se regeneró con `swag init -g cmd/api/main.go -d . -o cmd/api/docs
+  --parseDependency --parseInternal`. Los tres artefactos generados quedaron
+  coherentes: D9 usa `session_instance` y D7 no contiene `assigned-groups`.
+
+Resultados adicionales del fix round:
+
+- `go test ./cmd/api/controllers ./cmd/api/services -count=1`: verde.
+- Tests focalizados de Task 3 con Postgres real: verde.
+- `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./... -count=1`: verde.
+- `go build ./...`: verde.
+- `go vet ./...`: verde.
+- `make coverage-with-db`: ejecutado; el perfil global queda en `73.7%`.
+- `go run github.com/vladopajic/go-test-coverage/v2@v2.19.0` con el mismo
+  perfil y exclusiones: `74.2%`, falla el umbral 80 como corresponde.
+- `swag init ...`: verde; emitió solo warnings conocidos de parseo del root
+  sin Go files y `runtime/mprof.go`, y generó correctamente los tres archivos.
+
+El paquete `cmd/api/services` alcanza `80.3%` en ejecución aislada. El perfil
+global producido por el patrón `make coverage-with-db`/CI reporta `73.7%` y el
+analizador con `.testcoverage.yml` reporta `74.2%`, por debajo del umbral de
+`80%`. No se bajó el umbral ni se modificó la configuración de coverage.
+
+`make test-db-up` inicialmente informó que `paceron-test-db` ya existía; se inició ese contenedor existente con `docker start paceron-test-db` y se usó Postgres real en `localhost:5433`.
+
+## Concerns
+
+- Task 4 todavía conserva el mecanismo viejo de clonado en los servicios de catálogo, porque eliminarlo excede explícitamente esta Task 3. El traslado de `isCalendarDayClosed` mantiene la función disponible para ese código hasta la Task 4.
+- El cambio de contrato D9 y el retiro de `assigned-groups` requieren coordinar la actualización del frontend antes de mergear.
+- Los caminos de integración usan DB real; los fallbacks con DB `nil` solo existen para conservar tests unitarios existentes y no son caminos de producción.
+- El perfil global de coverage queda por debajo del umbral usando el patrón
+  actual de CI (`go list ... | xargs go test ...`), aunque `cmd/api/services`
+  aislado queda en `80.3%`. Resolver la agregación del perfil requiere un
+  cambio separado de workflow/tooling; no se ocultó bajando el umbral.

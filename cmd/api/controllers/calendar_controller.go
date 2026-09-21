@@ -47,14 +47,20 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusUnprocessableEntity, "kind inválido"
 	case errors.Is(err, services.ErrCalendarFieldMismatch):
 		return http.StatusUnprocessableEntity, "combinación de campos inválida"
+	case errors.Is(err, services.ErrCalendarSessionNotFound):
+		return http.StatusUnprocessableEntity, "sesión referenciada no encontrada"
+	case errors.Is(err, services.ErrSessionExerciseNotFound):
+		return http.StatusUnprocessableEntity, "ejercicio referenciado no encontrado"
 	case errors.Is(err, services.ErrCalendarInvalidCancelTransition):
 		return http.StatusUnprocessableEntity, "solo se puede cancelar un día en training"
 	case errors.Is(err, services.ErrCalendarInvalidTimeFormat):
 		return http.StatusUnprocessableEntity, "presencial_time_from/presencial_time_to deben tener formato HH:MM"
 	case errors.Is(err, services.ErrCalendarInvalidTimeRange):
 		return http.StatusUnprocessableEntity, "presencial_time_to debe ser posterior a presencial_time_from"
+	case errors.Is(err, services.ErrCalendarDayClosed):
+		return http.StatusUnprocessableEntity, err.Error()
 	case errors.Is(err, services.ErrCalendarStampConflict):
-		return http.StatusConflict, "hay fechas con contenido existente"
+		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
 		return http.StatusConflict, "el corrimiento haría chocar dos fechas"
 	default:
@@ -154,6 +160,7 @@ func (cc *calendarController) PutDay(c *gin.Context) {
 // @Success      204
 // @Failure      400
 // @Failure      403
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/{date} [delete]
 func (cc *calendarController) DeleteDay(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -184,7 +191,9 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 // @Success      201  {array}  calendar.CalendarDayResponse
 // @Failure      400
 // @Failure      403
+// @Failure      404
 // @Failure      409
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -248,6 +257,7 @@ func (cc *calendarController) Bulk(c *gin.Context) {
 // @Success      204
 // @Failure      400
 // @Failure      403
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/bulk-clear [post]
 func (cc *calendarController) BulkClear(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -279,6 +289,7 @@ func (cc *calendarController) BulkClear(c *gin.Context) {
 // @Failure      400
 // @Failure      403
 // @Failure      409
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/shift [post]
 func (cc *calendarController) Shift(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)

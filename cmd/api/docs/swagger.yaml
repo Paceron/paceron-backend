@@ -266,8 +266,8 @@ definitions:
         type: string
       presencial_time_to:
         type: string
-      session_id:
-        type: integer
+      session_instance:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
       source_plan_id:
         type: integer
       updated_at:
@@ -294,8 +294,8 @@ definitions:
         type: string
       presencial_time_to:
         type: string
-      session_id:
-        type: integer
+      session_instance:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
     type: object
   simple-arq-golang_cmd_api_domains_calendar.ShiftRequest:
     properties:
@@ -492,6 +492,50 @@ definitions:
     properties:
       message:
         description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_instance.InstanceExerciseResponse:
+    properties:
+      description:
+        type: string
+      distance_m:
+        type: integer
+      id:
+        type: integer
+      intensity:
+        type: string
+      kind:
+        type: string
+      minutes:
+        type: integer
+      muscle_group:
+        type: string
+      name:
+        type: string
+      repeat_count:
+        type: integer
+      rest_minutes:
+        type: integer
+      role:
+        type: string
+      speed_kph:
+        type: number
+      video_url:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.InstanceExerciseResponse'
+        type: array
+      id:
+        type: integer
+      name:
         type: string
     type: object
   simple-arq-golang_cmd_api_domains_invitation.InvitationResponse:
@@ -1018,19 +1062,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_session.SessionRequest:
     properties:
-      clone_description:
-        type: string
-      clone_name:
-        type: string
       description:
         type: string
-      exclude_group_ids:
-        description: |-
-          Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,
-          solo se usan en PUT, ignorados en POST).
-        items:
-          type: integer
-        type: array
       exercises:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest'
@@ -2009,15 +2042,15 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: dev@example.com
+    email: dev@paceron.com
     name: API Support
-  description: Base scaffolding for Go APIs with Gin framework
+  description: API para el registro y gestión de usuarios de Paceron
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Simple Arq Golang API
-  version: 1.0.0
+  title: Paceron Backend API
+  version: "1.0"
 paths:
   /api/v1/attendance/qr:
     get:
@@ -2797,6 +2830,8 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "422":
+          description: Unprocessable Entity
       summary: Eliminar un día del calendario
       tags:
       - calendar
@@ -2895,6 +2930,8 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "422":
+          description: Unprocessable Entity
       summary: Limpiar múltiples días del calendario
       tags:
       - calendar
@@ -2929,6 +2966,8 @@ paths:
           description: Forbidden
         "409":
           description: Conflict
+        "422":
+          description: Unprocessable Entity
       summary: Desplazar días del calendario
       tags:
       - calendar
@@ -2961,8 +3000,12 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "404":
+          description: Not Found
         "409":
           description: Conflict
+        "422":
+          description: Unprocessable Entity
       summary: Copiar plan al calendario del grupo
       tags:
       - calendar
@@ -4161,30 +4204,6 @@ paths:
         "422":
           description: Unprocessable Entity
       summary: Actualizar sesión
-      tags:
-      - sessions
-  /api/v1/sessions/{id}/assigned-groups:
-    get:
-      parameters:
-      - description: Session ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem'
-            type: array
-        "400":
-          description: Bad Request
-        "500":
-          description: Internal Server Error
-      summary: Grupos con calendario asignados a una sesión
       tags:
       - sessions
   /api/v1/sessions/{id}/clone:

@@ -229,12 +229,12 @@ func NewApplication() *Application {
 	planDayDao := daos.NewPlanDayDao(db)
 	groupCalendarDayDao := daos.NewGroupCalendarDayDao(db)
 
-	exerciseService := services.NewExerciseService(exerciseDao, sessionDao, sessionExerciseDao, groupCalendarDayDao, db)
+	exerciseService := services.NewExerciseService(exerciseDao)
 	exerciseController := controllers.NewExerciseController(exerciseService)
 
-	sessionService := services.NewSessionService(sessionDao, sessionExerciseDao, exerciseDao, groupCalendarDayDao, db)
+	sessionService := services.NewSessionService(sessionDao, sessionExerciseDao, exerciseDao)
 	calendarService := services.NewCalendarService(groupCalendarDayDao, groupDao, teamDao, groupUserDao, teamUserDao, trainingPlanDao, planDayDao, sessionDao, db)
-	sessionController := controllers.NewSessionController(sessionService, calendarService)
+	sessionController := controllers.NewSessionController(sessionService)
 	calendarController := controllers.NewCalendarController(calendarService)
 
 	trainingPlanService := services.NewTrainingPlanService(trainingPlanDao, planDayDao, sessionDao, groupCalendarDayDao)

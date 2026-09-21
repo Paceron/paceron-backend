@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	"simple-arq-golang/cmd/api/domains/calendar"
 	"simple-arq-golang/cmd/api/domains/session"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
@@ -51,7 +50,7 @@ func setupSessionRouter(svc services.SessionServiceInterface, authUserID int64) 
 		c.Set(utils.AuthUserIDKey, authUserID)
 		c.Next()
 	})
-	ctrl := NewSessionController(svc, &mockCalendarService{})
+	ctrl := NewSessionController(svc)
 	r.POST("/sessions", ctrl.Create)
 	r.GET("/sessions/:id", ctrl.Get)
 	r.GET("/sessions", ctrl.List)
@@ -182,21 +181,4 @@ func TestSessionController_Clone_Success(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
-}
-
-func TestSessionController_AssignedGroups_Success(t *testing.T) {
-	sessionSvc := &mockSessionService{}
-	calendarSvc := &mockCalendarService{assignedGroupsFn: func(ctx *gin.Context, sessionID int64) ([]calendar.CalendarSummaryItem, error) {
-		return []calendar.CalendarSummaryItem{{GroupID: 1, GroupName: "Grupo 1"}}, nil
-	}}
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	ctrl := NewSessionController(sessionSvc, calendarSvc)
-	r.GET("/sessions/:id/assigned-groups", ctrl.AssignedGroups)
-	req := httptest.NewRequest(http.MethodGet, "/sessions/1/assigned-groups", nil)
-	rec := httptest.NewRecorder()
-
-	r.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
 }

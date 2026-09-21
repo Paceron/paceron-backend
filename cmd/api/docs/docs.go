@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@example.com"
+            "email": "dev@paceron.com"
         },
         "license": {
             "name": "MIT",
@@ -1239,6 +1239,9 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1291,6 +1294,9 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1341,8 +1347,14 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden"
                     },
+                    "404": {
+                        "description": "Not Found"
+                    },
                     "409": {
                         "description": "Conflict"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1432,6 +1444,9 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -3232,43 +3247,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found"
-                    }
-                }
-            }
-        },
-        "/api/v1/sessions/{id}/assigned-groups": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "sessions"
-                ],
-                "summary": "Grupos con calendario asignados a una sesión",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Session ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request"
-                    },
-                    "500": {
-                        "description": "Internal Server Error"
                     }
                 }
             }
@@ -6725,8 +6703,8 @@ const docTemplate = `{
                 "presencial_time_to": {
                     "type": "string"
                 },
-                "session_id": {
-                    "type": "integer"
+                "session_instance": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
                 },
                 "source_plan_id": {
                     "type": "integer"
@@ -6768,8 +6746,8 @@ const docTemplate = `{
                 "presencial_time_to": {
                     "type": "string"
                 },
-                "session_id": {
-                    "type": "integer"
+                "session_instance": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
                 }
             }
         },
@@ -7052,6 +7030,73 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_instance.InstanceExerciseResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "distance_m": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "intensity": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "minutes": {
+                    "type": "integer"
+                },
+                "muscle_group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "repeat_count": {
+                    "type": "integer"
+                },
+                "rest_minutes": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "speed_kph": {
+                    "type": "number"
+                },
+                "video_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.InstanceExerciseResponse"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
                     "type": "string"
                 }
             }
@@ -7836,21 +7881,8 @@ const docTemplate = `{
                 "owner_id"
             ],
             "properties": {
-                "clone_description": {
-                    "type": "string"
-                },
-                "clone_name": {
-                    "type": "string"
-                },
                 "description": {
                     "type": "string"
-                },
-                "exclude_group_ids": {
-                    "description": "Campos del flujo de clonado por divergencia (calendario-asignacion-grupos,\nsolo se usan en PUT, ignorados en POST).",
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
                 },
                 "exercises": {
                     "type": "array",
@@ -9284,12 +9316,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0.0",
+	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Simple Arq Golang API",
-	Description:      "Base scaffolding for Go APIs with Gin framework",
+	Title:            "Paceron Backend API",
+	Description:      "API para el registro y gestión de usuarios de Paceron",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
