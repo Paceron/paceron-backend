@@ -426,3 +426,35 @@ func TestCalendarService_Task3_CurrentDayClosureVariants(t *testing.T) {
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &futureTime}, now))
 	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now))
 }
+
+func TestCalendarService_Task3_ValidationAndConflictErrorsRemainTyped(t *testing.T) {
+	validationErrors := []error{
+		ErrCalendarInvalidKind, ErrCalendarFieldMismatch, ErrCalendarInvalidCancelTransition,
+		ErrCalendarInvalidTimeFormat, ErrCalendarInvalidTimeRange, ErrCalendarSessionNotFound,
+		ErrSessionExerciseNotFound,
+	}
+	for _, validationErr := range validationErrors {
+		assert.True(t, isCalendarValidationError(validationErr), validationErr.Error())
+	}
+	assert.False(t, isCalendarValidationError(errors.New("database failure")))
+
+	conflict := &calendarStampConflictError{dates: []string{"2026-10-01", "2026-10-03"}}
+	assert.Contains(t, conflict.Error(), "2026-10-01")
+	assert.ErrorIs(t, conflict, ErrCalendarStampConflict)
+}
+
+func TestCalendarService_Task3_PlanDayRequestMapsPresencialDefaults(t *testing.T) {
+	from := time.Date(0, 1, 1, 18, 30, 0, 0, time.UTC)
+	to := time.Date(0, 1, 1, 19, 30, 0, 0, time.UTC)
+	location := `{"lat":-34.6,"lng":-58.4,"label":"pista"}`
+
+	req, err := calendarRequestFromPlanDay(dbs.PlanDay{Kind: "rest", DefaultPresencial: true, DefaultTimeFrom: &from, DefaultTimeTo: &to, DefaultLocation: &location})
+
+	require.NoError(t, err)
+	require.NotNil(t, req.IsPresencial)
+	assert.True(t, *req.IsPresencial)
+	assert.Equal(t, "18:30", *req.PresencialTimeFrom)
+	assert.Equal(t, "19:30", *req.PresencialTimeTo)
+	require.NotNil(t, req.PresencialLocation)
+	assert.Equal(t, -34.6, req.PresencialLocation.Lat)
+}

@@ -535,7 +535,7 @@ func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
 		PresencialLocation: &trainingplan.Location{Lat: -34.6, Lng: -58.4},
 	}
 
-	resp, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
+	resp, err := svc.UpsertDay(nil, 1, 7, time.Now().AddDate(0, 0, 1), req)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)

@@ -65,11 +65,16 @@ Resultados adicionales del fix round:
 - `TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=postgres TEST_DB_NAME=paceron_test go test ./... -count=1`: verde.
 - `go build ./...`: verde.
 - `go vet ./...`: verde.
-- `make coverage-with-db`: verde, coverage total `80.2%`, sin bajar el umbral.
+- `make coverage-with-db`: ejecutado; el perfil global queda en `73.7%`.
+- `go run github.com/vladopajic/go-test-coverage/v2@v2.19.0` con el mismo
+  perfil y exclusiones: `74.2%`, falla el umbral 80 como corresponde.
 - `swag init ...`: verde; emitió solo warnings conocidos de parseo del root
   sin Go files y `runtime/mprof.go`, y generó correctamente los tres archivos.
 
-El coverage total reportado por el gate fue `80.2%`, por encima del umbral de `80%`.
+El paquete `cmd/api/services` alcanza `80.3%` en ejecución aislada. El perfil
+global producido por el patrón `make coverage-with-db`/CI reporta `73.7%` y el
+analizador con `.testcoverage.yml` reporta `74.2%`, por debajo del umbral de
+`80%`. No se bajó el umbral ni se modificó la configuración de coverage.
 
 `make test-db-up` inicialmente informó que `paceron-test-db` ya existía; se inició ese contenedor existente con `docker start paceron-test-db` y se usó Postgres real en `localhost:5433`.
 
@@ -78,3 +83,7 @@ El coverage total reportado por el gate fue `80.2%`, por encima del umbral de `8
 - Task 4 todavía conserva el mecanismo viejo de clonado en los servicios de catálogo, porque eliminarlo excede explícitamente esta Task 3. El traslado de `isCalendarDayClosed` mantiene la función disponible para ese código hasta la Task 4.
 - El cambio de contrato D9 y el retiro de `assigned-groups` requieren coordinar la actualización del frontend antes de mergear.
 - Los caminos de integración usan DB real; los fallbacks con DB `nil` solo existen para conservar tests unitarios existentes y no son caminos de producción.
+- El perfil global de coverage queda por debajo del umbral usando el patrón
+  actual de CI (`go list ... | xargs go test ...`), aunque `cmd/api/services`
+  aislado queda en `80.3%`. Resolver la agregación del perfil requiere un
+  cambio separado de workflow/tooling; no se ocultó bajando el umbral.
