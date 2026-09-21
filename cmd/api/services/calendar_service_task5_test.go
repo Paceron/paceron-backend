@@ -783,3 +783,37 @@ func TestCalendarService_Task5_ShiftDestinationOccupiedReturnsCollisionAndRollsB
 	require.NotNil(t, keptDest)
 	assert.Equal(t, "ocupado", *keptDest.OtherName, "la fila destino no debe ser tocada")
 }
+
+// Escenario explícito de la spec (group-calendar §"independencia del catálogo"):
+// editar la Session/Exercise de catálogo después de asignar no muta la instancia.
+func TestCalendarService_Task5_GetRangeFrozenAfterCatalogEdits(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "frozen5")
+	catalogExercise := &dbs.Exercise{OwnerID: owner.ID, Name: "trote original", Kind: "running"}
+	require.NoError(t, db.Create(catalogExercise).Error)
+	catalogSession := &dbs.Session{OwnerID: owner.ID, Name: "sesión original"}
+	require.NoError(t, db.Create(catalogSession).Error)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: catalogSession.ID, ExerciseID: catalogExercise.ID, Role: "main", RepeatCount: 3}).Error)
+	date := time.Now().AddDate(0, 0, 3)
+	sessionID := catalogSession.ID
+	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
+	_, err := svc.UpsertDay(nil, group.ID, owner.ID, date, calendar.CalendarDayRequest{Kind: "training", SessionID: &sessionID})
+	require.NoError(t, err)
+
+	// Edits de catálogo vía DAO directo, después de la asignación
+	frozenSessionName := catalogSession.Name
+	frozenExerciseName := catalogExercise.Name
+	editedSession := &dbs.Session{ID: catalogSession.ID, OwnerID: owner.ID, Name: "sesión editada"}
+	require.NoError(t, daos.NewSessionDao(db).Update(nil, editedSession))
+	editedExercise := &dbs.Exercise{ID: catalogExercise.ID, OwnerID: owner.ID, Name: "trote editado", Kind: "running"}
+	require.NoError(t, daos.NewExerciseDao(db).Update(nil, editedExercise))
+
+	resp, err := svc.GetRange(nil, group.ID, owner.ID, date, date)
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+	require.NotNil(t, resp[0].SessionInstance)
+	assert.Equal(t, frozenSessionName, resp[0].SessionInstance.Name, "la instancia conserva el nombre previo al edit del catálogo")
+	require.Len(t, resp[0].SessionInstance.Exercises, 1)
+	assert.Equal(t, frozenExerciseName, resp[0].SessionInstance.Exercises[0].Name, "el ejercicio instanciado conserva el nombre previo al edit")
+	assert.Equal(t, 3, resp[0].SessionInstance.Exercises[0].RepeatCount, "los params instanciados tampoco siguen al catálogo")
+}
