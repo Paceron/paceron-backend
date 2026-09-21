@@ -1239,6 +1239,9 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1291,6 +1294,9 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1341,8 +1347,14 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden"
                     },
+                    "404": {
+                        "description": "Not Found"
+                    },
                     "409": {
                         "description": "Conflict"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }
@@ -1432,6 +1444,9 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity"
                     }
                 }
             }

@@ -160,6 +160,7 @@ func (cc *calendarController) PutDay(c *gin.Context) {
 // @Success      204
 // @Failure      400
 // @Failure      403
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/{date} [delete]
 func (cc *calendarController) DeleteDay(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -190,7 +191,9 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 // @Success      201  {array}  calendar.CalendarDayResponse
 // @Failure      400
 // @Failure      403
+// @Failure      404
 // @Failure      409
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -254,6 +257,7 @@ func (cc *calendarController) Bulk(c *gin.Context) {
 // @Success      204
 // @Failure      400
 // @Failure      403
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/bulk-clear [post]
 func (cc *calendarController) BulkClear(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -285,6 +289,7 @@ func (cc *calendarController) BulkClear(c *gin.Context) {
 // @Failure      400
 // @Failure      403
 // @Failure      409
+// @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/shift [post]
 func (cc *calendarController) Shift(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)

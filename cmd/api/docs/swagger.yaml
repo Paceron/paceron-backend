@@ -2830,6 +2830,8 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "422":
+          description: Unprocessable Entity
       summary: Eliminar un día del calendario
       tags:
       - calendar
@@ -2928,6 +2930,8 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "422":
+          description: Unprocessable Entity
       summary: Limpiar múltiples días del calendario
       tags:
       - calendar
@@ -2962,6 +2966,8 @@ paths:
           description: Forbidden
         "409":
           description: Conflict
+        "422":
+          description: Unprocessable Entity
       summary: Desplazar días del calendario
       tags:
       - calendar
@@ -2994,8 +3000,12 @@ paths:
           description: Bad Request
         "403":
           description: Forbidden
+        "404":
+          description: Not Found
         "409":
           description: Conflict
+        "422":
+          description: Unprocessable Entity
       summary: Copiar plan al calendario del grupo
       tags:
       - calendar
