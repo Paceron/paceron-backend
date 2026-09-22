@@ -512,6 +512,36 @@ func TestCalendarService_NextSession_InactiveMembershipExcluded(t *testing.T) {
 	assert.Nil(t, resp.NextCancelled)
 }
 
+// La membresía SOFT-DELETED (deleted_at seteado) no participa del banner —
+// complementa el caso date_end vencido: FindByUserID filtra ambas vías de
+// inactividad, este test cubre la de deleted_at end-to-end contra Postgres real.
+func TestCalendarService_NextSession_SoftDeletedMembershipExcluded(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "calendar-nextsession-softdeleted@test.com", DNI: "50000106", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	team := &dbs.Team{Name: "Equipo next-session soft-deleted", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo next-session soft-deleted", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+	groupUser := &dbs.GroupUser{GroupID: group.ID, UserID: owner.ID, DateStart: time.Now().AddDate(0, 0, -10)}
+	require.NoError(t, db.Create(groupUser).Error)
+	require.NoError(t, db.Delete(groupUser).Error)
+
+	future := time.Now().AddDate(0, 0, 5)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training"}))
+
+	resp, err := svc.NextSession(nil, owner.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Nil(t, resp.NextTraining, "la membresía soft-deleted no debe aportar banner")
+	assert.Nil(t, resp.NextCancelled)
+}
+
 // "Hoy cuenta" end-to-end contra Postgres real (mismo criterio que
 // isCalendarDayClosed): hoy presencial ya arrancado NO aparece; hoy presencial
 // por arrancar y hoy asincrónico SÍ.
