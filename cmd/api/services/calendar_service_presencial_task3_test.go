@@ -155,6 +155,23 @@ func TestPresencialWiring_Stamp_ColisionSoloEnFechaExcluidaGuarda(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, kept)
 	assert.Equal(t, groupB.ID, kept.GroupID)
+	// La fecha no excluida sí quedó persistida con los datos del plan.
+	written, err := daos.NewGroupCalendarDayDao(db).FindByGroupAndDate(nil, groupA.ID, d2)
+	require.NoError(t, err)
+	require.NotNil(t, written, "la fecha no excluida se estampa")
+	assert.Equal(t, "training", written.Kind)
+	assert.True(t, written.IsPresencial)
+	require.NotNil(t, written.PresencialTimeFrom)
+	require.NotNil(t, written.PresencialTimeTo)
+	assert.Equal(t, 9, written.PresencialTimeFrom.UTC().Hour())
+	assert.Equal(t, 11, written.PresencialTimeTo.UTC().Hour())
+	require.NotNil(t, written.SourcePlanID)
+	assert.Equal(t, plan.ID, *written.SourcePlanID)
+	require.NotNil(t, written.SessionInstanceID, "training del plan instancia su sesión")
+	var sessInst dbs.SessionInstance
+	require.NoError(t, db.First(&sessInst, *written.SessionInstanceID).Error)
+	require.NotNil(t, sessInst.SourceSessionID)
+	assert.Equal(t, session.ID, *sessInst.SourceSessionID)
 }
 
 // Pendiente diferido de Task 1 — excludeGroupID: un día colisionante

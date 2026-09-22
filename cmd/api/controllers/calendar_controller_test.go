@@ -658,6 +658,35 @@ func TestCalendarController_Stamp_WrapperShape(t *testing.T) {
 	assert.Contains(t, parsed, "same_team_warnings")
 }
 
+// 3.5 — stamp con exclude_dates que deja el rango válido → 201 con el wrapper
+//
+//	{days, same_team_warnings}: el endpoint expone el caso "colisión solo en
+//	fecha excluida" como Created, no solo como valor de retorno sintético.
+func TestCalendarController_Stamp_ExcludeDatesDejaRangoValidoRetorna201(t *testing.T) {
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
+		require.Len(t, req.ExcludeDates, 1)
+		assert.Equal(t, "2026-10-01", req.ExcludeDates[0])
+		return calendar.CalendarMutationResponse{
+			Days: []calendar.CalendarDayResponse{{ID: 3, GroupID: groupID, Date: "2026-10-02", Kind: "training", IsPresencial: true}},
+		}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	body, _ := json.Marshal(calendar.StampRequest{PlanID: 5, StartDate: "2026-10-01", ExcludeDates: []string{"2026-10-01"}})
+	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	var parsed calendar.CalendarMutationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
+	require.Len(t, parsed.Days, 1)
+	assert.Equal(t, "2026-10-02", parsed.Days[0].Date)
+	assert.True(t, parsed.Days[0].IsPresencial)
+	assert.Empty(t, parsed.SameTeamWarnings)
+}
+
 // D4/D8: sin superposición same-team el campo no aparece (omitempty).
 func TestCalendarController_Shift_WrapperOmiteWarningsVacios(t *testing.T) {
 	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
