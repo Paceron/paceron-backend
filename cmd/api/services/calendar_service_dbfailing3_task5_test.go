@@ -403,10 +403,13 @@ func TestDBError_Bulk_RespuestaDetalleFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "error finding session instance")
 }
 
-// Bulk presencial con falla en la query de colisiones (#2).
+// Bulk presencial training: la query de colisiones falla (#2) y el bloque
+// "derr" corta la tx antes de escribir.
 func TestDBError_Bulk_DetectSelectFails(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "dbbulkp")
+	catalogSession, _ := referenciaCatalogSession(t, db, owner.ID, "dbbulkp")
+	sessionID := catalogSession.ID
 	d1 := time.Now().AddDate(0, 0, 20)
 	failing := testutils.FailingDB(t, db, nthFail("select", 2))
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, failing)
@@ -414,8 +417,8 @@ func TestDBError_Bulk_DetectSelectFails(t *testing.T) {
 	to := "11:00"
 
 	_, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{
-		Dates: []string{d1.Format("2006-01-02")}, Kind: "rest", IsPresencial: boolPtr(true),
-		PresencialTimeFrom: &from, PresencialTimeTo: &to,
+		Dates: []string{d1.Format("2006-01-02")}, Kind: "training", SessionID: &sessionID,
+		IsPresencial: boolPtr(true), PresencialTimeFrom: &from, PresencialTimeTo: &to,
 		PresencialLocation: &trainingplan.Location{Lat: -31.4, Lng: -64.2},
 	})
 
