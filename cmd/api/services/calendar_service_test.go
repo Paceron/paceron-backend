@@ -20,6 +20,7 @@ type mockGroupCalendarDao struct {
 	upsertFn                   func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
 	findByGroupAndDateFn       func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
 	findByGroupAndRangeFn      func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	findPresencialForGroupsFn  func(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	deleteFn                   func(ctx *gin.Context, groupID int64, date time.Time) error
 	deleteByDatesFn            func(ctx *gin.Context, groupID int64, dates []time.Time) error
 	findNextSessionForGroupsFn func(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
@@ -46,6 +47,13 @@ func (m *mockGroupCalendarDao) FindByGroupAndRange(ctx *gin.Context, groupID int
 	}
 	return nil, nil
 }
+func (m *mockGroupCalendarDao) FindPresencialForGroupsInRange(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error) {
+	if m.findPresencialForGroupsFn != nil {
+		return m.findPresencialForGroupsFn(ctx, groupIDs, dates)
+	}
+	return nil, nil
+}
+
 func (m *mockGroupCalendarDao) Delete(ctx *gin.Context, groupID int64, date time.Time) error {
 	if m.deleteFn != nil {
 		return m.deleteFn(ctx, groupID, date)

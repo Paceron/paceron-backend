@@ -37,6 +37,7 @@ var (
 	ErrCalendarInvalidTimeRange        = errors.New("presencial_time_to debe ser posterior a presencial_time_from")
 	ErrCalendarTrainingWithoutInstance = errors.New("los días indicados no tienen una sesión instanciada que conservar")
 	ErrCalendarInvalidDate             = errors.New("exclude_dates debe tener formato YYYY-MM-DD")
+	ErrCalendarPresencialCollision     = errors.New("colisión presencial con otro equipo")
 )
 
 // CalendarServiceInterface reúne las operaciones de lectura y escritura del
@@ -111,6 +112,160 @@ func (e *calendarStampConflictError) Error() string {
 }
 
 func (e *calendarStampConflictError) Unwrap() error { return ErrCalendarStampConflict }
+
+type calendarPresencialCollisionError struct {
+	conflicts []calendar.PresencialConflict
+}
+
+func (e *calendarPresencialCollisionError) Error() string {
+	parts := make([]string, 0, len(e.conflicts))
+	for _, c := range e.conflicts {
+		parts = append(parts, fmt.Sprintf("%s grupo %s (%s) %s-%s", c.Date, c.GroupName, c.TeamName, c.PresencialTimeFrom, c.PresencialTimeTo))
+	}
+	return fmt.Sprintf("%s: %s", ErrCalendarPresencialCollision, strings.Join(parts, "; "))
+}
+
+func (e *calendarPresencialCollisionError) Unwrap() error { return ErrCalendarPresencialCollision }
+
+func newCalendarPresencialCollisionError(conflicts []calendar.PresencialConflict) error {
+	if len(conflicts) == 0 {
+		return ErrCalendarPresencialCollision
+	}
+	return &calendarPresencialCollisionError{conflicts: conflicts}
+}
+
+// PresencialCollisionConflicts extrae la lista de conflictos de un error de
+// colisión presencial (para el body JSON del 409 en el controller).
+func PresencialCollisionConflicts(err error) []calendar.PresencialConflict {
+	var typed *calendarPresencialCollisionError
+	if errors.As(err, &typed) {
+		return typed.conflicts
+	}
+	return nil
+}
+
+func presencialTimeHHMM(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format("15:04")
+}
+
+func sameCalendarDate(a, b time.Time) bool {
+	ya, ma, da := a.Date()
+	yb, mb, db := b.Date()
+	return ya == yb && ma == mb && da == db
+}
+
+// presencialRangesOverlap aplica el overlap medio-abierto de design.md D1:
+// colisión sii fromA < toB && fromB < toA (los bordes que se tocan no chocan;
+// los strings "HH:MM" comparan lexicográficamente igual que el reloj).
+func presencialRangesOverlap(fromA, toA, fromB, toB string) bool {
+	return fromA < toB && fromB < toA
+}
+
+// findPresencialCollisions detecta colisiones presenciales (D3): días
+// training+presencial de TODOS los grupos activos de los equipos del owner en
+// las fechas pedidas, cruzados contra los días candidatos que se van a
+// escribir. Cada colisionante se clasifica relative al/los grupo(s) escrito(s)
+// por team: equipo distinto → cross (bloqueante); mismo equipo → same
+// (warnings). Corre contra el db/tx que recibe (evita TOCTOU básico en
+// escrituras transaccionales).
+func (s *calendarService) findPresencialCollisions(
+	ctx *gin.Context,
+	db *gorm.DB,
+	ownerID int64,
+	excludeGroupID *int64,
+	excludeDayIDs []int64,
+	dates []time.Time,
+	candidates []dbs.GroupCalendarDay,
+) ([]calendar.PresencialConflict, []calendar.PresencialConflict, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, ownerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar grupos del owner")
+	}
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	groupIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		groupIDs = append(groupIDs, g.ID)
+	}
+	teams, err := s.teamDao.GetAllByOwnerID(ctx, ownerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar equipos del owner")
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	existing, err := daos.NewGroupCalendarDayDao(db).FindPresencialForGroupsInRange(ctx, groupIDs, dates)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar días presenciales")
+	}
+
+	excludedDaySet := make(map[int64]struct{}, len(excludeDayIDs))
+	for _, id := range excludeDayIDs {
+		excludedDaySet[id] = struct{}{}
+	}
+
+	var cross, same []calendar.PresencialConflict
+	seen := make(map[string]struct{})
+	for _, day := range existing {
+		if _, skip := excludedDaySet[day.ID]; skip {
+			continue
+		}
+		if excludeGroupID != nil && day.GroupID == *excludeGroupID {
+			continue
+		}
+		dayGroup, ok := groupByID[day.GroupID]
+		if !ok {
+			continue
+		}
+		dayFrom := presencialTimeHHMM(day.PresencialTimeFrom)
+		dayTo := presencialTimeHHMM(day.PresencialTimeTo)
+		for _, cand := range candidates {
+			if cand.GroupID == day.GroupID {
+				continue
+			}
+			if !cand.IsPresencial || cand.Kind != string(constants.GroupCalendarDayKindTraining) {
+				continue
+			}
+			if !sameCalendarDate(cand.Date, day.Date) {
+				continue
+			}
+			candGroup, ok := groupByID[cand.GroupID]
+			if !ok {
+				continue
+			}
+			candFrom := presencialTimeHHMM(cand.PresencialTimeFrom)
+			candTo := presencialTimeHHMM(cand.PresencialTimeTo)
+			if !presencialRangesOverlap(candFrom, candTo, dayFrom, dayTo) {
+				continue
+			}
+			conflict := calendar.PresencialConflict{
+				GroupID:            day.GroupID,
+				GroupName:          dayGroup.Name,
+				TeamID:             dayGroup.TeamID,
+				TeamName:           teamNameByID[dayGroup.TeamID],
+				Date:               day.Date.Format("2006-01-02"),
+				PresencialTimeFrom: dayFrom,
+				PresencialTimeTo:   dayTo,
+			}
+			key := fmt.Sprintf("%d|%s|%s|%s", conflict.GroupID, conflict.Date, conflict.PresencialTimeFrom, conflict.PresencialTimeTo)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			if candGroup.TeamID != dayGroup.TeamID {
+				cross = append(cross, conflict)
+			} else {
+				same = append(same, conflict)
+			}
+		}
+	}
+	return cross, same, nil
+}
 
 type calendarService struct {
 	calendarDao     daos.GroupCalendarDaoInterface

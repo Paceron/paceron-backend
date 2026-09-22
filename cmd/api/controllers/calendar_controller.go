@@ -67,12 +67,33 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
 		return http.StatusConflict, "el corrimiento haría chocar dos fechas"
+	case errors.Is(err, services.ErrCalendarPresencialCollision):
+		return http.StatusConflict, "colisión presencial con otro equipo"
 	default:
 		return http.StatusInternalServerError, "error interno"
 	}
 }
 
+// presencialCollisionResponse es el body JSON del 409 por colisión presencial
+// (D4): mensaje fijo + lista de conflictos, no un string plano como el resto
+// de los errores de calendario.
+type presencialCollisionResponse struct {
+	Message   string                        `json:"message"`
+	Conflicts []calendar.PresencialConflict `json:"conflicts"`
+}
+
 func respondCalendarError(c *gin.Context, err error) {
+	if errors.Is(err, services.ErrCalendarPresencialCollision) {
+		conflicts := services.PresencialCollisionConflicts(err)
+		if conflicts == nil {
+			conflicts = []calendar.PresencialConflict{}
+		}
+		c.JSON(http.StatusConflict, presencialCollisionResponse{
+			Message:   "colisión presencial con otro equipo",
+			Conflicts: conflicts,
+		})
+		return
+	}
 	status, message := mapCalendarError(err)
 	respondCatalogError(c, status, message)
 }

@@ -108,6 +108,10 @@ func (m *mockGroupDao) GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group,
 	return nil, nil
 }
 
+func (m *mockGroupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+	return nil, nil
+}
+
 func (m *mockGroupDao) Update(ctx *gin.Context, g *dbs.Group) error {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, g)

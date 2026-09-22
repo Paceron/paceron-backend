@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -14,6 +15,10 @@ type GroupCalendarDaoInterface interface {
 	Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error
 	FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
 	FindByGroupAndRange(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	// FindPresencialForGroupsInRange devuelve los días training+presencial de
+	// los grupos indicados en las fechas indicadas (base de la detección de
+	// colisiones presenciales, design.md D3).
+	FindPresencialForGroupsInRange(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	Delete(ctx *gin.Context, groupID int64, date time.Time) error
 	DeleteByDates(ctx *gin.Context, groupID int64, dates []time.Time) error
 	FindNextSessionForGroups(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
@@ -77,6 +82,22 @@ func (d *groupCalendarDayDao) FindByGroupAndRange(ctx *gin.Context, groupID int6
 
 func (d *groupCalendarDayDao) Delete(ctx *gin.Context, groupID int64, date time.Time) error {
 	return d.DB.Where("group_id = ? AND date = ?", groupID, date).Delete(&dbs.GroupCalendarDay{}).Error
+}
+
+func (d *groupCalendarDayDao) FindPresencialForGroupsInRange(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error) {
+	if len(groupIDs) == 0 || len(dates) == 0 {
+		return nil, nil
+	}
+	var days []dbs.GroupCalendarDay
+	err := d.DB.
+		Where("group_id IN ? AND date IN ? AND kind = ? AND is_presencial = ?",
+			groupIDs, dates, string(constants.GroupCalendarDayKindTraining), true).
+		Order("date, presencial_time_from").
+		Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding presencial days: %w", err)
+	}
+	return days, nil
 }
 
 func (d *groupCalendarDayDao) DeleteByDates(ctx *gin.Context, groupID int64, dates []time.Time) error {
