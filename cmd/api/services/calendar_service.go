@@ -1440,6 +1440,12 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 	}
 	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
+
+// NextSession resuelve los banners del home (design.md D6, spec "Banners del
+// home"): la próxima sesión cancelled y la próxima training del usuario, cada
+// una entre todos sus grupos con membresía activa, con el filtro "hoy cuenta"
+// de isCalendarDayClosed. Siempre devuelve respuesta poblable (controller ya
+// nunca responde 204).
 func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
 	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
 	if err != nil {
@@ -1449,38 +1455,119 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	for i, m := range memberships {
 		groupIDs[i] = m.GroupID
 	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	day, err := s.calendarDao.FindNextSessionForGroups(ctx, groupIDs, today)
-	if err != nil {
-		customlogger.Error(ctx, "error finding next session", err, customlogger.TagMethod("NextSession"))
-		return nil, fmt.Errorf("error al buscar próxima sesión")
-	}
-	if day == nil {
-		return nil, nil
-	}
-	resp := &calendar.NextSessionResponse{
-		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), IsPresencial: day.IsPresencial,
-	}
-	if day.PresencialTimeFrom != nil {
-		formatted := day.PresencialTimeFrom.UTC().Format("15:04")
-		resp.PresencialTimeFrom = &formatted
-	}
-	if day.PresencialTimeTo != nil {
-		formatted := day.PresencialTimeTo.UTC().Format("15:04")
-		resp.PresencialTimeTo = &formatted
-	}
-	if day.PresencialLocation != nil {
-		loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
-		if err == nil {
-			resp.PresencialLocation = loc
-		}
-	}
-	resp.SessionInstance, err = s.sessionInstanceResponse(ctx, s.db, day.SessionInstanceID)
+	groupNames, err := s.groupNamesByIDs(ctx, groupIDs)
 	if err != nil {
 		return nil, err
 	}
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	nowHHMM := now.Format("15:04")
+
+	resp := &calendar.NextSessionResponse{}
+	cancelledDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindCancelled), today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next cancelled day", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	if cancelledDay != nil {
+		resp.NextCancelled = s.bannerItem(ctx, *cancelledDay, groupNames)
+	}
+	trainingDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindTraining), today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next training day", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	if trainingDay != nil {
+		resp.NextTraining = s.trainingBannerItem(ctx, *trainingDay, groupNames)
+	}
 	return resp, nil
+}
+
+// groupNamesByIDs resuelve los nombres de los grupos indicados en batch
+// (una query de groups + una de teams para los teams de los grupos que vienen
+// sin name poblado en el row), evitando N+1 por banner.
+func (s *calendarService) groupNamesByIDs(ctx *gin.Context, groupIDs []int64) (map[int64]string, error) {
+	names := make(map[int64]string, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return names, nil
+	}
+	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding groups for banner", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	teamIDs := make([]int64, 0)
+	for _, g := range groups {
+		if g.Name != "" {
+			names[g.ID] = g.Name
+			continue
+		}
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextSession"))
+			return nil, fmt.Errorf("error al buscar grupos del usuario")
+		}
+		teamNames := make(map[int64]string, len(teams))
+		for _, t := range teams {
+			teamNames[t.ID] = t.Name
+		}
+		for _, g := range groups {
+			if g.Name == "" {
+				names[g.ID] = teamNames[g.TeamID]
+			}
+		}
+	}
+	return names, nil
+}
+
+// bannerItem arma el shape común del banner. session_name sale de la
+// instancia congelada (nil si la instancia falta — no rompe).
+func (s *calendarService) bannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextSessionBannerItem {
+	item := &calendar.NextSessionBannerItem{
+		GroupID:   day.GroupID,
+		GroupName: groupNames[day.GroupID],
+		Date:      day.Date.Format("2006-01-02"),
+	}
+	if day.SessionInstanceID != nil && s.db != nil {
+		sessionDao := daos.NewSessionInstanceDao(s.db)
+		instance, err := sessionDao.FindByID(ctx, *day.SessionInstanceID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding session instance for banner", err, customlogger.TagMethod("NextSession"))
+		} else if instance != nil {
+			name := instance.Name
+			item.SessionName = &name
+		}
+	}
+	return item
+}
+
+// trainingBannerItem agrega los datos presenciales al banner común.
+func (s *calendarService) trainingBannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextTrainingBannerItem {
+	item := &calendar.NextTrainingBannerItem{
+		NextSessionBannerItem: *s.bannerItem(ctx, day, groupNames),
+		IsPresencial:          day.IsPresencial,
+	}
+	if day.IsPresencial {
+		if day.PresencialTimeFrom != nil {
+			formatted := day.PresencialTimeFrom.UTC().Format("15:04")
+			item.PresencialTimeFrom = &formatted
+		}
+		if day.PresencialTimeTo != nil {
+			formatted := day.PresencialTimeTo.UTC().Format("15:04")
+			item.PresencialTimeTo = &formatted
+		}
+		if day.PresencialLocation != nil {
+			loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
+			if err == nil {
+				item.PresencialLocation = loc
+			}
+		}
+	}
+	return item
 }
 
 func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {

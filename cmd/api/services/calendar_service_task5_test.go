@@ -717,12 +717,15 @@ func TestCalendarService_Task5_NextSessionEmbedsFrozenInstance(t *testing.T) {
 	resp, err := svc.NextSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.NotNil(t, resp.SessionInstance)
-	assert.Equal(t, catalogSession.Name, resp.SessionInstance.Name)
-	require.Len(t, resp.SessionInstance.Exercises, 1)
-	assert.Equal(t, "next exercise", resp.SessionInstance.Exercises[0].Name)
+	require.NotNil(t, resp.NextTraining)
+	require.NotNil(t, resp.NextTraining.SessionName)
+	assert.Equal(t, catalogSession.Name, *resp.NextTraining.SessionName)
 }
 
+// El shape nuevo no embebe la instancia: el banner solo expone session_name.
+// La instancia faltante (FK opaca huérfana) NO rompe el banner — session_name
+// queda null y la respuesta sigue 200 (design.md D6), a diferencia del shape
+// anterior donde la instancia faltante superfaced como error.
 func TestCalendarService_Task5_NextSession_MissingInstanceSurfaces(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "next5b")
@@ -732,10 +735,12 @@ func TestCalendarService_Task5_NextSession_MissingInstanceSurfaces(t *testing.T)
 	require.NoError(t, daos.NewGroupCalendarDayDao(db).Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date, Kind: "training", SessionInstanceID: &missing}))
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
 
-	_, err := svc.NextSession(nil, owner.ID)
+	resp, err := svc.NextSession(nil, owner.ID)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no encontrada")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.NextTraining)
+	assert.Nil(t, resp.NextTraining.SessionName)
 }
 
 func TestCalendarService_Task5_DeleteSupersededInstance_ZeroIDIsNoop(t *testing.T) {

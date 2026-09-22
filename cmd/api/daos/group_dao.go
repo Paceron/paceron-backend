@@ -19,6 +19,9 @@ type GroupDaoInterface interface {
 	// FindByOwnerID devuelve todos los grupos activos de todos los equipos
 	// administrados por ownerID (join a teams; grupos soft-deleted fuera).
 	FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
+	// FindByIDs devuelve varios grupos activos en una sola query — batch de
+	// nombres para los banners del home (design.md D6/D8, evita N+1).
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 	Update(ctx *gin.Context, group *dbs.Group) error
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
@@ -98,6 +101,19 @@ func (d *groupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, 
 		Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding groups by owner: %w", err)
+	}
+	return groups, nil
+}
+
+// FindByIDs devuelve varios grupos activos en una sola consulta.
+func (d *groupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var groups []dbs.Group
+	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding groups by ids: %w", err)
 	}
 	return groups, nil
 }

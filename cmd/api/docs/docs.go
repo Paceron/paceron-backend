@@ -5142,13 +5142,14 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/next-session": {
             "get": {
+                "description": "BREAKING (in-place): el shape anterior (una sola sesión con\n` + "`" + `session_instance` + "`" + ` embebida, ` + "`" + `204` + "`" + ` si no había) fue reemplazado.\nAhora siempre responde ` + "`" + `200` + "`" + ` con ` + "`" + `{next_cancelled, next_training}` + "`" + `,\ncada uno la más próxima de su kind entre todos los grupos del\nusuario (independientes, nullable). Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D6).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "calendar"
                 ],
-                "summary": "Próxima sesión del usuario",
+                "summary": "Banners de próxima sesión del usuario",
                 "parameters": [
                     {
                         "type": "integer",
@@ -5164,9 +5165,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse"
                         }
-                    },
-                    "204": {
-                        "description": "No Content"
                     },
                     "400": {
                         "description": "Bad Request"
@@ -6778,7 +6776,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse": {
+        "simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem": {
             "type": "object",
             "properties": {
                 "date": {
@@ -6786,6 +6784,37 @@ const docTemplate = `{
                 },
                 "group_id": {
                     "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse": {
+            "type": "object",
+            "properties": {
+                "next_cancelled": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem"
+                },
+                "next_training": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
                 },
                 "is_presencial": {
                     "type": "boolean"
@@ -6799,8 +6828,8 @@ const docTemplate = `{
                 "presencial_time_to": {
                     "type": "string"
                 },
-                "session_instance": {
-                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
+                "session_name": {
+                    "type": "string"
                 }
             }
         },

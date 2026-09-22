@@ -21,7 +21,12 @@ type GroupCalendarDaoInterface interface {
 	FindPresencialForGroupsInRange(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	Delete(ctx *gin.Context, groupID int64, date time.Time) error
 	DeleteByDates(ctx *gin.Context, groupID int64, dates []time.Time) error
-	FindNextSessionForGroups(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error)
+	// FindNextForGroupsByKind devuelve el día más próximo del kind indicado
+	// entre los grupos dados con el filtro "hoy cuenta" del banner (design.md
+	// D6): date > hoy, o date == hoy solo si no es presencial o el horario
+	// presencial todavía no arrancó (mismo criterio que isCalendarDayClosed).
+	// nowHHMM es la hora actual en "HH:MM"; today es la medianoche local.
+	FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
 }
@@ -107,18 +112,29 @@ func (d *groupCalendarDayDao) DeleteByDates(ctx *gin.Context, groupID int64, dat
 	return d.DB.Where("group_id = ? AND date IN ?", groupID, dates).Delete(&dbs.GroupCalendarDay{}).Error
 }
 
-func (d *groupCalendarDayDao) FindNextSessionForGroups(ctx *gin.Context, groupIDs []int64, fromDate time.Time) (*dbs.GroupCalendarDay, error) {
+// FindNextForGroupsByKind implementa el filtro "hoy cuenta" del banner de
+// próxima sesión (design.md D6): un día de HOY solo cuenta si no es
+// presencial, o si su presencial_time_from todavía no pasó — el mismo
+// criterio que isCalendarDayClosed (calendar_service.go), que compara el
+// hour/minute del valor en UTC contra la hora local de now. La query hace el
+// mismo par de valores en SQL: TO_CHAR(... AT TIME ZONE 'UTC') para el horario
+// persistido (convención UTC, ver dbs.GroupCalendarDay) contra nowHHMM, la
+// hora de pared local formateada "HH:MM" por el service.
+func (d *groupCalendarDayDao) FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 	if len(groupIDs) == 0 {
 		return nil, nil
 	}
 	var day dbs.GroupCalendarDay
-	err := d.DB.Where("group_id IN ? AND kind IN ? AND date >= ?", groupIDs, []string{"training", "cancelled"}, fromDate).
+	err := d.DB.
+		Where("group_id IN ? AND kind = ?", groupIDs, kind).
+		Where("date > ? OR (date = ? AND (is_presencial = ? OR presencial_time_from IS NULL OR TO_CHAR(presencial_time_from AT TIME ZONE 'UTC', 'HH24:MI') > ?))",
+			today, today, false, nowHHMM).
 		Order("date ASC").First(&day).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("error finding next session: %w", err)
+		return nil, fmt.Errorf("error finding next day by kind: %w", err)
 	}
 	return &day, nil
 }

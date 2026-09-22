@@ -38,10 +38,10 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 4: next-session shape nuevo
 
-- [ ] 4.1 DAO: query próxima por kind con filtro "hoy cuenta" (date > hoy OR (date == hoy AND (NOT presencial OR time_from > now))) — reutilizar `isCalendarDayClosed` como criterio de filtro donde aplique.
-- [ ] 4.2 Service: reescribir `NextSession` → `{next_cancelled, next_training}` (DTOs nuevos `NextSessionBannerItem{GroupID, GroupName, Date, SessionName}` + `NextTrainingBannerItem` con campos presenciales); `group_name` resuelto (batch por IDs); `session_name` de la instancia (null si falta); siempre devuelve respuesta (nunca nil/204).
-- [ ] 4.3 Controller: dejar de responder 204; swagger actualizado; romper shape documentado como breaking en la anotación.
-- [ ] 4.4 Tests: ambos próximos; solo uno; ninguno (200 con ambos null); hoy presencial ya arrancado no cuenta; hoy presencial por arrancar cuenta; hoy async cuenta; membresía inactiva (date_end/deleted) fuera.
+- [x] 4.1 DAO: query próxima por kind con filtro "hoy cuenta" (date > hoy OR (date == hoy AND (NOT presencial OR time_from > now))) — reutilizar `isCalendarDayClosed` como criterio de filtro donde aplique.
+- [x] 4.2 Service: reescribir `NextSession` → `{next_cancelled, next_training}` (DTOs nuevos `NextSessionBannerItem{GroupID, GroupName, Date, SessionName}` + `NextTrainingBannerItem` con campos presenciales); `group_name` resuelto (batch por IDs); `session_name` de la instancia (null si falta); siempre devuelve respuesta (nunca nil/204).
+- [x] 4.3 Controller: dejar de responder 204; swagger actualizado; romper shape documentado como breaking en la anotación.
+- [x] 4.4 Tests: ambos próximos; solo uno; ninguno (200 con ambos null); hoy presencial ya arrancado no cuenta; hoy presencial por arrancar cuenta; hoy async cuenta; membresía inactiva (date_end/deleted) fuera.
 
 ### Task 5: next-presencial-session del entrenador
 

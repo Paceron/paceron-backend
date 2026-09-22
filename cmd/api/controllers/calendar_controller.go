@@ -339,12 +339,17 @@ func (cc *calendarController) Shift(c *gin.Context) {
 }
 
 // NextSession godoc
-// @Summary      Próxima sesión del usuario
+// @Summary      Banners de próxima sesión del usuario
+// @Description  BREAKING (in-place): el shape anterior (una sola sesión con
+// @Description  `session_instance` embebida, `204` si no había) fue reemplazado.
+// @Description  Ahora siempre responde `200` con `{next_cancelled, next_training}`,
+// @Description  cada uno la más próxima de su kind entre todos los grupos del
+// @Description  usuario (independientes, nullable). Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D6).
 // @Tags         calendar
 // @Produce      json
 // @Param        id  path  int  true  "User ID"
 // @Success      200  {object}  calendar.NextSessionResponse
-// @Success      204
 // @Failure      400
 // @Failure      403
 // @Router       /api/v1/users/{id}/next-session [get]
@@ -362,10 +367,6 @@ func (cc *calendarController) NextSession(c *gin.Context) {
 	resp, err := cc.calendarService.NextSession(c, userID)
 	if err != nil {
 		respondCalendarError(c, err)
-		return
-	}
-	if resp == nil {
-		c.Status(http.StatusNoContent)
 		return
 	}
 	c.JSON(http.StatusOK, resp)

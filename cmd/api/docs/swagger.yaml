@@ -309,12 +309,32 @@ definitions:
       group_name:
         type: string
     type: object
-  simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse:
+  simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem:
     properties:
       date:
         type: string
       group_id:
         type: integer
+      group_name:
+        type: string
+      session_name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse:
+    properties:
+      next_cancelled:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem'
+      next_training:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem'
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem:
+    properties:
+      date:
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
       is_presencial:
         type: boolean
       presencial_location:
@@ -323,8 +343,8 @@ definitions:
         type: string
       presencial_time_to:
         type: string
-      session_instance:
-        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
+      session_name:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_calendar.PresencialConflict:
     properties:
@@ -5520,6 +5540,13 @@ paths:
       - calendar
   /api/v1/users/{id}/next-session:
     get:
+      description: |-
+        BREAKING (in-place): el shape anterior (una sola sesión con
+        `session_instance` embebida, `204` si no había) fue reemplazado.
+        Ahora siempre responde `200` con `{next_cancelled, next_training}`,
+        cada uno la más próxima de su kind entre todos los grupos del
+        usuario (independientes, nullable). Conforme a
+        openspec/changes/colisiones-presenciales-y-calendario-agregado (D6).
       parameters:
       - description: User ID
         in: path
@@ -5533,13 +5560,11 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse'
-        "204":
-          description: No Content
         "400":
           description: Bad Request
         "403":
           description: Forbidden
-      summary: Próxima sesión del usuario
+      summary: Banners de próxima sesión del usuario
       tags:
       - calendar
   /api/v1/users/{id}/password:

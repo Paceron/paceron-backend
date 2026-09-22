@@ -107,7 +107,7 @@ func TestGroupCalendarDayDao_DeleteByDates(t *testing.T) {
 	assert.Empty(t, results)
 }
 
-func TestGroupCalendarDayDao_FindNextSessionForGroups(t *testing.T) {
+func TestGroupCalendarDayDao_FindNextForGroupsByKind(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupCalendarDayDao(db)
 	group := setupCalendarGroup(t, db, "6")
@@ -118,11 +118,47 @@ func TestGroupCalendarDayDao_FindNextSessionForGroups(t *testing.T) {
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "training", SessionInstanceID: &sessionID}))
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training", SessionInstanceID: &sessionID}))
 
-	found, err := dao.FindNextSessionForGroups(nil, []int64{group.ID}, time.Now().UTC().Truncate(24*time.Hour))
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	found, err := dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, time.Now().UTC().Format("15:04"))
 
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	assert.True(t, found.Date.Equal(future))
+}
+
+func TestGroupCalendarDayDao_FindNextForGroupsByKind_TodayPresencialStartedExcluded(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "6b")
+	// Un presencial de hoy cuyo horario ya arrancó NO cuenta; el próximo
+	// elegible es el futuro.
+	started := time.Now().UTC().Add(-time.Hour).Format("15:04")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	future := today.AddDate(0, 0, 3)
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday(started), PresencialTimeTo: utcTimeToday("23:59")}))
+
+	found, err := dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, time.Now().UTC().Format("15:04"))
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training"}))
+	found, err = dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, time.Now().UTC().Format("15:04"))
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.True(t, found.Date.Equal(future))
+}
+
+// utcTimeToday arma un *time.Time de HOY a la HH:MM dada, en UTC (convención
+// de persistencia de los horarios presenciales, ver dbs.GroupCalendarDay).
+func utcTimeToday(hhmm string) *time.Time {
+	hm, err := time.Parse("15:04", hhmm)
+	if err != nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	t := time.Date(now.Year(), now.Month(), now.Day(), hm.Hour(), hm.Minute(), 0, 0, time.UTC)
+	return &t
 }
 
 func TestGroupCalendarDayDao_ClearSourcePlan(t *testing.T) {

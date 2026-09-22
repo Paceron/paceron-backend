@@ -189,15 +189,21 @@ func TestCalendarController_Stamp_ClosedDayReturns422(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "2026-09-19")
 }
 
+// BREAKING (D6): el endpoint ya nunca responde 204 — sin compromisos es 200
+// con ambos banners en null.
 func TestCalendarController_NextSession_NoContent(t *testing.T) {
-	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) { return nil, nil }}
+	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
+		return &calendar.NextSessionResponse{}, nil
+	}}
 	router := setupCalendarRouter(svc, 7)
 	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"next_cancelled":null`)
+	assert.Contains(t, rec.Body.String(), `"next_training":null`)
 }
 
 func TestCalendarController_NextSession_OtherUserForbidden(t *testing.T) {
@@ -224,7 +230,9 @@ func TestCalendarController_NextSession_InvalidID(t *testing.T) {
 
 func TestCalendarController_NextSession_Success(t *testing.T) {
 	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
-		return &calendar.NextSessionResponse{Date: "2026-10-01"}, nil
+		return &calendar.NextSessionResponse{NextTraining: &calendar.NextTrainingBannerItem{
+			NextSessionBannerItem: calendar.NextSessionBannerItem{GroupID: 1, Date: "2026-10-01"},
+		}}, nil
 	}}
 	router := setupCalendarRouter(svc, 7)
 	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
