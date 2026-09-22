@@ -53,10 +53,10 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 6: member-calendar
 
-- [ ] 6.1 DTO `AggregateCalendarDayResponse` (campos de CalendarDayResponse + group_id/group_name/team_id/team_name).
-- [ ] 6.2 Service: memberships activas → días por rango → merge ordenado por fecha → nombres batch (1 query groups, 1 query teams).
-- [ ] 6.3 Ruta `GET /api/v1/users/:id/member-calendar` + guard id==caller + from/to obligatorios (400) y from<=to (400) + swagger.
-- [ ] 6.4 Tests: 2 grupos mismo rango; rango sin días → 200 []; 403 id ajeno; 400 sin from/to.
+- [x] 6.1 DTO `AggregateCalendarDayResponse` (campos de CalendarDayResponse + group_id/group_name/team_id/team_name).
+- [x] 6.2 Service: memberships activas → días por rango → merge ordenado por fecha → nombres batch (1 query groups, 1 query teams).
+- [x] 6.3 Ruta `GET /api/v1/users/:id/member-calendar` + guard id==caller + from/to obligatorios (400) y from<=to (400) + swagger.
+- [x] 6.4 Tests: 2 grupos mismo rango; rango sin días → 200 []; 403 id ajeno; 400 sin from/to.
 
 ### Task 7: administered-calendar con presencial_collision
 
