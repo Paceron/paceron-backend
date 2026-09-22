@@ -217,6 +217,14 @@ definitions:
         type: string
       other_name:
         type: string
+      presencial_collision:
+        allOf:
+        - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialCollision'
+        description: |-
+          PresencialCollision solo se completa en administered-calendar: días
+          presenciales que se superponen con otro día presencial de otro grupo
+          administrado (member-calendar nunca lo trae). nil = sin colisión,
+          omitido en el JSON.
       presencial_location:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
       presencial_time_from:
@@ -412,6 +420,16 @@ definitions:
       presencial_time_to:
         type: string
       session_name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.PresencialCollision:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict'
+        type: array
+      type:
+        description: '"same_team" | "cross_team"'
         type: string
     type: object
   simple-arq-golang_cmd_api_domains_calendar.PresencialConflict:
@@ -5582,6 +5600,51 @@ paths:
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/administered-calendar:
+    get:
+      description: |-
+        Los días de calendario de TODOS los grupos administrados por
+        el usuario (owner de los equipos) en el rango, ordenados por
+        fecha, con group_id/group_name/team_id/team_name resueltos
+        server-side. Cada día presencial que superpone con otro día
+        presencial de otro grupo administrado trae presencial_collision
+        {type: "same_team"|"cross_team", conflicts: [...]} (cross_team
+        gana si hay de ambos; conflicts lista todos los colisionantes;
+        ausente si no colisiona). Incluye colisiones viejas guardadas
+        antes del guard. Conforme a
+        openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fecha desde (YYYY-MM-DD)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Fecha hasta (YYYY-MM-DD)
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.AggregateCalendarDayResponse'
+            type: array
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Calendario agregado del entrenador
+      tags:
+      - calendar
   /api/v1/users/{id}/calendar-summary:
     get:
       parameters:

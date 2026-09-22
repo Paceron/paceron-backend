@@ -53,6 +53,7 @@ type CalendarServiceInterface interface {
 	NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
 	NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
 	MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
+	AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -1726,6 +1727,152 @@ func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, t
 			GroupName:           group.Name,
 			TeamID:              group.TeamID,
 			TeamName:            teamNameByID[group.TeamID],
+		}
+	}
+	return responses, nil
+}
+
+// AdministeredCalendar resuelve el calendario agregado del entrenador
+// (design.md D8, spec "Calendario agregado del entrenador con marcado de
+// colisiones"): mismo shape que member-calendar pero sobre los grupos que
+// administra (owner de los equipos), y cada día presencial del resultado se
+// cruza contra los demás días presenciales administrados de la misma fecha:
+// si superpone, trae presencial_collision {type, conflicts} (cross_team gana
+// sobre same_team; conflicts lista todos los colisionantes). La detección es
+// de LECTURA sobre datos actuales: también marca colisiones viejas guardadas
+// antes del guard de escritura.
+func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding administered groups", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos administrados")
+	}
+	if len(groups) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+	groupIDs := make([]int64, len(groups))
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	for i, g := range groups {
+		groupIDs[i] = g.ID
+		groupByID[g.ID] = g
+	}
+	teamIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding teams for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al buscar equipos del entrenador")
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	days, err := s.calendarDao.FindForGroupsInRange(ctx, groupIDs, from, to)
+	if err != nil {
+		customlogger.Error(ctx, "error listing aggregated calendar days", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al listar calendario")
+	}
+	if len(days) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+
+	// Detección de colisiones por fecha (design.md D8): una corrida de
+	// findPresencialCollisions por fecha distinta del rango, con todos los
+	// días presenciales de esa fecha como candidatos — evita el N+1 de una
+	// query de detección por día. Los candidatos y los días "existentes" son
+	// el mismo conjunto (las filas ya están guardadas): el cruce detecta los
+	// superpuestos de otros grupos (el helper salta el mismo grupo, así la
+	// fila nunca colisiona consigo misma) y cancelled nunca participa en
+	// ningún lado (D1). La lista plana de conflictos se atribuye a cada día
+	// de la vista re-verificando el overlap y re-clasificando por equipo del
+	// día marcado (la clasificación del helper es relativa al candidato).
+	presencialByDate := make(map[string][]dbs.GroupCalendarDay)
+	for _, d := range days {
+		if d.IsPresencial && d.Kind == string(constants.GroupCalendarDayKindTraining) {
+			key := d.Date.Format("2006-01-02")
+			presencialByDate[key] = append(presencialByDate[key], d)
+		}
+	}
+	collisionByDayID := make(map[int64]*calendar.PresencialCollision)
+	for dateKey, presencialDays := range presencialByDate {
+		if len(presencialDays) < 2 {
+			continue // sin otro día presencial esa fecha no hay colisión posible
+		}
+		date, err := time.Parse("2006-01-02", dateKey)
+		if err != nil {
+			continue
+		}
+		cross, same, err := s.findPresencialCollisions(ctx, s.db, userID, nil, nil, []time.Time{date}, presencialDays)
+		if err != nil {
+			customlogger.Error(ctx, "error finding presencial collisions for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
+			return nil, fmt.Errorf("error al detectar colisiones presenciales")
+		}
+		allConflicts := append(cross, same...)
+		// Dedup: un colisionante puede aparecer en cross y same a la vez
+		// (chocó con candidatos de equipos distintos); queda una fila por
+		// grupo+horario y la clasificación se recalcula por día abajo.
+		uniqueConflicts := make([]calendar.PresencialConflict, 0, len(allConflicts))
+		seenConflict := make(map[string]struct{}, len(allConflicts))
+		for _, c := range allConflicts {
+			key := fmt.Sprintf("%d|%s|%s", c.GroupID, c.PresencialTimeFrom, c.PresencialTimeTo)
+			if _, dup := seenConflict[key]; dup {
+				continue
+			}
+			seenConflict[key] = struct{}{}
+			uniqueConflicts = append(uniqueConflicts, c)
+		}
+		for _, d := range presencialDays {
+			group := groupByID[d.GroupID]
+			dayFrom := presencialTimeHHMM(d.PresencialTimeFrom)
+			dayTo := presencialTimeHHMM(d.PresencialTimeTo)
+			conflicts := make([]calendar.PresencialConflict, 0, len(uniqueConflicts))
+			isCross := false
+			for _, c := range uniqueConflicts {
+				if c.GroupID == d.GroupID {
+					continue
+				}
+				if !presencialRangesOverlap(dayFrom, dayTo, c.PresencialTimeFrom, c.PresencialTimeTo) {
+					continue
+				}
+				conflicts = append(conflicts, c)
+				if c.TeamID != group.TeamID {
+					isCross = true
+				}
+			}
+			if len(conflicts) == 0 {
+				continue
+			}
+			collisionType := "same_team"
+			if isCross {
+				collisionType = "cross_team"
+			}
+			collisionByDayID[d.ID] = &calendar.PresencialCollision{
+				Type:      collisionType,
+				Conflicts: conflicts,
+			}
+		}
+	}
+
+	// Mismo merge que member-calendar: la DAO ordena por fecha; el item lleva
+	// los campos de CalendarDayResponse + nombres embebidos planos, y el
+	// presencial_collision solo cuando el día colisiona.
+	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
+	for i, d := range days {
+		base, err := s.toCalendarDayResponse(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		group := groupByID[d.GroupID]
+		responses[i] = calendar.AggregateCalendarDayResponse{
+			CalendarDayResponse: base,
+			GroupID:             group.ID,
+			GroupName:           group.Name,
+			TeamID:              group.TeamID,
+			TeamName:            teamNameByID[group.TeamID],
+			PresencialCollision: collisionByDayID[d.ID],
 		}
 	}
 	return responses, nil

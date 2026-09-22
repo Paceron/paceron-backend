@@ -60,9 +60,9 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 7: administered-calendar con presencial_collision
 
-- [ ] 7.1 Service: grupos del owner → días → para cada día presencial, detección (reutiliza Task 1.4, excluyendo la fila misma) → `presencial_collision {type, conflicts}` (cross gana sobre same; conflicts lista todos); null/omitido si no colisiona.
-- [ ] 7.2 Ruta + guard + validación from/to + swagger.
-- [ ] 7.3 Tests: colisión same marcada en ambos días; colisión cross marcada; colisión vieja (insertada por DAO directo) detectada; día aislado sin collision; día cancelled presencial NO genera collision.
+- [x] 7.1 Service: grupos del owner → días → para cada día presencial, detección (reutiliza Task 1.4, excluyendo la fila misma) → `presencial_collision {type, conflicts}` (cross gana sobre same; conflicts lista todos); null/omitido si no colisiona.
+- [x] 7.2 Ruta + guard + validación from/to + swagger.
+- [x] 7.3 Tests: colisión same marcada en ambos días; colisión cross marcada; colisión vieja (insertada por DAO directo) detectada; día aislado sin collision; día cancelled presencial NO genera collision.
 
 ### Task 8: Docs + verificación final
 

@@ -5103,6 +5103,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/administered-calendar": {
+            "get": {
+                "description": "Los días de calendario de TODOS los grupos administrados por\nel usuario (owner de los equipos) en el rango, ordenados por\nfecha, con group_id/group_name/team_id/team_name resueltos\nserver-side. Cada día presencial que superpone con otro día\npresencial de otro grupo administrado trae presencial_collision\n{type: \"same_team\"|\"cross_team\", conflicts: [...]} (cross_team\ngana si hay de ambos; conflicts lista todos los colisionantes;\nausente si no colisiona). Incluye colisiones viejas guardadas\nantes del guard. Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D8).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Calendario agregado del entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha desde (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha hasta (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.AggregateCalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/calendar-summary": {
             "get": {
                 "produces": [
@@ -6732,6 +6784,14 @@ const docTemplate = `{
                 "other_name": {
                     "type": "string"
                 },
+                "presencial_collision": {
+                    "description": "PresencialCollision solo se completa en administered-calendar: días\npresenciales que se superponen con otro día presencial de otro grupo\nadministrado (member-calendar nunca lo trae). nil = sin colisión,\nomitido en el JSON.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialCollision"
+                        }
+                    ]
+                },
                 "presencial_location": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
                 },
@@ -7015,6 +7075,21 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "session_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.PresencialCollision": {
+            "type": "object",
+            "properties": {
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
+                },
+                "type": {
+                    "description": "\"same_team\" | \"cross_team\"",
                     "type": "string"
                 }
             }

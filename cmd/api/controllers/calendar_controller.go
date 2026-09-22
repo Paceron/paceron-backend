@@ -24,6 +24,7 @@ type CalendarController interface {
 	NextSession(c *gin.Context)
 	NextPresencialSession(c *gin.Context)
 	MemberCalendar(c *gin.Context)
+	AdministeredCalendar(c *gin.Context)
 	CalendarSummary(c *gin.Context)
 }
 
@@ -459,6 +460,65 @@ func (cc *calendarController) MemberCalendar(c *gin.Context) {
 		return
 	}
 	resp, err := cc.calendarService.MemberCalendar(c, userID, from, to)
+	if err != nil {
+		respondCalendarError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdministeredCalendar godoc
+// @Summary      Calendario agregado del entrenador
+// @Description  Los días de calendario de TODOS los grupos administrados por
+// @Description  el usuario (owner de los equipos) en el rango, ordenados por
+// @Description  fecha, con group_id/group_name/team_id/team_name resueltos
+// @Description  server-side. Cada día presencial que superpone con otro día
+// @Description  presencial de otro grupo administrado trae presencial_collision
+// @Description  {type: "same_team"|"cross_team", conflicts: [...]} (cross_team
+// @Description  gana si hay de ambos; conflicts lista todos los colisionantes;
+// @Description  ausente si no colisiona). Incluye colisiones viejas guardadas
+// @Description  antes del guard. Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).
+// @Tags         calendar
+// @Produce      json
+// @Param        id    path   int     true   "User ID"
+// @Param        from  query  string  true   "Fecha desde (YYYY-MM-DD)"
+// @Param        to    query  string  true   "Fecha hasta (YYYY-MM-DD)"
+// @Success      200  {array}  calendar.AggregateCalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/administered-calendar [get]
+func (cc *calendarController) AdministeredCalendar(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	callerID, _ := utils.GetAuthUserID(c)
+	if userID != callerID {
+		respondCatalogError(c, http.StatusForbidden, "no podés consultar los datos de otro usuario")
+		return
+	}
+	fromStr, toStr := c.Query("from"), c.Query("to")
+	if fromStr == "" || toStr == "" {
+		respondCatalogError(c, http.StatusBadRequest, "from y to son obligatorios")
+		return
+	}
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "from debe tener formato YYYY-MM-DD")
+		return
+	}
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "to debe tener formato YYYY-MM-DD")
+		return
+	}
+	if from.After(to) {
+		respondCatalogError(c, http.StatusBadRequest, "from debe ser anterior o igual a to")
+		return
+	}
+	resp, err := cc.calendarService.AdministeredCalendar(c, userID, from, to)
 	if err != nil {
 		respondCalendarError(c, err)
 		return

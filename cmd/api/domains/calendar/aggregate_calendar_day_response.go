@@ -12,4 +12,10 @@ type AggregateCalendarDayResponse struct {
 	GroupName string `json:"group_name"`
 	TeamID    int64  `json:"team_id"`
 	TeamName  string `json:"team_name"`
+
+	// PresencialCollision solo se completa en administered-calendar: días
+	// presenciales que se superponen con otro día presencial de otro grupo
+	// administrado (member-calendar nunca lo trae). nil = sin colisión,
+	// omitido en el JSON.
+	PresencialCollision *PresencialCollision `json:"presencial_collision,omitempty"`
 }
