@@ -89,11 +89,41 @@ func TestGetAuthURL_Success(t *testing.T) {
 	client.On("GetAuthURL", mock.Anything, mock.Anything).Return("https://mp/auth?code=xyz").Once()
 
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
-	resp, err := svc.GetAuthURL(&gin.Context{}, 42)
+	resp, err := svc.GetAuthURL(&gin.Context{}, 42, mpconnect.TargetWeb)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "https://mp/auth?code=xyz", resp.AuthURL)
 	assert.True(t, strings.HasPrefix(resp.State, "42-"))
+	assert.True(t, strings.HasSuffix(resp.State, "-"+mpconnect.TargetWeb))
+	client.AssertExpectations(t)
+}
+
+// El target elegido al pedir la URL tiene que quedar codificado en el state:
+// es el único canal que sobrevive la vuelta desde Mercado Pago.
+func TestGetAuthURL_CodificaTargetApp(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	client.On("GetAuthURL", mock.Anything, mock.Anything).Return("https://mp/auth?code=xyz").Once()
+
+	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
+	resp, err := svc.GetAuthURL(&gin.Context{}, 42, mpconnect.TargetApp)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, mpconnect.TargetApp, mpconnect.TargetFromState(resp.State))
+	client.AssertExpectations(t)
+}
+
+// Un platform desconocido no puede propagarse al state: colapsa a web.
+func TestGetAuthURL_TargetDesconocidoColapsaAWeb(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	client.On("GetAuthURL", mock.Anything, mock.Anything).Return("https://mp/auth?code=xyz").Once()
+
+	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
+	resp, err := svc.GetAuthURL(&gin.Context{}, 42, "escritorio")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, mpconnect.TargetWeb, mpconnect.TargetFromState(resp.State))
 	client.AssertExpectations(t)
 }
 
@@ -102,7 +132,7 @@ func TestGetAuthURL_NotConfigured(t *testing.T) {
 	client.On("GetAuthURL", mock.Anything, mock.Anything).Return("").Once()
 
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, client, &mockEncryptor{})
-	resp, err := svc.GetAuthURL(&gin.Context{}, 42)
+	resp, err := svc.GetAuthURL(&gin.Context{}, 42, mpconnect.TargetWeb)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.EqualError(t, err, "configuración de Mercado Pago incompleta")
@@ -136,16 +166,18 @@ func TestHandleCallback_InvalidState(t *testing.T) {
 	resp, err := svc.HandleCallback(&gin.Context{}, &mpconnect.CallbackRequest{Code: "abc", State: "not-a-state"})
 	assert.Error(t, err)
 	assert.Nil(t, resp)
-	assert.EqualError(t, err, "state inválido")
+	assert.EqualError(t, err, "formato de state inválido")
 }
 
 func TestHandleCallback_ExpiredState(t *testing.T) {
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
-	expired := fmt.Sprintf("%d-%d", 1, time.Now().UnixNano()-11*time.Minute.Nanoseconds())
+	expired := mpconnect.BuildState(1, time.Now().UnixNano()-11*time.Minute.Nanoseconds(), mpconnect.TargetWeb)
 	resp, err := svc.HandleCallback(&gin.Context{}, &mpconnect.CallbackRequest{Code: "abc", State: expired})
 	assert.Error(t, err)
 	assert.Nil(t, resp)
-	assert.EqualError(t, err, "state inválido")
+	// Antes esto afirmaba "state inválido": el caller aplastaba el error de
+	// validateState y hacía inalcanzable el caso de expirado.
+	assert.EqualError(t, err, "state expirado")
 }
 
 func TestHandleCallback_Success(t *testing.T) {

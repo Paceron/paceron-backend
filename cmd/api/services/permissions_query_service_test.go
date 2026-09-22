@@ -851,7 +851,7 @@ func TestPermissionsQueryService_GetUserPermissions_FallbackToBaseTierWhenNoActi
 			return &dbs.Permission{ID: 1, Name: "crear_equipos"}, nil
 		},
 	}
-	// Sin sub activa, sin pending y sin suscripción alguna en el ledger — el
+// Sin sub activa, sin pending y sin suscripción alguna en el ledger — el
 	// caché user_roles.tier_id (premium de una activación vieja) no manda: base.
 	tierSubDao := &mockTierSubscriptionDaoForQuery{}
 
@@ -920,6 +920,7 @@ func TestPermissionsQueryService_GetUserPermissions_PendingSubKeepsPreviousPaidT
 	}
 
 	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, tierSubDao)
+
 	resp, err := svc.GetUserPermissions(nil, 1)
 
 	assert.NoError(t, err)

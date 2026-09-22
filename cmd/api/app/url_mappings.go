@@ -164,10 +164,10 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Runner calendar views
 	r.GET("/api/v1/users/:id/next-session", app.calendarController.NextSession)
+	r.GET("/api/v1/users/:id/next-presencial-session", app.calendarController.NextPresencialSession)
+	r.GET("/api/v1/users/:id/member-calendar", app.calendarController.MemberCalendar)
+	r.GET("/api/v1/users/:id/administered-calendar", app.calendarController.AdministeredCalendar)
 	r.GET("/api/v1/users/:id/calendar-summary", app.calendarController.CalendarSummary)
-
-	// Session divergence-clone helper
-	r.GET("/api/v1/sessions/:id/assigned-groups", app.sessionController.AssignedGroups)
 
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)

@@ -16,6 +16,12 @@ type GroupDaoInterface interface {
 	FindByIDAndTeamID(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
 	GetAll(ctx *gin.Context) ([]dbs.Group, error)
 	GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
+	// FindByOwnerID devuelve todos los grupos activos de todos los equipos
+	// administrados por ownerID (join a teams; grupos soft-deleted fuera).
+	FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
+	// FindByIDs devuelve varios grupos activos en una sola query — batch de
+	// nombres para los banners del home (design.md D6/D8, evita N+1).
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 	Update(ctx *gin.Context, group *dbs.Group) error
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
@@ -79,6 +85,35 @@ func (d *groupDao) GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group, err
 	err := d.DB.Where("team_id = ? AND deleted_at IS NULL", teamID).Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding groups by team: %w", err)
+	}
+	return groups, nil
+}
+
+// FindByOwnerID devuelve todos los grupos activos de todos los equipos
+// administrados por ownerID (reemplaza la composición GetAllByOwnerID +
+// GetByTeamID por equipo con una única query con join).
+func (d *groupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+	var groups []dbs.Group
+	err := d.DB.
+		Joins("JOIN teams ON teams.id = groups.team_id AND teams.deleted_at IS NULL").
+		Where("teams.owner_id = ? AND groups.deleted_at IS NULL", ownerID).
+		Order("groups.id").
+		Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding groups by owner: %w", err)
+	}
+	return groups, nil
+}
+
+// FindByIDs devuelve varios grupos activos en una sola consulta.
+func (d *groupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var groups []dbs.Group
+	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding groups by ids: %w", err)
 	}
 	return groups, nil
 }

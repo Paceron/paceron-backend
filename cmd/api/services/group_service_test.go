@@ -68,6 +68,8 @@ type mockGroupDao struct {
 	findByIDAndTeamIDFn  func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
 	getAllFn             func(ctx *gin.Context) ([]dbs.Group, error)
 	getByTeamIDFn        func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
+	findByOwnerIDFn      func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
+	findByIDsFn          func(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 	updateFn             func(ctx *gin.Context, g *dbs.Group) error
 	softDeleteFn         func(ctx *gin.Context, id int64) error
 	softDeleteByTeamIDFn func(ctx *gin.Context, teamID int64) error
@@ -104,6 +106,20 @@ func (m *mockGroupDao) GetAll(ctx *gin.Context) ([]dbs.Group, error) {
 func (m *mockGroupDao) GetByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Group, error) {
 	if m.getByTeamIDFn != nil {
 		return m.getByTeamIDFn(ctx, teamID)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+	if m.findByOwnerIDFn != nil {
+		return m.findByOwnerIDFn(ctx, ownerID)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, ids)
 	}
 	return nil, nil
 }

@@ -28,6 +28,27 @@ services:
         sync: false
       - key: RESEND_FROM_ADDRESS
         sync: false
+      # Mercado Pago OAuth (mp-connect). Las cuatro van con sync: false porque ya
+      # están cargadas en el dashboard y su valor es específico del entorno —
+      # declararlas acá cumple la regla de "toda key que el binario necesita vive
+      # en render.yaml" sin pisar una config productiva que funciona.
+      # MP_OAUTH_REDIRECT_URI en particular tiene que coincidir EXACTA con la
+      # registrada en el panel de Mercado Pago.
+      - key: MP_OAUTH_CLIENT_ID
+        sync: false
+      - key: MP_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: MP_OAUTH_REDIRECT_URI
+        sync: false
+      - key: MP_OAUTH_TEST_TOKEN
+        sync: false
+      # Segundo salto: a dónde manda el backend al navegador después de procesar
+      # el callback. No se registran en Mercado Pago (MP nunca las ve). Cuál se
+      # usa lo decide el target del state — ver domains/mpconnect/state.go.
+      - key: MP_OAUTH_WEB_RETURN_URL
+        value: "https://paceron-frontend.vercel.app/mp-connect/callback"
+      - key: MP_OAUTH_APP_RETURN_URL
+        value: "paceron://mp-connect/callback"
 
   # Preview de develop, contra testing stage (default, sin flag). Mismo repo,
   # otro branch — sirve para probar develop desplegado sin tocar producción.
@@ -57,3 +78,24 @@ services:
         sync: false
       - key: RESEND_FROM_ADDRESS
         sync: false
+      # Mercado Pago OAuth (mp-connect). Las cuatro van con sync: false porque ya
+      # están cargadas en el dashboard y su valor es específico del entorno —
+      # declararlas acá cumple la regla de "toda key que el binario necesita vive
+      # en render.yaml" sin pisar una config productiva que funciona.
+      # MP_OAUTH_REDIRECT_URI en particular tiene que coincidir EXACTA con la
+      # registrada en el panel de Mercado Pago.
+      - key: MP_OAUTH_CLIENT_ID
+        sync: false
+      - key: MP_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: MP_OAUTH_REDIRECT_URI
+        sync: false
+      - key: MP_OAUTH_TEST_TOKEN
+        sync: false
+      # Segundo salto: a dónde manda el backend al navegador después de procesar
+      # el callback. No se registran en Mercado Pago (MP nunca las ve). Cuál se
+      # usa lo decide el target del state — ver domains/mpconnect/state.go.
+      - key: MP_OAUTH_WEB_RETURN_URL
+        value: "https://paceron-frontend-git-develop-paceron.vercel.app/mp-connect/callback"
+      - key: MP_OAUTH_APP_RETURN_URL
+        value: "paceron-dev://mp-connect/callback"

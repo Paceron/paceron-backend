@@ -18,7 +18,7 @@ import (
 
 // MPConnectServiceInterface define las operaciones de conexión OAuth con Mercado Pago.
 type MPConnectServiceInterface interface {
-	GetAuthURL(ctx *gin.Context, userID int64) (*mpconnect.AuthURLResponse, error)
+	GetAuthURL(ctx *gin.Context, userID int64, target string) (*mpconnect.AuthURLResponse, error)
 	HandleCallback(ctx *gin.Context, req *mpconnect.CallbackRequest) (*mpconnect.CallbackResponse, error)
 	GetStatus(ctx *gin.Context, userID int64) (*mpconnect.StatusResponse, error)
 	HandleDeauthorization(ctx *gin.Context, mpUserID int64) error
@@ -51,9 +51,11 @@ func NewMPConnectService(
 }
 
 // GetAuthURL genera la URL de autorización de Mercado Pago con un state CSRF.
-func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64) (*mpconnect.AuthURLResponse, error) {
-	// Generar state único para CSRF (userID + timestamp + random)
-	state := fmt.Sprintf("%d-%d", userID, time.Now().UnixNano())
+func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64, target string) (*mpconnect.AuthURLResponse, error) {
+	// State CSRF: userID + timestamp + a dónde volver tras el callback. El
+	// target viaja acá porque el redirect_uri registrado en MP es fijo — ver
+	// domains/mpconnect/state.go.
+	state := mpconnect.BuildState(userID, time.Now().UnixNano(), target)
 
 	if s.clientID == "" || s.redirectURI == "" {
 		customlogger.Error(ctx, "MP OAuth client not configured", fmt.Errorf("missing client ID/redirect"),
@@ -105,8 +107,12 @@ func (s *mpConnectService) HandleCallback(ctx *gin.Context, req *mpconnect.Callb
 	if err != nil {
 		customlogger.Warn(ctx, "MP OAuth invalid state",
 			customlogger.Tag("state", req.State),
+			customlogger.Tag("error", err.Error()),
 			customlogger.TagMethod("HandleCallback"))
-		return nil, fmt.Errorf("state inválido")
+		// Se propaga el error de validateState en vez de aplastarlo en "state
+		// inválido": así "state expirado" llega distinguible al caller, que es lo
+		// que mapMPConnectError ya contemplaba pero nunca podía recibir.
+		return nil, err
 	}
 	customlogger.Info(ctx, "[DEBUG] State validado",
 		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
@@ -266,12 +272,9 @@ func (s *mpConnectService) HandleDeauthorization(ctx *gin.Context, mpUserID int6
 
 // validateState valida que el state pertenece al usuario y no es muy viejo.
 func (s *mpConnectService) validateState(ctx *gin.Context, state string) (int64, error) {
-	// Formato: "userID-timestamp"
-	var userID int64
-	var ts int64
-	_, err := fmt.Sscanf(state, "%d-%d", &userID, &ts)
+	userID, ts, _, err := mpconnect.ParseState(state)
 	if err != nil {
-		return 0, fmt.Errorf("formato de state inválido")
+		return 0, err
 	}
 
 	// Validar que no sea muy viejo (10 min)

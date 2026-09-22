@@ -1,3 +1,5 @@
+> **Nota (2026-09-20):** este change nunca fue archivado, pero parte de su diseño fue reemplazado por `openspec/changes/asignacion-por-instanciacion/` (implementado). En particular, **D8 (edición de Session con exclusión manual/clonado) y D13 (clonado automático de días cerrados) ya no están vigentes** — el documento permanece tal cual se escribió, sin reescribir la historia; ver el change de reemplazo para el mecanismo actual (instanciación por asignación con guard de día cerrado).
+
 ## D1 — Modelo de datos: `group_calendar_days`
 
 | Campo | Tipo Go/GORM | Notas |
@@ -142,3 +144,5 @@ Decisión post-implementación (2026-09-13, sesión de ejecución nocturna): D8 
 **Fuera de alcance, deliberado** (confirmado con el usuario): registrar qué se hizo realmente (ejercicios/tiempos efectivos, por entrenador o corredor) — sigue diferido tal como ya lo dejaba la spec original (§7 del documento de frontend). Este congelamiento solo evita que una edición futura pise lo que quedó programado para un día ya cerrado; no agrega ningún mecanismo de registro de actividad real. `Stamp`/`UpsertDay`/`Bulk`/`BulkClear`/`Shift` (ediciones directas al calendario, no al catálogo) no llevan este chequeo — son acciones deliberadas del entrenador sobre una fecha puntual, no una propagación amplia desde el catálogo.
 
 **Gap detectado post-implementación, cerrado por `openspec/changes/congelar-ejercicio-en-clon/`**: este mecanismo clonaba la `Session` pero no los `Exercise` que referencia — editar un `Exercise` directamente (`PUT /exercises/{id}`) seguía pegando en vivo sobre días ya cerrados. Ese change profundiza el clon (también clona cada `Exercise` referenciado) y agrega el mismo chequeo de días cerrados a `ExerciseService.Update`. Ver ese change para el detalle; no se reescribe acá.
+
+**Reemplazado enteramente por `openspec/changes/asignacion-por-instanciacion/`** (decisión de equipo, 2026-09-19): todo D8/D13 (clonado por divergencia reactivo al editar catálogo) queda sin efecto — se reemplaza por instanciación proactiva en el momento de asignar, sin ninguna referencia viva entre `GroupCalendarDay` y el catálogo que pueda divergir. Ver ese change para el mecanismo nuevo.

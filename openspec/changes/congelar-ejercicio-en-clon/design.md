@@ -1,3 +1,5 @@
+> **Nota (2026-09-20):** este change nunca fue archivado, pero **fue reemplazado y su mecanismo eliminado** por `openspec/changes/asignacion-por-instanciacion/` (implementado): el congelamiento por divergencia en `ExerciseService.Update` ya no existe — el historial se preserva con copias inmutables (`ExerciseInstance`) creadas al momento de asignar, no con clonado reactivo al editar. El documento permanece tal cual se escribió, sin reescribir la historia.
+
 ## D1: El punto de congelamiento correcto es el cierre del día, no la asignación ni la carga de feedback
 
 Se descartaron dos alternativas antes de llegar a esta:
@@ -51,3 +53,7 @@ Cuando una sesión se congela (por cualquiera de los 3 disparadores: D8 manual, 
 ## D7: Sin backfill de datos
 
 No hay ninguna fila existente que requiera corrección: el gap existe desde que D13 se mergeó, pero no hubo actividad real (ni feedback, ni ediciones de ejercicio sobre días ya cerrados) que dependiera de la protección faltante — la feature de feedback (`workout_feedback`) recién se mergeó en paralelo a este change, sin datos de uso todavía. No se escribe ningún script de migración.
+
+## Reemplazado por `openspec/changes/asignacion-por-instanciacion/`
+
+Decisión de equipo (2026-09-19): el deep-clone de `Exercise` que agrega este change, y el trigger en `ExerciseService.Update` que lo dispara, quedan sin efecto — se reemplazan por instanciación proactiva en el momento de asignar (no hay más referencia viva al catálogo que romper, así que no hace falta clonar nada al editar). Ver ese change para el mecanismo nuevo.
