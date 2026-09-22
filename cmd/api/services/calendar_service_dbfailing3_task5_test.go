@@ -93,7 +93,9 @@ func TestDBError_Bulk_DeleteSupersededSelectFails(t *testing.T) {
 	dao := daos.NewGroupCalendarDayDao(db)
 	d1 := time.Now().AddDate(0, 0, 14)
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: d1, Kind: "training", SessionInstanceID: &inst.ID}))
-	failing := testutils.FailingDB(t, db, nthFail("select", 2))
+	// Orden de SELECTs en la tx: #1 FindByGroupAndDate; #2 First del Upsert de
+	// la DAO; #3 HasFeedback del deleteSuperseded.
+	failing := testutils.FailingDB(t, db, nthFail("select", 3))
 	svc := NewCalendarService(dao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, failing)
 
 	_, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{d1.Format("2006-01-02")}, Kind: "rest"})

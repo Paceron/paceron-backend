@@ -78,12 +78,11 @@ func (p *failingConnPool) PrepareContext(ctx context.Context, query string) (*sq
 }
 
 func (p *failingConnPool) BeginTx(ctx context.Context, opt *sql.TxOptions) (*sql.Tx, error) {
-	if beginner, ok := p.underlying.(interface {
-		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
-	}); ok {
-		return beginner.BeginTx(ctx, opt)
-	}
-	return nil, errors.New("FailingDB sobre pool sin BeginTx")
+	// Deliberadamente sin BeginTx: sobre handles de transacción (SetupTestDB),
+	// el auto-begin de gorm para statementes Create/Update/Delete eleva
+	// ErrInvalidTransaction, que gorm descarta y deja correr el statement con
+	// este mismo pool (la inyección de fallo sigue activa).
+	return nil, gorm.ErrInvalidTransaction
 }
 
 func (p *failingConnPool) Commit() error {

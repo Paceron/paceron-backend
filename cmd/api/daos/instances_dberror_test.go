@@ -111,7 +111,9 @@ func TestSessionExerciseInstanceDao_DBFail_Operaciones(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error deleting session exercise instance")
 
-	// DeleteBySessionInstance (borrado lógico en cascada de instancia superada).
+	// DeleteBySessionInstance (borrado en cascada de instancia superada;
+	// handle nuevo: el consumido de Delete individual ya gastó el match).
+	dao = NewSessionExerciseInstanceDao(testutils.FailingDB(t, db, instanceNthFail("delete", 1)))
 	err = dao.DeleteBySessionInstance(nil, sess.ID)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error deleting session exercise instances")
