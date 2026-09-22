@@ -29,6 +29,7 @@ type mockCalendarService struct {
 	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
 	nextSessionFn     func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
 	nextPresencialFn  func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
+	memberCalendarFn  func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	calendarSummaryFn func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -59,6 +60,9 @@ func (m *mockCalendarService) NextSession(ctx *gin.Context, userID int64) (*cale
 func (m *mockCalendarService) NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
 	return m.nextPresencialFn(ctx, userID)
 }
+func (m *mockCalendarService) MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+	return m.memberCalendarFn(ctx, userID, from, to)
+}
 func (m *mockCalendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
 	return m.calendarSummaryFn(ctx, userID)
 }
@@ -79,6 +83,7 @@ func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64
 	r.POST("/groups/:id/calendar/shift", ctrl.Shift)
 	r.GET("/users/:id/next-session", ctrl.NextSession)
 	r.GET("/users/:id/next-presencial-session", ctrl.NextPresencialSession)
+	r.GET("/users/:id/member-calendar", ctrl.MemberCalendar)
 	r.GET("/users/:id/calendar-summary", ctrl.CalendarSummary)
 	return r
 }
@@ -284,6 +289,83 @@ func TestCalendarController_NextPresencialSession_OtherUserForbidden(t *testing.
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_Success(t *testing.T) {
+	var capturedUserID int64
+	var capturedFrom, capturedTo time.Time
+	svc := &mockCalendarService{memberCalendarFn: func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+		capturedUserID = userID
+		capturedFrom, capturedTo = from, to
+		return []calendar.AggregateCalendarDayResponse{{
+			CalendarDayResponse: calendar.CalendarDayResponse{ID: 1, GroupID: 5, Date: "2026-10-01", Kind: "rest"},
+			GroupID:             5,
+			GroupName:           "Grupo A",
+			TeamID:              10,
+			TeamName:            "Equipo A",
+		}}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, int64(7), capturedUserID)
+	assert.Equal(t, "2026-10-01", capturedFrom.Format("2006-01-02"))
+	assert.Equal(t, "2026-10-31", capturedTo.Format("2006-01-02"))
+	assert.Contains(t, rec.Body.String(), `"group_name":"Grupo A"`)
+	assert.Contains(t, rec.Body.String(), `"team_name":"Equipo A"`)
+}
+
+func TestCalendarController_MemberCalendar_OtherUserForbidden(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/99/member-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_MissingDatesReturns400(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+
+	for _, url := range []string{
+		"/users/7/member-calendar",
+		"/users/7/member-calendar?from=2026-10-01",
+		"/users/7/member-calendar?to=2026-10-31",
+	} {
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code, url)
+	}
+}
+
+func TestCalendarController_MemberCalendar_FromAfterToReturns400(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-31&to=2026-10-01", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_InvalidDateFormatReturns400(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=nope&to=2026-10-01", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestCalendarController_Bulk_Success(t *testing.T) {

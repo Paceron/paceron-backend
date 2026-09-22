@@ -19,6 +19,10 @@ type GroupCalendarDaoInterface interface {
 	// los grupos indicados en las fechas indicadas (base de la detección de
 	// colisiones presenciales, design.md D3).
 	FindPresencialForGroupsInRange(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
+	// FindForGroupsInRange devuelve todos los días de calendario de los
+	// grupos indicados en el rango de fechas, ordenados por fecha (base del
+	// calendario agregado, design.md D8).
+	FindForGroupsInRange(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
 	Delete(ctx *gin.Context, groupID int64, date time.Time) error
 	DeleteByDates(ctx *gin.Context, groupID int64, dates []time.Time) error
 	// FindNextForGroupsByKind devuelve el día más próximo del kind indicado
@@ -85,6 +89,21 @@ func (d *groupCalendarDayDao) FindByGroupAndDate(ctx *gin.Context, groupID int64
 func (d *groupCalendarDayDao) FindByGroupAndRange(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 	var days []dbs.GroupCalendarDay
 	err := d.DB.Where("group_id = ? AND date >= ? AND date <= ?", groupID, from, to).Order("date").Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing calendar days: %w", err)
+	}
+	return days, nil
+}
+
+// FindForGroupsInRange es el espejo multi-grupo de FindByGroupAndRange
+// (design.md D8): un solo query con group_id IN en vez de N queries por
+// grupo. Sin grupos devuelve vacío (evita IN () inválido).
+func (d *groupCalendarDayDao) FindForGroupsInRange(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Where("group_id IN ? AND date >= ? AND date <= ?", groupIDs, from, to).Order("date").Find(&days).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing calendar days: %w", err)
 	}

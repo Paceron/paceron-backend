@@ -52,6 +52,7 @@ type CalendarServiceInterface interface {
 	Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
 	NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
 	NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
+	MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -1652,6 +1653,82 @@ func (s *calendarService) trainingBannerItem(ctx *gin.Context, day dbs.GroupCale
 		}
 	}
 	return item
+}
+
+// MemberCalendar resuelve el calendario agregado del corredor (design.md D8,
+// spec "Calendario agregado del corredor"): los días de calendario de TODOS
+// los grupos con membresía activa del usuario en el rango, ordenados por
+// fecha, con group_name/team_name resueltos server-side en batch (1 query de
+// groups + 1 de teams, sin N+1).
+func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding memberships for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	if len(memberships) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+	groupIDs := make([]int64, len(memberships))
+	for i, m := range memberships {
+		groupIDs[i] = m.GroupID
+	}
+
+	days, err := s.calendarDao.FindForGroupsInRange(ctx, groupIDs, from, to)
+	if err != nil {
+		customlogger.Error(ctx, "error listing aggregated calendar days", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al listar calendario")
+	}
+	if len(days) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+
+	// Nombres batch: groups primero; team_name vía 1 query de teams para los
+	// teams de esos grupos.
+	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding groups for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	var teamIDs []int64
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teamNameByID := make(map[int64]string)
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+			return nil, fmt.Errorf("error al buscar equipos del usuario")
+		}
+		for _, t := range teams {
+			teamNameByID[t.ID] = t.Name
+		}
+	}
+
+	// La DAO ordena por fecha; el merge multi-grupo conserva ese orden (los
+	// días de la misma fecha quedan adyacentes, agrupados por grupo). Los
+	// items van con los campos de CalendarDayResponse + nombres embebidos
+	// planos; el session_instance embebido se resuelve por día como en
+	// toCalendarDayResponse.
+	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
+	for i, d := range days {
+		base, err := s.toCalendarDayResponse(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		group := groupByID[d.GroupID]
+		responses[i] = calendar.AggregateCalendarDayResponse{
+			CalendarDayResponse: base,
+			GroupID:             group.ID,
+			GroupName:           group.Name,
+			TeamID:              group.TeamID,
+			TeamName:            teamNameByID[group.TeamID],
+		}
+	}
+	return responses, nil
 }
 
 func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {

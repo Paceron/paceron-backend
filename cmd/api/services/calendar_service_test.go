@@ -20,6 +20,7 @@ type mockGroupCalendarDao struct {
 	upsertFn                  func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
 	findByGroupAndDateFn      func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
 	findByGroupAndRangeFn     func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	findForGroupsInRangeFn    func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
 	findPresencialForGroupsFn func(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	deleteFn                  func(ctx *gin.Context, groupID int64, date time.Time) error
 	deleteByDatesFn           func(ctx *gin.Context, groupID int64, dates []time.Time) error
@@ -45,6 +46,12 @@ func (m *mockGroupCalendarDao) FindByGroupAndDate(ctx *gin.Context, groupID int6
 func (m *mockGroupCalendarDao) FindByGroupAndRange(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 	if m.findByGroupAndRangeFn != nil {
 		return m.findByGroupAndRangeFn(ctx, groupID, from, to)
+	}
+	return nil, nil
+}
+func (m *mockGroupCalendarDao) FindForGroupsInRange(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
+	if m.findForGroupsInRangeFn != nil {
+		return m.findForGroupsInRangeFn(ctx, groupIDs, from, to)
 	}
 	return nil, nil
 }
@@ -738,6 +745,156 @@ func TestCalendarService_NextPresencialSession_TodayCounts(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, today.Format("2006-01-02"), resp.Date, "ni async ni cancelled son candidatos")
+}
+
+// MemberCalendar con mocks (D8): memberships de 2 grupos → 1 query de días
+// con AMBOS group_ids; los nombres salen en batch (1 groups + 1 teams);
+// sin días el resultado es un slice vacío no-nil.
+func TestCalendarService_MemberCalendar_MergesBothGroups(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return []dbs.GroupUser{{GroupID: 1, UserID: userID}, {GroupID: 2, UserID: userID}}, nil
+	}}
+	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+		return []dbs.Group{{ID: 1, Name: "Grupo 1", TeamID: 10}, {ID: 2, Name: "Grupo 2", TeamID: 11}}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+		return []dbs.Team{{ID: 10, Name: "Equipo 10"}, {ID: 11, Name: "Equipo 11"}}, nil
+	}}
+	var capturedGroupIDs []int64
+	from, _ := time.Parse("2006-01-02", "2026-10-01")
+	to, _ := time.Parse("2006-01-02", "2026-10-31")
+	d1, _ := time.Parse("2006-01-02", "2026-10-05")
+	d2, _ := time.Parse("2006-01-02", "2026-10-06")
+	calDao := &mockGroupCalendarDao{findForGroupsInRangeFn: func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
+		capturedGroupIDs = groupIDs
+		return []dbs.GroupCalendarDay{
+			{GroupID: 1, Date: d1, Kind: "training"},
+			{GroupID: 2, Date: d2, Kind: "rest"},
+		}, nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.MemberCalendar(nil, 42, from, to)
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1, 2}, capturedGroupIDs, "consulta los días con todos los group_ids de las membresías activas")
+	require.Len(t, resp, 2)
+	assert.Equal(t, "2026-10-05", resp[0].Date)
+	assert.Equal(t, int64(1), resp[0].GroupID)
+	assert.Equal(t, "Grupo 1", resp[0].GroupName)
+	assert.Equal(t, int64(10), resp[0].TeamID)
+	assert.Equal(t, "Equipo 10", resp[0].TeamName)
+	assert.Equal(t, "2026-10-06", resp[1].Date)
+	assert.Equal(t, int64(2), resp[1].GroupID)
+	assert.Equal(t, "Grupo 2", resp[1].GroupName)
+	assert.Equal(t, int64(11), resp[1].TeamID)
+	assert.Equal(t, "Equipo 11", resp[1].TeamName)
+}
+
+func TestCalendarService_MemberCalendar_EmptyRangeReturnsEmptySlice(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.MemberCalendar(nil, 42, time.Now(), time.Now().AddDate(0, 0, 7))
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp)
+}
+
+func TestCalendarService_MemberCalendar_NoMembershipsReturnsEmptySlice(t *testing.T) {
+	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+		return nil, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+
+	resp, err := svc.MemberCalendar(nil, 42, time.Now(), time.Now().AddDate(0, 0, 7))
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp)
+}
+
+// MemberCalendar end-to-end contra Postgres real (escenario de la spec
+// "Calendario agregado del corredor"): usuario miembro de 2 grupos en 2
+// equipos con días en el mismo rango → un solo response con los días de
+// ambos, nombres de grupo y equipo resueltos server-side, ordenado por fecha;
+// los días fuera del rango y de memberships inactivas quedan fuera.
+func TestCalendarService_MemberCalendar_TwoGroupsSameRange(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "member-calendar-owner@test.com", DNI: "50000109", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	runner := &dbs.User{Name: "Test", Surname: "Runner", Email: "member-calendar-runner@test.com", DNI: "50000110", BirthDate: time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	require.NoError(t, db.Create(runner).Error)
+	teamA := &dbs.Team{Name: "Equipo A member-cal", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(teamA).Error)
+	teamB := &dbs.Team{Name: "Equipo B member-cal", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(teamB).Error)
+	groupA := &dbs.Group{Name: "Grupo A member-cal", TeamID: teamA.ID, IsMain: true}
+	require.NoError(t, db.Create(groupA).Error)
+	groupB := &dbs.Group{Name: "Grupo B member-cal", TeamID: teamB.ID, IsMain: true}
+	require.NoError(t, db.Create(groupB).Error)
+	groupOther := &dbs.Group{Name: "Grupo other member-cal", TeamID: teamB.ID, IsMain: false}
+	require.NoError(t, db.Create(groupOther).Error)
+	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: groupA.ID, UserID: runner.ID, DateStart: time.Now()}).Error)
+	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: groupB.ID, UserID: runner.ID, DateStart: time.Now()}).Error)
+	// Membresía del tercer grupo, inactiva (date_end vencido): sus días no cuentan.
+	expiredEnd := time.Now().AddDate(0, 0, -1)
+	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: groupOther.ID, UserID: runner.ID, DateStart: time.Now().AddDate(0, 0, -10), DateEnd: &expiredEnd}).Error)
+
+	inRange := time.Now().AddDate(0, 0, 3)
+	inRange2 := time.Now().AddDate(0, 0, 4)
+	outOfRange := time.Now().AddDate(0, 0, 40)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: inRange, Kind: "training"}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: inRange2, Kind: "rest"}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupOther.ID, Date: inRange, Kind: "training"}))
+
+	from := time.Now().AddDate(0, 0, 1)
+	to := time.Now().AddDate(0, 0, 10)
+	resp, err := svc.MemberCalendar(nil, runner.ID, from, to)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 2, "solo los días de las 2 membresías activas, en el rango")
+	assert.Equal(t, inRange.Format("2006-01-02"), resp[0].Date, "ordenado por fecha")
+	assert.Equal(t, groupA.ID, resp[0].GroupID)
+	assert.Equal(t, groupA.Name, resp[0].GroupName)
+	assert.Equal(t, teamA.ID, resp[0].TeamID)
+	assert.Equal(t, teamA.Name, resp[0].TeamName)
+	assert.Equal(t, inRange2.Format("2006-01-02"), resp[1].Date)
+	assert.Equal(t, groupB.ID, resp[1].GroupID)
+	assert.Equal(t, groupB.Name, resp[1].GroupName)
+	assert.Equal(t, teamB.ID, resp[1].TeamID)
+	assert.Equal(t, teamB.Name, resp[1].TeamName)
+	_ = outOfRange
+}
+
+// Rango sin días en Postgres real → 200 [] (slice vacío, no null).
+func TestCalendarService_MemberCalendar_EmptyRangePostgres(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "member-calendar-empty@test.com", DNI: "50000111", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	team := &dbs.Team{Name: "Equipo member-cal empty", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo member-cal empty", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: group.ID, UserID: owner.ID, DateStart: time.Now()}).Error)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: time.Now().AddDate(0, 0, 60), Kind: "training"}))
+
+	resp, err := svc.MemberCalendar(nil, owner.ID, time.Now().AddDate(0, 0, 1), time.Now().AddDate(0, 0, 10))
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp)
 }
 
 func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
