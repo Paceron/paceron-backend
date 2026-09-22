@@ -158,7 +158,7 @@ func (d *groupCalendarDayDao) FindNextPresencialForGroups(ctx *gin.Context, grou
 		Where("group_id IN ? AND kind = ? AND is_presencial = ?", groupIDs, string(constants.GroupCalendarDayKindTraining), true).
 		Where("date > ? OR (date = ? AND presencial_time_from IS NOT NULL AND TO_CHAR(presencial_time_from AT TIME ZONE 'UTC', 'HH24:MI') > ?)",
 			today, today, nowHHMM).
-		Order("date ASC").First(&day).Error
+		Order("date ASC, presencial_time_from ASC, id ASC").First(&day).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
