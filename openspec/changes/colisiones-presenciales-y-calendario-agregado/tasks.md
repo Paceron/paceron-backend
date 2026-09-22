@@ -24,15 +24,15 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 3: Tests de colisión (etapa 1)
 
-- [ ] 3.1 Test helper: fixture 1 owner + 2 equipos (A: grupos G1/G2; B: grupo G3).
-- [ ] 3.2 PUT cross-team → 409 sin escribir (fila no existe); PUT same-team → 200 + same_team_warnings poblado; PUT sin superposición → 200 sin warnings.
-- [ ] 3.3 Bordes que se tocan (09:00/09:00) → NO colisión (200).
-- [ ] 3.4 Cancelado como colisionante NO bloquea: día cancelled presencial superpuesto → 200.
-- [ ] 3.5 Stamp: cross → 409 con fechas; mismo-team → wrapper con days + warnings; exclude_dates + colisión en fecha no excluida → 409; colisión solo en fecha excluida → 201.
-- [ ] 3.6 Bulk cross en 2ª fecha → 409 all-or-nothing (1ª fecha no escrita); bulk same → warnings.
-- [ ] 3.7 Shift: mover presencial a fecha ocupada cross → 409 rollback (fila mantiene fecha vieja); same → warnings.
-- [ ] 3.8 Regresión: escrituras no presenciales siguen sin pasar por detección (día async en horario ocupado → 200).
-- [ ] 3.9 Suite completa + coverage ≥ 80.
+- [x] 3.1 Test helper: fixture 1 owner + 2 equipos (A: grupos G1/G2; B: grupo G3).
+- [x] 3.2 PUT cross-team → 409 sin escribir (fila no existe); PUT same-team → 200 + same_team_warnings poblado; PUT sin superposición → 200 sin warnings.
+- [x] 3.3 Bordes que se tocan (09:00/09:00) → NO colisión (200).
+- [x] 3.4 Cancelado como colisionante NO bloquea: día cancelled presencial superpuesto → 200.
+- [x] 3.5 Stamp: cross → 409 con fechas; mismo-team → wrapper con days + warnings; exclude_dates + colisión en fecha no excluida → 409; colisión solo en fecha excluida → 201.
+- [x] 3.6 Bulk cross en 2ª fecha → 409 all-or-nothing (1ª fecha no escrita); bulk same → warnings.
+- [x] 3.7 Shift: mover presencial a fecha ocupada cross → 409 rollback (fila mantiene fecha vieja); same → warnings.
+- [x] 3.8 Regresión: escrituras no presenciales siguen sin pasar por detección (día async en horario ocupado → 200).
+- [x] 3.9 Suite completa + coverage ≥ 80.
 
 ## Etapa 2 — Gap 10: banners del home
 
