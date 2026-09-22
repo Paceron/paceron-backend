@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
@@ -126,7 +125,6 @@ func TestGroupCalendarDayDao_FindPresencialForGroupsInRange_OrdersByDateAndTime(
 func TestGroupCalendarDayDao_FindPresencialForGroupsInRange_EmptyInputs(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupCalendarDayDao(db)
-	_ = gorm.ErrRecordNotFound
 
 	days, err := dao.FindPresencialForGroupsInRange(nil, nil, []time.Time{time.Now()})
 	require.NoError(t, err)

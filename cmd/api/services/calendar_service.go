@@ -182,7 +182,7 @@ func (s *calendarService) findPresencialCollisions(
 ) ([]calendar.PresencialConflict, []calendar.PresencialConflict, error) {
 	groups, err := s.groupDao.FindByOwnerID(ctx, ownerID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error al buscar grupos del owner")
+		return nil, nil, fmt.Errorf("error al buscar grupos del owner: %w", err)
 	}
 	groupByID := make(map[int64]dbs.Group, len(groups))
 	groupIDs := make([]int64, 0, len(groups))
@@ -192,7 +192,7 @@ func (s *calendarService) findPresencialCollisions(
 	}
 	teams, err := s.teamDao.GetAllByOwnerID(ctx, ownerID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error al buscar equipos del owner")
+		return nil, nil, fmt.Errorf("error al buscar equipos del owner: %w", err)
 	}
 	teamNameByID := make(map[int64]string, len(teams))
 	for _, t := range teams {
@@ -201,7 +201,7 @@ func (s *calendarService) findPresencialCollisions(
 
 	existing, err := daos.NewGroupCalendarDayDao(db).FindPresencialForGroupsInRange(ctx, groupIDs, dates)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error al buscar días presenciales")
+		return nil, nil, fmt.Errorf("error al buscar días presenciales: %w", err)
 	}
 
 	excludedDaySet := make(map[int64]struct{}, len(excludeDayIDs))
@@ -252,12 +252,19 @@ func (s *calendarService) findPresencialCollisions(
 				PresencialTimeFrom: dayFrom,
 				PresencialTimeTo:   dayTo,
 			}
-			key := fmt.Sprintf("%d|%s|%s|%s", conflict.GroupID, conflict.Date, conflict.PresencialTimeFrom, conflict.PresencialTimeTo)
+			// Clasificar ANTES de deduplicar: el mismo día colisionante puede
+			// chocar con candidatos de equipos distintos, y un cross no debe
+			// ser suprimido solo porque un candidato same-team pasó primero.
+			classification := "same"
+			if candGroup.TeamID != dayGroup.TeamID {
+				classification = "cross"
+			}
+			key := fmt.Sprintf("%d|%s|%s|%s|%s", conflict.GroupID, conflict.Date, conflict.PresencialTimeFrom, conflict.PresencialTimeTo, classification)
 			if _, dup := seen[key]; dup {
 				continue
 			}
 			seen[key] = struct{}{}
-			if candGroup.TeamID != dayGroup.TeamID {
+			if classification == "cross" {
 				cross = append(cross, conflict)
 			} else {
 				same = append(same, conflict)
