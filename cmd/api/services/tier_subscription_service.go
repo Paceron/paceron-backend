@@ -95,7 +95,19 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 			return nil, fmt.Errorf("rol no encontrado")
 		}
 
-		sub, err := subDao.FindActiveByUserRole(ctx, userID, roleID)
+		// 409: ya existe una sub con primer pago pendiente para el rol. Con el
+		// modelo nuevo hay dos "vigentes" posibles al mismo tiempo (la sub activa
+		// del tier actual + la pending del tier destino), así que el chequeo es
+		// explícito contra el estado pending, no el default de FindActiveByUserRole.
+		existingPending, err := subDao.FindActiveByUserRole(ctx, userID, roleID, string(constants.SubscriptionStatusFirstPaymentPending))
+		if err != nil {
+			return nil, fmt.Errorf("error al cambiar de tier")
+		}
+		if existingPending != nil {
+			return nil, fmt.Errorf("no podés cambiar de tier con el primer pago pendiente")
+		}
+
+		sub, err := subDao.FindActiveByUserRole(ctx, userID, roleID, string(constants.SubscriptionStatusActive))
 		if err != nil {
 			return nil, fmt.Errorf("error al cambiar de tier")
 		}
@@ -117,9 +129,6 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 					return nil, fmt.Errorf("no podés cambiar de tier con deuda pendiente")
 				}
 			}
-			if sub.Status == string(constants.SubscriptionStatusFirstPaymentPending) {
-				return nil, fmt.Errorf("no podés cambiar de tier con el primer pago pendiente")
-			}
 		}
 
 		resp := &tiersubscription.ChangeTierResponse{}
@@ -131,16 +140,15 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 		}
 		resp.Role = tiersubscription.RoleInfo{ID: role.ID, Name: role.Name}
 
-		if sub != nil {
-			if err := subDao.SetEnded(ctx, sub.ID); err != nil {
-				return nil, fmt.Errorf("error al cambiar de tier")
-			}
-			customlogger.Info(ctx, "ChangeTier ended previous sub",
-				customlogger.Tag("old_sub_id", fmt.Sprintf("%d", sub.ID)),
-				customlogger.Tag("old_sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
-				customlogger.TagMethod("ChangeTier"))
-		}
-
+		// IMPORTANTE: la sub vigente del tier actual NO se cierra acá. Con el
+		// modelo nuevo, el cierre (ended) de la vieja ocurre recién cuando la
+		// nueva pasa a active — al confirmarse el pago de la cuota #1 — en la
+		// misma transacción (applyApprovedInstallment). Mientras la nueva está
+		// first_payment_pending, la vieja sigue active y el usuario conserva su
+		// tier previo. La única excepción es el target gratis: ahí no hay ventana
+		// de pago, la nueva se crea active en el momento y el cierre de la vieja
+		// pasa ahora (ver rama gratis más abajo, que hace SetEnded antes del
+		// Create para liberar el slot del índice parcial `active`).
 		newSub := &dbs.UserRoleTierSubscription{
 			UserID:     userID,
 			RoleID:     roleID,
@@ -183,7 +191,21 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 			return resp, nil
 		}
 
-		// Target gratis: sub active sin cuota + tier sync inmediato (D4).
+		// Target gratis: sub active sin cuota + tier sync inmediato (D4). El target
+		// gratis no tiene ventana de pago: la nueva nace active en el momento, así
+		// que el cierre (ended) de la vieja activa — si existe — pasa acá, ANTES del
+		// Create, para liberar el slot del índice parcial `active` (una sola sub
+		// activa por user+role; la ventana de coexistencia activa+pending solo
+		// aplica a targets pagos, ver ChangeTier head).
+		if sub != nil {
+			if err := subDao.SetEnded(ctx, sub.ID); err != nil {
+				return nil, fmt.Errorf("error al cambiar de tier")
+			}
+			customlogger.Info(ctx, "ChangeTier ended previous sub (free target)",
+				customlogger.Tag("old_sub_id", fmt.Sprintf("%d", sub.ID)),
+				customlogger.Tag("old_sub_tier_id", fmt.Sprintf("%d", sub.TierID)),
+				customlogger.TagMethod("ChangeTier"))
+		}
 		newSub.Status = string(constants.SubscriptionStatusActive)
 		if err := subDao.Create(ctx, newSub); err != nil {
 			return nil, fmt.Errorf("error al cambiar de tier")

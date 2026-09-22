@@ -106,8 +106,11 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 		// que puede conservar un tier pago de una activación vieja sin que hoy
 		// exista sub que lo respalde — el estado real sin sub activa es base.
 		// Una sub first_payment_pending tampoco cuenta: la cuota #1 impaga no
-		// habilita el acceso al tier pago (ver docs/STATE_MACHINES.md). El
-		// índice único parcial de subs vigentes garantiza a lo sumo una sub.
+		// habilita el acceso al tier pago (ver docs/STATE_MACHINES.md). Durante
+		// la ventana pending la sub del tier anterior sigue active (ChangeTier ya
+		// no la cierra al crear el pendiente), así que esta rama sigue reportando
+		// el tier previo; el cierre a ended ocurre en applyApprovedInstallment,
+		// cuando la cuota #1 confirma la nueva.
 		var tierID int64
 		sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, ur.RoleID, string(constants.SubscriptionStatusActive))
 		if err != nil {

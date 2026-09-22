@@ -105,11 +105,27 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 
 	// Constraints que GORM no expresa por tags: se crean con SQL crudo post-
 	// AutoMigrate, idempotente (vuelve a correr sin error si ya existen).
-	// 1. Una sola suscripción vigente por (user_id, role_id): índice único parcial.
+	// 1. Suscripciones por (user_id, role_id): como máximo una `active` y como
+	//    máximo una `first_payment_pending` (dos índices parciales). Esto permite
+	//    la ventana de cambio de tier: la sub del tier actual sigue `active`
+	//    mientras la nueva del tier destino está `first_payment_pending`; la
+	//    vieja pasa a `ended` recién cuando la nueva se confirma como `active`
+	//    (cuota #1 pagada). El índice viejo (uq_sub_ids_user_role_active) unificaba
+	//    ambos estados y no admitía esa coexistencia — se reemplaza.
+	if err := db.Exec(`DROP INDEX IF EXISTS uq_sub_ids_user_role_active;`).Error; err != nil {
+		customlogger.Error(nil, "error dropping legacy tier subscription partial unique index", err)
+		return nil, err
+	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_sub_ids_user_role_active
 		ON user_role_tier_subscriptions (user_id, role_id)
-		WHERE status IN ('active','first_payment_pending');`).Error; err != nil {
-		customlogger.Error(nil, "error creating partial unique index on user_role_tier_subscriptions", err)
+		WHERE status = 'active';`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial unique index on active tier subscriptions", err)
+		return nil, err
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_sub_ids_user_role_pending
+		ON user_role_tier_subscriptions (user_id, role_id)
+		WHERE status = 'first_payment_pending';`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial unique index on pending tier subscriptions", err)
 		return nil, err
 	}
 

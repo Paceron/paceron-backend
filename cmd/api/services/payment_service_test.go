@@ -848,6 +848,124 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 	assert.Equal(t, 1, subAgain.PaidInstallments)
 }
 
+func TestHandleWebhook_ApprovedInstallment_EndsPreviousActiveSub(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	user := &dbs.User{
+		Name:      "Test",
+		Surname:   "User",
+		Email:     "webhook-ins-end-old@test.com",
+		DNI:       "30000002",
+		BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		Password:  "hashed",
+	}
+	require.NoError(t, db.Create(user).Error)
+
+	role := &dbs.Role{Name: "entrenador"}
+	require.NoError(t, db.Create(role).Error)
+
+	base := &dbs.Tier{Name: "base", RoleID: role.ID, RoleName: role.Name, Hierarchy: 1, PaymentRequired: false}
+	require.NoError(t, db.Create(base).Error)
+	premium := &dbs.Tier{Name: "premium", RoleID: role.ID, RoleName: role.Name, Hierarchy: 2, PaymentRequired: true, TierAmount: 1500}
+	require.NoError(t, db.Create(premium).Error)
+	medium := &dbs.Tier{Name: "medium", RoleID: role.ID, RoleName: role.Name, Hierarchy: 3, PaymentRequired: true, TierAmount: 900}
+	require.NoError(t, db.Create(medium).Error)
+
+	urDao := daos.NewUserRoleDao(db)
+	require.NoError(t, urDao.Create(nil, &dbs.UserRole{UserID: user.ID, RoleID: role.ID, TierID: premium.ID,
+		AssignmentDate: time.Now(), Status: "active"}))
+
+	subDao := daos.NewTierSubscriptionDao(db)
+	// Sub del tier anterior, ya pagada (active): premium.
+	oldSub := &dbs.UserRoleTierSubscription{
+		UserID:            user.ID,
+		RoleID:            role.ID,
+		TierID:            premium.ID,
+		Status:            string(constants.SubscriptionStatusActive),
+		InitAmount:        premium.TierAmount,
+		StartDate:         time.Now(),
+		PaidInstallments:  2,
+	}
+	require.NoError(t, subDao.Create(nil, oldSub))
+
+	// Cambio de tier en vuelo: la pending del tier destino convive con la vieja
+	// active (los índices parciales nuevos lo permiten).
+	newSub := &dbs.UserRoleTierSubscription{
+		UserID:     user.ID,
+		RoleID:     role.ID,
+		TierID:     medium.ID,
+		Status:     string(constants.SubscriptionStatusFirstPaymentPending),
+		InitAmount: medium.TierAmount,
+		StartDate:  time.Now(),
+	}
+	require.NoError(t, subDao.Create(nil, newSub))
+
+	insDao := daos.NewInstallmentDao(db)
+	ins := &dbs.Installment{
+		SubscriptionID:    &newSub.ID,
+		UserID:            user.ID,
+		InstallmentNumber: 1,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            medium.TierAmount,
+	}
+	require.NoError(t, insDao.Create(nil, ins))
+
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, db, nil, nil, nil, nil, insDao, nil)
+
+	ctx := config.GetTestContext()
+	notification := payment.WebhookNotification{
+		Type: "payment",
+		Data: struct {
+			ID string `json:"id"`
+		}{ID: "50002"},
+	}
+
+	paymentRecord := &dbs.Payment{
+		ID:            502,
+		PaymentID:     "50002",
+		Status:        "pending",
+		InstallmentID: &ins.ID,
+	}
+	client.On("GetPayment", ctx, "test-access-token", 50002).Return(&mpsdk.Response{
+		ID:           50002,
+		Status:       "approved",
+		StatusDetail: "accredited",
+	}, nil)
+	dao.On("FindByPaymentID", ctx, "50002").Return(paymentRecord, nil)
+	dao.On("UpdateStatus", ctx, int64(502), "approved", "accredited").Return(nil)
+	dao.On("UpdateRawResponse", ctx, int64(502), mock.AnythingOfType("string")).Return(nil)
+
+	err := svc.HandleWebhook(ctx, notification)
+	assert.NoError(t, err)
+
+	// La vieja (premium) pasó a ended en la misma transacción.
+	oldCheck, err := subDao.FindByID(nil, oldSub.ID)
+	require.NoError(t, err)
+	require.NotNil(t, oldCheck)
+	assert.Equal(t, string(constants.SubscriptionStatusEnded), oldCheck.Status)
+
+	// La nueva (medium) quedó active y el tier del usuario se sincronizó.
+	newCheck, err := subDao.FindByID(nil, newSub.ID)
+	require.NoError(t, err)
+	require.NotNil(t, newCheck)
+	assert.Equal(t, string(constants.SubscriptionStatusActive), newCheck.Status)
+	assert.Equal(t, 1, newCheck.PaidInstallments)
+
+	ur, err := urDao.FindByUserAndRole(nil, user.ID, role.ID)
+	require.NoError(t, err)
+	require.NotNil(t, ur)
+	assert.Equal(t, medium.ID, ur.TierID)
+
+	// No puede haber más de una sub activa para el mismo user+role.
+	var activeSubs int64
+	require.NoError(t, db.Model(&dbs.UserRoleTierSubscription{}).
+		Where("user_id = ? AND role_id = ? AND status = ?", user.ID, role.ID, string(constants.SubscriptionStatusActive)).
+		Count(&activeSubs).Error)
+	assert.Equal(t, int64(1), activeSubs)
+}
+
 func TestCreatePreference_TeamSubscription_SellerPublicKey(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
