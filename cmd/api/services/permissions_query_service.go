@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
 
@@ -97,11 +98,18 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 			continue
 		}
 
-		// El tier se resuelve igual que GetCurrentSubscription/resolveEntrenadorTier:
-		// sub vigente (active | first_payment_pending) primero, fallback a
-		// user_roles.tier_id. El índice único parcial garantiza a lo sumo una sub.
-		tierID := ur.TierID
-		sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, ur.RoleID)
+		// El tier efectivo se resuelve desde la sub ACTIVA (ya pagada) del ledger,
+		// igual que GetCurrentSubscription(period=current). Sin sub activa, el
+		// usuario está en el tier base de su rol (menor jerarquía en `tiers`),
+		// como en el resto de la resolución de tier inicial (user_role_service,
+		// AssignRole). NO se usa user_roles.tier_id como fallback: es un caché
+		// que puede conservar un tier pago de una activación vieja sin que hoy
+		// exista sub que lo respalde — el estado real sin sub activa es base.
+		// Una sub first_payment_pending tampoco cuenta: la cuota #1 impaga no
+		// habilita el acceso al tier pago (ver docs/STATE_MACHINES.md). El
+		// índice único parcial de subs vigentes garantiza a lo sumo una sub.
+		var tierID int64
+		sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, ur.RoleID, string(constants.SubscriptionStatusActive))
 		if err != nil {
 			customlogger.Error(ctx, "error finding active tier subscription", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
@@ -111,6 +119,24 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 		}
 		if sub != nil {
 			tierID = sub.TierID
+		} else {
+			baseTier, err := s.tierDao.FindLowestByRole(ctx, ur.RoleID)
+			if err != nil {
+				customlogger.Error(ctx, "error finding base tier by role", err,
+					customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+					customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
+					customlogger.TagMethod("GetUserPermissions"))
+				return nil, fmt.Errorf("error al obtener permisos")
+			}
+			if baseTier == nil {
+				missingData = append(missingData, fmt.Sprintf("tier base no configurado para el rol %s", role.Name))
+				customlogger.Error(ctx, "no base tier configured for role", nil,
+					customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+					customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
+					customlogger.TagMethod("GetUserPermissions"))
+				continue
+			}
+			tierID = baseTier.ID
 		}
 
 		tier, err := s.tierDao.FindByID(ctx, tierID)
