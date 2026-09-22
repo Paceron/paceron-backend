@@ -195,7 +195,7 @@ func TestExerciseService_Create_CreateError(t *testing.T) {
 
 	_, err := svc.Create(nil, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "Trote", Kind: "running"})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al crear ejercicio")
 }
 
 func TestExerciseService_Update_FindError(t *testing.T) {
@@ -206,7 +206,7 @@ func TestExerciseService_Update_FindError(t *testing.T) {
 
 	_, err := svc.Update(nil, 1, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "running"})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al editar ejercicio")
 }
 
 func TestExerciseService_Update_InvalidKind(t *testing.T) {
@@ -231,7 +231,7 @@ func TestExerciseService_Update_UpdateError(t *testing.T) {
 
 	_, err := svc.Update(nil, 1, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "running"})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al editar ejercicio")
 }
 
 func TestExerciseService_Delete_FindError(t *testing.T) {
@@ -242,7 +242,7 @@ func TestExerciseService_Delete_FindError(t *testing.T) {
 
 	err := svc.Delete(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al borrar ejercicio")
 }
 
 func TestExerciseService_Delete_NotFound(t *testing.T) {
@@ -274,7 +274,7 @@ func TestExerciseService_Delete_SoftDeleteError(t *testing.T) {
 
 	err := svc.Delete(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al borrar ejercicio")
 }
 
 func TestExerciseService_Clone_FindError(t *testing.T) {
@@ -285,7 +285,7 @@ func TestExerciseService_Clone_FindError(t *testing.T) {
 
 	_, err := svc.Clone(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al clonar ejercicio")
 }
 
 func TestExerciseService_Clone_NotFound(t *testing.T) {
@@ -319,7 +319,7 @@ func TestExerciseService_Clone_CreateError(t *testing.T) {
 
 	_, err := svc.Clone(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al clonar ejercicio")
 }
 
 func TestExerciseService_Get_FindError(t *testing.T) {
@@ -330,7 +330,7 @@ func TestExerciseService_Get_FindError(t *testing.T) {
 
 	_, err := svc.Get(nil, 1)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al buscar ejercicio")
 }
 
 func TestExerciseService_List_FindError(t *testing.T) {
@@ -341,5 +341,5 @@ func TestExerciseService_List_FindError(t *testing.T) {
 
 	_, err := svc.List(nil, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al listar ejercicios")
 }

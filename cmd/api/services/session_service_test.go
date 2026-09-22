@@ -289,7 +289,7 @@ func TestSessionService_CloneInternal_FindExercisesError(t *testing.T) {
 
 	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al leer ejercicios de la sesión original")
 }
 
 func TestSessionService_CloneInternal_CreateError(t *testing.T) {
@@ -302,7 +302,7 @@ func TestSessionService_CloneInternal_CreateError(t *testing.T) {
 
 	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al crear sesión clonada")
 }
 
 func TestSessionService_CloneInternal_ReplaceError(t *testing.T) {
@@ -318,7 +318,7 @@ func TestSessionService_CloneInternal_ReplaceError(t *testing.T) {
 
 	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al copiar ejercicios al clon")
 }
 
 func TestSessionService_ValidateExercises_FindError(t *testing.T) {
@@ -326,7 +326,7 @@ func TestSessionService_ValidateExercises_FindError(t *testing.T) {
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, errors.New("db down") },
 	}).(*sessionService).validateExercises(nil, validSessionExercises())
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al validar ejercicios de la sesión")
 }
 
 func TestSessionService_ToResponse_FindError(t *testing.T) {
@@ -335,7 +335,7 @@ func TestSessionService_ToResponse_FindError(t *testing.T) {
 			return nil, errors.New("db down")
 		},
 	}, &mockExerciseDao{}).(*sessionService).toResponse(nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"})
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al armar la respuesta de la sesión")
 }
 
 func TestSessionService_ToSessionExerciseRows_Overrides(t *testing.T) {
@@ -361,7 +361,7 @@ func TestSessionService_Create_CreateError(t *testing.T) {
 
 	_, err := svc.Create(nil, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al crear sesión")
 }
 
 func TestSessionService_Create_ReplaceError(t *testing.T) {
@@ -378,7 +378,7 @@ func TestSessionService_Create_ReplaceError(t *testing.T) {
 
 	_, err := svc.Create(nil, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al crear sesión")
 }
 
 func TestSessionService_Update_FindError(t *testing.T) {
@@ -389,7 +389,7 @@ func TestSessionService_Update_FindError(t *testing.T) {
 
 	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al editar sesión")
 }
 
 func TestSessionService_Update_InvalidRole(t *testing.T) {
@@ -419,7 +419,7 @@ func TestSessionService_Update_UpdateError(t *testing.T) {
 
 	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al editar sesión")
 }
 
 func TestSessionService_Update_ReplaceError(t *testing.T) {
@@ -438,7 +438,7 @@ func TestSessionService_Update_ReplaceError(t *testing.T) {
 
 	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al editar sesión")
 }
 
 func TestSessionService_Delete_FindError(t *testing.T) {
@@ -449,7 +449,7 @@ func TestSessionService_Delete_FindError(t *testing.T) {
 
 	err := svc.Delete(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al borrar sesión")
 }
 
 func TestSessionService_Delete_Forbidden(t *testing.T) {
@@ -472,7 +472,7 @@ func TestSessionService_Delete_SoftDeleteError(t *testing.T) {
 
 	err := svc.Delete(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al borrar sesión")
 }
 
 func TestSessionService_Clone_FindError(t *testing.T) {
@@ -483,7 +483,7 @@ func TestSessionService_Clone_FindError(t *testing.T) {
 
 	_, err := svc.Clone(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al clonar sesión")
 }
 
 func TestSessionService_Clone_NotFound(t *testing.T) {
@@ -519,7 +519,7 @@ func TestSessionService_Clone_InternalError(t *testing.T) {
 
 	_, err := svc.Clone(nil, 1, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al clonar sesión")
 }
 
 func TestSessionService_Get_FindError(t *testing.T) {
@@ -530,7 +530,7 @@ func TestSessionService_Get_FindError(t *testing.T) {
 
 	_, err := svc.Get(nil, 1)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al buscar sesión")
 }
 
 func TestSessionService_List_FindError(t *testing.T) {
@@ -541,7 +541,7 @@ func TestSessionService_List_FindError(t *testing.T) {
 
 	_, err := svc.List(nil, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al listar sesiones")
 }
 
 func TestSessionService_List_ToResponseError(t *testing.T) {
@@ -557,5 +557,5 @@ func TestSessionService_List_ToResponseError(t *testing.T) {
 
 	_, err := svc.List(nil, 7)
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "error al armar la respuesta de la sesión")
 }
