@@ -128,5 +128,114 @@ Cerrado el Gap 8 ("evitar pisar selectivo" en el preview de estampado). **Aditiv
 
 - Cada fecha excluida **no se toca**: si el día ya tenía fila/instancia, quedan intactas (mismo `session_instance_id`); si estaba vacío, sigue vacío.
 - No cuenta para el `409` de conflictos ni para el `422` de día cerrado — se ignora antes de evaluar cualquier guarda. `force` sigue aplicando igual sobre las fechas **no** excluidas.
-- La respuesta (`201`, array de días estampados) no incluye las fechas excluidas.
-- Casos borde: fecha excluida fuera del rango del plan → se ignora silenciosamente; formato inválido en el array (`"10/07/2026"`) → `422 "exclude_dates debe tener formato YYYY-MM-DD"` sin escribir nada; rango totalmente excluido → `201` con `[]` (no es error).
+- La respuesta (`201`, wrapper `{days, same_team_warnings?}` — ver §8.3) no incluye las fechas excluidas.
+- Casos borde: fecha excluida fuera del rango del plan → se ignora silenciosamente; formato inválido en el array (`"10/07/2026"`) → `422 "exclude_dates debe tener formato YYYY-MM-DD"` sin escribir nada; rango totalmente excluido → `201` con `{"days": []}` (no es error).
+
+## 8. Colisión presencial, banners nuevos y calendario agregado (`colisiones-presenciales-y-calendario-agregado`)
+
+Cambios de contrato **confirmados en el código final** de la rama `feature/colisiones-presenciales-y-calendario-agregado`. Referencias: `cmd/api/domains/calendar/*.go`, `cmd/api/controllers/calendar_controller.go`, `cmd/api/services/calendar_service.go`. Spec: `openspec/changes/colisiones-presenciales-y-calendario-agregado/`; doc de dominio: `docs/CATALOGO_Y_CALENDARIO.md` §8.7/§8.8.
+
+Hay **2 cambios breaking** (§8.1 y §8.2) y el resto es aditivo/nuevo.
+
+### 8.1 BREAKING — `GET /users/{id}/next-session`: shape nuevo, nunca 204
+
+El shape anterior (una sola sesión con `session_instance` embebida, `204` si no había) **ya no existe**. Ahora siempre responde `200` con `{next_cancelled, next_training}`, cada uno el más próximo de su kind entre los grupos con membresía activa del usuario, independientes y nullable (`null` cuando no hay próxima de ese kind — ya no hay `204`):
+
+```json
+{
+  "next_cancelled": {"group_id": 1, "group_name": "Maratón A", "date": "2026-09-25", "session_name": "Trote suave"},
+  "next_training": {
+    "group_id": 2, "group_name": "Fondo B", "date": "2026-09-26", "session_name": "Fartlek 5K",
+    "is_presencial": true,
+    "presencial_time_from": "18:00", "presencial_time_to": "19:00",
+    "presencial_location": {"lat": -31.4, "lng": -64.2, "label": "Parque Sarmiento"}
+  }
+}
+```
+
+- `next_cancelled`: plano `{group_id, group_name, date, session_name}`.
+- `next_training`: agrega `is_presencial`, `presencial_time_from`/`to` (`"HH:MM"`, `null` si async) y `presencial_location` (`{lat, lng, label?}`, `null` si async).
+- `session_name` puede ser `null` (instancia sin nombre resoluble).
+- Filtro "hoy cuenta": hoy presencial **ya arrancado** no aparece; hoy presencial por arrancar y hoy async sí.
+
+Acción frontend: reemplazar el parseo del shape viejo (objeto único con `session_instance`) por los dos campos; eliminar cualquier manejo de `204` en este endpoint.
+
+### 8.2 BREAKING — `stamp`/`bulk`/`shift`: wrapper `{days, same_team_warnings}` en vez de array crudo
+
+Las 3 escrituras por lote devuelven ahora un objeto, no un array:
+
+```json
+{ "days": [ { "id": 1, "group_id": 2, "…": "…" } ], "same_team_warnings": [ { "…": "…" } ] }
+```
+
+- `days` siempre viaja (vacío solo en el caso "rango totalmente excluido" del stamp, `201` con `{"days": []}`).
+- `same_team_warnings` es opcional (`omitempty`): solo aparece si la escritura guardó días presenciales que superponen con otros grupos **del mismo equipo** (ver §8.4). Los items son `PresencialConflict` (shape en §8.4).
+- Códigos de éxito sin cambios: stamp `201`, bulk/shift `200`.
+
+Acción frontend: dejar de iterar la respuesta como array; leer `.days`.
+
+`PUT /groups/{id}/calendar/{date}` **no** cambia de shape: sigue devolviendo `CalendarDayResponse` plano, con `same_team_warnings` como campo extra opcional.
+
+### 8.3 NUEVO — `GET /users/{id}/next-presencial-session` (banner del entrenador)
+
+La próxima sesión `training`+`presencial` entre **todos** los grupos que administra el usuario (owner de sus equipos), la primera cronológicamente sin importar el equipo, mismo filtro "hoy cuenta" que next-session. `200` con:
+
+```json
+{
+  "group_id": 2, "group_name": "Fondo B", "team_id": 1, "team_name": "Equipo A",
+  "date": "2026-09-26", "session_name": "Fartlek 5K",
+  "presencial_time_from": "18:00", "presencial_time_to": "19:00",
+  "presencial_location": {"lat": -31.4, "lng": -64.2, "label": "Parque Sarmiento"}
+}
+```
+
+o `204` si no hay ninguna (incluido el caso "no administra ningún grupo"). Guard `id == callerID` (`403` por id ajeno), como los demás endpoints de usuario.
+
+### 8.4 409 de colisión presencial + `same_team_warnings`
+
+Al escribir (PUT/stamp/bulk/shift), si lo que se guarda queda `training`+`presencial` y **superpone** (mismo día, overlap medio-abierto: terminar 09:00 y arrancar 09:00 **no** colisiona) con un día presencial de otro grupo del mismo entrenador:
+
+- **Grupo de OTRO equipo → `409`**, escritura rechazada (all-or-nothing en lote; en shift rollback completo). Body JSON dedicado (no el string plano del resto de los errores):
+
+  ```json
+  HTTP 409
+  {
+    "message": "colisión presencial con otro equipo",
+    "conflicts": [
+      {"group_id": 3, "group_name": "Maratón B", "team_id": 2, "team_name": "Equipo B",
+       "date": "2026-10-01", "presencial_time_from": "09:00", "presencial_time_to": "10:00"}
+    ]
+  }
+  ```
+
+  `conflicts` lista todos los colisionantes. `force=true` del stamp **no** la bypasea. Días `cancelled` (y cualquier no training+presencial) quedan fuera de la detección en ambos lados.
+
+- **Grupo del MISMO equipo → warning no bloqueante**: la escritura tiene éxito y la respuesta trae `same_team_warnings` (en PUT, campo extra del `CalendarDayResponse`; en stamp/bulk/shift, campo del wrapper §8.2). Mismo shape que `conflicts` arriba.
+
+Acción frontend: mostrar los conflictos del 409 (grupo, fecha, horario, equipo) para que el entrenador elija otro horario, y los warnings como aviso no bloqueante post-guardado.
+
+### 8.5 NUEVOS — `member-calendar` y `administered-calendar` (calendario agregado)
+
+- **`GET /users/{id}/member-calendar?from=&to=`**: días de todos los grupos con membresía activa del usuario, ordenados por fecha. `200` array (vacío si no hay). `from`/`to` obligatorios (`400`), `from <= to` (`400`), guard `id == callerID` (`403`).
+- **`GET /users/{id}/administered-calendar?from=&to=`**: días de todos los grupos que administra el usuario (owner de los equipos), mismo shape y validaciones.
+
+Item (ambos): `AggregateCalendarDayResponse` = los campos de `CalendarDayResponse` (con `session_instance` embebido, §3) + `group_id`/`group_name`/`team_id`/`team_name` embebidos planos:
+
+```json
+{
+  "id": 1, "group_id": 2, "group_name": "Fondo B", "team_id": 1, "team_name": "Equipo A",
+  "date": "2026-09-26", "kind": "training",
+  "session_instance": { "…": "… (§3)" },
+  "is_presencial": true,
+  "presencial_time_from": "18:00", "presencial_time_to": "19:00",
+  "presencial_location": {"lat": -31.4, "lng": -64.2, "label": "Parque Sarmiento"},
+  "presencial_collision": {"type": "cross_team", "conflicts": [ { "…": "… (§8.4)" } ]}
+}
+```
+
+**Cómo detectar colisiones viejas en `administered-calendar`:** los días guardados **antes** de que existiera el guard de colisión aparecen marcados igual que los nuevos — `presencial_collision` se calcula sobre los datos actuales del calendario, no sobre cuándo se guardó cada fila. Reglas del marcado:
+
+- Solo días `training`+`presencial` participan; un día `cancelled` presencial nunca trae ni genera colisión.
+- `presencial_collision` presente sii el día superpone con otro día presencial de **otro grupo administrado**. `type`: `"cross_team"` si algún colisionante es de otro equipo (gana si hay de ambos), `"same_team"` si todos son del mismo. `conflicts` lista todos los colisionantes (el día colisionante aparece marcado también en su propio item).
+- `presencial_collision` ausente = sin colisión. `member-calendar` **nunca** lo trae (es exclusivo de la vista del entrenador).
+- El backend solo **marca** — reprogramar o cancelar uno de los dos días es acción manual del entrenador.
