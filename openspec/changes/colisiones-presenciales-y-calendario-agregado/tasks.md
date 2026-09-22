@@ -24,49 +24,49 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 3: Tests de colisión (etapa 1)
 
-- [x] 3.1 Test helper: fixture 1 owner + 2 equipos (A: grupos G1/G2; B: grupo G3).
-- [x] 3.2 PUT cross-team → 409 sin escribir (fila no existe); PUT same-team → 200 + same_team_warnings poblado; PUT sin superposición → 200 sin warnings.
-- [x] 3.3 Bordes que se tocan (09:00/09:00) → NO colisión (200).
-- [x] 3.4 Cancelado como colisionante NO bloquea: día cancelled presencial superpuesto → 200.
-- [x] 3.5 Stamp: cross → 409 con fechas; mismo-team → wrapper con days + warnings; exclude_dates + colisión en fecha no excluida → 409; colisión solo en fecha excluida → 201.
-- [x] 3.6 Bulk cross en 2ª fecha → 409 all-or-nothing (1ª fecha no escrita); bulk same → warnings.
-- [x] 3.7 Shift: mover presencial a fecha ocupada cross → 409 rollback (fila mantiene fecha vieja); same → warnings.
-- [x] 3.8 Regresión: escrituras no presenciales siguen sin pasar por detección (día async en horario ocupado → 200).
-- [x] 3.9 Suite completa + coverage ≥ 80.
+- [ ] 3.1 Test helper: fixture 1 owner + 2 equipos (A: grupos G1/G2; B: grupo G3).
+- [ ] 3.2 PUT cross-team → 409 sin escribir (fila no existe); PUT same-team → 200 + same_team_warnings poblado; PUT sin superposición → 200 sin warnings.
+- [ ] 3.3 Bordes que se tocan (09:00/09:00) → NO colisión (200).
+- [ ] 3.4 Cancelado como colisionante NO bloquea: día cancelled presencial superpuesto → 200.
+- [ ] 3.5 Stamp: cross → 409 con fechas; mismo-team → wrapper con days + warnings; exclude_dates + colisión en fecha no excluida → 409; colisión solo en fecha excluida → 201.
+- [ ] 3.6 Bulk cross en 2ª fecha → 409 all-or-nothing (1ª fecha no escrita); bulk same → warnings.
+- [ ] 3.7 Shift: mover presencial a fecha ocupada cross → 409 rollback (fila mantiene fecha vieja); same → warnings.
+- [ ] 3.8 Regresión: escrituras no presenciales siguen sin pasar por detección (día async en horario ocupado → 200).
+- [ ] 3.9 Suite completa + coverage ≥ 80.
 
 ## Etapa 2 — Gap 10: banners del home
 
 ### Task 4: next-session shape nuevo
 
-- [x] 4.1 DAO: query próxima por kind con filtro "hoy cuenta" (date > hoy OR (date == hoy AND (NOT presencial OR time_from > now))) — reutilizar `isCalendarDayClosed` como criterio de filtro donde aplique.
-- [x] 4.2 Service: reescribir `NextSession` → `{next_cancelled, next_training}` (DTOs nuevos `NextSessionBannerItem{GroupID, GroupName, Date, SessionName}` + `NextTrainingBannerItem` con campos presenciales); `group_name` resuelto (batch por IDs); `session_name` de la instancia (null si falta); siempre devuelve respuesta (nunca nil/204).
-- [x] 4.3 Controller: dejar de responder 204; swagger actualizado; romper shape documentado como breaking en la anotación.
-- [x] 4.4 Tests: ambos próximos; solo uno; ninguno (200 con ambos null); hoy presencial ya arrancado no cuenta; hoy presencial por arrancar cuenta; hoy async cuenta; membresía inactiva (date_end/deleted) fuera.
+- [ ] 4.1 DAO: query próxima por kind con filtro "hoy cuenta" (date > hoy OR (date == hoy AND (NOT presencial OR time_from > now))) — reutilizar `isCalendarDayClosed` como criterio de filtro donde aplique.
+- [ ] 4.2 Service: reescribir `NextSession` → `{next_cancelled, next_training}` (DTOs nuevos `NextSessionBannerItem{GroupID, GroupName, Date, SessionName}` + `NextTrainingBannerItem` con campos presenciales); `group_name` resuelto (batch por IDs); `session_name` de la instancia (null si falta); siempre devuelve respuesta (nunca nil/204).
+- [ ] 4.3 Controller: dejar de responder 204; swagger actualizado; romper shape documentado como breaking en la anotación.
+- [ ] 4.4 Tests: ambos próximos; solo uno; ninguno (200 con ambos null); hoy presencial ya arrancado no cuenta; hoy presencial por arrancar cuenta; hoy async cuenta; membresía inactiva (date_end/deleted) fuera.
 
 ### Task 5: next-presencial-session del entrenador
 
-- [x] 5.1 Service: grupos administrados del caller (helper Task 1) + query próxima presencial → respuesta con team_id/team_name (batch de teams).
-- [x] 5.2 Ruta `GET /api/v1/users/:id/next-presencial-session` + guard `id == callerID` (403) + controller (200 o 204) + swagger.
-- [x] 5.3 Tests: próxima entre varios equipos; ninguna → 204; solo cuenta training presencial (no async, no cancelled); hoy por arrancar cuenta / ya arrancada no; 403 por id ajeno.
+- [ ] 5.1 Service: grupos administrados del caller (helper Task 1) + query próxima presencial → respuesta con team_id/team_name (batch de teams).
+- [ ] 5.2 Ruta `GET /api/v1/users/:id/next-presencial-session` + guard `id == callerID` (403) + controller (200 o 204) + swagger.
+- [ ] 5.3 Tests: próxima entre varios equipos; ninguna → 204; solo cuenta training presencial (no async, no cancelled); hoy por arrancar cuenta / ya arrancada no; 403 por id ajeno.
 
 ## Etapa 3 — Gap 11: calendario agregado
 
 ### Task 6: member-calendar
 
-- [x] 6.1 DTO `AggregateCalendarDayResponse` (campos de CalendarDayResponse + group_id/group_name/team_id/team_name).
-- [x] 6.2 Service: memberships activas → días por rango → merge ordenado por fecha → nombres batch (1 query groups, 1 query teams).
-- [x] 6.3 Ruta `GET /api/v1/users/:id/member-calendar` + guard id==caller + from/to obligatorios (400) y from<=to (400) + swagger.
-- [x] 6.4 Tests: 2 grupos mismo rango; rango sin días → 200 []; 403 id ajeno; 400 sin from/to.
+- [ ] 6.1 DTO `AggregateCalendarDayResponse` (campos de CalendarDayResponse + group_id/group_name/team_id/team_name).
+- [ ] 6.2 Service: memberships activas → días por rango → merge ordenado por fecha → nombres batch (1 query groups, 1 query teams).
+- [ ] 6.3 Ruta `GET /api/v1/users/:id/member-calendar` + guard id==caller + from/to obligatorios (400) y from<=to (400) + swagger.
+- [ ] 6.4 Tests: 2 grupos mismo rango; rango sin días → 200 []; 403 id ajeno; 400 sin from/to.
 
 ### Task 7: administered-calendar con presencial_collision
 
-- [x] 7.1 Service: grupos del owner → días → para cada día presencial, detección (reutiliza Task 1.4, excluyendo la fila misma) → `presencial_collision {type, conflicts}` (cross gana sobre same; conflicts lista todos); null/omitido si no colisiona.
-- [x] 7.2 Ruta + guard + validación from/to + swagger.
-- [x] 7.3 Tests: colisión same marcada en ambos días; colisión cross marcada; colisión vieja (insertada por DAO directo) detectada; día aislado sin collision; día cancelled presencial NO genera collision.
+- [ ] 7.1 Service: grupos del owner → días → para cada día presencial, detección (reutiliza Task 1.4, excluyendo la fila misma) → `presencial_collision {type, conflicts}` (cross gana sobre same; conflicts lista todos); null/omitido si no colisiona.
+- [ ] 7.2 Ruta + guard + validación from/to + swagger.
+- [ ] 7.3 Tests: colisión same marcada en ambos días; colisión cross marcada; colisión vieja (insertada por DAO directo) detectada; día aislado sin collision; día cancelled presencial NO genera collision.
 
 ### Task 8: Docs + verificación final
 
-- [x] 8.1 `docs/CATALOGO_Y_CALENDARIO.md`: sección de colisión (reglas, 409 shape, warnings, wrappers), endpoints de banner y agregados.
-- [x] 8.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección nueva — next-session breaking (shape nuevo), wrapper en stamp/bulk/shift, 409 de colisión y same_team_warnings, endpoints nuevos, cómo detectar colisiones viejas.
-- [x] 8.3 `openspec validate colisiones-presenciales-y-calendario-agregado --strict` + gofmt (archivos tocados) + `go build` + `go vet` + `go test ./...` (Postgres real) + `make coverage-with-db` (gate 80, `go clean -cache` si sale raro).
-- [x] 8.4 Tildar tasks.md completo; commits con rutas explícitas por etapa.
+- [ ] 8.1 `docs/CATALOGO_Y_CALENDARIO.md`: sección de colisión (reglas, 409 shape, warnings, wrappers), endpoints de banner y agregados.
+- [ ] 8.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección nueva — next-session breaking (shape nuevo), wrapper en stamp/bulk/shift, 409 de colisión y same_team_warnings, endpoints nuevos, cómo detectar colisiones viejas.
+- [ ] 8.3 `openspec validate colisiones-presenciales-y-calendario-agregado --strict` + gofmt (archivos tocados) + `go build` + `go vet` + `go test ./...` (Postgres real) + `make coverage-with-db` (gate 80, `go clean -cache` si sale raro).
+- [ ] 8.4 Tildar tasks.md completo; commits con rutas explícitas por etapa.
