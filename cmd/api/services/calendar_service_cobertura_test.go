@@ -163,12 +163,20 @@ func TestCobertura_Mock_StampDiasFueraDeOrdenYErrorAlValidarConflictos(t *testin
 	reversedDays := &mockPlanDayDao{findByPlanFn: func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
 		return []dbs.PlanDay{{SequenceNo: 3, Kind: "rest"}, {SequenceNo: 1, Kind: "rest"}}, nil
 	}}
-	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, planDao, reversedDays, nil, nil)
+	var rangeFrom, rangeTo time.Time
+	calDao := &mockGroupCalendarDao{findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
+		rangeFrom, rangeTo = from, to
+		return nil, nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, planDao, reversedDays, nil, nil)
 
 	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2999-10-01"})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no hay DB disponible para estampar plan")
+	// min/max derivan de los días (sec 3 → +2) incluso con la lista invertida.
+	assert.Equal(t, "2999-10-01", rangeFrom.Format("2006-01-02"))
+	assert.Equal(t, "2999-10-03", rangeTo.Format("2006-01-02"))
 
 	errDao := &mockGroupCalendarDao{findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return nil, errors.New("boom")
@@ -266,6 +274,18 @@ func TestCobertura_Mock_BulkEscritura(t *testing.T) {
 		require.Len(t, resp.Days, 1)
 		assert.Equal(t, "rest", resp.Days[0].Kind)
 		assert.Nil(t, savedInstanceID, "rest no conserva la instancia: solo training sin session_id lo hace")
+	})
+
+	t.Run("training sin session_id conserva la instancia", func(t *testing.T) {
+		upsertCalls = 0
+		savedInstanceID = nil
+		svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+		resp, err := svc.Bulk(nil, 1, 7, calendar.BulkRequest{Dates: []string{d2.Format("2006-01-02")}, Kind: "training"})
+		require.NoError(t, err)
+		require.Len(t, resp.Days, 1)
+		assert.Equal(t, "training", resp.Days[0].Kind)
+		require.NotNil(t, savedInstanceID)
+		assert.Equal(t, instanceID, *savedInstanceID)
 	})
 
 	t.Run("upsert de la escritura rompe y propaga el error", func(t *testing.T) {
