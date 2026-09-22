@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -256,4 +257,305 @@ func TestSessionService_Clone_CopiesSessionAndExercises(t *testing.T) {
 	assert.True(t, replaced)
 	require.Len(t, copiedRows, 1)
 	assert.Equal(t, int64(1), copiedRows[0].ExerciseID, "el clon conserva el ExerciseID del original")
+}
+
+func strPtrC(s string) *string { return &s }
+
+func TestSessionService_CloneInternal_NilPointerFields(t *testing.T) {
+	original := &dbs.Session{ID: 1, OwnerID: 7, Name: "Original", Description: strPtrC("desc")}
+	sessionDao := &mockSessionDao{}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return []dbs.SessionExercise{{ExerciseID: 1, Role: "warmup", RepeatCount: 3, RestMinutes: 2}}, nil
+		},
+	}
+	name := "Pedaleo fuerte"
+	description := "columna alta"
+
+	clone, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, original, &name, &description)
+
+	require.NoError(t, err)
+	assert.Equal(t, "Pedaleo fuerte", clone.Name)
+	assert.Equal(t, "columna alta", *clone.Description)
+}
+
+func TestSessionService_CloneInternal_FindExercisesError(t *testing.T) {
+	sessionDao := &mockSessionDao{}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_CloneInternal_CreateError(t *testing.T) {
+	sessionDao := &mockSessionDao{createFn: func(ctx *gin.Context, s *dbs.Session) error { return errors.New("db down") }}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return []dbs.SessionExercise{{ExerciseID: 1, Role: "warmup"}}, nil
+		},
+	}
+
+	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_CloneInternal_ReplaceError(t *testing.T) {
+	sessionDao := &mockSessionDao{}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return []dbs.SessionExercise{{ExerciseID: 1, Role: "warmup"}}, nil
+		},
+		replaceForSessionFn: func(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error {
+			return errors.New("db down")
+		},
+	}
+
+	_, err := cloneSessionInternal(sessionDao, sessionExerciseDao, nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"}, nil, nil)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_ValidateExercises_FindError(t *testing.T) {
+	err := NewSessionService(&mockSessionDao{}, &mockSessionExerciseDao{}, &mockExerciseDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, errors.New("db down") },
+	}).(*sessionService).validateExercises(nil, validSessionExercises())
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_ToResponse_FindError(t *testing.T) {
+	_, err := NewSessionService(&mockSessionDao{}, &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return nil, errors.New("db down")
+		},
+	}, &mockExerciseDao{}).(*sessionService).toResponse(nil, &dbs.Session{ID: 1, OwnerID: 7, Name: "X"})
+	assert.Error(t, err)
+}
+
+func TestSessionService_ToSessionExerciseRows_Overrides(t *testing.T) {
+	repeat := 5
+	rest := 10
+	rows := toSessionExerciseRows([]session.SessionExerciseRequest{
+		{ExerciseID: 1, Role: "main", RepeatCount: &repeat, RestMinutes: &rest},
+		{ExerciseID: 2, Role: "cooldown"},
+	})
+
+	assert.Equal(t, 5, rows[0].RepeatCount)
+	assert.Equal(t, 10, rows[0].RestMinutes)
+	assert.Equal(t, 1, rows[1].RepeatCount)
+	assert.Equal(t, 0, rows[1].RestMinutes)
+}
+
+func TestSessionService_Create_CreateError(t *testing.T) {
+	sessionDao := &mockSessionDao{createFn: func(ctx *gin.Context, s *dbs.Session) error { return errors.New("db down") }}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, exerciseDao)
+
+	_, err := svc.Create(nil, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Create_ReplaceError(t *testing.T) {
+	sessionDao := &mockSessionDao{}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		replaceForSessionFn: func(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error {
+			return errors.New("db down")
+		},
+	}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao)
+
+	_, err := svc.Create(nil, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Update_FindError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Update_InvalidRole(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return &dbs.Session{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: []session.SessionExerciseRequest{
+		{ExerciseID: 1, Role: "flying"},
+	}})
+
+	assert.ErrorIs(t, err, ErrSessionInvalidRole)
+}
+
+func TestSessionService_Update_UpdateError(t *testing.T) {
+	sessionDao := &mockSessionDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+			return &dbs.Session{ID: id, OwnerID: 7}, nil
+		},
+		updateFn: func(ctx *gin.Context, s *dbs.Session) error { return errors.New("db down") },
+	}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, exerciseDao)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Update_ReplaceError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return &dbs.Session{ID: id, OwnerID: 7}, nil
+	}}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		replaceForSessionFn: func(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error {
+			return errors.New("db down")
+		},
+	}
+	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id}, nil
+	}}
+	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao)
+
+	_, err := svc.Update(nil, 1, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Delete_FindError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Delete_Forbidden(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return &dbs.Session{ID: id, OwnerID: 99}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrCatalogForbidden)
+}
+
+func TestSessionService_Delete_SoftDeleteError(t *testing.T) {
+	sessionDao := &mockSessionDao{
+		findByIDFn:   func(ctx *gin.Context, id int64) (*dbs.Session, error) { return &dbs.Session{ID: id, OwnerID: 7}, nil },
+		softDeleteFn: func(ctx *gin.Context, id int64) error { return errors.New("db down") },
+	}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Clone_FindError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Clone_NotFound(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return nil, nil }}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrSessionNotFound)
+}
+
+func TestSessionService_Clone_Forbidden(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return &dbs.Session{ID: id, OwnerID: 99}, nil
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrCatalogForbidden)
+}
+
+func TestSessionService_Clone_InternalError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return &dbs.Session{ID: id, OwnerID: 7, Name: "X"}, nil
+	}}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return nil, errors.New("db down")
+		},
+	}
+	svc := NewSessionService(sessionDao, sessionExerciseDao, &mockExerciseDao{})
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_Get_FindError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.Get(nil, 1)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_List_FindError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Session, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewSessionService(sessionDao, &mockSessionExerciseDao{}, &mockExerciseDao{})
+
+	_, err := svc.List(nil, 7)
+
+	assert.Error(t, err)
+}
+
+func TestSessionService_List_ToResponseError(t *testing.T) {
+	sessionDao := &mockSessionDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Session, error) {
+		return []dbs.Session{{ID: 1, OwnerID: 7, Name: "A"}}, nil
+	}}
+	sessionExerciseDao := &mockSessionExerciseDao{
+		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+			return nil, errors.New("db down")
+		},
+	}
+	svc := NewSessionService(sessionDao, sessionExerciseDao, &mockExerciseDao{})
+
+	_, err := svc.List(nil, 7)
+
+	assert.Error(t, err)
 }
