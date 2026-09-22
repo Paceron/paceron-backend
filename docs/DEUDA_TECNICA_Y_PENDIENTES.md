@@ -76,6 +76,28 @@ Decisión: no parchear un solo call site (evaluado `SELECT ... FOR UPDATE` solo 
 
 Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change `asignacion-por-instanciacion`, `df18d60`/`2babf15`, por un `git add` amplio del implementador que forzó/bypaseó el ignore del workspace SDD). El workspace `.superpowers/sdd/` es scratch auto-ignoreado (su propio `.gitignore` con `*`) — briefs/reports/ledger de `subagent-driven-development` son artefactos de recuperación intra-sesión, sin valor en el historial. Fix: `git rm .superpowers/sdd/tasks/task-3-report.md`, aprovechado cualquier rama futura (no amerita PR propio). Prevención: en dispatchs de implementadores exigir stageear rutas explícitas por commit, nunca `git add -A`/`git add .` en la raíz del repo ni force-add de rutas ignoradas (registrado también en `AGENTS.md` §9).
 
+## Cobertura de tests
+
+> Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` en 80%.
+
+### Etapa 2 de coverage: legacy → 90% (trabajo futuro / repuesto)
+
+La meta de esta etapa cubrió calendario/recientes; el resto del repo (paquetes legacy de pagos/usuarios sin calendar) quedó para una **etapa 2** con objetivo 90% total, a usar como trabajo de repuesto cuando no haya gaps ni features nuevas para cubrir. Gaps principales conocidos:
+
+- `payment_service` (~102 ramas), `customlogger` (~78), `mercadopagoclient` (~68, con `httptest` para los paths HTTP reales)
+- `user_service` (~54), `tier_service`, `training_plan_service`, `join_request_service`, `workout_feedback_service`
+- `team_dao.SearchPublic` (~5, ver parked más abajo)
+
+### Riesgo de acoplamiento del helper `FailingDB` (declarado en design D1)
+
+`cmd/api/testutils/failing_db.go` inyecta fallas discriminando por operación (`nthFail`), lo que acopla los tests al **orden de statements** que gorm ejecuta por query. Un refactor o upgrade de gorm que reordente/autoenvuelva statements rompe estos tests ruidosamente, incluso sin bug real — si pasa, re-ajustar los umbrales/posición de `Nth` de los tests, no "arreglar" el servicio. Ver `openspec/changes/cobertura-calendario-recientes/design.md` D1.
+
+### Ramas parked legítimas (inalcanzables desde fuera, no forzar)
+
+- `calendar_service` bulk con kind `cancelled`: la rama existe pero `BulkRequest` no expone `cancelled_reason`, inalcanzable vía API — se cubrirá junto a la feature real de bulk-cancel.
+- Ramas defensivas de `calendar_service` (TOCTOU re-check de "día cerrado", JSON imposible del body): cubren condiciones de carrera/payloads que el handler previo ya filtra; forzarlas en test testearía el test.
+- `team_dao.SearchPublic`: se implementa junto a la feature de búsqueda de equipos (deferida, ver arriba).
+
 ## Decisiones de "no tocar"
 
 - **`utils.StringToInt64`/`Int64ToString`/`Contains`/`IsPositiveInteger`/`ParseInt64`** (`cmd/api/utils/`): cero call sites en todo el repo, confirmado por grep + `git log --diff-filter=A` (vienen del scaffold inicial). Decisión explícita del usuario: **no borrar**, se guardan para trabajo futuro de métricas/pagos que probablemente los necesite. No re-flaguearlos como dead code en una futura limpieza de coverage.
