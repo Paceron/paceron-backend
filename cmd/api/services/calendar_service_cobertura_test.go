@@ -51,9 +51,10 @@ func TestCobertura_UpsertDayLinkEjercicioInexistente(t *testing.T) {
 	assert.Zero(t, exerciseInstanceCount, "el rollback no deja instancias de ejercicios creados antes del error")
 }
 
-// Variantes de validateDayFields: horario from>=to (y from == to), presencial
-// completo válido pasa.
-func TestCobertura_ValidateDayFieldsHorarios(t *testing.T) {
+// validateDayFields, solo branch de horarios: from>=to (y from == to) →
+// ErrCalendarInvalidTimeRange; presencial completo válido pasa. El resto de
+// las variantes vive en TestCalendarService_Task5_ValidateDayFields_Direct.
+func TestCobertura_ValidateDayFieldsRangoHorario(t *testing.T) {
 	svc := NewCalendarService(nil, nil, nil, nil, nil, nil, nil, nil, nil).(*calendarService)
 	isPresencial := true
 	loc := &trainingplan.Location{Lat: -34.6, Lng: -58.4}
@@ -99,9 +100,15 @@ func TestCobertura_NextSessionBannerInstanciaHuerfanaYGrupoSinNombre(t *testing.
 	require.NotNil(t, resp.NextTraining)
 	assert.Empty(t, resp.NextTraining.GroupName, "grupo sin nombre responde group_name vacío")
 	assert.Nil(t, resp.NextTraining.SessionName, "instancia huérfana deja session_name null sin error")
+	assert.False(t, resp.NextTraining.IsPresencial, "día asincrónico no marca presencial")
+	assert.Nil(t, resp.NextTraining.PresencialTimeFrom)
+	assert.Nil(t, resp.NextTraining.PresencialTimeTo)
+	assert.Nil(t, resp.NextTraining.PresencialLocation)
 	require.NotNil(t, resp.NextCancelled)
+	assert.Equal(t, cancelledDate.Format("2006-01-02"), resp.NextCancelled.Date)
 	assert.Empty(t, resp.NextCancelled.GroupName)
 	assert.Nil(t, resp.NextCancelled.SessionName)
+	// NextSessionBannerItem (base de NextCancelled) no lleva campos presenciales.
 }
 
 // Faltante en la doc de referencia: a diferencia del banner, GetRange SÍ rompe
