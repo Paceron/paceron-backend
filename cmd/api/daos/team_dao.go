@@ -17,9 +17,6 @@ type TeamDaoInterface interface {
 	GetAll(ctx *gin.Context) ([]dbs.Team, error)
 	GetAllByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
 	GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
-	// FindByIDs devuelve varios equipos activos en una sola query — batch de
-	// nombres para los banners del home (design.md D6/D8, evita N+1).
-	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
 	Update(ctx *gin.Context, team *dbs.Team) error
 	SoftDelete(ctx *gin.Context, id int64) error
 	UpdateIcon(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
@@ -95,19 +92,6 @@ func (d *teamDao) GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team
 		Find(&teams).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding teams by member: %w", err)
-	}
-	return teams, nil
-}
-
-// FindByIDs devuelve varios equipos activos en una sola consulta.
-func (d *teamDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	var teams []dbs.Team
-	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&teams).Error
-	if err != nil {
-		return nil, fmt.Errorf("error finding teams by ids: %w", err)
 	}
 	return teams, nil
 }

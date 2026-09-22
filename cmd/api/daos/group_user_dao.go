@@ -58,12 +58,10 @@ func (d *groupUserDao) FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.Gro
 	return groupUsers, nil
 }
 
-// FindByUserID devuelve todas las asociaciones activas de un usuario: sin
-// eliminado lógico y con date_end nulo o todavía no vencido (design.md D6 —
-// los banners del home solo consideran membresías activas).
+// FindByUserID devuelve todas las asociaciones activas de un usuario.
 func (d *groupUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 	var groupUsers []dbs.GroupUser
-	err := d.DB.Where("user_id = ? AND deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())", userID).Find(&groupUsers).Error
+	err := d.DB.Where("user_id = ? AND deleted_at IS NULL", userID).Find(&groupUsers).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding user groups: %w", err)
 	}

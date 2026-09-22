@@ -91,8 +91,8 @@ func TestStampExcludeDates_ConservaInstanciaExcluidaYRespuestaLaOmite(t *testing
 	})
 	require.NoError(t, err)
 
-	require.Len(t, resp.Days, 2, "la respuesta no incluye la fecha excluida")
-	for _, r := range resp.Days {
+	require.Len(t, resp, 2, "la respuesta no incluye la fecha excluida")
+	for _, r := range resp {
 		assert.NotEqual(t, day2.Format("2006-01-02"), r.Date)
 	}
 
@@ -130,8 +130,8 @@ func TestStampExcludeDates_FechasExcluidasNoDisparanGuards(t *testing.T) {
 		ExcludeDates: []string{day1.Format("2006-01-02")},
 	})
 	require.NoError(t, err, "el día excluido con contenido no cuenta para el 409")
-	require.Len(t, resp.Days, 1)
-	assert.Equal(t, startStr, resp.Days[0].Date)
+	require.Len(t, resp, 1)
+	assert.Equal(t, startStr, resp[0].Date)
 
 	// Regresión: sin excluir ese día, el mismo stamp daría 409 (guard intacto).
 	conflicting, err := calendarDao.FindByGroupAndDate(nil, group.ID, day1)
@@ -163,8 +163,8 @@ func TestStampExcludeDates_DiaCerradoExcluidoNoDispara422(t *testing.T) {
 		ExcludeDates: []string{startStr, time.Now().Format("2006-01-02")},
 	})
 	require.NoError(t, err, "los días cerrados excluidos no cuentan para el 422")
-	require.Len(t, resp.Days, 1)
-	assert.Equal(t, time.Now().AddDate(0, 0, 1).Format("2006-01-02"), resp.Days[0].Date)
+	require.Len(t, resp, 1)
+	assert.Equal(t, time.Now().AddDate(0, 0, 1).Format("2006-01-02"), resp[0].Date)
 }
 
 // Task 3.3 — exclude_dates con formato inválido → ErrCalendarInvalidDate sin escribir nada.
@@ -179,7 +179,7 @@ func TestStampExcludeDates_FormatoInvalidoRechazaSinEscribir(t *testing.T) {
 		PlanID: plan.ID, StartDate: startStr, ExcludeDates: []string{"10/07/2026"},
 	})
 	require.Error(t, err)
-	assert.Equal(t, calendar.CalendarMutationResponse{}, resp, "en error la respuesta es el valor cero")
+	assert.Nil(t, resp)
 	assert.ErrorIs(t, err, ErrCalendarInvalidDate)
 
 	var dayCount int64
@@ -199,7 +199,7 @@ func TestStampExcludeDates_FueraDeRangoSeIgnora(t *testing.T) {
 		PlanID: plan.ID, StartDate: startStr, ExcludeDates: []string{"2999-01-01"},
 	})
 	require.NoError(t, err)
-	require.Len(t, resp.Days, 2, "una fecha fuera del rango no excluye ningún día del plan")
+	require.Len(t, resp, 2, "una fecha fuera del rango no excluye ningún día del plan")
 }
 
 // Task 3.4 — rango totalmente excluido → respuesta [] (no-nil), sin escribir.
@@ -215,8 +215,8 @@ func TestStampExcludeDates_RangoVacioRespondeArrayVacio(t *testing.T) {
 		ExcludeDates: []string{start.Format("2006-01-02"), start.AddDate(0, 0, 1).Format("2006-01-02")},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, resp.Days, "debe resolver a [] en JSON, no null")
-	assert.Len(t, resp.Days, 0)
+	require.NotNil(t, resp, "debe resolver a [] en JSON, no null")
+	assert.Len(t, resp, 0)
 
 	var dayCount int64
 	require.NoError(t, db.Model(&dbs.GroupCalendarDay{}).Where("group_id = ?", group.ID).Count(&dayCount).Error)
@@ -233,13 +233,13 @@ func TestStampExcludeDates_SinCampoYArrayVacioIguales(t *testing.T) {
 
 	respNil, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: startStr})
 	require.NoError(t, err)
-	require.Len(t, respNil.Days, 3)
+	require.Len(t, respNil, 3)
 
 	respEmpty, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{
 		PlanID: plan.ID, StartDate: startStr, Force: true, ExcludeDates: []string{},
 	})
 	require.NoError(t, err)
-	require.Len(t, respEmpty.Days, 3, "exclude_dates:[] debe equivaler a omitir el campo")
+	require.Len(t, respEmpty, 3, "exclude_dates:[] debe equivaler a omitir el campo")
 }
 
 // Cobertura del path mock (s.db == nil): formato inválido también aborta ahí.

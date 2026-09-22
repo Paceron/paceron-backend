@@ -522,14 +522,14 @@ func TestCalendarService_Task5_BulkTrainingCreatesOneInstancePerDate(t *testing.
 		Kind:  "training", SessionID: &catalogSession.ID,
 	})
 	require.NoError(t, err)
-	require.Len(t, resp.Days, 3)
+	require.Len(t, resp, 3)
 
 	var instances []dbs.SessionInstance
 	require.NoError(t, db.Where("name = ?", catalogSession.Name).Find(&instances).Error)
 	require.Len(t, instances, 3, "una instancia independiente por fecha, sin deduplicar (D4)")
 
 	instantiatedIDs := map[int64]bool{}
-	for _, dayResp := range resp.Days {
+	for _, dayResp := range resp {
 		require.NotNil(t, dayResp.SessionInstance)
 		instantiatedIDs[dayResp.SessionInstance.ID] = true
 		assert.Equal(t, catalogSession.Name, dayResp.SessionInstance.Name)
@@ -633,7 +633,7 @@ func TestCalendarService_Task5_StampCreatesIndependentInstancesForEveryTrainingD
 
 	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: start.Format("2006-01-02")})
 	require.NoError(t, err)
-	require.Len(t, resp.Days, 3)
+	require.Len(t, resp, 3)
 
 	var instances []dbs.SessionInstance
 	require.NoError(t, db.Where("name = ?", session.Name).Find(&instances).Error)
@@ -646,7 +646,7 @@ func TestCalendarService_Task5_StampCreatesIndependentInstancesForEveryTrainingD
 
 	trainingResponses := 0
 	respondedInstanceIDs := map[int64]bool{}
-	for _, dayResp := range resp.Days {
+	for _, dayResp := range resp {
 		if dayResp.Kind == "training" {
 			trainingResponses++
 			require.NotNil(t, dayResp.SessionInstance)
@@ -717,15 +717,12 @@ func TestCalendarService_Task5_NextSessionEmbedsFrozenInstance(t *testing.T) {
 	resp, err := svc.NextSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.NotNil(t, resp.NextTraining)
-	require.NotNil(t, resp.NextTraining.SessionName)
-	assert.Equal(t, catalogSession.Name, *resp.NextTraining.SessionName)
+	require.NotNil(t, resp.SessionInstance)
+	assert.Equal(t, catalogSession.Name, resp.SessionInstance.Name)
+	require.Len(t, resp.SessionInstance.Exercises, 1)
+	assert.Equal(t, "next exercise", resp.SessionInstance.Exercises[0].Name)
 }
 
-// El shape nuevo no embebe la instancia: el banner solo expone session_name.
-// La instancia faltante (FK opaca huérfana) NO rompe el banner — session_name
-// queda null y la respuesta sigue 200 (design.md D6), a diferencia del shape
-// anterior donde la instancia faltante superfaced como error.
 func TestCalendarService_Task5_NextSession_MissingInstanceSurfaces(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "next5b")
@@ -735,12 +732,10 @@ func TestCalendarService_Task5_NextSession_MissingInstanceSurfaces(t *testing.T)
 	require.NoError(t, daos.NewGroupCalendarDayDao(db).Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date, Kind: "training", SessionInstanceID: &missing}))
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
 
-	resp, err := svc.NextSession(nil, owner.ID)
+	_, err := svc.NextSession(nil, owner.ID)
 
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.NextTraining)
-	assert.Nil(t, resp.NextTraining.SessionName)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no encontrada")
 }
 
 func TestCalendarService_Task5_DeleteSupersededInstance_ZeroIDIsNoop(t *testing.T) {

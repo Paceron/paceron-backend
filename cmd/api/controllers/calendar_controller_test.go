@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/domains/calendar"
 	"simple-arq-golang/cmd/api/services"
@@ -23,14 +22,11 @@ type mockCalendarService struct {
 	getRangeFn        func(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error)
 	upsertDayFn       func(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error)
 	deleteDayFn       func(ctx *gin.Context, groupID, callerID int64, date time.Time) error
-	stampFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error)
-	bulkFn            func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error)
+	stampFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error)
+	bulkFn            func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error)
 	bulkClearFn       func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
-	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
+	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error)
 	nextSessionFn     func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
-	nextPresencialFn  func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
-	memberCalendarFn  func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
-	administeredCalFn func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	calendarSummaryFn func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -43,29 +39,20 @@ func (m *mockCalendarService) UpsertDay(ctx *gin.Context, groupID, callerID int6
 func (m *mockCalendarService) DeleteDay(ctx *gin.Context, groupID, callerID int64, date time.Time) error {
 	return m.deleteDayFn(ctx, groupID, callerID, date)
 }
-func (m *mockCalendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
+func (m *mockCalendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
 	return m.stampFn(ctx, groupID, callerID, req)
 }
-func (m *mockCalendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error) {
+func (m *mockCalendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
 	return m.bulkFn(ctx, groupID, callerID, req)
 }
 func (m *mockCalendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error {
 	return m.bulkClearFn(ctx, groupID, callerID, req)
 }
-func (m *mockCalendarService) Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
+func (m *mockCalendarService) Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
 	return m.shiftFn(ctx, groupID, callerID, req)
 }
 func (m *mockCalendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
 	return m.nextSessionFn(ctx, userID)
-}
-func (m *mockCalendarService) NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
-	return m.nextPresencialFn(ctx, userID)
-}
-func (m *mockCalendarService) MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
-	return m.memberCalendarFn(ctx, userID, from, to)
-}
-func (m *mockCalendarService) AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
-	return m.administeredCalFn(ctx, userID, from, to)
 }
 func (m *mockCalendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
 	return m.calendarSummaryFn(ctx, userID)
@@ -86,9 +73,6 @@ func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64
 	r.POST("/groups/:id/calendar/bulk-clear", ctrl.BulkClear)
 	r.POST("/groups/:id/calendar/shift", ctrl.Shift)
 	r.GET("/users/:id/next-session", ctrl.NextSession)
-	r.GET("/users/:id/next-presencial-session", ctrl.NextPresencialSession)
-	r.GET("/users/:id/member-calendar", ctrl.MemberCalendar)
-	r.GET("/users/:id/administered-calendar", ctrl.AdministeredCalendar)
 	r.GET("/users/:id/calendar-summary", ctrl.CalendarSummary)
 	return r
 }
@@ -157,8 +141,8 @@ func TestCalendarController_DeleteDay_Success(t *testing.T) {
 }
 
 func TestCalendarController_Stamp_Conflict(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, services.ErrCalendarStampConflict
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarStampConflict
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
@@ -172,8 +156,8 @@ func TestCalendarController_Stamp_Conflict(t *testing.T) {
 }
 
 func TestCalendarController_Stamp_ConflictIncludesDates(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, fmt.Errorf("%w: 2026-10-01, 2026-10-03", services.ErrCalendarStampConflict)
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, fmt.Errorf("%w: 2026-10-01, 2026-10-03", services.ErrCalendarStampConflict)
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
@@ -189,8 +173,8 @@ func TestCalendarController_Stamp_ConflictIncludesDates(t *testing.T) {
 }
 
 func TestCalendarController_Stamp_ClosedDayReturns422(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, fmt.Errorf("%w: 2026-09-19", services.ErrCalendarDayClosed)
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, fmt.Errorf("%w: 2026-09-19", services.ErrCalendarDayClosed)
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-09-19"})
@@ -204,21 +188,15 @@ func TestCalendarController_Stamp_ClosedDayReturns422(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "2026-09-19")
 }
 
-// BREAKING (D6): el endpoint ya nunca responde 204 — sin compromisos es 200
-// con ambos banners en null.
 func TestCalendarController_NextSession_NoContent(t *testing.T) {
-	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
-		return &calendar.NextSessionResponse{}, nil
-	}}
+	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) { return nil, nil }}
 	router := setupCalendarRouter(svc, 7)
 	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"next_cancelled":null`)
-	assert.Contains(t, rec.Body.String(), `"next_training":null`)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
 func TestCalendarController_NextSession_OtherUserForbidden(t *testing.T) {
@@ -245,9 +223,7 @@ func TestCalendarController_NextSession_InvalidID(t *testing.T) {
 
 func TestCalendarController_NextSession_Success(t *testing.T) {
 	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
-		return &calendar.NextSessionResponse{NextTraining: &calendar.NextTrainingBannerItem{
-			NextSessionBannerItem: calendar.NextSessionBannerItem{GroupID: 1, Date: "2026-10-01"},
-		}}, nil
+		return &calendar.NextSessionResponse{Date: "2026-10-01"}, nil
 	}}
 	router := setupCalendarRouter(svc, 7)
 	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
@@ -258,192 +234,9 @@ func TestCalendarController_NextSession_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
-func TestCalendarController_NextPresencialSession_Success(t *testing.T) {
-	svc := &mockCalendarService{nextPresencialFn: func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
-		return &calendar.NextPresencialSessionResponse{GroupID: 1, GroupName: "Grupo", TeamID: 10, TeamName: "Equipo", Date: "2026-10-01"}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/next-presencial-session", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"team_name":"Equipo"`)
-}
-
-func TestCalendarController_NextPresencialSession_NoContent(t *testing.T) {
-	svc := &mockCalendarService{nextPresencialFn: func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
-		return nil, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/next-presencial-session", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusNoContent, rec.Code)
-}
-
-func TestCalendarController_NextPresencialSession_OtherUserForbidden(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/99/next-presencial-session", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-}
-
-func TestCalendarController_MemberCalendar_Success(t *testing.T) {
-	var capturedUserID int64
-	var capturedFrom, capturedTo time.Time
-	svc := &mockCalendarService{memberCalendarFn: func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
-		capturedUserID = userID
-		capturedFrom, capturedTo = from, to
-		return []calendar.AggregateCalendarDayResponse{{
-			CalendarDayResponse: calendar.CalendarDayResponse{ID: 1, GroupID: 5, Date: "2026-10-01", Kind: "rest"},
-			GroupID:             5,
-			GroupName:           "Grupo A",
-			TeamID:              10,
-			TeamName:            "Equipo A",
-		}}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-01&to=2026-10-31", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, int64(7), capturedUserID)
-	assert.Equal(t, "2026-10-01", capturedFrom.Format("2006-01-02"))
-	assert.Equal(t, "2026-10-31", capturedTo.Format("2006-01-02"))
-	assert.Contains(t, rec.Body.String(), `"group_name":"Grupo A"`)
-	assert.Contains(t, rec.Body.String(), `"team_name":"Equipo A"`)
-}
-
-func TestCalendarController_MemberCalendar_OtherUserForbidden(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/99/member-calendar?from=2026-10-01&to=2026-10-31", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-}
-
-func TestCalendarController_MemberCalendar_MissingDatesReturns400(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-
-	for _, url := range []string{
-		"/users/7/member-calendar",
-		"/users/7/member-calendar?from=2026-10-01",
-		"/users/7/member-calendar?to=2026-10-31",
-	} {
-		req := httptest.NewRequest(http.MethodGet, url, nil)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code, url)
-	}
-}
-
-func TestCalendarController_MemberCalendar_FromAfterToReturns400(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-31&to=2026-10-01", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestCalendarController_MemberCalendar_InvalidDateFormatReturns400(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=nope&to=2026-10-01", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestCalendarController_AdministeredCalendar_Success(t *testing.T) {
-	var capturedUserID int64
-	var capturedFrom, capturedTo time.Time
-	svc := &mockCalendarService{administeredCalFn: func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
-		capturedUserID = userID
-		capturedFrom, capturedTo = from, to
-		return []calendar.AggregateCalendarDayResponse{{
-			CalendarDayResponse: calendar.CalendarDayResponse{ID: 1, GroupID: 5, Date: "2026-10-01", Kind: "training"},
-			GroupID:             5,
-			GroupName:           "Grupo A",
-			TeamID:              10,
-			TeamName:            "Equipo A",
-			PresencialCollision: &calendar.PresencialCollision{Type: "same_team", Conflicts: []calendar.PresencialConflict{{GroupID: 6, GroupName: "Grupo B"}}},
-		}}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/administered-calendar?from=2026-10-01&to=2026-10-31", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, int64(7), capturedUserID)
-	assert.Equal(t, "2026-10-01", capturedFrom.Format("2006-01-02"))
-	assert.Equal(t, "2026-10-31", capturedTo.Format("2006-01-02"))
-	assert.Contains(t, rec.Body.String(), `"team_name":"Equipo A"`)
-	assert.Contains(t, rec.Body.String(), `"presencial_collision"`)
-	assert.Contains(t, rec.Body.String(), `"type":"same_team"`)
-}
-
-func TestCalendarController_AdministeredCalendar_OtherUserForbidden(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/99/administered-calendar?from=2026-10-01&to=2026-10-31", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-}
-
-func TestCalendarController_AdministeredCalendar_MissingDatesReturns400(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-
-	for _, url := range []string{
-		"/users/7/administered-calendar",
-		"/users/7/administered-calendar?from=2026-10-01",
-		"/users/7/administered-calendar?to=2026-10-31",
-	} {
-		req := httptest.NewRequest(http.MethodGet, url, nil)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		assert.Equal(t, http.StatusBadRequest, rec.Code, url)
-	}
-}
-
-func TestCalendarController_AdministeredCalendar_FromAfterToReturns400(t *testing.T) {
-	svc := &mockCalendarService{}
-	router := setupCalendarRouter(svc, 7)
-	req := httptest.NewRequest(http.MethodGet, "/users/7/administered-calendar?from=2026-10-31&to=2026-10-01", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
 func TestCalendarController_Bulk_Success(t *testing.T) {
-	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{Days: []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}}, nil
+	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
+		return []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}, nil
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.BulkRequest{Dates: []string{"2026-10-01"}, Kind: "rest"})
@@ -482,8 +275,8 @@ func TestCalendarController_Bulk_InvalidPayload(t *testing.T) {
 }
 
 func TestCalendarController_Bulk_ServiceError(t *testing.T) {
-	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, services.ErrCalendarInvalidKind
+	svc := &mockCalendarService{bulkFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarInvalidKind
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.BulkRequest{Dates: []string{"2026-10-01"}, Kind: "invalid"})
@@ -552,8 +345,8 @@ func TestCalendarController_BulkClear_ServiceError(t *testing.T) {
 }
 
 func TestCalendarController_Shift_Success(t *testing.T) {
-	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{Days: []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}}, nil
+	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
+		return []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}, nil
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
@@ -592,8 +385,8 @@ func TestCalendarController_Shift_InvalidPayload(t *testing.T) {
 }
 
 func TestCalendarController_Shift_Collision(t *testing.T) {
-	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, services.ErrCalendarShiftCollision
+	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarShiftCollision
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
@@ -768,8 +561,8 @@ func TestCalendarController_Stamp_InvalidPayload(t *testing.T) {
 }
 
 func TestCalendarController_Stamp_PlanForbidden(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{}, services.ErrCalendarPlanForbidden
+	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+		return nil, services.ErrCalendarPlanForbidden
 	}}
 	router := setupCalendarRouter(svc, 7)
 	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
@@ -839,96 +632,4 @@ func TestMapCalendarError_SessionExerciseNotFound(t *testing.T) {
 	status, _ := mapCalendarError(services.ErrSessionExerciseNotFound)
 
 	assert.Equal(t, http.StatusUnprocessableEntity, status)
-}
-
-// D8: el wrapper de stamp/bulk/shift viaja como objeto {days, same_team_warnings}.
-func TestCalendarController_Stamp_WrapperShape(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{
-			Days:             []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID, Date: "2026-10-01"}},
-			SameTeamWarnings: []calendar.PresencialConflict{{GroupID: 2, GroupName: "otro", TeamID: 1, TeamName: "team", Date: "2026-10-01", PresencialTimeFrom: "09:00", PresencialTimeTo: "10:00"}},
-		}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	body, _ := json.Marshal(calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
-	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusCreated, rec.Code)
-	var parsed map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
-	assert.Contains(t, parsed, "days")
-	assert.Contains(t, parsed, "same_team_warnings")
-}
-
-// 3.5 — stamp con exclude_dates que deja el rango válido → 201 con el wrapper
-//
-//	{days, same_team_warnings}: el endpoint expone el caso "colisión solo en
-//	fecha excluida" como Created, no solo como valor de retorno sintético.
-func TestCalendarController_Stamp_ExcludeDatesDejaRangoValidoRetorna201(t *testing.T) {
-	svc := &mockCalendarService{stampFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
-		require.Len(t, req.ExcludeDates, 1)
-		assert.Equal(t, "2026-10-01", req.ExcludeDates[0])
-		return calendar.CalendarMutationResponse{
-			Days: []calendar.CalendarDayResponse{{ID: 3, GroupID: groupID, Date: "2026-10-02", Kind: "training", IsPresencial: true}},
-		}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	body, _ := json.Marshal(calendar.StampRequest{PlanID: 5, StartDate: "2026-10-01", ExcludeDates: []string{"2026-10-01"}})
-	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/stamp", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusCreated, rec.Code)
-	var parsed calendar.CalendarMutationResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
-	require.Len(t, parsed.Days, 1)
-	assert.Equal(t, "2026-10-02", parsed.Days[0].Date)
-	assert.True(t, parsed.Days[0].IsPresencial)
-	assert.Empty(t, parsed.SameTeamWarnings)
-}
-
-// D4/D8: sin superposición same-team el campo no aparece (omitempty).
-func TestCalendarController_Shift_WrapperOmiteWarningsVacios(t *testing.T) {
-	svc := &mockCalendarService{shiftFn: func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
-		return calendar.CalendarMutationResponse{Days: []calendar.CalendarDayResponse{{ID: 1, GroupID: groupID}}}, nil
-	}}
-	router := setupCalendarRouter(svc, 7)
-	body, _ := json.Marshal(calendar.ShiftRequest{FromDate: "2026-10-01", Days: 1})
-	req := httptest.NewRequest(http.MethodPost, "/groups/1/calendar/shift", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	var parsed map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
-	assert.Contains(t, parsed, "days")
-	assert.NotContains(t, parsed, "same_team_warnings")
-}
-
-// D4: colisión presencial → 409 con body {message, conflicts}.
-func TestCalendarController_PutDay_PresencialCollision409(t *testing.T) {
-	svc := &mockCalendarService{upsertDayFn: func(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error) {
-		return nil, services.ErrCalendarPresencialCollision
-	}}
-	router := setupCalendarRouter(svc, 7)
-	body, _ := json.Marshal(calendar.CalendarDayRequest{Kind: "rest"})
-	req := httptest.NewRequest(http.MethodPut, "/groups/1/calendar/2026-10-01", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusConflict, rec.Code)
-	var parsed presencialCollisionResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &parsed))
-	assert.Equal(t, "colisión presencial con otro equipo", parsed.Message)
-	assert.NotNil(t, parsed.Conflicts)
 }

@@ -28,7 +28,6 @@ func entrenadorMockTeamUserDao() *mockTeamUserDao {
 type mockTeamDao struct {
 	createFn           func(ctx *gin.Context, t *dbs.Team) error
 	findByIDFn         func(ctx *gin.Context, id int64) (*dbs.Team, error)
-	findByIDsFn        func(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
 	getAllFn           func(ctx *gin.Context) ([]dbs.Team, error)
 	getAllByOwnerIDFn  func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
 	getAllByMemberIDFn func(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
@@ -49,13 +48,6 @@ func (m *mockTeamDao) Create(ctx *gin.Context, t *dbs.Team) error {
 func (m *mockTeamDao) FindByID(ctx *gin.Context, id int64) (*dbs.Team, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(ctx, id)
-	}
-	return nil, nil
-}
-
-func (m *mockTeamDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-	if m.findByIDsFn != nil {
-		return m.findByIDsFn(ctx, ids)
 	}
 	return nil, nil
 }

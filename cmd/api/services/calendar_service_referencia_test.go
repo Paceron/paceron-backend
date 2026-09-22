@@ -126,12 +126,12 @@ func TestReferencia_BulkSinSessionIDConservaPorFecha(t *testing.T) {
 		Kind:  "training", SessionID: &session.ID,
 	})
 	require.NoError(t, err)
-	require.Len(t, first.Days, 2)
+	require.Len(t, first, 2)
 	idsByDate := map[string]int64{
-		first.Days[0].Date: first.Days[0].SessionInstance.ID,
-		first.Days[1].Date: first.Days[1].SessionInstance.ID,
+		first[0].Date: first[0].SessionInstance.ID,
+		first[1].Date: first[1].SessionInstance.ID,
 	}
-	assert.NotEqual(t, idsByDate[first.Days[0].Date], idsByDate[first.Days[1].Date], "cada fecha tenia su propia instancia")
+	assert.NotEqual(t, idsByDate[first[0].Date], idsByDate[first[1].Date], "cada fecha tenia su propia instancia")
 
 	var sessBefore, exBefore, linkBefore int64
 	require.NoError(t, db.Model(&dbs.SessionInstance{}).Count(&sessBefore).Error)
@@ -143,8 +143,8 @@ func TestReferencia_BulkSinSessionIDConservaPorFecha(t *testing.T) {
 		Kind:  "training",
 	})
 	require.NoError(t, err)
-	require.Len(t, second.Days, 2)
-	for _, dayResp := range second.Days {
+	require.Len(t, second, 2)
+	for _, dayResp := range second {
 		require.NotNil(t, dayResp.SessionInstance)
 		assert.Equal(t, idsByDate[dayResp.Date], dayResp.SessionInstance.ID, "cada fecha conserva su propia instancia")
 		require.NotNil(t, dayResp.SessionInstance.SessionID)
