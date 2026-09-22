@@ -66,7 +66,7 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 8: Docs + verificación final
 
-- [ ] 8.1 `docs/CATALOGO_Y_CALENDARIO.md`: sección de colisión (reglas, 409 shape, warnings, wrappers), endpoints de banner y agregados.
-- [ ] 8.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección nueva — next-session breaking (shape nuevo), wrapper en stamp/bulk/shift, 409 de colisión y same_team_warnings, endpoints nuevos, cómo detectar colisiones viejas.
-- [ ] 8.3 `openspec validate colisiones-presenciales-y-calendario-agregado --strict` + gofmt (archivos tocados) + `go build` + `go vet` + `go test ./...` (Postgres real) + `make coverage-with-db` (gate 80, `go clean -cache` si sale raro).
-- [ ] 8.4 Tildar tasks.md completo; commits con rutas explícitas por etapa.
+- [x] 8.1 `docs/CATALOGO_Y_CALENDARIO.md`: sección de colisión (reglas, 409 shape, warnings, wrappers), endpoints de banner y agregados.
+- [x] 8.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección nueva — next-session breaking (shape nuevo), wrapper en stamp/bulk/shift, 409 de colisión y same_team_warnings, endpoints nuevos, cómo detectar colisiones viejas.
+- [x] 8.3 `openspec validate colisiones-presenciales-y-calendario-agregado --strict` + gofmt (archivos tocados) + `go build` + `go vet` + `go test ./...` (Postgres real) + `make coverage-with-db` (gate 80, `go clean -cache` si sale raro).
+- [x] 8.4 Tildar tasks.md completo; commits con rutas explícitas por etapa.
