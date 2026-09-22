@@ -5140,6 +5140,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/next-presencial-session": {
+            "get": {
+                "description": "La próxima sesión training+presencial entre todos los grupos\nque administra el usuario (owner de sus equipos), la primera\ncronológicamente sin importar el equipo, con el filtro \"hoy\ncuenta\" (hoy presencial ya arrancado no cuenta). Responde ` + "`" + `204` + "`" + `\nsi no hay ninguna. Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D7).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Banner de próxima sesión presencial del entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "Sin próxima sesión presencial"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/next-session": {
             "get": {
                 "description": "BREAKING (in-place): el shape anterior (una sola sesión con\n` + "`" + `session_instance` + "`" + ` embebida, ` + "`" + `204` + "`" + ` si no había) fue reemplazado.\nAhora siempre responde ` + "`" + `200` + "`" + ` con ` + "`" + `{next_cancelled, next_training}` + "`" + `,\ncada uno la más próxima de su kind entre todos los grupos del\nusuario (independientes, nullable). Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D6).",
@@ -6772,6 +6810,38 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "group_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
                     "type": "string"
                 }
             }

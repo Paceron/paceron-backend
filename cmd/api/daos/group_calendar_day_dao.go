@@ -27,6 +27,12 @@ type GroupCalendarDaoInterface interface {
 	// presencial todavía no arrancó (mismo criterio que isCalendarDayClosed).
 	// nowHHMM es la hora actual en "HH:MM"; today es la medianoche local.
 	FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
+	// FindNextPresencialForGroups devuelve el próximo día training+presencial
+	// entre los grupos dados con el mismo filtro "hoy cuenta" del banner
+	// (design.md D7): date > hoy, o date == hoy solo si el horario presencial
+	// todavía no arrancó. nowHHMM es la hora actual en "HH:MM"; today es la
+	// medianoche local.
+	FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
 }
@@ -135,6 +141,29 @@ func (d *groupCalendarDayDao) FindNextForGroupsByKind(ctx *gin.Context, groupIDs
 			return nil, nil
 		}
 		return nil, fmt.Errorf("error finding next day by kind: %w", err)
+	}
+	return &day, nil
+}
+
+// FindNextPresencialForGroups es la variante training+presencial del filtro
+// "hoy cuenta" (design.md D7, banner del entrenador): mismo criterio SQL que
+// FindNextForGroupsByKind (espejo de isCalendarDayClosed en calendar_service.go),
+// acotado a días training+presencial.
+func (d *groupCalendarDayDao) FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	var day dbs.GroupCalendarDay
+	err := d.DB.
+		Where("group_id IN ? AND kind = ? AND is_presencial = ?", groupIDs, string(constants.GroupCalendarDayKindTraining), true).
+		Where("date > ? OR (date = ? AND presencial_time_from IS NOT NULL AND TO_CHAR(presencial_time_from AT TIME ZONE 'UTC', 'HH24:MI') > ?)",
+			today, today, nowHHMM).
+		Order("date ASC").First(&day).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding next presencial day: %w", err)
 	}
 	return &day, nil
 }

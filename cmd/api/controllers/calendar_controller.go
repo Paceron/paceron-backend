@@ -22,6 +22,7 @@ type CalendarController interface {
 	BulkClear(c *gin.Context)
 	Shift(c *gin.Context)
 	NextSession(c *gin.Context)
+	NextPresencialSession(c *gin.Context)
 	CalendarSummary(c *gin.Context)
 }
 
@@ -367,6 +368,45 @@ func (cc *calendarController) NextSession(c *gin.Context) {
 	resp, err := cc.calendarService.NextSession(c, userID)
 	if err != nil {
 		respondCalendarError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// NextPresencialSession godoc
+// @Summary      Banner de próxima sesión presencial del entrenador
+// @Description  La próxima sesión training+presencial entre todos los grupos
+// @Description  que administra el usuario (owner de sus equipos), la primera
+// @Description  cronológicamente sin importar el equipo, con el filtro "hoy
+// @Description  cuenta" (hoy presencial ya arrancado no cuenta). Responde `204`
+// @Description  si no hay ninguna. Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D7).
+// @Tags         calendar
+// @Produce      json
+// @Param        id  path  int  true  "User ID"
+// @Success      200  {object}  calendar.NextPresencialSessionResponse
+// @Success      204  "Sin próxima sesión presencial"
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/next-presencial-session [get]
+func (cc *calendarController) NextPresencialSession(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	callerID, _ := utils.GetAuthUserID(c)
+	if userID != callerID {
+		respondCatalogError(c, http.StatusForbidden, "no podés consultar los datos de otro usuario")
+		return
+	}
+	resp, err := cc.calendarService.NextPresencialSession(c, userID)
+	if err != nil {
+		respondCalendarError(c, err)
+		return
+	}
+	if resp == nil {
+		c.Status(http.StatusNoContent)
 		return
 	}
 	c.JSON(http.StatusOK, resp)

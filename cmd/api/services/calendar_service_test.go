@@ -24,6 +24,7 @@ type mockGroupCalendarDao struct {
 	deleteFn                  func(ctx *gin.Context, groupID int64, date time.Time) error
 	deleteByDatesFn           func(ctx *gin.Context, groupID int64, dates []time.Time) error
 	findNextForGroupsByKindFn func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
+	findNextPresencialFn      func(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	clearSourcePlanFn         func(ctx *gin.Context, planID int64) error
 	updateDatesForShiftFn     func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
 }
@@ -69,6 +70,12 @@ func (m *mockGroupCalendarDao) DeleteByDates(ctx *gin.Context, groupID int64, da
 func (m *mockGroupCalendarDao) FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 	if m.findNextForGroupsByKindFn != nil {
 		return m.findNextForGroupsByKindFn(ctx, groupIDs, kind, today, nowHHMM)
+	}
+	return nil, nil
+}
+func (m *mockGroupCalendarDao) FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
+	if m.findNextPresencialFn != nil {
+		return m.findNextPresencialFn(ctx, groupIDs, today, nowHHMM)
 	}
 	return nil, nil
 }
@@ -591,6 +598,146 @@ func TestCalendarService_NextSession_TodayCounts(t *testing.T) {
 	require.NotNil(t, resp.NextTraining, "hoy asincrónico cuenta")
 	assert.False(t, resp.NextTraining.IsPresencial)
 	assert.Nil(t, resp.NextTraining.PresencialTimeFrom)
+}
+
+// utcTimeHHMM arma un *time.Time de HOY a la HH:MM dada, en UTC (convención
+// de persistencia de los horarios presenciales, ver dbs.GroupCalendarDay).
+func utcTimeHHMM(hhmm string) *time.Time {
+	hm, err := time.Parse("15:04", hhmm)
+	if err != nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	t := time.Date(now.Year(), now.Month(), now.Day(), hm.Hour(), hm.Minute(), 0, 0, time.UTC)
+	return &t
+}
+
+// Banner del entrenador (design.md D7): administra grupos de 2 equipos; solo
+// el grupo de un equipo tiene presencial próximo → ese día, con team_id/team_name
+// de su equipo (batch de teams, no N+1).
+func TestCalendarService_NextPresencialSession_NearestAcrossTeams(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "calendar-nextpresencial-multiteam@test.com", DNI: "50000107", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	teamA := &dbs.Team{Name: "Equipo A presencial", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(teamA).Error)
+	teamB := &dbs.Team{Name: "Equipo B presencial", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(teamB).Error)
+	groupA := &dbs.Group{Name: "Grupo A presencial", TeamID: teamA.ID, IsMain: true}
+	require.NoError(t, db.Create(groupA).Error)
+	groupB := &dbs.Group{Name: "Grupo B presencial", TeamID: teamB.ID, IsMain: true}
+	require.NoError(t, db.Create(groupB).Error)
+
+	far := time.Now().AddDate(0, 0, 7)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: far, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeHHMM("09:00"), PresencialTimeTo: utcTimeHHMM("10:00")}))
+	near := time.Now().AddDate(0, 0, 2)
+	location := `{"lat":-31.4,"lng":-64.2,"label":"pista"}`
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: near, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeHHMM("08:00"), PresencialTimeTo: utcTimeHHMM("09:00"), PresencialLocation: &location}))
+
+	resp, err := svc.NextPresencialSession(nil, owner.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, groupB.ID, resp.GroupID, "elige la más cercana sin importar equipo")
+	assert.Equal(t, groupB.Name, resp.GroupName)
+	assert.Equal(t, teamB.ID, resp.TeamID)
+	assert.Equal(t, teamB.Name, resp.TeamName)
+	assert.Equal(t, near.Format("2006-01-02"), resp.Date)
+	require.NotNil(t, resp.PresencialTimeFrom)
+	assert.Equal(t, "08:00", *resp.PresencialTimeFrom)
+	require.NotNil(t, resp.PresencialLocation)
+	require.NotNil(t, resp.PresencialLocation.Label)
+	assert.Equal(t, "pista", *resp.PresencialLocation.Label)
+}
+
+// Solo training+presencial es candidato: async y cancelled quedan fuera
+// (mock del DAO — el filtro por kind/presencial vive en la query).
+func TestCalendarService_NextPresencialSession_OnlyTrainingPresencial(t *testing.T) {
+	var requestedGroupIDs []int64
+	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+		return []dbs.Group{{ID: 1, Name: "Grupo 1", TeamID: 10}, {ID: 2, Name: "Grupo 2", TeamID: 11}}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+		return []dbs.Team{{ID: 10, Name: "Equipo 10"}, {ID: 11, Name: "Equipo 11"}}, nil
+	}}
+	calDao := &mockGroupCalendarDao{findNextPresencialFn: func(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
+		requestedGroupIDs = groupIDs
+		return &dbs.GroupCalendarDay{GroupID: 2, Date: today.AddDate(0, 0, 1), Kind: "training", IsPresencial: true}, nil
+	}}
+	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	resp, err := svc.NextPresencialSession(nil, 42)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, []int64{1, 2}, requestedGroupIDs, "busca entre todos los grupos administrados")
+	assert.Equal(t, int64(2), resp.GroupID)
+	assert.Equal(t, "Grupo 2", resp.GroupName)
+	assert.Equal(t, int64(11), resp.TeamID)
+	assert.Equal(t, "Equipo 11", resp.TeamName)
+}
+
+// Owner sin grupos administrados → nil (controller responde 204).
+func TestCalendarService_NextPresencialSession_NoGroupsReturnsNil(t *testing.T) {
+	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+		return nil, nil
+	}}
+	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+
+	resp, err := svc.NextPresencialSession(nil, 42)
+
+	require.NoError(t, err)
+	assert.Nil(t, resp)
+}
+
+// "Hoy cuenta" end-to-end contra Postgres real: hoy presencial ya arrancado NO
+// aparece; hoy presencial por arrancar SÍ; async/cancelled nunca son candidatos.
+func TestCalendarService_NextPresencialSession_TodayCounts(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "calendar-nextpresencial-todaycounts@test.com", DNI: "50000108", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	team := &dbs.Team{Name: "Equipo presencial hoy-counts", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo presencial hoy-counts", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	future := today.AddDate(0, 0, 3)
+
+	// Caso 1: hoy presencial ya arrancado → no cuenta.
+	startedFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(-2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	startedTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &startedFrom, PresencialTimeTo: &startedTo}))
+	resp, err := svc.NextPresencialSession(nil, owner.ID)
+	require.NoError(t, err)
+	assert.Nil(t, resp, "hoy presencial ya arrancado no cuenta")
+
+	// Caso 2: hoy presencial por arrancar → cuenta.
+	pendingFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	pendingTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &pendingFrom, PresencialTimeTo: &pendingTo}))
+	resp, err = svc.NextPresencialSession(nil, owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp, "hoy presencial por arrancar cuenta")
+	assert.Equal(t, today.Format("2006-01-02"), resp.Date)
+
+	// Caso 3: el presencial futuro más cercano pierde contra el de hoy; un
+	// async y un cancelled en la misma fecha no desplazan al candidato válido.
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training"}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today.AddDate(0, 0, 1), Kind: "cancelled", IsPresencial: true, PresencialTimeFrom: &pendingFrom, PresencialTimeTo: &pendingTo}))
+	resp, err = svc.NextPresencialSession(nil, owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, today.Format("2006-01-02"), resp.Date, "ni async ni cancelled son candidatos")
 }
 
 func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {

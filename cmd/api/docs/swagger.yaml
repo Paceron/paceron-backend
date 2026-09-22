@@ -309,6 +309,27 @@ definitions:
       group_name:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse:
+    properties:
+      date:
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time_from:
+        type: string
+      presencial_time_to:
+        type: string
+      session_name:
+        type: string
+      team_id:
+        type: integer
+      team_name:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem:
     properties:
       date:
@@ -5536,6 +5557,37 @@ paths:
         "403":
           description: Forbidden
       summary: Resumen de calendario del usuario
+      tags:
+      - calendar
+  /api/v1/users/{id}/next-presencial-session:
+    get:
+      description: |-
+        La próxima sesión training+presencial entre todos los grupos
+        que administra el usuario (owner de sus equipos), la primera
+        cronológicamente sin importar el equipo, con el filtro "hoy
+        cuenta" (hoy presencial ya arrancado no cuenta). Responde `204`
+        si no hay ninguna. Conforme a
+        openspec/changes/colisiones-presenciales-y-calendario-agregado (D7).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse'
+        "204":
+          description: Sin próxima sesión presencial
+        "400":
+          description: Bad Request
+        "403":
+          description: Forbidden
+      summary: Banner de próxima sesión presencial del entrenador
       tags:
       - calendar
   /api/v1/users/{id}/next-session:

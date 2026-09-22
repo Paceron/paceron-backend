@@ -51,6 +51,7 @@ type CalendarServiceInterface interface {
 	BulkClear(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
 	Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
 	NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
+	NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
 	CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -1480,6 +1481,89 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	}
 	if trainingDay != nil {
 		resp.NextTraining = s.trainingBannerItem(ctx, *trainingDay, groupNames)
+	}
+	return resp, nil
+}
+
+// NextPresencialSession resuelve el banner del entrenador (design.md D7, spec
+// "Banner del home — next-presencial-session del entrenador"): la próxima
+// sesión training+presencial entre TODOS los grupos que administra el caller
+// (owner de sus equipos), sin importar el equipo, con el filtro "hoy cuenta"
+// de isCalendarDayClosed. Devuelve nil si no hay ninguna (controller → 204).
+func (s *calendarService) NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding administered groups", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar grupos administrados")
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	groupIDs := make([]int64, len(groups))
+	for i, g := range groups {
+		groupIDs[i] = g.ID
+	}
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	nowHHMM := now.Format("15:04")
+
+	day, err := s.calendarDao.FindNextPresencialForGroups(ctx, groupIDs, today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next presencial day", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión presencial")
+	}
+	if day == nil {
+		return nil, nil
+	}
+
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	teamIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar equipos del entrenador")
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	group := groupByID[day.GroupID]
+	resp := &calendar.NextPresencialSessionResponse{
+		GroupID:   group.ID,
+		GroupName: group.Name,
+		TeamID:    group.TeamID,
+		TeamName:  teamNameByID[group.TeamID],
+		Date:      day.Date.Format("2006-01-02"),
+	}
+	if day.SessionInstanceID != nil && s.db != nil {
+		sessionDao := daos.NewSessionInstanceDao(s.db)
+		instance, err := sessionDao.FindByID(ctx, *day.SessionInstanceID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding session instance for banner", err, customlogger.TagMethod("NextPresencialSession"))
+		} else if instance != nil {
+			name := instance.Name
+			resp.SessionName = &name
+		}
+	}
+	if day.PresencialTimeFrom != nil {
+		formatted := day.PresencialTimeFrom.UTC().Format("15:04")
+		resp.PresencialTimeFrom = &formatted
+	}
+	if day.PresencialTimeTo != nil {
+		formatted := day.PresencialTimeTo.UTC().Format("15:04")
+		resp.PresencialTimeTo = &formatted
+	}
+	if day.PresencialLocation != nil {
+		loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
+		if err == nil {
+			resp.PresencialLocation = loc
+		}
 	}
 	return resp, nil
 }

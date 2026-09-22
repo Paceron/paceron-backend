@@ -28,3 +28,19 @@ type NextTrainingBannerItem struct {
 	PresencialTimeTo   *string                `json:"presencial_time_to"`
 	PresencialLocation *trainingplan.Location `json:"presencial_location"`
 }
+
+// NextPresencialSessionResponse es el banner del entrenador (design.md D7):
+// la próxima sesión training+presencial entre todos los grupos que administra
+// (owner de sus equipos), sin importar el equipo. Controller responde 204 si
+// no hay ninguna (service devuelve nil).
+type NextPresencialSessionResponse struct {
+	GroupID            int64                  `json:"group_id"`
+	GroupName          string                 `json:"group_name"`
+	TeamID             int64                  `json:"team_id"`
+	TeamName           string                 `json:"team_name"`
+	Date               string                 `json:"date"`
+	SessionName        *string                `json:"session_name"`
+	PresencialTimeFrom *string                `json:"presencial_time_from"`
+	PresencialTimeTo   *string                `json:"presencial_time_to"`
+	PresencialLocation *trainingplan.Location `json:"presencial_location"`
+}

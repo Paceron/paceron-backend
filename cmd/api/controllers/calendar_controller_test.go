@@ -28,6 +28,7 @@ type mockCalendarService struct {
 	bulkClearFn       func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
 	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
 	nextSessionFn     func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
+	nextPresencialFn  func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
 	calendarSummaryFn func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -55,6 +56,9 @@ func (m *mockCalendarService) Shift(ctx *gin.Context, groupID, callerID int64, r
 func (m *mockCalendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
 	return m.nextSessionFn(ctx, userID)
 }
+func (m *mockCalendarService) NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+	return m.nextPresencialFn(ctx, userID)
+}
 func (m *mockCalendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
 	return m.calendarSummaryFn(ctx, userID)
 }
@@ -74,6 +78,7 @@ func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64
 	r.POST("/groups/:id/calendar/bulk-clear", ctrl.BulkClear)
 	r.POST("/groups/:id/calendar/shift", ctrl.Shift)
 	r.GET("/users/:id/next-session", ctrl.NextSession)
+	r.GET("/users/:id/next-presencial-session", ctrl.NextPresencialSession)
 	r.GET("/users/:id/calendar-summary", ctrl.CalendarSummary)
 	return r
 }
@@ -241,6 +246,44 @@ func TestCalendarController_NextSession_Success(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCalendarController_NextPresencialSession_Success(t *testing.T) {
+	svc := &mockCalendarService{nextPresencialFn: func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+		return &calendar.NextPresencialSessionResponse{GroupID: 1, GroupName: "Grupo", TeamID: 10, TeamName: "Equipo", Date: "2026-10-01"}, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/next-presencial-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"team_name":"Equipo"`)
+}
+
+func TestCalendarController_NextPresencialSession_NoContent(t *testing.T) {
+	svc := &mockCalendarService{nextPresencialFn: func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+		return nil, nil
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/next-presencial-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestCalendarController_NextPresencialSession_OtherUserForbidden(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/99/next-presencial-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestCalendarController_Bulk_Success(t *testing.T) {
