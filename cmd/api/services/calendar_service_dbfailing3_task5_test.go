@@ -33,8 +33,6 @@ func TestDBError_Bulk_MockPaths(t *testing.T) {
 	svc = NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 	_, err = svc.Bulk(nil, 1, 7, calendar.BulkRequest{Dates: []string{d1}, Kind: "training"})
 	assert.ErrorIs(t, err, ErrCalendarTrainingWithoutInstance)
-
-	assert.ErrorIs(t, ErrCalendarInvalidCancelTransition, ErrCalendarInvalidCancelTransition) // sentinel vive
 }
 
 func TestDBError_Bulk_FindByGroupAndDateErrorMidLoop(t *testing.T) {
@@ -46,7 +44,8 @@ func TestDBError_Bulk_FindByGroupAndDateErrorMidLoop(t *testing.T) {
 
 	_, err := svc.Bulk(nil, 1, 7, calendar.BulkRequest{Dates: []string{"2999-10-05"}, Kind: "rest"})
 
-	require.Error(t, err)
+	// Sin db, la rama no-transaccional propaga el error crudo del mock.
+	require.EqualError(t, err, "boom find")
 }
 
 func TestDBError_Bulk_TXValidateFails(t *testing.T) {
@@ -73,7 +72,7 @@ func TestDBError_Bulk_TXInstantiateSelectFails(t *testing.T) {
 	failing := testutils.FailingDB(t, db, nthFail("select", 2))
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, failing)
 	_, err := svc.Bulk(nil, group.ID, owner.ID, req)
-	require.Error(t, err)
+	require.EqualError(t, err, "error al aplicar bulk")
 
 	var instCount int64
 	require.NoError(t, db.Model(&dbs.SessionInstance{}).Count(&instCount).Error)
@@ -110,7 +109,7 @@ func TestDBError_BulkClear_FailsPuntuales(t *testing.T) {
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, nil)
 	err := svc.BulkClear(nil, 1, 7, calendar.BulkClearRequest{Dates: []string{"2999-10-05"}})
-	require.Error(t, err)
+	require.EqualError(t, err, "error al buscar grupo")
 
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "dberr34")

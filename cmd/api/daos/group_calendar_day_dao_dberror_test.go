@@ -104,7 +104,8 @@ func TestGroupCalendarDayDao_DBFail_DeleteByDates(t *testing.T) {
 	failing := testutils.FailingDB(t, db, nthFail("delete", 1))
 	dao = NewGroupCalendarDayDao(failing)
 	err := dao.DeleteByDates(nil, 1, []time.Time{time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)})
-	require.Error(t, err)
+	// DeleteByDates no envuelve: el error crudo viaja tal cual.
+	require.EqualError(t, err, "error de base de datos inyectado por testutils.FailingDB")
 }
 
 // FindNextForGroupsByKind: error de select real y error desconocido del row.
@@ -154,5 +155,6 @@ func TestGroupCalendarDayDao_DBFail_UpsertUpdateError(t *testing.T) {
 	dao = NewGroupCalendarDayDao(failing)
 	err := dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: d1, Kind: "training"})
 
-	require.Error(t, err)
+	// La rama update del Upsert tampoco envuelve su error.
+	require.EqualError(t, err, "error de base de datos inyectado por testutils.FailingDB")
 }

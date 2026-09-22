@@ -118,7 +118,8 @@ func TestDBError_deleteSupersededInstance_SinLinksFallaAlBorrarInstancia(t *test
 	failing := testutils.FailingDB(t, db, nthFail("delete", 1))
 	err := svc.deleteSupersededInstance(nil, failing, inst.ID)
 
-	require.Error(t, err)
+	// Sin links, la baja de la instancia es el primer delete de la tx.
+	require.EqualError(t, err, "error deleting session exercise instances: error de base de datos inyectado por testutils.FailingDB")
 }
 
 // --- instantiateSession con fallas puntuales ----------------------------
