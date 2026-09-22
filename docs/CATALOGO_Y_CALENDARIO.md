@@ -200,7 +200,7 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 
 `Stamp`: copia cada `PlanDay` del plan a `start_date + (sequence_no - 1)` días, marcando `source_plan_id`. Sin `force=true`, si alguna fecha destino ya tiene contenido → `409 hay fechas con contenido existente` y no escribe nada.
 
-Con `exclude_dates` (opcional, array de fechas `YYYY-MM-DD`; change `stamp-exclude-dates`): cada fecha del set que caiga dentro del rango objetivo se salta **por completo** — su fila e instancia quedan intactas, no cuenta para el `409` de conflictos ni para el `422` de día cerrado, y no aparece en la respuesta. `force` sigue aplicando igual sobre las fechas NO excluidas. Una fecha excluida fuera del rango se ignora; formato inválido → `422 ErrCalendarInvalidDate` sin escribir nada; rango totalmente excluido → `201` con `[]`. Omitir el campo o enviar `[]` = comportamiento idéntico al previo.
+Con `exclude_dates` (opcional, array de fechas `YYYY-MM-DD`; change `stamp-exclude-dates`): cada fecha del set que caiga dentro del rango objetivo se salta **por completo** — su fila e instancia quedan intactas, no cuenta para el `409` de conflictos ni para el `422` de día cerrado, y no aparece en la respuesta. `force` sigue aplicando igual sobre las fechas NO excluidas. Una fecha excluida fuera del rango se ignora; formato inválido → `422 ErrCalendarInvalidDate` sin escribir nada; rango totalmente excluido → `201` con `{"days": []}` (wrapper `CalendarMutationResponse`, sin `same_team_warnings`). Omitir el campo o enviar `[]` = comportamiento idéntico al previo.
 
 `Shift`: mueve todas las filas desde `from_date` en adelante, `days` posiciones (entero positivo). Antes de escribir valida que ninguna fecha destino choque con una fila **anterior a `from_date`** que quede fuera del rango desplazado (`409 el corrimiento haría chocar dos fechas`).
 
@@ -358,7 +358,7 @@ Wiring por endpoint (D5):
 | `bulk` | en el loop de validación previa (junto con cerrado) | `409` lote completo rechazado | warnings agregados por cada fecha que superpone |
 | `shift` | fechas nuevas de filas presenciales movidas (excluyendo las movidas por ID) | `409` rollback (filas mantienen fecha vieja) | warnings |
 
-`same_team_warnings` solo se completa en la escritura individual (PUT). En lecturas y en el wrapper de stamp/bulk/shift queda vacío (no viaja en el JSON por `omitempty`).
+`same_team_warnings` se completa en todas las escrituras: en la individual (PUT) viaja como campo extra del `CalendarDayResponse` (`omitempty`), y en stamp/bulk/shift viaja poblado en el wrapper `CalendarMutationResponse` (ver `calendar_service.go`). Queda vacío (y no viaja por `omitempty`) cuando no hay warnings o en lecturas.
 
 #### Wrapper `CalendarMutationResponse` en stamp/bulk/shift (D4)
 

@@ -128,7 +128,7 @@ Cerrado el Gap 8 ("evitar pisar selectivo" en el preview de estampado). **Aditiv
 
 - Cada fecha excluida **no se toca**: si el día ya tenía fila/instancia, quedan intactas (mismo `session_instance_id`); si estaba vacío, sigue vacío.
 - No cuenta para el `409` de conflictos ni para el `422` de día cerrado — se ignora antes de evaluar cualquier guarda. `force` sigue aplicando igual sobre las fechas **no** excluidas.
-- La respuesta (`201`, wrapper `{days, same_team_warnings?}` — ver §8.3) no incluye las fechas excluidas.
+- La respuesta (`201`, wrapper `{days, same_team_warnings?}` — ver §8.2) no incluye las fechas excluidas.
 - Casos borde: fecha excluida fuera del rango del plan → se ignora silenciosamente; formato inválido en el array (`"10/07/2026"`) → `422 "exclude_dates debe tener formato YYYY-MM-DD"` sin escribir nada; rango totalmente excluido → `201` con `{"days": []}` (no es error).
 
 ## 8. Colisión presencial, banners nuevos y calendario agregado (`colisiones-presenciales-y-calendario-agregado`)
