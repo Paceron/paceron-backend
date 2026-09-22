@@ -45,9 +45,9 @@ Ejecución: subagent-driven-development, 3 etapas (Gap 9 → 10 → 11) en una s
 
 ### Task 5: next-presencial-session del entrenador
 
-- [ ] 5.1 Service: grupos administrados del caller (helper Task 1) + query próxima presencial → respuesta con team_id/team_name (batch de teams).
-- [ ] 5.2 Ruta `GET /api/v1/users/:id/next-presencial-session` + guard `id == callerID` (403) + controller (200 o 204) + swagger.
-- [ ] 5.3 Tests: próxima entre varios equipos; ninguna → 204; solo cuenta training presencial (no async, no cancelled); hoy por arrancar cuenta / ya arrancada no; 403 por id ajeno.
+- [x] 5.1 Service: grupos administrados del caller (helper Task 1) + query próxima presencial → respuesta con team_id/team_name (batch de teams).
+- [x] 5.2 Ruta `GET /api/v1/users/:id/next-presencial-session` + guard `id == callerID` (403) + controller (200 o 204) + swagger.
+- [x] 5.3 Tests: próxima entre varios equipos; ninguna → 204; solo cuenta training presencial (no async, no cancelled); hoy por arrancar cuenta / ya arrancada no; 403 por id ajeno.
 
 ## Etapa 3 — Gap 11: calendario agregado
 
