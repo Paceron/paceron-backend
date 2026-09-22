@@ -22,6 +22,9 @@ type CalendarController interface {
 	BulkClear(c *gin.Context)
 	Shift(c *gin.Context)
 	NextSession(c *gin.Context)
+	NextPresencialSession(c *gin.Context)
+	MemberCalendar(c *gin.Context)
+	AdministeredCalendar(c *gin.Context)
 	CalendarSummary(c *gin.Context)
 }
 
@@ -67,12 +70,33 @@ func mapCalendarError(err error) (int, string) {
 		return http.StatusConflict, err.Error()
 	case errors.Is(err, services.ErrCalendarShiftCollision):
 		return http.StatusConflict, "el corrimiento haría chocar dos fechas"
+	case errors.Is(err, services.ErrCalendarPresencialCollision):
+		return http.StatusConflict, "colisión presencial con otro equipo"
 	default:
 		return http.StatusInternalServerError, "error interno"
 	}
 }
 
+// presencialCollisionResponse es el body JSON del 409 por colisión presencial
+// (D4): mensaje fijo + lista de conflictos, no un string plano como el resto
+// de los errores de calendario.
+type presencialCollisionResponse struct {
+	Message   string                        `json:"message"`
+	Conflicts []calendar.PresencialConflict `json:"conflicts"`
+}
+
 func respondCalendarError(c *gin.Context, err error) {
+	if errors.Is(err, services.ErrCalendarPresencialCollision) {
+		conflicts := services.PresencialCollisionConflicts(err)
+		if conflicts == nil {
+			conflicts = []calendar.PresencialConflict{}
+		}
+		c.JSON(http.StatusConflict, presencialCollisionResponse{
+			Message:   "colisión presencial con otro equipo",
+			Conflicts: conflicts,
+		})
+		return
+	}
 	status, message := mapCalendarError(err)
 	respondCatalogError(c, status, message)
 }
@@ -126,9 +150,10 @@ func (cc *calendarController) GetRange(c *gin.Context) {
 // @Param        id    path   int                       true   "Group ID"
 // @Param        date  path   string                    true   "Fecha (YYYY-MM-DD)"
 // @Param        body  body   calendar.CalendarDayRequest  true   "Datos del día. En kind=training, session_id es opcional: si se omite y el día ya tiene instancia, se conserva sin reinstanciar"
-// @Success      200  {object}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarDayResponse  "Incluye same_team_warnings (opcional) si queda presencial y se superpone con grupos del mismo equipo"
 // @Failure      400
 // @Failure      403
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Colisión presencial con un grupo de otro equipo (sin forma de forzar)"
 // @Failure      422  {string}  string  "Día cerrado, o kind=training sin session_id y sin instancia previa que conservar"
 // @Router       /api/v1/groups/{id}/calendar/{date} [put]
 func (cc *calendarController) PutDay(c *gin.Context) {
@@ -192,11 +217,11 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                    true  "Group ID"
 // @Param        body  body  calendar.StampRequest  true  "Datos del stamp. exclude_dates (opcional): fechas YYYY-MM-DD del rango que se saltan por completo — no cuentan para el 409 de conflictos ni para el 422 de día cerrado, y no aparecen en la respuesta"
-// @Success      201  {array}  calendar.CalendarDayResponse
+// @Success      201  {object}  calendar.CalendarMutationResponse  "Días estampados (days) + same_team_warnings opcional por superposición same-team"
 // @Failure      400
 // @Failure      403
 // @Failure      404
-// @Failure      409
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Fechas ocupadas sin force, o colisión presencial con otro equipo (force no la bypassa)"
 // @Failure      422  {string}  string "Día cerrado, o exclude_dates con formato inválido"
 // @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
@@ -226,9 +251,10 @@ func (cc *calendarController) Stamp(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                   true  "Group ID"
 // @Param        body  body  calendar.BulkRequest  true  "Datos de la operación. En kind=training, session_id es opcional: cada fecha con instancia previa la conserva; si alguna fecha no tiene instancia que conservar se rechaza el lote completo"
-// @Success      200  {array}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarMutationResponse  "Días aplicados (days) + same_team_warnings opcional por superposición same-team"
 // @Failure      400
 // @Failure      403
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Colisión presencial con otro equipo en alguna fecha: se rechaza el lote completo (all-or-nothing)"
 // @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/bulk [post]
 func (cc *calendarController) Bulk(c *gin.Context) {
@@ -289,10 +315,10 @@ func (cc *calendarController) BulkClear(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                   true  "Group ID"
 // @Param        body  body  calendar.ShiftRequest  true  "Datos del desplazamiento"
-// @Success      200  {array}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarMutationResponse  "Días corridos (days) + same_team_warnings opcional por superposición same-team en las fechas nuevas"
 // @Failure      400
 // @Failure      403
-// @Failure      409
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Fecha destino ocupada, o colisión presencial con otro equipo en las fechas nuevas (rollback completo)"
 // @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/shift [post]
 func (cc *calendarController) Shift(c *gin.Context) {
@@ -316,12 +342,17 @@ func (cc *calendarController) Shift(c *gin.Context) {
 }
 
 // NextSession godoc
-// @Summary      Próxima sesión del usuario
+// @Summary      Banners de próxima sesión del usuario
+// @Description  BREAKING (in-place): el shape anterior (una sola sesión con
+// @Description  `session_instance` embebida, `204` si no había) fue reemplazado.
+// @Description  Ahora siempre responde `200` con `{next_cancelled, next_training}`,
+// @Description  cada uno la más próxima de su kind entre todos los grupos del
+// @Description  usuario (independientes, nullable). Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D6).
 // @Tags         calendar
 // @Produce      json
 // @Param        id  path  int  true  "User ID"
 // @Success      200  {object}  calendar.NextSessionResponse
-// @Success      204
 // @Failure      400
 // @Failure      403
 // @Router       /api/v1/users/{id}/next-session [get]
@@ -341,8 +372,155 @@ func (cc *calendarController) NextSession(c *gin.Context) {
 		respondCalendarError(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// NextPresencialSession godoc
+// @Summary      Banner de próxima sesión presencial del entrenador
+// @Description  La próxima sesión training+presencial entre todos los grupos
+// @Description  que administra el usuario (owner de sus equipos), la primera
+// @Description  cronológicamente sin importar el equipo, con el filtro "hoy
+// @Description  cuenta" (hoy presencial ya arrancado no cuenta). Responde `204`
+// @Description  si no hay ninguna. Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D7).
+// @Tags         calendar
+// @Produce      json
+// @Param        id  path  int  true  "User ID"
+// @Success      200  {object}  calendar.NextPresencialSessionResponse
+// @Success      204  "Sin próxima sesión presencial"
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/next-presencial-session [get]
+func (cc *calendarController) NextPresencialSession(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	callerID, _ := utils.GetAuthUserID(c)
+	if userID != callerID {
+		respondCatalogError(c, http.StatusForbidden, "no podés consultar los datos de otro usuario")
+		return
+	}
+	resp, err := cc.calendarService.NextPresencialSession(c, userID)
+	if err != nil {
+		respondCalendarError(c, err)
+		return
+	}
 	if resp == nil {
 		c.Status(http.StatusNoContent)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// MemberCalendar godoc
+// @Summary      Calendario agregado del corredor
+// @Description  Los días de calendario de TODOS los grupos con membresía
+// @Description  activa del usuario en el rango, ordenados por fecha, con
+// @Description  group_id/group_name/team_id/team_name resueltos server-side.
+// @Description  Conforme a openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).
+// @Tags         calendar
+// @Produce      json
+// @Param        id    path   int     true   "User ID"
+// @Param        from  query  string  true   "Fecha desde (YYYY-MM-DD)"
+// @Param        to    query  string  true   "Fecha hasta (YYYY-MM-DD)"
+// @Success      200  {array}  calendar.AggregateCalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/member-calendar [get]
+func (cc *calendarController) MemberCalendar(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	callerID, _ := utils.GetAuthUserID(c)
+	if userID != callerID {
+		respondCatalogError(c, http.StatusForbidden, "no podés consultar los datos de otro usuario")
+		return
+	}
+	fromStr, toStr := c.Query("from"), c.Query("to")
+	if fromStr == "" || toStr == "" {
+		respondCatalogError(c, http.StatusBadRequest, "from y to son obligatorios")
+		return
+	}
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "from debe tener formato YYYY-MM-DD")
+		return
+	}
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "to debe tener formato YYYY-MM-DD")
+		return
+	}
+	if from.After(to) {
+		respondCatalogError(c, http.StatusBadRequest, "from debe ser anterior o igual a to")
+		return
+	}
+	resp, err := cc.calendarService.MemberCalendar(c, userID, from, to)
+	if err != nil {
+		respondCalendarError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdministeredCalendar godoc
+// @Summary      Calendario agregado del entrenador
+// @Description  Los días de calendario de TODOS los grupos administrados por
+// @Description  el usuario (owner de los equipos) en el rango, ordenados por
+// @Description  fecha, con group_id/group_name/team_id/team_name resueltos
+// @Description  server-side. Cada día presencial que superpone con otro día
+// @Description  presencial de otro grupo administrado trae presencial_collision
+// @Description  {type: "same_team"|"cross_team", conflicts: [...]} (cross_team
+// @Description  gana si hay de ambos; conflicts lista todos los colisionantes;
+// @Description  ausente si no colisiona). Incluye colisiones viejas guardadas
+// @Description  antes del guard. Conforme a
+// @Description  openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).
+// @Tags         calendar
+// @Produce      json
+// @Param        id    path   int     true   "User ID"
+// @Param        from  query  string  true   "Fecha desde (YYYY-MM-DD)"
+// @Param        to    query  string  true   "Fecha hasta (YYYY-MM-DD)"
+// @Success      200  {array}  calendar.AggregateCalendarDayResponse
+// @Failure      400
+// @Failure      403
+// @Router       /api/v1/users/{id}/administered-calendar [get]
+func (cc *calendarController) AdministeredCalendar(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	callerID, _ := utils.GetAuthUserID(c)
+	if userID != callerID {
+		respondCatalogError(c, http.StatusForbidden, "no podés consultar los datos de otro usuario")
+		return
+	}
+	fromStr, toStr := c.Query("from"), c.Query("to")
+	if fromStr == "" || toStr == "" {
+		respondCatalogError(c, http.StatusBadRequest, "from y to son obligatorios")
+		return
+	}
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "from debe tener formato YYYY-MM-DD")
+		return
+	}
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		respondCatalogError(c, http.StatusBadRequest, "to debe tener formato YYYY-MM-DD")
+		return
+	}
+	if from.After(to) {
+		respondCatalogError(c, http.StatusBadRequest, "from debe ser anterior o igual a to")
+		return
+	}
+	resp, err := cc.calendarService.AdministeredCalendar(c, userID, from, to)
+	if err != nil {
+		respondCalendarError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)

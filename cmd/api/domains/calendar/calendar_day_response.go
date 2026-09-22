@@ -22,4 +22,9 @@ type CalendarDayResponse struct {
 	SourcePlanID       *int64                            `json:"source_plan_id"`
 	CreatedAt          time.Time                         `json:"created_at"`
 	UpdatedAt          time.Time                         `json:"updated_at"`
+	// SameTeamWarnings solo se completa en la escritura individual (PUT): días
+	// presenciales de grupos del MISMO equipo que se superponen con lo
+	// guardado. En lecturas y en el wrapper de stamp/bulk/shift queda vacío
+	// (omitempty = no viaja en el JSON).
+	SameTeamWarnings []PresencialConflict `json:"same_team_warnings,omitempty"`
 }

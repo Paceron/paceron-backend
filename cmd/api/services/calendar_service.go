@@ -37,6 +37,7 @@ var (
 	ErrCalendarInvalidTimeRange        = errors.New("presencial_time_to debe ser posterior a presencial_time_from")
 	ErrCalendarTrainingWithoutInstance = errors.New("los días indicados no tienen una sesión instanciada que conservar")
 	ErrCalendarInvalidDate             = errors.New("exclude_dates debe tener formato YYYY-MM-DD")
+	ErrCalendarPresencialCollision     = errors.New("colisión presencial con otro equipo")
 )
 
 // CalendarServiceInterface reúne las operaciones de lectura y escritura del
@@ -45,11 +46,14 @@ type CalendarServiceInterface interface {
 	GetRange(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error)
 	UpsertDay(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error)
 	DeleteDay(ctx *gin.Context, groupID, callerID int64, date time.Time) error
-	Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error)
-	Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error)
+	Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error)
+	Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error)
 	BulkClear(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
-	Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error)
+	Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
 	NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
+	NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
+	MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
+	AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -111,6 +115,196 @@ func (e *calendarStampConflictError) Error() string {
 }
 
 func (e *calendarStampConflictError) Unwrap() error { return ErrCalendarStampConflict }
+
+type calendarPresencialCollisionError struct {
+	conflicts []calendar.PresencialConflict
+}
+
+func (e *calendarPresencialCollisionError) Error() string {
+	parts := make([]string, 0, len(e.conflicts))
+	for _, c := range e.conflicts {
+		parts = append(parts, fmt.Sprintf("%s grupo %s (%s) %s-%s", c.Date, c.GroupName, c.TeamName, c.PresencialTimeFrom, c.PresencialTimeTo))
+	}
+	return fmt.Sprintf("%s: %s", ErrCalendarPresencialCollision, strings.Join(parts, "; "))
+}
+
+func (e *calendarPresencialCollisionError) Unwrap() error { return ErrCalendarPresencialCollision }
+
+func newCalendarPresencialCollisionError(conflicts []calendar.PresencialConflict) error {
+	if len(conflicts) == 0 {
+		return ErrCalendarPresencialCollision
+	}
+	return &calendarPresencialCollisionError{conflicts: conflicts}
+}
+
+// PresencialCollisionConflicts extrae la lista de conflictos de un error de
+// colisión presencial (para el body JSON del 409 en el controller).
+func PresencialCollisionConflicts(err error) []calendar.PresencialConflict {
+	var typed *calendarPresencialCollisionError
+	if errors.As(err, &typed) {
+		return typed.conflicts
+	}
+	return nil
+}
+
+func presencialTimeHHMM(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format("15:04")
+}
+
+func sameCalendarDate(a, b time.Time) bool {
+	ya, ma, da := a.Date()
+	yb, mb, db := b.Date()
+	return ya == yb && ma == mb && da == db
+}
+
+// presencialRangesOverlap aplica el overlap medio-abierto de design.md D1:
+// colisión sii fromA < toB && fromB < toA (los bordes que se tocan no chocan;
+// los strings "HH:MM" comparan lexicográficamente igual que el reloj).
+func presencialRangesOverlap(fromA, toA, fromB, toB string) bool {
+	return fromA < toB && fromB < toA
+}
+
+// findPresencialCollisions detecta colisiones presenciales (D3): días
+// training+presencial de TODOS los grupos activos de los equipos del owner en
+// las fechas pedidas, cruzados contra los días candidatos que se van a
+// escribir. Cada colisionante se clasifica relative al/los grupo(s) escrito(s)
+// por team: equipo distinto → cross (bloqueante); mismo equipo → same
+// (warnings). Corre contra el db/tx que recibe (evita TOCTOU básico en
+// escrituras transaccionales).
+func (s *calendarService) findPresencialCollisions(
+	ctx *gin.Context,
+	db *gorm.DB,
+	ownerID int64,
+	excludeGroupID *int64,
+	excludeDayIDs []int64,
+	dates []time.Time,
+	candidates []dbs.GroupCalendarDay,
+) ([]calendar.PresencialConflict, []calendar.PresencialConflict, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, ownerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar grupos del owner: %w", err)
+	}
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	groupIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		groupIDs = append(groupIDs, g.ID)
+	}
+	teams, err := s.teamDao.GetAllByOwnerID(ctx, ownerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar equipos del owner: %w", err)
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	existing, err := daos.NewGroupCalendarDayDao(db).FindPresencialForGroupsInRange(ctx, groupIDs, dates)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al buscar días presenciales: %w", err)
+	}
+
+	excludedDaySet := make(map[int64]struct{}, len(excludeDayIDs))
+	for _, id := range excludeDayIDs {
+		excludedDaySet[id] = struct{}{}
+	}
+
+	var cross, same []calendar.PresencialConflict
+	seen := make(map[string]struct{})
+	for _, day := range existing {
+		if _, skip := excludedDaySet[day.ID]; skip {
+			continue
+		}
+		if excludeGroupID != nil && day.GroupID == *excludeGroupID {
+			continue
+		}
+		dayGroup, ok := groupByID[day.GroupID]
+		if !ok {
+			continue
+		}
+		dayFrom := presencialTimeHHMM(day.PresencialTimeFrom)
+		dayTo := presencialTimeHHMM(day.PresencialTimeTo)
+		for _, cand := range candidates {
+			if cand.GroupID == day.GroupID {
+				continue
+			}
+			if !cand.IsPresencial || cand.Kind != string(constants.GroupCalendarDayKindTraining) {
+				continue
+			}
+			if !sameCalendarDate(cand.Date, day.Date) {
+				continue
+			}
+			candGroup, ok := groupByID[cand.GroupID]
+			if !ok {
+				continue
+			}
+			candFrom := presencialTimeHHMM(cand.PresencialTimeFrom)
+			candTo := presencialTimeHHMM(cand.PresencialTimeTo)
+			if !presencialRangesOverlap(candFrom, candTo, dayFrom, dayTo) {
+				continue
+			}
+			conflict := calendar.PresencialConflict{
+				GroupID:            day.GroupID,
+				GroupName:          dayGroup.Name,
+				TeamID:             dayGroup.TeamID,
+				TeamName:           teamNameByID[dayGroup.TeamID],
+				Date:               day.Date.Format("2006-01-02"),
+				PresencialTimeFrom: dayFrom,
+				PresencialTimeTo:   dayTo,
+			}
+			// Clasificar ANTES de deduplicar: el mismo día colisionante puede
+			// chocar con candidatos de equipos distintos, y un cross no debe
+			// ser suprimido solo porque un candidato same-team pasó primero.
+			classification := "same"
+			if candGroup.TeamID != dayGroup.TeamID {
+				classification = "cross"
+			}
+			key := fmt.Sprintf("%d|%s|%s|%s|%s", conflict.GroupID, conflict.Date, conflict.PresencialTimeFrom, conflict.PresencialTimeTo, classification)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			if classification == "cross" {
+				cross = append(cross, conflict)
+			} else {
+				same = append(same, conflict)
+			}
+		}
+	}
+	return cross, same, nil
+}
+
+// presencialCandidates filtra las filas que quedan training+presencial (D1):
+// solo esas disparan la detección; un día que deja de ser presencial, se
+// borra o se cancela nunca participa.
+func presencialCandidates(rows []dbs.GroupCalendarDay) []dbs.GroupCalendarDay {
+	candidates := make([]dbs.GroupCalendarDay, 0, len(rows))
+	for _, r := range rows {
+		if r.IsPresencial && r.Kind == string(constants.GroupCalendarDayKindTraining) {
+			candidates = append(candidates, r)
+		}
+	}
+	return candidates
+}
+
+// detectPresencialCollisions corre findPresencialCollisions solo si hay
+// candidatos, derivando las fechas de ellos. Devuelve cross (bloqueantes) y
+// same (warnings) ya clasificados.
+func (s *calendarService) detectPresencialCollisions(
+	ctx *gin.Context, db *gorm.DB, ownerID int64, excludeGroupID *int64, excludeDayIDs []int64, candidates []dbs.GroupCalendarDay,
+) ([]calendar.PresencialConflict, []calendar.PresencialConflict, error) {
+	if len(candidates) == 0 {
+		return nil, nil, nil
+	}
+	dates := make([]time.Time, 0, len(candidates))
+	for _, c := range candidates {
+		dates = append(dates, c.Date)
+	}
+	return s.findPresencialCollisions(ctx, db, ownerID, excludeGroupID, excludeDayIDs, dates, candidates)
+}
 
 type calendarService struct {
 	calendarDao     daos.GroupCalendarDaoInterface
@@ -490,6 +684,8 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 			(req.Kind == string(constants.GroupCalendarDayKindTraining) && req.SessionID == nil)) {
 			row.SessionInstanceID = existing.SessionInstanceID
 		}
+		// Camino de mocks (sin DB real): la detección de colisiones necesita
+		// query contra el día; solo corre en el camino transaccional.
 		if err := s.calendarDao.Upsert(ctx, row); err != nil {
 			return nil, fmt.Errorf("error al guardar día de calendario")
 		}
@@ -500,6 +696,7 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 		return &response, nil
 	}
 	var saved dbs.GroupCalendarDay
+	var sameWarnings []calendar.PresencialConflict
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
 		txExisting, err := txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
@@ -517,6 +714,25 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 			return txExisting.Kind
 		}(), txHasExistingInstance); err != nil {
 			return err
+		}
+		// D5 (PUT): si la fila resultante queda training+presencial, detectar
+		// colisiones antes de escribir (el rollback hace all-or-nothing). El
+		// grupo escrito se excluye a sí mismo; si actualiza una fila existente
+		// también se excluye por ID. force NO bypassa la colisión cross
+		// (design.md Non-Goals; spec: "sin forma de forzar").
+		if row.IsPresencial && row.Kind == string(constants.GroupCalendarDayKindTraining) {
+			excludeIDs := []int64(nil)
+			if txExisting != nil {
+				excludeIDs = []int64{txExisting.ID}
+			}
+			cross, same, derr := s.detectPresencialCollisions(ctx, tx, callerID, &groupID, excludeIDs, []dbs.GroupCalendarDay{*row})
+			if derr != nil {
+				return derr
+			}
+			if len(cross) > 0 {
+				return newCalendarPresencialCollisionError(cross)
+			}
+			sameWarnings = same
 		}
 		preservada := false
 		if req.Kind == string(constants.GroupCalendarDayKindTraining) {
@@ -545,7 +761,7 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarSessionNotFound) || errors.Is(err, ErrSessionExerciseNotFound) {
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarSessionNotFound) || errors.Is(err, ErrSessionExerciseNotFound) || errors.Is(err, ErrCalendarPresencialCollision) {
 			return nil, err
 		}
 		customlogger.Error(ctx, "error upserting calendar day", err, customlogger.TagMethod("UpsertDay"))
@@ -554,6 +770,9 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 	response, err := s.toCalendarDayResponse(ctx, saved)
 	if err != nil {
 		return nil, err
+	}
+	if len(sameWarnings) > 0 {
+		response.SameTeamWarnings = sameWarnings
 	}
 	return &response, nil
 }
@@ -672,35 +891,35 @@ func parseStampExcludeDates(dates []string) (map[string]bool, error) {
 	return set, nil
 }
 
-func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) ([]calendar.CalendarDayResponse, error) {
+func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
-		return nil, err
+		return calendar.CalendarMutationResponse{}, err
 	}
 	plan, err := s.trainingPlanDao.FindByID(ctx, req.PlanID)
 	if err != nil {
-		return nil, fmt.Errorf("error al buscar plan")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al buscar plan")
 	}
 	if plan == nil {
-		return nil, ErrCalendarPlanNotFound
+		return calendar.CalendarMutationResponse{}, ErrCalendarPlanNotFound
 	}
 	if plan.OwnerID != callerID {
-		return nil, ErrCalendarPlanForbidden
+		return calendar.CalendarMutationResponse{}, ErrCalendarPlanForbidden
 	}
 	planDays, err := s.planDayDao.FindByPlan(ctx, req.PlanID)
 	if err != nil {
-		return nil, fmt.Errorf("error al buscar días del plan")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al buscar días del plan")
 	}
 	startDate, err := time.Parse("2006-01-02", req.StartDate)
 	if err != nil {
-		return nil, fmt.Errorf("start_date debe tener formato YYYY-MM-DD")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("start_date debe tener formato YYYY-MM-DD")
 	}
 	excluded, err := parseStampExcludeDates(req.ExcludeDates)
 	if err != nil {
-		return nil, err
+		return calendar.CalendarMutationResponse{}, err
 	}
 
 	if len(planDays) == 0 {
-		return nil, fmt.Errorf("el plan no tiene días")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("el plan no tiene días")
 	}
 	// Subconjunto a estampar: días del plan cuyas fechas objetivo no están
 	// en exclude_dates. Todo lo que sigue (guards, escritura, respuesta)
@@ -716,15 +935,15 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		targetDates = append(targetDates, date)
 	}
 	if len(idx) == 0 {
-		return []calendar.CalendarDayResponse{}, nil
+		return calendar.CalendarMutationResponse{Days: []calendar.CalendarDayResponse{}}, nil
 	}
 	for _, planDay := range idx {
 		planReq, err := calendarRequestFromPlanDay(planDays[planDay])
 		if err != nil {
-			return nil, err
+			return calendar.CalendarMutationResponse{}, err
 		}
 		if err := s.validateDayFields(planReq, "", false); err != nil {
-			return nil, err
+			return calendar.CalendarMutationResponse{}, err
 		}
 	}
 	if s.db == nil {
@@ -739,7 +958,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 		existing, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, minDate, maxDate)
 		if err != nil {
-			return nil, fmt.Errorf("error al validar conflictos")
+			return calendar.CalendarMutationResponse{}, fmt.Errorf("error al validar conflictos")
 		}
 		occupied := make(map[string]bool, len(existing))
 		for _, day := range existing {
@@ -752,11 +971,12 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 			}
 		}
 		if !req.Force && len(conflicts) > 0 {
-			return nil, &calendarStampConflictError{dates: conflicts}
+			return calendar.CalendarMutationResponse{}, &calendarStampConflictError{dates: conflicts}
 		}
-		return nil, fmt.Errorf("no hay DB disponible para estampar plan")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("no hay DB disponible para estampar plan")
 	}
 	rows := make([]dbs.GroupCalendarDay, len(idx))
+	var sameWarnings []calendar.PresencialConflict
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
 		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(idx))
@@ -804,6 +1024,19 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		if !req.Force && len(conflicts) > 0 {
 			return &calendarStampConflictError{dates: conflicts}
 		}
+		// D5 (stamp): después del 409 de conflictos existente, detectar
+		// colisiones solo sobre los días que quedan training+presencial.
+		// All-or-nothing: cualquier cross rechaza el lote completo (rollback)
+		// y force NO lo bypassa (design.md Non-Goals; spec "sin forma de
+		// forzar"). Same-team sigue y viaja como warnings.
+		cross, same, derr := s.detectPresencialCollisions(ctx, tx, callerID, &groupID, nil, presencialCandidates(rows))
+		if derr != nil {
+			return derr
+		}
+		if len(cross) > 0 {
+			return newCalendarPresencialCollisionError(cross)
+		}
+		sameWarnings = same
 
 		for i := range rows {
 			planDay := planDays[idx[i]]
@@ -826,24 +1059,24 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarStampConflict) || isCalendarValidationError(err) {
-			return nil, err
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarStampConflict) || errors.Is(err, ErrCalendarPresencialCollision) || isCalendarValidationError(err) {
+			return calendar.CalendarMutationResponse{}, err
 		}
 		customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
-		return nil, fmt.Errorf("error al estampar plan")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al estampar plan")
 	}
 	responses := make([]calendar.CalendarDayResponse, len(rows))
 	for i := range rows {
 		responses[i], err = s.toCalendarDayResponse(ctx, rows[i])
 		if err != nil {
-			return nil, err
+			return calendar.CalendarMutationResponse{}, err
 		}
 	}
-	return responses, nil
+	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
-func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) ([]calendar.CalendarDayResponse, error) {
+func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
-		return nil, err
+		return calendar.CalendarMutationResponse{}, err
 	}
 	dayReq := calendar.CalendarDayRequest{
 		Kind: req.Kind, SessionID: req.SessionID, OtherName: req.OtherName,
@@ -853,7 +1086,7 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	for i, dateStr := range req.Dates {
 		date, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
-			return nil, fmt.Errorf("fecha inválida en dates: %s", dateStr)
+			return calendar.CalendarMutationResponse{}, fmt.Errorf("fecha inválida en dates: %s", dateStr)
 		}
 		dates[i] = date
 	}
@@ -865,7 +1098,7 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			var err error
 			existing[i], err = s.calendarDao.FindByGroupAndDate(ctx, groupID, date)
 			if err != nil {
-				return nil, err
+				return calendar.CalendarMutationResponse{}, err
 			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil &&
 				(existing[i] == nil || existing[i].SessionInstanceID == nil) {
@@ -878,18 +1111,18 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 				}
 				return existing[i].Kind
 			}(), existing[i] != nil && existing[i].SessionInstanceID != nil); err != nil {
-				return nil, err
+				return calendar.CalendarMutationResponse{}, err
 			}
 			rows[i], err = s.buildRow(ctx, groupID, date, dayReq)
 			if err != nil {
-				return nil, err
+				return calendar.CalendarMutationResponse{}, err
 			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil {
 				rows[i].SessionInstanceID = existing[i].SessionInstanceID
 			}
 		}
 		if len(missing) > 0 {
-			return nil, newCalendarTrainingWithoutInstanceError(missing)
+			return calendar.CalendarMutationResponse{}, newCalendarTrainingWithoutInstanceError(missing)
 		}
 		closed := make([]string, 0)
 		for i, date := range dates {
@@ -897,29 +1130,30 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 				closed = append(closed, date.Format("2006-01-02"))
 			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindCancelled) && existing[i] == nil {
-				return nil, ErrCalendarInvalidCancelTransition
+				return calendar.CalendarMutationResponse{}, ErrCalendarInvalidCancelTransition
 			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindCancelled) {
 				rows[i].SessionInstanceID = existing[i].SessionInstanceID
 			}
 		}
 		if len(closed) > 0 {
-			return nil, newCalendarClosedDaysError(closed)
+			return calendar.CalendarMutationResponse{}, newCalendarClosedDaysError(closed)
 		}
 		responses := make([]calendar.CalendarDayResponse, 0, len(rows))
 		for _, row := range rows {
 			if err := s.calendarDao.Upsert(ctx, row); err != nil {
-				return nil, err
+				return calendar.CalendarMutationResponse{}, err
 			}
 			response, err := s.toCalendarDayResponse(ctx, *row)
 			if err != nil {
-				return nil, err
+				return calendar.CalendarMutationResponse{}, err
 			}
 			responses = append(responses, response)
 		}
-		return responses, nil
+		return calendar.CalendarMutationResponse{Days: responses}, nil
 	}
 	rows := make([]dbs.GroupCalendarDay, len(dates))
+	var sameWarnings []calendar.PresencialConflict
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
 		existing := make([]*dbs.GroupCalendarDay, len(dates))
@@ -964,6 +1198,18 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		if len(closed) > 0 {
 			return newCalendarClosedDaysError(closed)
 		}
+		// D5 (bulk): validación previa junto con la de día cerrado,
+		// all-or-nothing — CUALQUIER cross en cualquier fecha rechaza el lote
+		// completo con la lista completa de conflictos (rollback, nada
+		// escrito) y force NO lo bypassa. Same-team se agrega como warnings.
+		cross, same, derr := s.detectPresencialCollisions(ctx, tx, callerID, &groupID, nil, presencialCandidates(rows))
+		if derr != nil {
+			return derr
+		}
+		if len(cross) > 0 {
+			return newCalendarPresencialCollisionError(cross)
+		}
+		sameWarnings = same
 		for i := range rows {
 			preservada := false
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) {
@@ -991,20 +1237,20 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || isCalendarValidationError(err) {
-			return nil, err
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarPresencialCollision) || isCalendarValidationError(err) {
+			return calendar.CalendarMutationResponse{}, err
 		}
 		customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
-		return nil, fmt.Errorf("error al aplicar bulk")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al aplicar bulk")
 	}
 	responses := make([]calendar.CalendarDayResponse, len(rows))
 	for i := range rows {
 		responses[i], err = s.toCalendarDayResponse(ctx, rows[i])
 		if err != nil {
-			return nil, err
+			return calendar.CalendarMutationResponse{}, err
 		}
 	}
-	return responses, nil
+	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
 
 func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error {
@@ -1074,22 +1320,22 @@ func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, r
 	return nil
 }
 
-func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) ([]calendar.CalendarDayResponse, error) {
+func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error) {
 	if err := s.isGroupOwner(ctx, groupID, callerID); err != nil {
-		return nil, err
+		return calendar.CalendarMutationResponse{}, err
 	}
 	fromDate, err := time.Parse("2006-01-02", req.FromDate)
 	if err != nil {
-		return nil, fmt.Errorf("from_date debe tener formato YYYY-MM-DD")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("from_date debe tener formato YYYY-MM-DD")
 	}
 	if req.Days <= 0 {
-		return nil, fmt.Errorf("days debe ser un entero positivo")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("days debe ser un entero positivo")
 	}
 	farFuture := time.Date(9999, 12, 31, 0, 0, 0, 0, fromDate.Location())
 	if s.db == nil {
 		affected, err := s.calendarDao.FindByGroupAndRange(ctx, groupID, fromDate, farFuture)
 		if err != nil {
-			return nil, fmt.Errorf("error al buscar filas a correr")
+			return calendar.CalendarMutationResponse{}, fmt.Errorf("error al buscar filas a correr")
 		}
 		closed := make([]string, 0)
 		for _, a := range affected {
@@ -1098,11 +1344,12 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 			}
 		}
 		if len(closed) > 0 {
-			return nil, newCalendarClosedDaysError(closed)
+			return calendar.CalendarMutationResponse{}, newCalendarClosedDaysError(closed)
 		}
-		return nil, fmt.Errorf("no hay DB disponible para correr fechas")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("no hay DB disponible para correr fechas")
 	}
 	var affected []dbs.GroupCalendarDay
+	var sameWarnings []calendar.PresencialConflict
 	// Updating from the latest date backwards avoids transient unique-key
 	// collisions while shifting several rows forward by the same amount.
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -1121,6 +1368,29 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		if len(closed) > 0 {
 			return newCalendarClosedDaysError(closed)
 		}
+		// D5 (shift): evaluar las fechas NUEVAS de las filas presenciales
+		// movidas, excluyendo las filas movidas por su ID para que una fila no
+		// colisione consigo misma en su fecha destino. Cross → rollback (Shift
+		// es atómico); force NO aplica. Same-team → warnings.
+		movedIDs := make([]int64, 0, len(affected))
+		candidates := make([]dbs.GroupCalendarDay, 0, len(affected))
+		for _, a := range affected {
+			movedIDs = append(movedIDs, a.ID)
+			if a.Kind == string(constants.GroupCalendarDayKindTraining) && a.IsPresencial {
+				candidates = append(candidates, dbs.GroupCalendarDay{
+					GroupID: groupID, Date: a.Date.AddDate(0, 0, req.Days), Kind: a.Kind,
+					IsPresencial: a.IsPresencial, PresencialTimeFrom: a.PresencialTimeFrom, PresencialTimeTo: a.PresencialTimeTo,
+				})
+			}
+		}
+		cross, same, derr := s.detectPresencialCollisions(ctx, tx, callerID, nil, movedIDs, candidates)
+		if derr != nil {
+			return derr
+		}
+		if len(cross) > 0 {
+			return newCalendarPresencialCollisionError(cross)
+		}
+		sameWarnings = same
 		ordered := append([]dbs.GroupCalendarDay(nil), affected...)
 		sort.Slice(ordered, func(i, j int) bool { return ordered[i].Date.After(ordered[j].Date) })
 		// Collision guard: re-chequear dentro de la tx que ninguna fecha destino
@@ -1156,11 +1426,11 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		return nil
 	})
 	if err != nil {
-		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarShiftCollision) {
-			return nil, err
+		if errors.Is(err, ErrCalendarDayClosed) || errors.Is(err, ErrCalendarShiftCollision) || errors.Is(err, ErrCalendarPresencialCollision) {
+			return calendar.CalendarMutationResponse{}, err
 		}
 		customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
-		return nil, fmt.Errorf("error al correr fechas")
+		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al correr fechas")
 	}
 	responses := make([]calendar.CalendarDayResponse, len(affected))
 	for i := range affected {
@@ -1168,11 +1438,17 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		a.Date = a.Date.AddDate(0, 0, req.Days)
 		responses[i], err = s.toCalendarDayResponse(ctx, a)
 		if err != nil {
-			return nil, err
+			return calendar.CalendarMutationResponse{}, err
 		}
 	}
-	return responses, nil
+	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
+
+// NextSession resuelve los banners del home (design.md D6, spec "Banners del
+// home"): la próxima sesión cancelled y la próxima training del usuario, cada
+// una entre todos sus grupos con membresía activa, con el filtro "hoy cuenta"
+// de isCalendarDayClosed. Siempre devuelve respuesta poblable (controller ya
+// nunca responde 204).
 func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
 	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
 	if err != nil {
@@ -1182,18 +1458,100 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	for i, m := range memberships {
 		groupIDs[i] = m.GroupID
 	}
+	groupNames, err := s.groupNamesByIDs(ctx, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	day, err := s.calendarDao.FindNextSessionForGroups(ctx, groupIDs, today)
+	nowHHMM := now.Format("15:04")
+
+	resp := &calendar.NextSessionResponse{}
+	cancelledDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindCancelled), today, nowHHMM)
 	if err != nil {
-		customlogger.Error(ctx, "error finding next session", err, customlogger.TagMethod("NextSession"))
+		customlogger.Error(ctx, "error finding next cancelled day", err, customlogger.TagMethod("NextSession"))
 		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	if cancelledDay != nil {
+		resp.NextCancelled = s.bannerItem(ctx, *cancelledDay, groupNames)
+	}
+	trainingDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindTraining), today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next training day", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	if trainingDay != nil {
+		resp.NextTraining = s.trainingBannerItem(ctx, *trainingDay, groupNames)
+	}
+	return resp, nil
+}
+
+// NextPresencialSession resuelve el banner del entrenador (design.md D7, spec
+// "Banner del home — next-presencial-session del entrenador"): la próxima
+// sesión training+presencial entre TODOS los grupos que administra el caller
+// (owner de sus equipos), sin importar el equipo, con el filtro "hoy cuenta"
+// de isCalendarDayClosed. Devuelve nil si no hay ninguna (controller → 204).
+func (s *calendarService) NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding administered groups", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar grupos administrados")
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	groupIDs := make([]int64, len(groups))
+	for i, g := range groups {
+		groupIDs[i] = g.ID
+	}
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	nowHHMM := now.Format("15:04")
+
+	day, err := s.calendarDao.FindNextPresencialForGroups(ctx, groupIDs, today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next presencial day", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión presencial")
 	}
 	if day == nil {
 		return nil, nil
 	}
-	resp := &calendar.NextSessionResponse{
-		GroupID: day.GroupID, Date: day.Date.Format("2006-01-02"), IsPresencial: day.IsPresencial,
+
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	teamIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextPresencialSession"))
+		return nil, fmt.Errorf("error al buscar equipos del entrenador")
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	group := groupByID[day.GroupID]
+	resp := &calendar.NextPresencialSessionResponse{
+		GroupID:   group.ID,
+		GroupName: group.Name,
+		TeamID:    group.TeamID,
+		TeamName:  teamNameByID[group.TeamID],
+		Date:      day.Date.Format("2006-01-02"),
+	}
+	if day.SessionInstanceID != nil && s.db != nil {
+		sessionDao := daos.NewSessionInstanceDao(s.db)
+		instance, err := sessionDao.FindByID(ctx, *day.SessionInstanceID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding session instance for banner", err, customlogger.TagMethod("NextPresencialSession"))
+		} else if instance != nil {
+			name := instance.Name
+			resp.SessionName = &name
+		}
 	}
 	if day.PresencialTimeFrom != nil {
 		formatted := day.PresencialTimeFrom.UTC().Format("15:04")
@@ -1209,11 +1567,315 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 			resp.PresencialLocation = loc
 		}
 	}
-	resp.SessionInstance, err = s.sessionInstanceResponse(ctx, s.db, day.SessionInstanceID)
-	if err != nil {
-		return nil, err
-	}
 	return resp, nil
+}
+
+// groupNamesByIDs resuelve los nombres de los grupos indicados en batch
+// (una query de groups + una de teams para los teams de los grupos que vienen
+// sin name poblado en el row), evitando N+1 por banner.
+func (s *calendarService) groupNamesByIDs(ctx *gin.Context, groupIDs []int64) (map[int64]string, error) {
+	names := make(map[int64]string, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return names, nil
+	}
+	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding groups for banner", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	teamIDs := make([]int64, 0)
+	for _, g := range groups {
+		if g.Name != "" {
+			names[g.ID] = g.Name
+			continue
+		}
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextSession"))
+			return nil, fmt.Errorf("error al buscar grupos del usuario")
+		}
+		teamNames := make(map[int64]string, len(teams))
+		for _, t := range teams {
+			teamNames[t.ID] = t.Name
+		}
+		for _, g := range groups {
+			if g.Name == "" {
+				names[g.ID] = teamNames[g.TeamID]
+			}
+		}
+	}
+	return names, nil
+}
+
+// bannerItem arma el shape común del banner. session_name sale de la
+// instancia congelada (nil si la instancia falta — no rompe).
+func (s *calendarService) bannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextSessionBannerItem {
+	item := &calendar.NextSessionBannerItem{
+		GroupID:   day.GroupID,
+		GroupName: groupNames[day.GroupID],
+		Date:      day.Date.Format("2006-01-02"),
+	}
+	if day.SessionInstanceID != nil && s.db != nil {
+		sessionDao := daos.NewSessionInstanceDao(s.db)
+		instance, err := sessionDao.FindByID(ctx, *day.SessionInstanceID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding session instance for banner", err, customlogger.TagMethod("NextSession"))
+		} else if instance != nil {
+			name := instance.Name
+			item.SessionName = &name
+		}
+	}
+	return item
+}
+
+// trainingBannerItem agrega los datos presenciales al banner común.
+func (s *calendarService) trainingBannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextTrainingBannerItem {
+	item := &calendar.NextTrainingBannerItem{
+		NextSessionBannerItem: *s.bannerItem(ctx, day, groupNames),
+		IsPresencial:          day.IsPresencial,
+	}
+	if day.IsPresencial {
+		if day.PresencialTimeFrom != nil {
+			formatted := day.PresencialTimeFrom.UTC().Format("15:04")
+			item.PresencialTimeFrom = &formatted
+		}
+		if day.PresencialTimeTo != nil {
+			formatted := day.PresencialTimeTo.UTC().Format("15:04")
+			item.PresencialTimeTo = &formatted
+		}
+		if day.PresencialLocation != nil {
+			loc, err := jsonUnmarshalLocation(*day.PresencialLocation)
+			if err == nil {
+				item.PresencialLocation = loc
+			}
+		}
+	}
+	return item
+}
+
+// MemberCalendar resuelve el calendario agregado del corredor (design.md D8,
+// spec "Calendario agregado del corredor"): los días de calendario de TODOS
+// los grupos con membresía activa del usuario en el rango, ordenados por
+// fecha, con group_name/team_name resueltos server-side en batch (1 query de
+// groups + 1 de teams, sin N+1).
+func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding memberships for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	if len(memberships) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+	groupIDs := make([]int64, len(memberships))
+	for i, m := range memberships {
+		groupIDs[i] = m.GroupID
+	}
+
+	days, err := s.calendarDao.FindForGroupsInRange(ctx, groupIDs, from, to)
+	if err != nil {
+		customlogger.Error(ctx, "error listing aggregated calendar days", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al listar calendario")
+	}
+	if len(days) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+
+	// Nombres batch: groups primero; team_name vía 1 query de teams para los
+	// teams de esos grupos.
+	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding groups for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos del usuario")
+	}
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	var teamIDs []int64
+	for _, g := range groups {
+		groupByID[g.ID] = g
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teamNameByID := make(map[int64]string)
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
+			return nil, fmt.Errorf("error al buscar equipos del usuario")
+		}
+		for _, t := range teams {
+			teamNameByID[t.ID] = t.Name
+		}
+	}
+
+	// La DAO ordena por fecha; el merge multi-grupo conserva ese orden (los
+	// días de la misma fecha quedan adyacentes, agrupados por grupo). Los
+	// items van con los campos de CalendarDayResponse + nombres embebidos
+	// planos; el session_instance embebido se resuelve por día como en
+	// toCalendarDayResponse.
+	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
+	for i, d := range days {
+		base, err := s.toCalendarDayResponse(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		group := groupByID[d.GroupID]
+		responses[i] = calendar.AggregateCalendarDayResponse{
+			CalendarDayResponse: base,
+			GroupID:             group.ID,
+			GroupName:           group.Name,
+			TeamID:              group.TeamID,
+			TeamName:            teamNameByID[group.TeamID],
+		}
+	}
+	return responses, nil
+}
+
+// AdministeredCalendar resuelve el calendario agregado del entrenador
+// (design.md D8, spec "Calendario agregado del entrenador con marcado de
+// colisiones"): mismo shape que member-calendar pero sobre los grupos que
+// administra (owner de los equipos), y cada día presencial del resultado se
+// cruza contra los demás días presenciales administrados de la misma fecha:
+// si superpone, trae presencial_collision {type, conflicts} (cross_team gana
+// sobre same_team; conflicts lista todos los colisionantes). La detección es
+// de LECTURA sobre datos actuales: también marca colisiones viejas guardadas
+// antes del guard de escritura.
+func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+	groups, err := s.groupDao.FindByOwnerID(ctx, userID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding administered groups", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al buscar grupos administrados")
+	}
+	if len(groups) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+	groupIDs := make([]int64, len(groups))
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	for i, g := range groups {
+		groupIDs[i] = g.ID
+		groupByID[g.ID] = g
+	}
+	teamIDs := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		teamIDs = append(teamIDs, g.TeamID)
+	}
+	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding teams for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al buscar equipos del entrenador")
+	}
+	teamNameByID := make(map[int64]string, len(teams))
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	days, err := s.calendarDao.FindForGroupsInRange(ctx, groupIDs, from, to)
+	if err != nil {
+		customlogger.Error(ctx, "error listing aggregated calendar days", err, customlogger.TagMethod("AdministeredCalendar"))
+		return nil, fmt.Errorf("error al listar calendario")
+	}
+	if len(days) == 0 {
+		return []calendar.AggregateCalendarDayResponse{}, nil
+	}
+
+	// Detección de colisiones por fecha (design.md D8): una corrida de
+	// findPresencialCollisions por fecha distinta del rango, con todos los
+	// días presenciales de esa fecha como candidatos — evita el N+1 de una
+	// query de detección por día. Los candidatos y los días "existentes" son
+	// el mismo conjunto (las filas ya están guardadas): el cruce detecta los
+	// superpuestos de otros grupos (el helper salta el mismo grupo, así la
+	// fila nunca colisiona consigo misma) y cancelled nunca participa en
+	// ningún lado (D1). La lista plana de conflictos se atribuye a cada día
+	// de la vista re-verificando el overlap y re-clasificando por equipo del
+	// día marcado (la clasificación del helper es relativa al candidato).
+	presencialByDate := make(map[string][]dbs.GroupCalendarDay)
+	for _, d := range days {
+		if d.IsPresencial && d.Kind == string(constants.GroupCalendarDayKindTraining) {
+			key := d.Date.Format("2006-01-02")
+			presencialByDate[key] = append(presencialByDate[key], d)
+		}
+	}
+	collisionByDayID := make(map[int64]*calendar.PresencialCollision)
+	for dateKey, presencialDays := range presencialByDate {
+		if len(presencialDays) < 2 {
+			continue // sin otro día presencial esa fecha no hay colisión posible
+		}
+		date, err := time.Parse("2006-01-02", dateKey)
+		if err != nil {
+			continue
+		}
+		cross, same, err := s.findPresencialCollisions(ctx, s.db, userID, nil, nil, []time.Time{date}, presencialDays)
+		if err != nil {
+			customlogger.Error(ctx, "error finding presencial collisions for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
+			return nil, fmt.Errorf("error al detectar colisiones presenciales")
+		}
+		allConflicts := append(cross, same...)
+		// Dedup: un colisionante puede aparecer en cross y same a la vez
+		// (chocó con candidatos de equipos distintos); queda una fila por
+		// grupo+horario y la clasificación se recalcula por día abajo.
+		uniqueConflicts := make([]calendar.PresencialConflict, 0, len(allConflicts))
+		seenConflict := make(map[string]struct{}, len(allConflicts))
+		for _, c := range allConflicts {
+			key := fmt.Sprintf("%d|%s|%s", c.GroupID, c.PresencialTimeFrom, c.PresencialTimeTo)
+			if _, dup := seenConflict[key]; dup {
+				continue
+			}
+			seenConflict[key] = struct{}{}
+			uniqueConflicts = append(uniqueConflicts, c)
+		}
+		for _, d := range presencialDays {
+			group := groupByID[d.GroupID]
+			dayFrom := presencialTimeHHMM(d.PresencialTimeFrom)
+			dayTo := presencialTimeHHMM(d.PresencialTimeTo)
+			conflicts := make([]calendar.PresencialConflict, 0, len(uniqueConflicts))
+			isCross := false
+			for _, c := range uniqueConflicts {
+				if c.GroupID == d.GroupID {
+					continue
+				}
+				if !presencialRangesOverlap(dayFrom, dayTo, c.PresencialTimeFrom, c.PresencialTimeTo) {
+					continue
+				}
+				conflicts = append(conflicts, c)
+				if c.TeamID != group.TeamID {
+					isCross = true
+				}
+			}
+			if len(conflicts) == 0 {
+				continue
+			}
+			collisionType := "same_team"
+			if isCross {
+				collisionType = "cross_team"
+			}
+			collisionByDayID[d.ID] = &calendar.PresencialCollision{
+				Type:      collisionType,
+				Conflicts: conflicts,
+			}
+		}
+	}
+
+	// Mismo merge que member-calendar: la DAO ordena por fecha; el item lleva
+	// los campos de CalendarDayResponse + nombres embebidos planos, y el
+	// presencial_collision solo cuando el día colisiona.
+	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
+	for i, d := range days {
+		base, err := s.toCalendarDayResponse(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		group := groupByID[d.GroupID]
+		responses[i] = calendar.AggregateCalendarDayResponse{
+			CalendarDayResponse: base,
+			GroupID:             group.ID,
+			GroupName:           group.Name,
+			TeamID:              group.TeamID,
+			TeamName:            teamNameByID[group.TeamID],
+			PresencialCollision: collisionByDayID[d.ID],
+		}
+	}
+	return responses, nil
 }
 
 func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {

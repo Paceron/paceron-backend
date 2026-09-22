@@ -2,7 +2,7 @@
 
 Documento de referencia completo del dominio **catálogo** (`Exercise`, `Session`, `TrainingPlan`) y **calendario** (`GroupCalendarDay`). Cubre modelo de datos, reglas de validación, guards de autorización, endpoints y el mecanismo de instanciación al asignar contenido. Fuente de verdad: el código en `cmd/api/domains/dbs`, `cmd/api/services`, `cmd/api/controllers` — este doc lo resume y explica, no lo reemplaza.
 
-Origen de las specs: `openspec/changes/catalogo-planes-entrenamiento/`, `openspec/changes/calendario-asignacion-grupos/` y (mecanismo vigente de instanciación) `openspec/changes/asignacion-por-instanciacion/` (`design.md`/`specs/*/spec.md` tienen el detalle de decisión con Given/When/Then; acá va la síntesis operativa).
+Origen de las specs: `openspec/changes/catalogo-planes-entrenamiento/`, `openspec/changes/calendario-asignacion-grupos/`, (mecanismo vigente de instanciación) `openspec/changes/asignacion-por-instanciacion/` y (colisión presencial + banners + calendario agregado) `openspec/changes/colisiones-presenciales-y-calendario-agregado/` (`design.md`/`specs/*/spec.md` tienen el detalle de decisión con Given/When/Then; acá va la síntesis operativa).
 
 ## 1. Relación entre entidades
 
@@ -119,7 +119,7 @@ Todas las rutas de este dominio están detrás de `AuthMiddleware()` (JWT). Sobr
 | Calendario — lectura (`GetRange`) | `isGroupOwnerOrMember`: dueño del equipo del grupo (`Team.owner_id == callerID`) **o** miembro activo del grupo (`GroupUser` existe) |
 | Calendario — escritura (`PutDay`, `DeleteDay`, `Stamp`, `Bulk`, `BulkClear`, `Shift`) | `isGroupOwner`: solo el entrenador dueño del equipo del grupo (`Team.owner_id == callerID`) — un miembro/runner no puede escribir calendario |
 | `Stamp` — plan usado | además de ser dueño del grupo, `plan.OwnerID == callerID` (`403 el plan no pertenece al entrenador dueño del grupo` si no) |
-| `NextSession`/`CalendarSummary` (`/users/{id}/...`) | `userID == callerID` estricto — nadie puede consultar el calendario de otro usuario, ni el propio entrenador (`403 no podés consultar los datos de otro usuario`) |
+| `NextSession`/`CalendarSummary`/`NextPresencialSession`/`MemberCalendar`/`AdministeredCalendar` (`/users/{id}/...`) | `userID == callerID` estricto — nadie puede consultar los datos de otro usuario, ni el propio entrenador (`403 no podés consultar los datos de otro usuario`) |
 
 ## 6. Endpoints
 
@@ -186,22 +186,25 @@ Además, en cualquier `kind`: si `is_presencial`/`default_presencial = true` →
 | Método | Ruta | Body | Éxito | Errores |
 |---|---|---|---|---|
 | GET | `/api/v1/groups/{id}/calendar?from=&to=` | — | `200` array | `400`, `403` |
-| PUT | `/api/v1/groups/{id}/calendar/{date}` | `CalendarDayRequest` | `200` (upsert) | `400`, `403`, `422` (incl. día cerrado) |
+| PUT | `/api/v1/groups/{id}/calendar/{date}` | `CalendarDayRequest` | `200` (upsert) `CalendarDayResponse` + `same_team_warnings` opcional | `400`, `403`, `409` (colisión presencial), `422` (incl. día cerrado) |
 | DELETE | `/api/v1/groups/{id}/calendar/{date}` | — | `204` | `400`, `403`, `422` (día cerrado) |
-| POST | `/api/v1/groups/{id}/calendar/stamp` | `StampRequest{plan_id*, start_date*, force?, exclude_dates?}` | `201` array | `400`, `403`, `404` (plan), `409` (conflicto), `422` (día cerrado o `exclude_dates` con formato inválido) |
-| POST | `/api/v1/groups/{id}/calendar/bulk` | `BulkRequest{dates*, kind*, session_id?, other_name?, is_presencial?, presencial_time_from?, presencial_time_to?, presencial_location?}` | `200` array | `400`, `403`, `422` (incl. día cerrado con lista de fechas) |
+| POST | `/api/v1/groups/{id}/calendar/stamp` | `StampRequest{plan_id*, start_date*, force?, exclude_dates?}` | `201` wrapper `{days, same_team_warnings?}` | `400`, `403`, `404` (plan), `409` (conflicto de fechas o colisión presencial), `422` (día cerrado o `exclude_dates` con formato inválido) |
+| POST | `/api/v1/groups/{id}/calendar/bulk` | `BulkRequest{dates*, kind*, session_id?, other_name?, is_presencial?, presencial_time_from?, presencial_time_to?, presencial_location?}` | `200` wrapper `{days, same_team_warnings?}` | `400`, `403`, `409` (colisión presencial), `422` (incl. día cerrado con lista de fechas) |
 | POST | `/api/v1/groups/{id}/calendar/bulk-clear` | `BulkClearRequest{dates*}` | `204` | `400`, `403`, `422` (día cerrado, lista de fechas) |
-| POST | `/api/v1/groups/{id}/calendar/shift` | `ShiftRequest{from_date*, days*}` | `200` array | `400`, `403`, `409` (colisión), `422` (día cerrado, lista de fechas) |
-| GET | `/api/v1/users/{id}/next-session` | — | `200` / `204` sin próxima | `400`, `403` |
+| POST | `/api/v1/groups/{id}/calendar/shift` | `ShiftRequest{from_date*, days*}` | `200` wrapper `{days, same_team_warnings?}` | `400`, `403`, `409` (colisión de fechas o colisión presencial), `422` (día cerrado, lista de fechas) |
+| GET | `/api/v1/users/{id}/next-session` | — | `200` siempre `{next_cancelled, next_training}` | `400`, `403` |
+| GET | `/api/v1/users/{id}/next-presencial-session` | — | `200` / `204` sin próxima | `400`, `403` |
+| GET | `/api/v1/users/{id}/member-calendar?from=&to=` | — | `200` array | `400`, `403` |
+| GET | `/api/v1/users/{id}/administered-calendar?from=&to=` | — | `200` array | `400`, `403` |
 | GET | `/api/v1/users/{id}/calendar-summary` | — | `200` array `{group_id,group_name}` | `400`, `403` |
 
 `Stamp`: copia cada `PlanDay` del plan a `start_date + (sequence_no - 1)` días, marcando `source_plan_id`. Sin `force=true`, si alguna fecha destino ya tiene contenido → `409 hay fechas con contenido existente` y no escribe nada.
 
-Con `exclude_dates` (opcional, array de fechas `YYYY-MM-DD`; change `stamp-exclude-dates`): cada fecha del set que caiga dentro del rango objetivo se salta **por completo** — su fila e instancia quedan intactas, no cuenta para el `409` de conflictos ni para el `422` de día cerrado, y no aparece en la respuesta. `force` sigue aplicando igual sobre las fechas NO excluidas. Una fecha excluida fuera del rango se ignora; formato inválido → `422 ErrCalendarInvalidDate` sin escribir nada; rango totalmente excluido → `201` con `[]`. Omitir el campo o enviar `[]` = comportamiento idéntico al previo.
+Con `exclude_dates` (opcional, array de fechas `YYYY-MM-DD`; change `stamp-exclude-dates`): cada fecha del set que caiga dentro del rango objetivo se salta **por completo** — su fila e instancia quedan intactas, no cuenta para el `409` de conflictos ni para el `422` de día cerrado, y no aparece en la respuesta. `force` sigue aplicando igual sobre las fechas NO excluidas. Una fecha excluida fuera del rango se ignora; formato inválido → `422 ErrCalendarInvalidDate` sin escribir nada; rango totalmente excluido → `201` con `{"days": []}` (wrapper `CalendarMutationResponse`, sin `same_team_warnings`). Omitir el campo o enviar `[]` = comportamiento idéntico al previo.
 
 `Shift`: mueve todas las filas desde `from_date` en adelante, `days` posiciones (entero positivo). Antes de escribir valida que ninguna fecha destino choque con una fila **anterior a `from_date`** que quede fuera del rango desplazado (`409 el corrimiento haría chocar dos fechas`).
 
-`NextSession`: busca, entre los grupos donde el usuario es miembro, la próxima fila con `kind IN (training, cancelled)` y `date >= hoy` (hoy = medianoche local, no UTC — ver nota de timezone en §9). `204` si no hay ninguna.
+`NextSession`, `NextPresencialSession`, `MemberCalendar` y `AdministeredCalendar` se documentan en §8.7 (banners) y §8.8 (calendario agregado).
 
 ## 7. Stamp — copiado físico, no por referencia
 
@@ -318,6 +321,98 @@ El mecanismo previo de **clonado por divergencia** (`calendario-asignacion-grupo
 
 Detalle del reemplazo y sus decisiones: `openspec/changes/asignacion-por-instanciacion/design.md`.
 
+### 8.7 Colisión presencial en escrituras y banners del home
+
+Change `colisiones-presenciales-y-calendario-agregado`. Resuelve: *si dos grupos del mismo entrenador tienen entrenamiento presencial superpuesto, ¿quién avisa?* La detección corre en el `save` de las 4 escrituras de calendario y alimenta banners de próxima sesión por rol.
+
+#### Reglas de detección (D1/D3)
+
+- **Solo participa `kind=training` con `is_presencial=true`, en ambos lados**: como escritura a validar y como colisionante. Un día `cancelled` (ni async ni `rest`/`other`) nunca bloquea ni genera warning — un cancelado no es un compromiso físico. Cambiar presencial a async, borrar o cancelar nunca dispara la detección.
+- **Overlap medio-abierto, mismo día**: colisionan sii `fromA < toB && fromB < toA` — terminar 09:00 y arrancar 09:00 **no** colisiona.
+- **Alcance**: todos los grupos activos de los equipos cuyo owner es el entrenador que escribe (`teams.owner_id`), cruzados contra lo que se va a escribir. Excluye el grupo escrito (PUT) y las filas movidas por su ID viejo (shift). Dentro de la transacción cuando la escritura es transaccional.
+- **Clasificación por equipo del colisionante vs el del grupo escrito**: equipo distinto → **bloqueante** (409); mismo equipo → **warning** no bloqueante.
+
+#### 409 de colisión y `same_team_warnings` (D4)
+
+Cross-team rechaza la escritura (all-or-nothing en stamp/bulk/shift, con rollback completo). Body del 409 — estructura JSON dedicada, no el string plano del resto de los errores de calendario:
+
+```json
+HTTP 409
+{
+  "message": "colisión presencial con otro equipo",
+  "conflicts": [
+    {"group_id": 3, "group_name": "Maratón B", "team_id": 2, "team_name": "Equipo B",
+     "date": "2026-10-01", "presencial_time_from": "09:00", "presencial_time_to": "10:00"}
+  ]
+}
+```
+
+`conflicts` lista **todos** los colisionantes (dedup por grupo/fecha/horario/clasificación). `force=true` del stamp **no** la bypasea.
+
+Wiring por endpoint (D5):
+
+| Escritura | Cuándo evalúa | Cross | Same |
+|---|---|---|---|
+| `PUT` individual | tras guards, si la fila resultante queda presencial | `409` sin escribir | guarda; `same_team_warnings` como campo extra del `CalendarDayResponse` (`omitempty`) |
+| `stamp` | después del 409 de conflictos de fechas y del parse de `exclude_dates` | `409` all-or-nothing | warnings en el wrapper |
+| `bulk` | en el loop de validación previa (junto con cerrado) | `409` lote completo rechazado | warnings agregados por cada fecha que superpone |
+| `shift` | fechas nuevas de filas presenciales movidas (excluyendo las movidas por ID) | `409` rollback (filas mantienen fecha vieja) | warnings |
+
+`same_team_warnings` se completa en todas las escrituras: en la individual (PUT) viaja como campo extra del `CalendarDayResponse` (`omitempty`), y en stamp/bulk/shift viaja poblado en el wrapper `CalendarMutationResponse` (ver `calendar_service.go`). Queda vacío (y no viaja por `omitempty`) cuando no hay warnings o en lecturas.
+
+#### Wrapper `CalendarMutationResponse` en stamp/bulk/shift (D4)
+
+Reemplaza al array crudo de `CalendarDayResponse` (breaking coordinado con frontend):
+
+```json
+{ "days": [ { "id": 1, "group_id": 2, "…": "…" } ], "same_team_warnings": [ { "…": "…" } ] }
+```
+
+`days` siempre viaja; `same_team_warnings` solo cuando hay warnings. Código de éxito sin cambios: stamp `201`, bulk/shift `200`.
+
+#### Banners del home (D6/D7)
+
+**`GET /api/v1/users/{id}/next-session` — shape nuevo, in-place (BREAKING).** Antes: una sola sesión con `session_instance` embebida, `204` si no había. Ahora **siempre `200`**, con ambos próximos independientes y nullable:
+
+```json
+{
+  "next_cancelled": {"group_id": 1, "group_name": "Maratón A", "date": "2026-09-25", "session_name": "Trote suave"},
+  "next_training": {
+    "group_id": 2, "group_name": "Fondo B", "date": "2026-09-26", "session_name": "Fartlek 5K",
+    "is_presencial": true,
+    "presencial_time_from": "18:00", "presencial_time_to": "19:00",
+    "presencial_location": {"lat": -31.4, "lng": -64.2, "label": "Parque Sarmiento"}
+  }
+}
+```
+
+- `next_cancelled` es `NextSessionBannerItem` plano `{group_id, group_name, date, session_name}`; `next_training` agrega los campos presenciales (`is_presencial`, `presencial_time_from`/`to`, `presencial_location`) — un training async los deja `null`/`false`.
+- Cada campo es el más próximo de su kind (`training`/`cancelled`) entre los grupos con membresía activa del usuario; sin próxima de un kind → `null` (nunca `204`).
+- Filtro "hoy cuenta": `date > hoy` OR (`date == hoy` AND (no presencial OR `presencial_time_from > ahora`)) — hoy presencial ya arrancado no cuenta; hoy async sí. `session_name` sale de la instancia; si falta, `null` sin romper.
+
+**`GET /api/v1/users/{id}/next-presencial-session` — nuevo, banner del entrenador (D7).** La próxima sesión `training`+`presencial` entre **todos** los grupos que administra el usuario (owner de sus equipos), la primera cronológicamente sin importar el equipo, con el mismo filtro de "hoy cuenta". `200` con `{group_id, group_name, team_id, team_name, date, session_name, presencial_time_from, presencial_time_to, presencial_location}` o `204` si no hay ninguna. Sin grupos administrados → `204` directo (no consulta el calendario).
+
+### 8.8 Calendario agregado por rol (D8)
+
+Dos lecturas nuevas con el mismo item `AggregateCalendarDayResponse`: los campos de `CalendarDayResponse` embebidos + `group_id`/`group_name`/`team_id`/`team_name` embebidos planos (resueltos server-side, batch de 1 query de groups + 1 de teams). El `group_id` propio sombra al del struct embebido en el JSON (regla de profundidad de `encoding/json` — los dos son el mismo valor).
+
+- **`GET /api/v1/users/{id}/member-calendar?from=&to=`** — días de calendario de **todos los grupos con membresía activa** del usuario (membresías expiradas o soft-deleted fuera), merge ordenado por fecha. `200` con array (vacío si no hay). **Nunca trae `presencial_collision`.**
+- **`GET /api/v1/users/{id}/administered-calendar?from=&to=`** — días de **todos los grupos administrados** por el usuario (owner de los equipos), mismo shape y orden. Cada día presencial que superpone con otro día presencial de otro grupo administrado trae:
+
+```json
+"presencial_collision": {
+  "type": "cross_team",
+  "conflicts": [
+    {"group_id": 3, "group_name": "Maratón B", "team_id": 2, "team_name": "Equipo B",
+     "date": "2026-10-01", "presencial_time_from": "09:00", "presencial_time_to": "10:00"}
+  ]
+}
+```
+
+  - `type`: `"cross_team"` si algún colisionante es de otro equipo (gana sobre `"same_team"` si hay de ambos), `"same_team"` si todos lo son. `conflicts` lista **todos** los colisionantes. Ausente (`omitempty`) si el día no colisiona.
+  - Aplica las mismas reglas de §8.7 (solo training+presencial, overlap medio-abierto, cancelled fuera) y **detecta colisiones viejas**: días guardados antes de que existiera el guard aparecen marcados, porque la detección corre sobre los datos actuales. No las arregla — solo las hace visibles (arreglo manual: reprogramar o cancelar uno de los dos).
+  - El día colisionante también aparece marcado en el item del otro grupo (la detección corre por día presencial, excluyendo la fila misma).
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.
@@ -377,4 +472,5 @@ Detalle del reemplazo y sus decisiones: `openspec/changes/asignacion-por-instanc
 | presencial_time_to no posterior a presencial_time_from | 422 |
 | conflicto de fechas en stamp | 409 |
 | colisión de fechas en shift | 409 |
+| colisión presencial con otro equipo (cross-team) | 409 — body `{message, conflicts}` (§8.7), no el string plano; en stamp `force` no la bypasea |
 | no podés consultar datos de otro usuario | 403 (chequeado en el controller, no en el service) |

@@ -1180,12 +1180,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Días aplicados (days) + same_team_warnings opcional por superposición same-team",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
-                            }
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse"
                         }
                     },
                     "400": {
@@ -1193,6 +1190,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "409": {
+                        "description": "Colisión presencial con otro equipo en alguna fecha: se rechaza el lote completo (all-or-nothing)",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_api_controllers.presencialCollisionResponse"
+                        }
                     },
                     "422": {
                         "description": "Unprocessable Entity"
@@ -1278,12 +1281,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Días corridos (days) + same_team_warnings opcional por superposición same-team en las fechas nuevas",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
-                            }
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse"
                         }
                     },
                     "400": {
@@ -1293,7 +1293,10 @@ const docTemplate = `{
                         "description": "Forbidden"
                     },
                     "409": {
-                        "description": "Conflict"
+                        "description": "Fecha destino ocupada, o colisión presencial con otro equipo en las fechas nuevas (rollback completo)",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_api_controllers.presencialCollisionResponse"
+                        }
                     },
                     "422": {
                         "description": "Unprocessable Entity"
@@ -1333,12 +1336,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Días estampados (days) + same_team_warnings opcional por superposición same-team",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
-                            }
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse"
                         }
                     },
                     "400": {
@@ -1351,7 +1351,10 @@ const docTemplate = `{
                         "description": "Not Found"
                     },
                     "409": {
-                        "description": "Conflict"
+                        "description": "Fechas ocupadas sin force, o colisión presencial con otro equipo (force no la bypassa)",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_api_controllers.presencialCollisionResponse"
+                        }
                     },
                     "422": {
                         "description": "Día cerrado, o exclude_dates con formato inválido",
@@ -1401,7 +1404,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Incluye same_team_warnings (opcional) si queda presencial y se superpone con grupos del mismo equipo",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
                         }
@@ -1411,6 +1414,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden"
+                    },
+                    "409": {
+                        "description": "Colisión presencial con un grupo de otro equipo (sin forma de forzar)",
+                        "schema": {
+                            "$ref": "#/definitions/cmd_api_controllers.presencialCollisionResponse"
+                        }
                     },
                     "422": {
                         "description": "Día cerrado, o kind=training sin session_id y sin instancia previa que conservar",
@@ -5094,6 +5103,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/administered-calendar": {
+            "get": {
+                "description": "Los días de calendario de TODOS los grupos administrados por\nel usuario (owner de los equipos) en el rango, ordenados por\nfecha, con group_id/group_name/team_id/team_name resueltos\nserver-side. Cada día presencial que superpone con otro día\npresencial de otro grupo administrado trae presencial_collision\n{type: \"same_team\"|\"cross_team\", conflicts: [...]} (cross_team\ngana si hay de ambos; conflicts lista todos los colisionantes;\nausente si no colisiona). Incluye colisiones viejas guardadas\nantes del guard. Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D8).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Calendario agregado del entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha desde (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha hasta (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.AggregateCalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/calendar-summary": {
             "get": {
                 "produces": [
@@ -5131,15 +5192,106 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/users/{id}/next-session": {
+        "/api/v1/users/{id}/member-calendar": {
             "get": {
+                "description": "Los días de calendario de TODOS los grupos con membresía\nactiva del usuario en el rango, ordenados por fecha, con\ngroup_id/group_name/team_id/team_name resueltos server-side.\nConforme a openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "calendar"
                 ],
-                "summary": "Próxima sesión del usuario",
+                "summary": "Calendario agregado del corredor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha desde (YYYY-MM-DD)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha hasta (YYYY-MM-DD)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.AggregateCalendarDayResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/next-presencial-session": {
+            "get": {
+                "description": "La próxima sesión training+presencial entre todos los grupos\nque administra el usuario (owner de sus equipos), la primera\ncronológicamente sin importar el equipo, con el filtro \"hoy\ncuenta\" (hoy presencial ya arrancado no cuenta). Responde ` + "`" + `204` + "`" + `\nsi no hay ninguna. Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D7).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Banner de próxima sesión presencial del entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "Sin próxima sesión presencial"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/next-session": {
+            "get": {
+                "description": "BREAKING (in-place): el shape anterior (una sola sesión con\n` + "`" + `session_instance` + "`" + ` embebida, ` + "`" + `204` + "`" + ` si no había) fue reemplazado.\nAhora siempre responde ` + "`" + `200` + "`" + ` con ` + "`" + `{next_cancelled, next_training}` + "`" + `,\ncada uno la más próxima de su kind entre todos los grupos del\nusuario (independientes, nullable). Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D6).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Banners de próxima sesión del usuario",
                 "parameters": [
                     {
                         "type": "integer",
@@ -5155,9 +5307,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse"
                         }
-                    },
-                    "204": {
-                        "description": "No Content"
                     },
                     "400": {
                         "description": "Bad Request"
@@ -6307,6 +6456,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "cmd_api_controllers.presencialCollisionResponse": {
+            "type": "object",
+            "properties": {
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_apierror.APIError": {
             "type": "object",
             "properties": {
@@ -6590,6 +6753,78 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_calendar.AggregateCalendarDayResponse": {
+            "type": "object",
+            "properties": {
+                "cancelled_reason": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "date": {
+                    "description": "\"YYYY-MM-DD\"",
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_presencial": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "other_name": {
+                    "type": "string"
+                },
+                "presencial_collision": {
+                    "description": "PresencialCollision solo se completa en administered-calendar: días\npresenciales que se superponen con otro día presencial de otro grupo\nadministrado (member-calendar nunca lo trae). nil = sin colisión,\nomitido en el JSON.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialCollision"
+                        }
+                    ]
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "type": "string"
+                },
+                "same_team_warnings": {
+                    "description": "SameTeamWarnings solo se completa en la escritura individual (PUT): días\npresenciales de grupos del MISMO equipo que se superponen con lo\nguardado. En lecturas y en el wrapper de stamp/bulk/shift queda vacío\n(omitempty = no viaja en el JSON).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
+                },
+                "session_instance": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
+                },
+                "source_plan_id": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_calendar.BulkClearRequest": {
             "type": "object",
             "required": [
@@ -6709,6 +6944,13 @@ const docTemplate = `{
                 "presencial_time_to": {
                     "type": "string"
                 },
+                "same_team_warnings": {
+                    "description": "SameTeamWarnings solo se completa en la escritura individual (PUT): días\npresenciales de grupos del MISMO equipo que se superponen con lo\nguardado. En lecturas y en el wrapper de stamp/bulk/shift queda vacío\n(omitempty = no viaja en el JSON).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
+                },
                 "session_instance": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
                 },
@@ -6717,6 +6959,23 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse"
+                    }
+                },
+                "same_team_warnings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
                 }
             }
         },
@@ -6731,7 +6990,7 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse": {
+        "simple-arq-golang_cmd_api_domains_calendar.NextPresencialSessionResponse": {
             "type": "object",
             "properties": {
                 "date": {
@@ -6739,6 +6998,69 @@ const docTemplate = `{
                 },
                 "group_id": {
                     "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "session_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextSessionResponse": {
+            "type": "object",
+            "properties": {
+                "next_cancelled": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextSessionBannerItem"
+                },
+                "next_training": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.NextTrainingBannerItem": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
                 },
                 "is_presencial": {
                     "type": "boolean"
@@ -6752,8 +7074,52 @@ const docTemplate = `{
                 "presencial_time_to": {
                     "type": "string"
                 },
-                "session_instance": {
-                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
+                "session_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.PresencialCollision": {
+            "type": "object",
+            "properties": {
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict"
+                    }
+                },
+                "type": {
+                    "description": "\"same_team\" | \"cross_team\"",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_calendar.PresencialConflict": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "description": "YYYY-MM-DD",
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "presencial_time_from": {
+                    "description": "HH:MM",
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "description": "HH:MM",
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
                 }
             }
         },
