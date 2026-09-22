@@ -1,5 +1,14 @@
 basePath: /
 definitions:
+  cmd_api_controllers.presencialCollisionResponse:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict'
+        type: array
+      message:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_apierror.APIError:
     properties:
       code:
@@ -266,12 +275,32 @@ definitions:
         type: string
       presencial_time_to:
         type: string
+      same_team_warnings:
+        description: |-
+          SameTeamWarnings solo se completa en la escritura individual (PUT): días
+          presenciales de grupos del MISMO equipo que se superponen con lo
+          guardado. En lecturas y en el wrapper de stamp/bulk/shift queda vacío
+          (omitempty = no viaja en el JSON).
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict'
+        type: array
       session_instance:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
       source_plan_id:
         type: integer
       updated_at:
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
+        type: array
+      same_team_warnings:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.PresencialConflict'
+        type: array
     type: object
   simple-arq-golang_cmd_api_domains_calendar.CalendarSummaryItem:
     properties:
@@ -296,6 +325,26 @@ definitions:
         type: string
       session_instance:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
+    type: object
+  simple-arq-golang_cmd_api_domains_calendar.PresencialConflict:
+    properties:
+      date:
+        description: YYYY-MM-DD
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
+      presencial_time_from:
+        description: HH:MM
+        type: string
+      presencial_time_to:
+        description: HH:MM
+        type: string
+      team_id:
+        type: integer
+      team_name:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_calendar.ShiftRequest:
     properties:
@@ -2869,13 +2918,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Incluye same_team_warnings (opcional) si queda presencial y
+            se superpone con grupos del mismo equipo
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
         "400":
           description: Bad Request
         "403":
           description: Forbidden
+        "409":
+          description: Colisión presencial con un grupo de otro equipo (sin forma
+            de forzar)
+          schema:
+            $ref: '#/definitions/cmd_api_controllers.presencialCollisionResponse'
         "422":
           description: Día cerrado, o kind=training sin session_id y sin instancia
             previa que conservar
@@ -2906,15 +2961,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Días aplicados (days) + same_team_warnings opcional por superposición
+            same-team
           schema:
-            items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
-            type: array
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse'
         "400":
           description: Bad Request
         "403":
           description: Forbidden
+        "409":
+          description: 'Colisión presencial con otro equipo en alguna fecha: se rechaza
+            el lote completo (all-or-nothing)'
+          schema:
+            $ref: '#/definitions/cmd_api_controllers.presencialCollisionResponse'
         "422":
           description: Unprocessable Entity
       summary: Operación masiva de días en el calendario
@@ -2970,17 +3029,19 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Días corridos (days) + same_team_warnings opcional por superposición
+            same-team en las fechas nuevas
           schema:
-            items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
-            type: array
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse'
         "400":
           description: Bad Request
         "403":
           description: Forbidden
         "409":
-          description: Conflict
+          description: Fecha destino ocupada, o colisión presencial con otro equipo
+            en las fechas nuevas (rollback completo)
+          schema:
+            $ref: '#/definitions/cmd_api_controllers.presencialCollisionResponse'
         "422":
           description: Unprocessable Entity
       summary: Desplazar días del calendario
@@ -3008,11 +3069,10 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Días estampados (days) + same_team_warnings opcional por superposición
+            same-team
           schema:
-            items:
-              $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarDayResponse'
-            type: array
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_calendar.CalendarMutationResponse'
         "400":
           description: Bad Request
         "403":
@@ -3020,7 +3080,10 @@ paths:
         "404":
           description: Not Found
         "409":
-          description: Conflict
+          description: Fechas ocupadas sin force, o colisión presencial con otro equipo
+            (force no la bypassa)
+          schema:
+            $ref: '#/definitions/cmd_api_controllers.presencialCollisionResponse'
         "422":
           description: Día cerrado, o exclude_dates con formato inválido
           schema:

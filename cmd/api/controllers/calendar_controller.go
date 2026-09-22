@@ -147,9 +147,10 @@ func (cc *calendarController) GetRange(c *gin.Context) {
 // @Param        id    path   int                       true   "Group ID"
 // @Param        date  path   string                    true   "Fecha (YYYY-MM-DD)"
 // @Param        body  body   calendar.CalendarDayRequest  true   "Datos del día. En kind=training, session_id es opcional: si se omite y el día ya tiene instancia, se conserva sin reinstanciar"
-// @Success      200  {object}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarDayResponse  "Incluye same_team_warnings (opcional) si queda presencial y se superpone con grupos del mismo equipo"
 // @Failure      400
 // @Failure      403
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Colisión presencial con un grupo de otro equipo (sin forma de forzar)"
 // @Failure      422  {string}  string  "Día cerrado, o kind=training sin session_id y sin instancia previa que conservar"
 // @Router       /api/v1/groups/{id}/calendar/{date} [put]
 func (cc *calendarController) PutDay(c *gin.Context) {
@@ -213,11 +214,11 @@ func (cc *calendarController) DeleteDay(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                    true  "Group ID"
 // @Param        body  body  calendar.StampRequest  true  "Datos del stamp. exclude_dates (opcional): fechas YYYY-MM-DD del rango que se saltan por completo — no cuentan para el 409 de conflictos ni para el 422 de día cerrado, y no aparecen en la respuesta"
-// @Success      201  {array}  calendar.CalendarDayResponse
+// @Success      201  {object}  calendar.CalendarMutationResponse  "Días estampados (days) + same_team_warnings opcional por superposición same-team"
 // @Failure      400
 // @Failure      403
 // @Failure      404
-// @Failure      409
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Fechas ocupadas sin force, o colisión presencial con otro equipo (force no la bypassa)"
 // @Failure      422  {string}  string "Día cerrado, o exclude_dates con formato inválido"
 // @Router       /api/v1/groups/{id}/calendar/stamp [post]
 func (cc *calendarController) Stamp(c *gin.Context) {
@@ -247,9 +248,10 @@ func (cc *calendarController) Stamp(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                   true  "Group ID"
 // @Param        body  body  calendar.BulkRequest  true  "Datos de la operación. En kind=training, session_id es opcional: cada fecha con instancia previa la conserva; si alguna fecha no tiene instancia que conservar se rechaza el lote completo"
-// @Success      200  {array}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarMutationResponse  "Días aplicados (days) + same_team_warnings opcional por superposición same-team"
 // @Failure      400
 // @Failure      403
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Colisión presencial con otro equipo en alguna fecha: se rechaza el lote completo (all-or-nothing)"
 // @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/bulk [post]
 func (cc *calendarController) Bulk(c *gin.Context) {
@@ -310,10 +312,10 @@ func (cc *calendarController) BulkClear(c *gin.Context) {
 // @Produce      json
 // @Param        id    path  int                   true  "Group ID"
 // @Param        body  body  calendar.ShiftRequest  true  "Datos del desplazamiento"
-// @Success      200  {array}  calendar.CalendarDayResponse
+// @Success      200  {object}  calendar.CalendarMutationResponse  "Días corridos (days) + same_team_warnings opcional por superposición same-team en las fechas nuevas"
 // @Failure      400
 // @Failure      403
-// @Failure      409
+// @Failure      409  {object}  controllers.presencialCollisionResponse  "Fecha destino ocupada, o colisión presencial con otro equipo en las fechas nuevas (rollback completo)"
 // @Failure      422
 // @Router       /api/v1/groups/{id}/calendar/shift [post]
 func (cc *calendarController) Shift(c *gin.Context) {

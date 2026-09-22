@@ -522,14 +522,14 @@ func TestCalendarService_Task5_BulkTrainingCreatesOneInstancePerDate(t *testing.
 		Kind:  "training", SessionID: &catalogSession.ID,
 	})
 	require.NoError(t, err)
-	require.Len(t, resp, 3)
+	require.Len(t, resp.Days, 3)
 
 	var instances []dbs.SessionInstance
 	require.NoError(t, db.Where("name = ?", catalogSession.Name).Find(&instances).Error)
 	require.Len(t, instances, 3, "una instancia independiente por fecha, sin deduplicar (D4)")
 
 	instantiatedIDs := map[int64]bool{}
-	for _, dayResp := range resp {
+	for _, dayResp := range resp.Days {
 		require.NotNil(t, dayResp.SessionInstance)
 		instantiatedIDs[dayResp.SessionInstance.ID] = true
 		assert.Equal(t, catalogSession.Name, dayResp.SessionInstance.Name)
@@ -633,7 +633,7 @@ func TestCalendarService_Task5_StampCreatesIndependentInstancesForEveryTrainingD
 
 	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: start.Format("2006-01-02")})
 	require.NoError(t, err)
-	require.Len(t, resp, 3)
+	require.Len(t, resp.Days, 3)
 
 	var instances []dbs.SessionInstance
 	require.NoError(t, db.Where("name = ?", session.Name).Find(&instances).Error)
@@ -646,7 +646,7 @@ func TestCalendarService_Task5_StampCreatesIndependentInstancesForEveryTrainingD
 
 	trainingResponses := 0
 	respondedInstanceIDs := map[int64]bool{}
-	for _, dayResp := range resp {
+	for _, dayResp := range resp.Days {
 		if dayResp.Kind == "training" {
 			trainingResponses++
 			require.NotNil(t, dayResp.SessionInstance)

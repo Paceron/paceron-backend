@@ -237,7 +237,7 @@ func TestCalendarService_Stamp_Success(t *testing.T) {
 	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: "2026-10-01"})
 
 	require.NoError(t, err)
-	assert.Len(t, resp, 2)
+	assert.Len(t, resp.Days, 2)
 
 	stampedDays, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
@@ -283,7 +283,7 @@ func TestCalendarService_Bulk_Success(t *testing.T) {
 	resp, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{"2026-10-01", "2026-10-02"}, Kind: "rest"})
 
 	require.NoError(t, err)
-	assert.Len(t, resp, 2)
+	assert.Len(t, resp.Days, 2)
 
 	rows, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func TestCalendarService_Shift_NoCollision(t *testing.T) {
 	resp, err := svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: "2026-10-01", Days: 2})
 
 	require.NoError(t, err)
-	assert.Len(t, resp, 1)
+	assert.Len(t, resp.Days, 1)
 
 	shiftedDate := fromDate.AddDate(0, 0, 2)
 	shifted, err := calendarDao.FindByGroupAndDate(nil, group.ID, shiftedDate)
