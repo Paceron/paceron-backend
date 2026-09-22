@@ -44,7 +44,16 @@ func (m *mockTierSubscriptionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Use
 
 func (m *mockTierSubscriptionDao) FindActiveByUserRole(ctx *gin.Context, userID, roleID int64, statuses ...string) (*dbs.UserRoleTierSubscription, error) {
 	if m.findActiveFn != nil {
-		return m.findActiveFn(ctx, userID, roleID)
+		sub, err := m.findActiveFn(ctx, userID, roleID)
+		if err != nil || sub == nil || len(statuses) == 0 {
+			return sub, err
+		}
+		for _, s := range statuses {
+			if sub.Status == s {
+				return sub, nil
+			}
+		}
+		return nil, nil
 	}
 	return nil, nil
 }
@@ -339,7 +348,7 @@ func TestChangeTier_SuccessToPaid(t *testing.T) {
 
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.True(t, setEndedCalled)
+	assert.False(t, setEndedCalled, "target pago: la sub del tier anterior NO se cierra al crear el pendiente — sigue active hasta confirmar la cuota #1")
 	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), resp.SubscriptionStatus)
 	assert.NotNil(t, resp.InstallmentID)
 	assert.Equal(t, 1, *resp.InstallmentNumber)
@@ -351,6 +360,7 @@ func TestChangeTier_SuccessToPaid(t *testing.T) {
 
 func TestChangeTier_SuccessToFree(t *testing.T) {
 	updateTierCalled := false
+	setEndedCalled := false
 	urDao := &mockUserRoleDao{
 		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
 			return &dbs.UserRole{UserID: userID, RoleID: roleID, TierID: 2}, nil
@@ -375,6 +385,10 @@ func TestChangeTier_SuccessToFree(t *testing.T) {
 			return &dbs.UserRoleTierSubscription{ID: 7, UserID: userID, RoleID: roleID, TierID: 2,
 				Status: string(constants.SubscriptionStatusActive)}, nil
 		},
+		setEndedFn: func(ctx *gin.Context, id int64) error {
+			setEndedCalled = true
+			return nil
+		},
 	}
 
 	svc := newTierSubscriptionService(urDao, roleDao, tierDao, subDao, &mockInstallmentDao{})
@@ -383,6 +397,7 @@ func TestChangeTier_SuccessToFree(t *testing.T) {
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.True(t, updateTierCalled)
+	assert.True(t, setEndedCalled, "target gratis: la nueva nace active en el mismo request, así que el cierre (ended) de la vieja pasa acá, antes del Create")
 	assert.Equal(t, string(constants.SubscriptionStatusActive), resp.SubscriptionStatus)
 	assert.Nil(t, resp.InstallmentID)
 	assert.Equal(t, int64(1), resp.Tier.ID)

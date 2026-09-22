@@ -609,6 +609,28 @@ func (s *paymentService) applyApprovedInstallment(ctx *gin.Context, paymentRecor
 		}
 
 		if installment.InstallmentNumber == 1 {
+			// Confirmado el pago de la cuota #1: la sub del nuevo tier pasa a
+			// active, y la sub activa del tier anterior se cierra (ended) en la
+			// misma transacción. El orden es obligatorio en este orden: el índice
+			// parcial uq_sub_ids_user_role_active exige una sola sub active por
+			// (user_id, role_id), y se chequea por statement — la vieja debe quedar
+			// ended ANTES de activar la nueva. ChangeTier no cierra la vieja al
+			// crear el pendiente (la nueva queda first_payment_pending y la vieja
+			// sigue active), así que el cierre vive acá.
+			activeSub, err := subDao.FindActiveByUserRole(ctx, sub.UserID, sub.RoleID, string(constants.SubscriptionStatusActive))
+			if err != nil {
+				return err
+			}
+			if activeSub != nil && activeSub.ID != sub.ID {
+				if err := subDao.SetEnded(ctx, activeSub.ID); err != nil {
+					return err
+				}
+				customlogger.Info(ctx, "applyApprovedInstallment ended previous sub",
+					customlogger.Tag("old_sub_id", fmt.Sprintf("%d", activeSub.ID)),
+					customlogger.Tag("old_sub_tier_id", fmt.Sprintf("%d", activeSub.TierID)),
+					customlogger.Tag("new_sub_id", fmt.Sprintf("%d", sub.ID)),
+					customlogger.TagMethod("applyApprovedInstallment"))
+			}
 			if err := subDao.Activate(ctx, sub.ID); err != nil {
 				return err
 			}
