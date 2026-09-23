@@ -78,7 +78,7 @@ Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change
 
 ## Cobertura de tests
 
-> Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` en 80%.
+> Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).
 
 ### Etapa 2 de coverage: legacy → 90% (trabajo futuro / repuesto)
 
