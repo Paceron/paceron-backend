@@ -9,6 +9,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/team"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils"
 )
 
 // TeamDelegate coordina operaciones que involucran teams y groups.
@@ -41,7 +42,7 @@ func (d *teamDelegate) CreateTeam(ctx *gin.Context, ownerID int64, req *team.Cre
 
 	if req.CreateDefaultGroup == nil || *req.CreateDefaultGroup {
 		groupReq := &group.CreateGroupRequest{
-			Name:   req.Name + " - group",
+			Name:   utils.RandomJungleAnimal() + "sarasa" + " - group",
 			TeamID: teamResp.ID,
 			IsMain: true,
 		}
