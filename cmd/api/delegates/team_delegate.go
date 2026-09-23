@@ -42,7 +42,7 @@ func (d *teamDelegate) CreateTeam(ctx *gin.Context, ownerID int64, req *team.Cre
 
 	if req.CreateDefaultGroup == nil || *req.CreateDefaultGroup {
 		groupReq := &group.CreateGroupRequest{
-			Name:   utils.RandomJungleAnimal() + "sarasa" + " - group",
+			Name:   utils.RandomJungleAnimal() + " - group",
 			TeamID: teamResp.ID,
 			IsMain: true,
 		}
