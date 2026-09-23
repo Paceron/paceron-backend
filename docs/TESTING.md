@@ -48,4 +48,4 @@ Postgres real es el único de los tres que da información verdadera sobre el co
 
 ## Coverage gate
 
-`.testcoverage.yml` tiene `threshold.total: 80` — **bloquea el merge si el coverage total cae por debajo de 80%**. No bajar este número para pasar el gate: si el número real cae, es porque se agregó/dejó código con lógica real sin testear — agregar el test correspondiente, no ajustar el umbral.
+`.testcoverage.yml` tiene `threshold.total: 85` — **bloquea el merge si el coverage total cae por debajo de 85%**. No bajar este número para pasar el gate: si el número real cae, es porque se agregó/dejó código con lógica real sin testear — agregar el test correspondiente, no ajustar el umbral.
