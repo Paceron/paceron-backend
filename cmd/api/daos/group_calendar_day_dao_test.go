@@ -131,19 +131,19 @@ func TestGroupCalendarDayDao_FindNextForGroupsByKind_TodayPresencialStartedExclu
 	dao := NewGroupCalendarDayDao(db)
 	group := setupCalendarGroup(t, db, "6b")
 	// Un presencial de hoy cuyo horario ya arrancó NO cuenta; el próximo
-	// elegible es el futuro.
-	started := time.Now().UTC().Add(-time.Hour).Format("15:04")
+	// elegible es el futuro. nowHHMM sintético → determinista.
+	started := "00:00"
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	future := today.AddDate(0, 0, 3)
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday(started), PresencialTimeTo: utcTimeToday("23:59")}))
 
-	found, err := dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, time.Now().UTC().Format("15:04"))
+	found, err := dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, "12:00")
 
 	require.NoError(t, err)
 	assert.Nil(t, found)
 
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training"}))
-	found, err = dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, time.Now().UTC().Format("15:04"))
+	found, err = dao.FindNextForGroupsByKind(nil, []int64{group.ID}, "training", today, "12:00")
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	assert.True(t, found.Date.Equal(future))
@@ -160,7 +160,7 @@ func TestGroupCalendarDayDao_FindNextPresencialForGroups(t *testing.T) {
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today.AddDate(0, 0, 1), Kind: "cancelled", IsPresencial: true, PresencialTimeFrom: utcTimeToday("09:00"), PresencialTimeTo: utcTimeToday("10:00")}))
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday("09:00"), PresencialTimeTo: utcTimeToday("10:00")}))
 
-	found, err := dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, time.Now().UTC().Format("15:04"))
+	found, err := dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, "12:00")
 
 	require.NoError(t, err)
 	require.NotNil(t, found)
@@ -172,18 +172,18 @@ func TestGroupCalendarDayDao_FindNextPresencialForGroups_TodayPendingCounts(t *t
 	dao := NewGroupCalendarDayDao(db)
 	group := setupCalendarGroup(t, db, "8")
 	today := time.Now().UTC().Truncate(24 * time.Hour)
-	pending := time.Now().UTC().Add(2 * time.Hour).Format("15:04")
+	pending := "12:00"
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday(pending), PresencialTimeTo: utcTimeToday("23:59")}))
 
-	found, err := dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, time.Now().UTC().Format("15:04"))
+	found, err := dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, "06:00")
 
 	require.NoError(t, err)
 	require.NotNil(t, found, "hoy presencial por arrancar cuenta")
 	assert.True(t, found.Date.Equal(today))
 
-	started := time.Now().UTC().Add(-time.Hour).Format("15:04")
+	started := "00:00"
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday(started), PresencialTimeTo: utcTimeToday("23:59")}))
-	found, err = dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, time.Now().UTC().Format("15:04"))
+	found, err = dao.FindNextPresencialForGroups(nil, []int64{group.ID}, today, "06:00")
 	require.NoError(t, err)
 	assert.Nil(t, found, "hoy presencial ya arrancado no cuenta")
 }

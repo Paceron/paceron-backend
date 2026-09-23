@@ -85,7 +85,7 @@ TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=
 
 ### Coverage
 
-`make coverage` (sin DB, parcial) / `make coverage-with-db` (con DB real, número real — mismo comando que corre `ci.yml`). **`.testcoverage.yml`: `threshold.total: 80`, bloquea merge si baja.** No ajustar el umbral hacia abajo si baja — agregar tests. `exclude.paths` cubre solo paquetes sin lógica real (DTOs puros, constants, swagger autogenerado, `testutils`, `main.go`) — un paquete con lógica real y 0% nunca entra ahí a propósito, para que la deuda sea visible.
+`make coverage` (sin DB, parcial) / `make coverage-with-db` (con DB real, número real — mismo comando que corre `ci.yml`). **`.testcoverage.yml`: `threshold.total: 85`, bloquea merge si baja.** No ajustar el umbral hacia abajo si baja — agregar tests. `exclude.paths` cubre solo paquetes sin lógica real (DTOs puros, constants, swagger autogenerado, `testutils`, `main.go`) — un paquete con lógica real y 0% nunca entra ahí a propósito, para que la deuda sea visible.
 
 ## 5. CORS
 

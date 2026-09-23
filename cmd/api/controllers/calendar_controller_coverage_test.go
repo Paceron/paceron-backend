@@ -52,3 +52,121 @@ func TestMemberCalendar_RangoVacioRespondeArrayVacio(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Empty(t, body)
 }
+
+func TestCalendarController_NextSession_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{nextSessionFn: func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error) {
+		return nil, services.ErrCalendarGroupNotFound
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/next-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestCalendarController_NextPresencialSession_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/abc/next-presencial-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_NextPresencialSession_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{nextPresencialFn: func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error) {
+		return nil, services.ErrCalendarForbidden
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/next-presencial-session", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/abc/member-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_InvalidToDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-01&to=nope", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_MemberCalendar_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{memberCalendarFn: func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+		return nil, services.ErrCalendarForbidden
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/member-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_AdministeredCalendar_InvalidID(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/abc/administered-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_AdministeredCalendar_InvalidToDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/administered-calendar?from=2026-10-01&to=nope", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCalendarController_AdministeredCalendar_ServiceError(t *testing.T) {
+	svc := &mockCalendarService{administeredCalFn: func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
+		return nil, services.ErrCalendarForbidden
+	}}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/administered-calendar?from=2026-10-01&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCalendarController_AdministeredCalendar_InvalidFromDate(t *testing.T) {
+	svc := &mockCalendarService{}
+	router := setupCalendarRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodGet, "/users/7/administered-calendar?from=nope&to=2026-10-31", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
