@@ -574,21 +574,26 @@ func TestCalendarService_NextSession_TodayCounts(t *testing.T) {
 	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: group.ID, UserID: owner.ID, DateStart: time.Now()}).Error)
 
 	now := time.Now()
+	// El presencial "por arrancar" es fijo 23:59 UTC; si ya es el último
+	// minuto del día no hay horario por arrancar posible.
+	if now.Hour() == 23 && now.Minute() == 59 {
+		t.Skip("último minuto del día local")
+	}
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	// Caso 1: hoy presencial ya arrancado → no cuenta.
-	startedFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(-2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	startedFrom := utcTimeHHMM("00:00")
 	startedTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &startedFrom, PresencialTimeTo: &startedTo}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: startedFrom, PresencialTimeTo: &startedTo}))
 	resp, err := svc.NextSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Nil(t, resp.NextTraining, "hoy presencial ya arrancado no cuenta")
 
 	// Caso 2: hoy presencial por arrancar → cuenta.
-	pendingFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	pendingFrom := utcTimeHHMM("23:59")
 	pendingTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &pendingFrom, PresencialTimeTo: &pendingTo}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: pendingFrom, PresencialTimeTo: &pendingTo}))
 	resp, err = svc.NextSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -717,21 +722,24 @@ func TestCalendarService_NextPresencialSession_TodayCounts(t *testing.T) {
 	require.NoError(t, db.Create(group).Error)
 
 	now := time.Now()
+	if now.Hour() == 23 && now.Minute() == 59 {
+		t.Skip("último minuto del día local")
+	}
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	future := today.AddDate(0, 0, 3)
 
 	// Caso 1: hoy presencial ya arrancado → no cuenta.
-	startedFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(-2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	startedFrom := utcTimeHHMM("00:00")
 	startedTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &startedFrom, PresencialTimeTo: &startedTo}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: startedFrom, PresencialTimeTo: &startedTo}))
 	resp, err := svc.NextPresencialSession(nil, owner.ID)
 	require.NoError(t, err)
 	assert.Nil(t, resp, "hoy presencial ya arrancado no cuenta")
 
 	// Caso 2: hoy presencial por arrancar → cuenta.
-	pendingFrom := time.Date(now.Year(), now.Month(), now.Day(), now.Add(2*time.Hour).Hour(), now.Minute(), 0, 0, time.UTC)
+	pendingFrom := utcTimeHHMM("23:59")
 	pendingTo := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, time.UTC)
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: &pendingFrom, PresencialTimeTo: &pendingTo}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: pendingFrom, PresencialTimeTo: &pendingTo}))
 	resp, err = svc.NextPresencialSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp, "hoy presencial por arrancar cuenta")
@@ -740,7 +748,7 @@ func TestCalendarService_NextPresencialSession_TodayCounts(t *testing.T) {
 	// Caso 3: el presencial futuro más cercano pierde contra el de hoy; un
 	// async y un cancelled en la misma fecha no desplazan al candidato válido.
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "training"}))
-	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today.AddDate(0, 0, 1), Kind: "cancelled", IsPresencial: true, PresencialTimeFrom: &pendingFrom, PresencialTimeTo: &pendingTo}))
+	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: today.AddDate(0, 0, 1), Kind: "cancelled", IsPresencial: true, PresencialTimeFrom: pendingFrom, PresencialTimeTo: &pendingTo}))
 	resp, err = svc.NextPresencialSession(nil, owner.ID)
 	require.NoError(t, err)
 	require.NotNil(t, resp)

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -176,4 +177,169 @@ func TestExerciseService_Update_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "Trote 50mts", resp.Name)
+}
+
+func TestExerciseService_Validation_InvalidIntensity(t *testing.T) {
+	err := validateExerciseRequest(exercise.ExerciseRequest{Kind: "running", Intensity: strPtr("extreme")})
+	assert.ErrorIs(t, err, ErrExerciseInvalidIntensity)
+}
+
+func TestExerciseService_Validation_InvalidMuscleGroup(t *testing.T) {
+	err := validateExerciseRequest(exercise.ExerciseRequest{Kind: "running", MuscleGroup: strPtr("triceps")})
+	assert.ErrorIs(t, err, ErrExerciseInvalidMuscleGroup)
+}
+
+func TestExerciseService_Create_CreateError(t *testing.T) {
+	dao := &mockExerciseDao{createFn: func(ctx *gin.Context, e *dbs.Exercise) error { return errors.New("db down") }}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Create(nil, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "Trote", Kind: "running"})
+
+	assert.EqualError(t, err, "error al crear ejercicio")
+}
+
+func TestExerciseService_Update_FindError(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Update(nil, 1, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "running"})
+
+	assert.EqualError(t, err, "error al editar ejercicio")
+}
+
+func TestExerciseService_Update_InvalidKind(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id, OwnerID: 7}, nil
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Update(nil, 1, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "flying"})
+
+	assert.ErrorIs(t, err, ErrExerciseInvalidKind)
+}
+
+func TestExerciseService_Update_UpdateError(t *testing.T) {
+	dao := &mockExerciseDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+			return &dbs.Exercise{ID: id, OwnerID: 7}, nil
+		},
+		updateFn: func(ctx *gin.Context, e *dbs.Exercise) error { return errors.New("db down") },
+	}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Update(nil, 1, 7, exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "running"})
+
+	assert.EqualError(t, err, "error al editar ejercicio")
+}
+
+func TestExerciseService_Delete_FindError(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewExerciseService(dao)
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.EqualError(t, err, "error al borrar ejercicio")
+}
+
+func TestExerciseService_Delete_NotFound(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, nil }}
+	svc := NewExerciseService(dao)
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrExerciseNotFound)
+}
+
+func TestExerciseService_Delete_Forbidden(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id, OwnerID: 99}, nil
+	}}
+	svc := NewExerciseService(dao)
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrCatalogForbidden)
+}
+
+func TestExerciseService_Delete_SoftDeleteError(t *testing.T) {
+	dao := &mockExerciseDao{
+		findByIDFn:   func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return &dbs.Exercise{ID: id, OwnerID: 7}, nil },
+		softDeleteFn: func(ctx *gin.Context, id int64) error { return errors.New("db down") },
+	}
+	svc := NewExerciseService(dao)
+
+	err := svc.Delete(nil, 1, 7)
+
+	assert.EqualError(t, err, "error al borrar ejercicio")
+}
+
+func TestExerciseService_Clone_FindError(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.EqualError(t, err, "error al clonar ejercicio")
+}
+
+func TestExerciseService_Clone_NotFound(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, nil }}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrExerciseNotFound)
+}
+
+func TestExerciseService_Clone_Forbidden(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return &dbs.Exercise{ID: id, OwnerID: 99}, nil
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.ErrorIs(t, err, ErrCatalogForbidden)
+}
+
+func TestExerciseService_Clone_CreateError(t *testing.T) {
+	dao := &mockExerciseDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+			return &dbs.Exercise{ID: id, OwnerID: 7, Kind: "running"}, nil
+		},
+		createFn: func(ctx *gin.Context, e *dbs.Exercise) error { return errors.New("db down") },
+	}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Clone(nil, 1, 7)
+
+	assert.EqualError(t, err, "error al clonar ejercicio")
+}
+
+func TestExerciseService_Get_FindError(t *testing.T) {
+	dao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.Get(nil, 1)
+
+	assert.EqualError(t, err, "error al buscar ejercicio")
+}
+
+func TestExerciseService_List_FindError(t *testing.T) {
+	dao := &mockExerciseDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error) {
+		return nil, errors.New("db down")
+	}}
+	svc := NewExerciseService(dao)
+
+	_, err := svc.List(nil, 7)
+
+	assert.EqualError(t, err, "error al listar ejercicios")
 }
