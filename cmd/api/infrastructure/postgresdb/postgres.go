@@ -98,6 +98,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.GroupCalendarDay{},
 		&dbs.WorkoutFeedback{},
 		&dbs.WorkoutFeedbackPoint{},
+		&dbs.RunnerSession{},
 		// Instancias de asignacion-por-instanciacion (design.md D1): copias
 		// inmutables del catálogo, separadas de exercises/sessions.
 		&dbs.ExerciseInstance{},
