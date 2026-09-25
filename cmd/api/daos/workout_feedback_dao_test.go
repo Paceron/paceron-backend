@@ -460,3 +460,68 @@ func TestWorkoutFeedbackDao_GetPointsByFeedback_OtherSetsIsolated(t *testing.T) 
 	require.NoError(t, err)
 	assert.Empty(t, gotB)
 }
+
+func TestWorkoutFeedbackDao_GetBySession_OrderAndFilter(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+
+	// Sesión 1: ejercicio 1 (sets 0,1), ejercicio 2 (set 0) → orden esperado
+	// (assigned_exercise_id, set_number, id).
+	testFeedback(t, db, 1, 1, 1, 1, nil, 0) // ex 1, set 0
+	testFeedback(t, db, 1, 1, 1, 1, nil, 1) // ex 1, set 1
+	testFeedback(t, db, 1, 1, 1, 2, nil, 0) // ex 2, set 0
+	// Sesión 2 (aislada) y otro atleta en sesión 1 (aislado del filtro).
+	testFeedback(t, db, 1, 1, 2, 1, nil, 0)
+	testFeedback(t, db, 2, 2, 1, 1, nil, 0)
+
+	feedbacks, err := dao.GetBySession(nil, 1, nil)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 3)
+	assert.Equal(t, int64(1), feedbacks[0].AssignedExerciseID)
+	assert.Equal(t, 0, feedbacks[0].SetNumber)
+	assert.Equal(t, int64(1), feedbacks[1].AssignedExerciseID)
+	assert.Equal(t, 1, feedbacks[1].SetNumber)
+	assert.Equal(t, int64(2), feedbacks[2].AssignedExerciseID)
+	assert.Equal(t, 0, feedbacks[2].SetNumber)
+}
+
+func TestWorkoutFeedbackDao_GetBySession_FilterByAthlete(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+
+	testFeedback(t, db, 1, 1, 1, 1, nil, 0) // atleta 1
+	testFeedback(t, db, 2, 2, 1, 1, nil, 0) // atleta 2, misma sesión
+
+	athlete := int64(2)
+	feedbacks, err := dao.GetBySession(nil, 1, &athlete)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 1)
+	assert.Equal(t, int64(2), feedbacks[0].AthleteUserID)
+}
+
+func TestWorkoutFeedbackDao_GetBySession_ExcludesSoftDeleted(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+
+	keep := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+	removed := testFeedback(t, db, 1, 1, 1, 1, nil, 1)
+	require.NoError(t, dao.SoftDelete(nil, removed.ID))
+
+	feedbacks, err := dao.GetBySession(nil, 1, nil)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 1)
+	assert.Equal(t, keep.ID, feedbacks[0].ID)
+}
+
+func TestWorkoutFeedbackDao_GetBySession_EmptyIsEmpty(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+
+	feedbacks, err := dao.GetBySession(nil, 999999, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, feedbacks)
+}

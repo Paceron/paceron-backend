@@ -482,6 +482,118 @@ func TestWorkoutFeedbackController_GetPoints_Success(t *testing.T) {
 	assert.Equal(t, -34.6, resp.Data[0].Latitude)
 }
 
+func TestWorkoutFeedbackController_GetBySession_Success(t *testing.T) {
+	var gotAuth, gotSession int64
+	var gotAthlete *int64
+	mockSvc := &mockWorkoutFeedbackService{
+		getSessionFeedbackFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			gotAuth = authUserID
+			gotSession = sessionInstanceID
+			gotAthlete = athleteUserID
+			return []dbs.WorkoutFeedback{
+				{ID: 1, AssignedSessionID: 10, AssignedExerciseID: 2, AthleteUserID: 7, FeedbackOwnerUserID: 7, ReportSource: "corredor", SetNumber: 1},
+			}, nil
+		},
+	}
+	controller := NewWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/session-instances/10/feedback", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	setAuthUserID(c, 7)
+	controller.GetBySession(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, int64(7), gotAuth)
+	assert.Equal(t, int64(10), gotSession)
+	assert.Nil(t, gotAthlete)
+
+	var resp workoutfeedback.SearchResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, int64(1), resp.Data[0].ID)
+	assert.Equal(t, "corredor", resp.Data[0].ReportSource)
+}
+
+func TestWorkoutFeedbackController_GetBySession_ForwardsAthleteQuery(t *testing.T) {
+	var gotAthlete *int64
+	mockSvc := &mockWorkoutFeedbackService{
+		getSessionFeedbackFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			gotAthlete = athleteUserID
+			return []dbs.WorkoutFeedback{}, nil
+		},
+	}
+	controller := NewWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/session-instances/10/feedback?athlete_user_id=30", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	setAuthUserID(c, 7)
+	controller.GetBySession(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.NotNil(t, gotAthlete)
+	assert.Equal(t, int64(30), *gotAthlete)
+}
+
+func TestWorkoutFeedbackController_GetBySession_Unauthorized(t *testing.T) {
+	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/session-instances/10/feedback", nil)
+	controller.GetBySession(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestWorkoutFeedbackController_GetBySession_InvalidParams(t *testing.T) {
+	cases := []struct {
+		name  string
+		param string
+		query string
+	}{
+		{"path no numerico", "abc", ""},
+		{"path 0", "0", ""},
+		{"query invalido", "10", "?athlete_user_id=abc"},
+		{"query 0", "10", "?athlete_user_id=0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/session-instances/10/feedback"+tc.query, nil)
+			c.Params = []gin.Param{{Key: "id", Value: tc.param}}
+			setAuthUserID(c, 7)
+			controller.GetBySession(c)
+
+			assert.Equal(t, http.StatusBadRequest, response.Code)
+		})
+	}
+}
+
+func TestWorkoutFeedbackController_GetBySession_Forbidden(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		getSessionFeedbackFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			return nil, services.ErrWorkoutFeedbackForbidden
+		},
+	}
+	controller := NewWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/session-instances/10/feedback", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	setAuthUserID(c, 7)
+	controller.GetBySession(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
 func TestWorkoutFeedbackController_GetPoints_InvalidID(t *testing.T) {
 	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 

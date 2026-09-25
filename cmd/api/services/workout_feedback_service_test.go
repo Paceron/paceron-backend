@@ -828,6 +828,119 @@ func TestWorkoutFeedbackService_GetPoints_NotFound(t *testing.T) {
 	require.ErrorIs(t, err, daos.ErrWorkoutFeedbackNotFound)
 }
 
+func TestWorkoutFeedbackService_GetSessionFeedback_Self(t *testing.T) {
+	var gotTarget *int64
+	mock := &mockWorkoutFeedbackDao{
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			gotTarget = athleteUserID
+			return []dbs.WorkoutFeedback{{ID: 1, AssignedSessionID: 10}}, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, nil)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 1)
+	require.NotNil(t, gotTarget)
+	assert.Equal(t, int64(7), *gotTarget) // self => target = authUserID
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_SelfPassedExplicitly(t *testing.T) {
+	var gotTarget *int64
+	mock := &mockWorkoutFeedbackDao{
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			gotTarget = athleteUserID
+			return []dbs.WorkoutFeedback{}, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	// athlete_user_id = authUserID: no hace falta trainer-check.
+	self := int64(7)
+	_, err := svc.GetSessionFeedback(nil, 7, 10, &self)
+
+	require.NoError(t, err)
+	require.NotNil(t, gotTarget)
+	assert.Equal(t, int64(7), *gotTarget)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_TrainerForAthleteInOwnedTeam(t *testing.T) {
+	var gotTarget *int64
+	mock := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
+			assert.Equal(t, int64(8), targetUserID)
+			assert.Equal(t, int64(7), ownerUserID)
+			return true, nil
+		},
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			gotTarget = athleteUserID
+			return []dbs.WorkoutFeedback{{ID: 1, AthleteUserID: 8}}, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	athlete := int64(8)
+	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 1)
+	require.NotNil(t, gotTarget)
+	assert.Equal(t, int64(8), *gotTarget)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_TrainerForOutsider_Forbidden(t *testing.T) {
+	mock := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	athlete := int64(8)
+	_, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_InvalidAthleteID(t *testing.T) {
+	mock := &mockWorkoutFeedbackDao{}
+	svc := NewWorkoutFeedbackService(mock)
+
+	athlete := int64(0)
+	_, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_NilIsEmptySlice(t *testing.T) {
+	mock := &mockWorkoutFeedbackDao{
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			return nil, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, feedbacks)
+	assert.Empty(t, feedbacks)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_DAOErrorPropagates(t *testing.T) {
+	mock := &mockWorkoutFeedbackDao{
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			return nil, assert.AnError
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock)
+
+	_, err := svc.GetSessionFeedback(nil, 7, 10, nil)
+
+	require.ErrorIs(t, err, assert.AnError)
+}
+
 // Helpers de punteros.
 func fbInt16Ptr(v int16) *int16    { return &v }
 func fbIntPtr(v int) *int          { return &v }
