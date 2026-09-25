@@ -45,6 +45,10 @@ type WorkoutFeedbackServiceInterface interface {
 	CreatePoints(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*PointsResult, error)
 	// GetPoints devuelve el recorrido de la serie ordenado por "order".
 	GetPoints(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
+	// GetSessionFeedback devuelve los feedbacks activos de una sesión asignada
+	// (y de un atleta en particular si viene; default self), ordenados por
+	// (assigned_exercise_id, set_number) — el shape de la pantalla de revisión.
+	GetSessionFeedback(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
 }
 
 type workoutFeedbackService struct {
@@ -338,6 +342,36 @@ func (s *workoutFeedbackService) GetPoints(ctx *gin.Context, authUserID, feedbac
 		points = []dbs.WorkoutFeedbackPoint{}
 	}
 	return points, nil
+}
+
+// GetSessionFeedback lista los feedbacks activos de una sesión asignada. El
+// atleta es el auth salvo que venga un athlete_user_id distinto, en cuyo caso
+// el auth debe ser owner de un equipo al que pertenezca ese atleta (matriz del
+// módulo). Devuelve [] si no hay filas.
+func (s *workoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+	target := authUserID
+	if athleteUserID != nil && *athleteUserID != authUserID {
+		if *athleteUserID <= 0 {
+			return nil, fmt.Errorf("%w: athlete_user_id debe ser un número entero mayor a 0", ErrWorkoutFeedbackInvalid)
+		}
+		inOwnedTeam, err := s.workoutFeedbackDao.ExistsUserInTeamOwnedBy(ctx, *athleteUserID, authUserID)
+		if err != nil {
+			return nil, err
+		}
+		if !inOwnedTeam {
+			return nil, ErrWorkoutFeedbackForbidden
+		}
+		target = *athleteUserID
+	}
+
+	feedbacks, err := s.workoutFeedbackDao.GetBySession(ctx, sessionInstanceID, &target)
+	if err != nil {
+		return nil, err
+	}
+	if feedbacks == nil {
+		feedbacks = []dbs.WorkoutFeedback{}
+	}
+	return feedbacks, nil
 }
 
 // canAccess es el corazón de la matriz: reportante, atleta u owner del team.

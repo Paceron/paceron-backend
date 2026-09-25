@@ -20,9 +20,11 @@ type CreateRunnerSessionRequest struct {
 }
 
 // RunnerStatusRequest es el body de PATCH /api/v1/session-instances/:id/runner.
-// Único estado válido en esta versión: "finished".
+// Único estado válido en esta versión: "finished". athlete_user_id es opcional:
+// si no viene opera sobre el auth (self), si viene ajeno requiere trainer.
 type RunnerStatusRequest struct {
-	Status string `json:"status" binding:"required"`
+	AthleteUserID *int64 `json:"athlete_user_id"`
+	Status        string `json:"status" binding:"required"`
 }
 
 // RunnerSessionResponse es el shape plano espejo de dbs.RunnerSession para las
