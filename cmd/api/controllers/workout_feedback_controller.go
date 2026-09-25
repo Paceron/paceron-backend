@@ -26,6 +26,7 @@ type WorkoutFeedbackController interface {
 	Delete(c *gin.Context)
 	CreatePoints(c *gin.Context)
 	GetPoints(c *gin.Context)
+	GetBySession(c *gin.Context)
 }
 
 type workoutFeedbackController struct {
@@ -234,6 +235,63 @@ func (fc *workoutFeedbackController) GetPoints(c *gin.Context) {
 		response = append(response, toWorkoutFeedbackPointResponse(&points[i]))
 	}
 	c.JSON(http.StatusOK, workoutfeedback.PointsListResponse{Data: response})
+}
+
+// GetBySession godoc
+// @Summary      Listar feedbacks de una sesión asignada
+// @Description  Devuelve los feedbacks activos de la sesión (del atleta self por default, o del atleta indicado si el auth es entrenador del equipo), ordenados por ejercicio y serie. Las series sin feedback no aparecen.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id              path  int  true  "ID de la sesión asignada"
+// @Param        athlete_user_id query int  false "ID del atleta (default: usuario autenticado)"
+// @Success      200  {object}  workoutfeedback.SearchResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Router       /api/v1/session-instances/{id}/feedback [get]
+func (fc *workoutFeedbackController) GetBySession(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	sessionInstanceID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	athleteUserID, err := parseOptionalPositiveQueryParam(c, "athlete_user_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	records, err := fc.workoutFeedbackService.GetSessionFeedback(c, authUserID, sessionInstanceID, athleteUserID)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+
+	response := make([]workoutfeedback.WorkoutFeedbackResponse, 0, len(records))
+	for i := range records {
+		response = append(response, toWorkoutFeedbackResponse(&records[i]))
+	}
+	c.JSON(http.StatusOK, workoutfeedback.SearchResponse{Data: response})
 }
 
 // Create godoc

@@ -54,6 +54,7 @@ type Application struct {
 	teamConfigurationController controllers.TeamConfigurationControllerInterface
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
+	runnerSessionController     controllers.RunnerSessionController
 }
 
 func NewApplication() *Application {
@@ -288,6 +289,11 @@ func NewApplication() *Application {
 	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService)
 
+	// Runner Session flow (estado de sesión del corredor, wip -> finished)
+	runnerSessionDao := daos.NewRunnerSessionDao(db)
+	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
+
 	return &Application{
 		pingController:              controllers.NewPingController(),
 		userController:              userController,
@@ -320,5 +326,6 @@ func NewApplication() *Application {
 		teamConfigurationController: teamConfigurationController,
 		attendanceController:        attendanceController,
 		workoutFeedbackController:   workoutFeedbackController,
+		runnerSessionController:     runnerSessionController,
 	}
 }

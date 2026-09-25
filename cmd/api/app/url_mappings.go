@@ -203,4 +203,12 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.POST("/api/v1/workout-feedback", app.workoutFeedbackController.Create)
 	r.PUT("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Update)
 	r.DELETE("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Delete)
+
+	// Runner Session (estado de la sesión del corredor, wip -> finished) y
+	// feedback de una sesión asignada. Sin ruta /session-instances/* existente
+	// antes: este es el primer bloque bajo ese recurso.
+	r.POST("/api/v1/session-instances/:id/runner", app.runnerSessionController.Create)
+	r.PATCH("/api/v1/session-instances/:id/runner", app.runnerSessionController.Finish)
+	r.GET("/api/v1/session-instances/:id/runner", app.runnerSessionController.Get)
+	r.GET("/api/v1/session-instances/:id/feedback", app.workoutFeedbackController.GetBySession)
 }

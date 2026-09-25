@@ -3076,6 +3076,249 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/session-instances/{id}/feedback": {
+            "get": {
+                "description": "Devuelve los feedbacks activos de la sesión (del atleta self por default, o del atleta indicado si el auth es entrenador del equipo), ordenados por ejercicio y serie. Las series sin feedback no aparecen.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Listar feedbacks de una sesión asignada",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión asignada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del atleta (default: usuario autenticado)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/session-instances/{id}/runner": {
+            "get": {
+                "description": "Devuelve el estado actual de la sesión para el atleta (self por default o el indicado si el auth es entrenador del equipo).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runner-session"
+                ],
+                "summary": "Consultar estado de la sesión del corredor",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión asignada",
+                        "name": "id",
+                        "in": "path"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del atleta (default: usuario autenticado)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Crea el estado de la sesión en wip para el atleta (self por default o el indicado si el auth es entrenador del equipo). Idempotente: si ya existía, responde 200 con el estado actual sin pisar start_date ni bajar de finished a wip.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runner-session"
+                ],
+                "summary": "Registrar estado de sesión del corredor (wip)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión asignada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del estado",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.CreateRunnerSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Pasa el estado a finished con end_date seteada por el servidor (solo desde wip). Idempotente: ya finished responde 200 sin cambios.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "runner-session"
+                ],
+                "summary": "Marcar la sesión del corredor como completada",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión asignada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status (finished)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sessions": {
             "get": {
                 "produces": [
@@ -8326,6 +8569,76 @@ const docTemplate = `{
                 },
                 "name": {
                     "description": "Nuevo nombre del rol (opcional)",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_runnersession.CreateRunnerSessionRequest": {
+            "type": "object",
+            "required": [
+                "start_date"
+            ],
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "start_date": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_runnersession.MutationResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse": {
+            "type": "object",
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "end_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "start_date": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_runnersession.RunnerStatusRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "status": {
                     "type": "string"
                 }
             }
