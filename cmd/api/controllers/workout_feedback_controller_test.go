@@ -28,6 +28,7 @@ type mockWorkoutFeedbackService struct {
 	softDeleteFn func(ctx *gin.Context, authUserID, feedbackID int64) error
 	createPointsFn func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
 	getPointsFn    func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
+	getSessionFeedbackFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
 }
 
 func (m *mockWorkoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
@@ -75,6 +76,13 @@ func (m *mockWorkoutFeedbackService) CreatePoints(ctx *gin.Context, authUserID, 
 func (m *mockWorkoutFeedbackService) GetPoints(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
 	if m.getPointsFn != nil {
 		return m.getPointsFn(ctx, authUserID, feedbackID)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+	if m.getSessionFeedbackFn != nil {
+		return m.getSessionFeedbackFn(ctx, authUserID, sessionInstanceID, athleteUserID)
 	}
 	return nil, nil
 }

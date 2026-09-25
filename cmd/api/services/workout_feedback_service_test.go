@@ -22,8 +22,9 @@ type mockWorkoutFeedbackDao struct {
 	teamExistsFn        func(ctx *gin.Context, teamID int64) (bool, error)
 	isTeamOwnerFn       func(ctx *gin.Context, teamID, userID int64) (bool, error)
 	userInTeamOwnedByFn func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
-	bulkCreatePointsFn  func(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
+	bulkCreatePointsFn   func(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
 	getPointsByFeedbackFn func(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
+	getBySessionFn       func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
 }
 
 func (m *mockWorkoutFeedbackDao) Create(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
@@ -92,6 +93,13 @@ func (m *mockWorkoutFeedbackDao) BulkCreatePoints(ctx *gin.Context, feedbackID i
 func (m *mockWorkoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
 	if m.getPointsByFeedbackFn != nil {
 		return m.getPointsByFeedbackFn(ctx, feedbackID)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) GetBySession(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+	if m.getBySessionFn != nil {
+		return m.getBySessionFn(ctx, sessionInstanceID, athleteUserID)
 	}
 	return nil, nil
 }
