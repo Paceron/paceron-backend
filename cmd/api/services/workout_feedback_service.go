@@ -20,6 +20,16 @@ var (
 	ErrWorkoutFeedbackForbidden = errors.New("no tenés permisos para operar sobre este feedback")
 )
 
+// maxPointsPerBulk capa el array de puntos de una sola serie: una serie larga a
+// 1 punto/s (~1h30m) ronda los 5.000; es un límite de saneamiento, no de dominio.
+const maxPointsPerBulk = 5000
+
+// PointsResult son los conteos efectivos del bulk insert idempotente de puntos.
+type PointsResult struct {
+	Created int
+	Skipped int
+}
+
 // WorkoutFeedbackServiceInterface define las operaciones de negocio de feedback
 // de entrenamiento. feedback_owner_user_id se resuelve SIEMPRE del token
 // (auth_user_id); athlete_user_id se infiere salvo que un entrenador autorizado lo
@@ -30,6 +40,11 @@ type WorkoutFeedbackServiceInterface interface {
 	Search(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
 	Update(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
 	SoftDelete(ctx *gin.Context, authUserID, feedbackID int64) error
+	// CreatePoints inserta el recorrido de la serie (bulk idempotente por
+	// (feedback_id, "order")) y devuelve los conteos created/skipped.
+	CreatePoints(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*PointsResult, error)
+	// GetPoints devuelve el recorrido de la serie ordenado por "order".
+	GetPoints(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 }
 
 type workoutFeedbackService struct {
@@ -252,6 +267,77 @@ func (s *workoutFeedbackService) SoftDelete(ctx *gin.Context, authUserID, feedba
 	}
 
 	return s.workoutFeedbackDao.SoftDelete(ctx, feedbackID)
+}
+
+// CreatePoints autoriza como Get (reportante, atleta u owner del team), valida el
+// array de puntos y delega el bulk idempotente en el DAO. Reintentar el mismo
+// recorrido devuelve created < len y skipped = len - created, sin error ni dupes.
+func (s *workoutFeedbackService) CreatePoints(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*PointsResult, error) {
+	feedback, err := s.workoutFeedbackDao.GetByID(ctx, feedbackID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.canAccess(ctx, authUserID, feedback) {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	if len(req.Points) == 0 {
+		return nil, fmt.Errorf("%w: el array points no puede estar vacío", ErrWorkoutFeedbackInvalid)
+	}
+	if len(req.Points) > maxPointsPerBulk {
+		return nil, fmt.Errorf("%w: el array points no puede superar %d puntos", ErrWorkoutFeedbackInvalid, maxPointsPerBulk)
+	}
+
+	models := make([]dbs.WorkoutFeedbackPoint, 0, len(req.Points))
+	for i := range req.Points {
+		p := req.Points[i]
+		if p.Order < 0 {
+			return nil, fmt.Errorf("%w: order debe ser mayor o igual a 0", ErrWorkoutFeedbackInvalid)
+		}
+		if p.SessionInstanceID <= 0 || p.ExerciseInstanceID <= 0 {
+			return nil, fmt.Errorf("%w: session_instance_id y exercise_instance_id deben ser mayores a 0", ErrWorkoutFeedbackInvalid)
+		}
+		if p.Latitude < -90 || p.Latitude > 90 {
+			return nil, fmt.Errorf("%w: latitude debe estar entre -90 y 90", ErrWorkoutFeedbackInvalid)
+		}
+		if p.Longitude < -180 || p.Longitude > 180 {
+			return nil, fmt.Errorf("%w: longitude debe estar entre -180 y 180", ErrWorkoutFeedbackInvalid)
+		}
+		models = append(models, dbs.WorkoutFeedbackPoint{
+			FeedbackID:         feedbackID,
+			SessionInstanceID:  p.SessionInstanceID,
+			ExerciseInstanceID: p.ExerciseInstanceID,
+			Order:              p.Order,
+			Latitude:           p.Latitude,
+			Longitude:          p.Longitude,
+			RecordedAt:         p.RecordedAt,
+		})
+	}
+
+	created, err := s.workoutFeedbackDao.BulkCreatePoints(ctx, feedbackID, models)
+	if err != nil {
+		return nil, err
+	}
+	return &PointsResult{Created: int(created), Skipped: len(models) - int(created)}, nil
+}
+
+// GetPoints autoriza como Get (reportante, atleta u owner del team) y devuelve el
+// recorrido de la serie ordenado por "order".
+func (s *workoutFeedbackService) GetPoints(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
+	feedback, err := s.workoutFeedbackDao.GetByID(ctx, feedbackID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.canAccess(ctx, authUserID, feedback) {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	points, err := s.workoutFeedbackDao.GetPointsByFeedback(ctx, feedbackID)
+	if err != nil {
+		return nil, err
+	}
+	if points == nil {
+		points = []dbs.WorkoutFeedbackPoint{}
+	}
+	return points, nil
 }
 
 // canAccess es el corazón de la matriz: reportante, atleta u owner del team.

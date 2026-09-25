@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
@@ -59,6 +60,15 @@ type WorkoutFeedbackDAOInterface interface {
 	// Search devuelve los feedbacks activos que cumplen los filtros (WHERE dinámico,
 	// scopes y filtros ya autorizados por el service).
 	Search(ctx *gin.Context, filters WorkoutFeedbackSearchFilters) ([]dbs.WorkoutFeedback, error)
+
+	// BulkCreatePoints inserta en un solo batch los puntos del recorrido de una
+	// serie. Idempotente por (feedback_id, "order") vía el índice único
+	// uq_feedback_point_order: reintentar un punto ya existente no duplica ni
+	// falla (INSERT ... ON CONFLICT DO NOTHING). Devuelve la cantidad de filas
+	// realmente insertadas (created); el service calcula skipped = len - created.
+	BulkCreatePoints(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
+	// GetPointsByFeedback devuelve el recorrido de la serie ordenado por "order".
+	GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 
 	// Chequeos de membresía de equipo compartidos (TeamMembershipDAO): los usa el
 	// service para la matriz de autorización de equipos. Delegados internamente.
@@ -180,6 +190,38 @@ func (d *workoutFeedbackDao) Search(ctx *gin.Context, filters WorkoutFeedbackSea
 		return nil, fmt.Errorf("error searching workout feedbacks: %w", err)
 	}
 	return feedbacks, nil
+}
+
+// BulkCreatePoints inserta el recorrido en un batch único atómico. La
+// idempotencia la da la DB: el índice uq_feedback_point_order (feedback_id,
+// "order") combinado con ON CONFLICT DO NOTHING hace que un reintento del mismo
+// punto cuente como skipped, no como error ni como duplicado. Devuelve la
+// cantidad de filas realmente insertadas (created).
+func (d *workoutFeedbackDao) BulkCreatePoints(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error) {
+	for i := range points {
+		points[i].FeedbackID = feedbackID
+	}
+	res := d.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "feedback_id"}, {Name: "order"}},
+		DoNothing: true,
+	}).Create(&points)
+	if res.Error != nil {
+		return 0, fmt.Errorf("error creating workout feedback points: %w", res.Error)
+	}
+	return res.RowsAffected, nil
+}
+
+// GetPointsByFeedback devuelve el recorrido completo de la serie, ordenado por
+// "order" (el ordinal 0-based del punto dentro de la serie).
+func (d *workoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
+	var points []dbs.WorkoutFeedbackPoint
+	if err := d.DB.
+		Where("feedback_id = ?", feedbackID).
+		Order(`"order"`).
+		Find(&points).Error; err != nil {
+		return nil, fmt.Errorf("error getting workout feedback points: %w", err)
+	}
+	return points, nil
 }
 
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.

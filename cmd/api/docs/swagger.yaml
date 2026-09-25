@@ -2063,10 +2063,57 @@ definitions:
     - report_source
     - session_date
     type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest:
+    properties:
+      points:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput'
+        type: array
+    required:
+    - points
+    type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse:
     properties:
       data:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse'
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput:
+    properties:
+      exercise_instance_id:
+        type: integer
+      latitude:
+        type: number
+      longitude:
+        type: number
+      order:
+        type: integer
+      recorded_at:
+        type: string
+      session_instance_id:
+        type: integer
+    required:
+    - recorded_at
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData:
+    properties:
+      created:
+        type: integer
+      skipped:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData'
       message:
         type: string
     type: object
@@ -2123,6 +2170,25 @@ definitions:
         type: integer
       weight_kg:
         type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse:
+    properties:
+      exercise_instance_id:
+        type: integer
+      feedback_id:
+        type: integer
+      id:
+        type: integer
+      latitude:
+        type: number
+      longitude:
+        type: number
+      order:
+        type: integer
+      recorded_at:
+        type: string
+      session_instance_id:
+        type: integer
     type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse:
     properties:
@@ -2206,15 +2272,15 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: dev@paceron.com
+    email: dev@example.com
     name: API Support
-  description: API para el registro y gestión de usuarios de Paceron
+  description: Base scaffolding for Go APIs with Gin framework
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Paceron Backend API
-  version: "1.0"
+  title: Simple Arq Golang API
+  version: 1.0.0
 paths:
   /api/v1/attendance/qr:
     get:
@@ -6495,6 +6561,84 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Editar feedback
+      tags:
+      - workout-feedback
+  /api/v1/workout-feedback/{id}/points:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve el recorrido GPS de la serie ordenado por order. Visible
+        solo para el atleta, el reportante o el owner del equipo.
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar puntos GPS de una serie de feedback
+      tags:
+      - workout-feedback
+    post:
+      consumes:
+      - application/json
+      description: 'Registra el recorrido GPS de la serie (bulk idempotente por (feedback_id,
+        order)). Reintentar el mismo recorrido no duplica ni falla: responde { created,
+        skipped }. Utilizable por el atleta, el reportante o el owner del equipo.'
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Puntos del recorrido
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Registrar puntos GPS de una serie de feedback
       tags:
       - workout-feedback
   /api/v1/workout-feedback/search:

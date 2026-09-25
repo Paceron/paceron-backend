@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgtype"
@@ -25,6 +26,8 @@ type mockWorkoutFeedbackService struct {
 	searchFn    func(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
 	updateFn    func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
 	softDeleteFn func(ctx *gin.Context, authUserID, feedbackID int64) error
+	createPointsFn func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
+	getPointsFn    func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 }
 
 func (m *mockWorkoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
@@ -60,6 +63,20 @@ func (m *mockWorkoutFeedbackService) SoftDelete(ctx *gin.Context, authUserID, fe
 		return m.softDeleteFn(ctx, authUserID, feedbackID)
 	}
 	return nil
+}
+
+func (m *mockWorkoutFeedbackService) CreatePoints(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error) {
+	if m.createPointsFn != nil {
+		return m.createPointsFn(ctx, authUserID, feedbackID, req)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackService) GetPoints(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
+	if m.getPointsFn != nil {
+		return m.getPointsFn(ctx, authUserID, feedbackID)
+	}
+	return nil, nil
 }
 
 // fixtureFeedback arma un feedback persistido con media_urls lista en []string,
@@ -330,9 +347,142 @@ func setupWorkoutFeedbackRouter(svc services.WorkoutFeedbackServiceInterface, au
 	})
 	ctrl := NewWorkoutFeedbackController(svc)
 	r.POST("/workout-feedback", ctrl.Create)
+	r.GET("/workout-feedback/:id/points", ctrl.GetPoints)
+	r.POST("/workout-feedback/:id/points", ctrl.CreatePoints)
 	r.GET("/workout-feedback/:id", ctrl.GetByID)
 	r.GET("/workout-feedback/search", ctrl.Search)
 	r.PUT("/workout-feedback/:id", ctrl.Update)
 	r.DELETE("/workout-feedback/:id", ctrl.Delete)
 	return r
+}
+
+func TestWorkoutFeedbackController_CreatePoints_Success(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		createPointsFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error) {
+			assert.Equal(t, int64(1), feedbackID)
+			return &services.PointsResult{Created: 2, Skipped: 1}, nil
+		},
+	}
+	controller := NewWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	body := `{"points":[
+		{"order":0,"session_instance_id":3,"exercise_instance_id":4,"latitude":-34.6,"longitude":-58.4,"recorded_at":"2026-09-24T14:00:00Z"},
+		{"order":1,"session_instance_id":3,"exercise_instance_id":4,"latitude":-34.61,"longitude":-58.41,"recorded_at":"2026-09-24T14:00:01Z"}
+	]}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/workout-feedback/1/points", strings.NewReader(body))
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	controller.CreatePoints(c)
+
+	require.Equal(t, http.StatusCreated, response.Code)
+	var resp workoutfeedback.PointsMutationResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, workoutfeedback.MsgPointsCreated, resp.Message)
+	assert.Equal(t, 2, resp.Data.Created)
+	assert.Equal(t, 1, resp.Data.Skipped)
+}
+
+func TestWorkoutFeedbackController_CreatePoints_InvalidPayload(t *testing.T) {
+	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/workout-feedback/1/points", strings.NewReader(`{"points":"x"}`))
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	controller.CreatePoints(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestWorkoutFeedbackController_CreatePoints_InvalidID(t *testing.T) {
+	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/workout-feedback/abc/points", strings.NewReader(`{"points":[{"order":0,"recorded_at":"2026-09-24T14:00:00Z"}]}`))
+	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	controller.CreatePoints(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestWorkoutFeedbackController_CreatePoints_ErrorMapping(t *testing.T) {
+	cases := []struct {
+		name         string
+		serviceErr   error
+		expectedCode int
+	}{
+		{"invalid -> 400", services.ErrWorkoutFeedbackInvalid, http.StatusBadRequest},
+		{"forbidden -> 403", services.ErrWorkoutFeedbackForbidden, http.StatusForbidden},
+		{"not found -> 404", daos.ErrWorkoutFeedbackNotFound, http.StatusNotFound},
+		{"unknown -> 500", assert.AnError, http.StatusInternalServerError},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSvc := &mockWorkoutFeedbackService{
+				createPointsFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error) {
+					return nil, tc.serviceErr
+				},
+			}
+			controller := NewWorkoutFeedbackController(mockSvc)
+
+			response := httptest.NewRecorder()
+			body := `{"points":[{"order":0,"recorded_at":"2026-09-24T14:00:00Z"}]}`
+			c, _ := gin.CreateTestContext(response)
+			c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/workout-feedback/1/points", strings.NewReader(body))
+			c.Params = []gin.Param{{Key: "id", Value: "1"}}
+			c.Request.Header.Set("Content-Type", "application/json")
+			setAuthUserID(c, 7)
+			controller.CreatePoints(c)
+
+			assert.Equal(t, tc.expectedCode, response.Code)
+		})
+	}
+}
+
+func TestWorkoutFeedbackController_GetPoints_Success(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		getPointsFn: func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
+			assert.Equal(t, int64(1), feedbackID)
+			return []dbs.WorkoutFeedbackPoint{
+				{ID: 11, FeedbackID: 1, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 0, Latitude: -34.6, Longitude: -58.4, RecordedAt: time.Date(2026, 9, 24, 14, 0, 0, 0, time.UTC)},
+			}, nil
+		},
+	}
+	controller := NewWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/workout-feedback/1/points", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 7)
+	controller.GetPoints(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	var resp workoutfeedback.PointsListResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	assert.Equal(t, 0, resp.Data[0].Order)
+	assert.Equal(t, -34.6, resp.Data[0].Latitude)
+}
+
+func TestWorkoutFeedbackController_GetPoints_InvalidID(t *testing.T) {
+	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/workout-feedback/0/points", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "0"}}
+	setAuthUserID(c, 7)
+	controller.GetPoints(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }

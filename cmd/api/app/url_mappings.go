@@ -197,6 +197,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Workout Feedback (feedback de entrenamiento)
 	r.GET("/api/v1/workout-feedback/search", app.workoutFeedbackController.Search)
+	r.GET("/api/v1/workout-feedback/:id/points", app.workoutFeedbackController.GetPoints)
+	r.POST("/api/v1/workout-feedback/:id/points", app.workoutFeedbackController.CreatePoints)
 	r.GET("/api/v1/workout-feedback/:id", app.workoutFeedbackController.GetByID)
 	r.POST("/api/v1/workout-feedback", app.workoutFeedbackController.Create)
 	r.PUT("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Update)

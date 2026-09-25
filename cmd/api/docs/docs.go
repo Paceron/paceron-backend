@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@paceron.com"
+            "email": "dev@example.com"
         },
         "license": {
             "name": "MIT",
@@ -6420,6 +6420,119 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/workout-feedback/{id}/points": {
+            "get": {
+                "description": "Devuelve el recorrido GPS de la serie ordenado por order. Visible solo para el atleta, el reportante o el owner del equipo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Listar puntos GPS de una serie de feedback",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del feedback",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Registra el recorrido GPS de la serie (bulk idempotente por (feedback_id, order)). Reintentar el mismo recorrido no duplica ni falla: responde { created, skipped }. Utilizable por el atleta, el reportante o el owner del equipo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Registrar puntos GPS de una serie de feedback",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del feedback",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Puntos del recorrido",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/callbackauth": {
             "get": {
                 "description": "Loguea todos los query params recibidos (util para debug de OAuth callback)",
@@ -9483,11 +9596,84 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest": {
+            "type": "object",
+            "required": [
+                "points"
+            ],
+            "properties": {
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput"
+                    }
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput": {
+            "type": "object",
+            "required": [
+                "recorded_at"
+            ],
+            "properties": {
+                "exercise_instance_id": {
+                    "type": "integer"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "recorded_at": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData"
                 },
                 "message": {
                     "type": "string"
@@ -9573,6 +9759,35 @@ const docTemplate = `{
                 },
                 "weight_kg": {
                     "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse": {
+            "type": "object",
+            "properties": {
+                "exercise_instance_id": {
+                    "type": "integer"
+                },
+                "feedback_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "order": {
+                    "type": "integer"
+                },
+                "recorded_at": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -9701,12 +9916,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
+	Version:          "1.0.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Paceron Backend API",
-	Description:      "API para el registro y gestión de usuarios de Paceron",
+	Title:            "Simple Arq Golang API",
+	Description:      "Base scaffolding for Go APIs with Gin framework",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
