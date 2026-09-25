@@ -60,6 +60,10 @@ type WorkoutFeedbackDAOInterface interface {
 	// Search devuelve los feedbacks activos que cumplen los filtros (WHERE dinámico,
 	// scopes y filtros ya autorizados por el service).
 	Search(ctx *gin.Context, filters WorkoutFeedbackSearchFilters) ([]dbs.WorkoutFeedback, error)
+	// GetBySession devuelve los feedbacks activos de una sesión asignada (y de
+	// un atleta en particular si viene), ordenados por (assigned_exercise_id,
+	// set_number, id) — el orden de la pantalla de revisión por ejercicio/serie.
+	GetBySession(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
 
 	// BulkCreatePoints inserta en un solo batch los puntos del recorrido de una
 	// serie. Idempotente por (feedback_id, "order") vía el índice único
@@ -222,6 +226,23 @@ func (d *workoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID in
 		return nil, fmt.Errorf("error getting workout feedback points: %w", err)
 	}
 	return points, nil
+}
+
+// GetBySession devuelve los feedbacks activos de una sesión asignada, con un
+// orden estable por (assigned_exercise_id, set_number, id) — el agrupamiento
+// por ejercicio/serie que la pantalla de revisión espera. athlete_user_id
+// opcional restringe al atleta. Solo feedbacks con deleted_at IS NULL.
+func (d *workoutFeedbackDao) GetBySession(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+	query := d.DB.Model(&dbs.WorkoutFeedback{}).
+		Where("assigned_session_id = ? AND deleted_at IS NULL", sessionInstanceID)
+	if athleteUserID != nil {
+		query = query.Where("athlete_user_id = ?", *athleteUserID)
+	}
+	var feedbacks []dbs.WorkoutFeedback
+	if err := query.Order("assigned_exercise_id, set_number, id").Find(&feedbacks).Error; err != nil {
+		return nil, fmt.Errorf("error getting session feedback: %w", err)
+	}
+	return feedbacks, nil
 }
 
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.
