@@ -4,8 +4,8 @@
 
 ## 2. Constantes de estado de pago
 
-- [ ] 2.1 Crear `cmd/api/domains/constants/payment_status.go` con los estados de Mercado Pago, los grupos (`approved`, `pending`, `rejected`, `refunded`), `PaymentStatusGroup()` y `StatusesForGroup()`.
-- [ ] 2.2 Tests en `payment_status_test.go`.
+- [x] 2.1 Crear `cmd/api/domains/constants/payment_status.go` con los estados de Mercado Pago, los grupos (`approved`, `pending`, `rejected`, `refunded`), `PaymentStatusGroup()` y `StatusesForGroup()`.
+- [x] 2.2 Tests en `payment_status_test.go`.
 
 ## 3. DTOs e índice
 
