@@ -1197,6 +1197,51 @@ definitions:
         description: Nuevo nombre del rol (opcional)
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_runnersession.CreateRunnerSessionRequest:
+    properties:
+      athlete_user_id:
+        type: integer
+      start_date:
+        type: string
+    required:
+    - start_date
+    type: object
+  simple-arq-golang_cmd_api_domains_runnersession.MutationResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse'
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionListResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse'
+    type: object
+  simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse:
+    properties:
+      athlete_user_id:
+        type: integer
+      end_date:
+        type: string
+      id:
+        type: integer
+      session_instance_id:
+        type: integer
+      start_date:
+        type: string
+      status:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_runnersession.RunnerStatusRequest:
+    properties:
+      athlete_user_id:
+        type: integer
+      status:
+        type: string
+    required:
+    - status
+    type: object
   simple-arq-golang_cmd_api_domains_session.SessionExerciseRequest:
     properties:
       exercise_id:
@@ -2063,10 +2108,57 @@ definitions:
     - report_source
     - session_date
     type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest:
+    properties:
+      points:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput'
+        type: array
+    required:
+    - points
+    type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.MutationResponse:
     properties:
       data:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse'
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointInput:
+    properties:
+      exercise_instance_id:
+        type: integer
+      latitude:
+        type: number
+      longitude:
+        type: number
+      order:
+        type: integer
+      recorded_at:
+        type: string
+      session_instance_id:
+        type: integer
+    required:
+    - recorded_at
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData:
+    properties:
+      created:
+        type: integer
+      skipped:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationData'
       message:
         type: string
     type: object
@@ -2123,6 +2215,25 @@ definitions:
         type: integer
       weight_kg:
         type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse:
+    properties:
+      exercise_instance_id:
+        type: integer
+      feedback_id:
+        type: integer
+      id:
+        type: integer
+      latitude:
+        type: number
+      longitude:
+        type: number
+      order:
+        type: integer
+      recorded_at:
+        type: string
+      session_instance_id:
+        type: integer
     type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackResponse:
     properties:
@@ -2206,15 +2317,15 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: dev@paceron.com
+    email: dev@example.com
     name: API Support
-  description: API para el registro y gestión de usuarios de Paceron
+  description: Base scaffolding for Go APIs with Gin framework
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Paceron Backend API
-  version: "1.0"
+  title: Simple Arq Golang API
+  version: 1.0.0
 paths:
   /api/v1/attendance/qr:
     get:
@@ -4270,6 +4381,174 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/session-instances/{id}/feedback:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve los feedbacks activos de la sesión (del atleta self por
+        default, o del atleta indicado si el auth es entrenador del equipo), ordenados
+        por ejercicio y serie. Las series sin feedback no aparecen.
+      parameters:
+      - description: ID de la sesión asignada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'ID del atleta (default: usuario autenticado)'
+        in: query
+        name: athlete_user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.SearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar feedbacks de una sesión asignada
+      tags:
+      - workout-feedback
+  /api/v1/session-instances/{id}/runner:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve el estado actual de la sesión para el atleta (self por
+        default o el indicado si el auth es entrenador del equipo).
+      parameters:
+      - description: ID de la sesión asignada
+        in: path
+        name: id
+        type: integer
+      - description: 'ID del atleta (default: usuario autenticado)'
+        in: query
+        name: athlete_user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Consultar estado de la sesión del corredor
+      tags:
+      - runner-session
+    patch:
+      consumes:
+      - application/json
+      description: 'Pasa el estado a finished con end_date seteada por el servidor
+        (solo desde wip). Idempotente: ya finished responde 200 sin cambios.'
+      parameters:
+      - description: ID de la sesión asignada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Status (finished)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.RunnerStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Marcar la sesión del corredor como completada
+      tags:
+      - runner-session
+    post:
+      consumes:
+      - application/json
+      description: 'Crea el estado de la sesión en wip para el atleta (self por default
+        o el indicado si el auth es entrenador del equipo). Idempotente: si ya existía,
+        responde 200 con el estado actual sin pisar start_date ni bajar de finished
+        a wip.'
+      parameters:
+      - description: ID de la sesión asignada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del estado
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.CreateRunnerSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Registrar estado de sesión del corredor (wip)
+      tags:
+      - runner-session
   /api/v1/sessions:
     get:
       parameters:
@@ -6495,6 +6774,84 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Editar feedback
+      tags:
+      - workout-feedback
+  /api/v1/workout-feedback/{id}/points:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve el recorrido GPS de la serie ordenado por order. Visible
+        solo para el atleta, el reportante o el owner del equipo.
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar puntos GPS de una serie de feedback
+      tags:
+      - workout-feedback
+    post:
+      consumes:
+      - application/json
+      description: 'Registra el recorrido GPS de la serie (bulk idempotente por (feedback_id,
+        order)). Reintentar el mismo recorrido no duplica ni falla: responde { created,
+        skipped }. Utilizable por el atleta, el reportante o el owner del equipo.'
+      parameters:
+      - description: ID del feedback
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Puntos del recorrido
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.CreatePointsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.PointsMutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Registrar puntos GPS de una serie de feedback
       tags:
       - workout-feedback
   /api/v1/workout-feedback/search:

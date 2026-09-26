@@ -24,6 +24,9 @@ type WorkoutFeedbackController interface {
 	Search(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	CreatePoints(c *gin.Context)
+	GetPoints(c *gin.Context)
+	GetBySession(c *gin.Context)
 }
 
 type workoutFeedbackController struct {
@@ -109,9 +112,187 @@ func toWorkoutFeedbackResponse(feedback *dbs.WorkoutFeedback) workoutfeedback.Wo
 		Cadence:             feedback.Cadence,
 		Annotations:         feedback.Annotations,
 		MediaURLs:           mediaURLs,
+		PointsCount:         feedback.PointsCount,
 		CreatedAt:           feedback.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:           feedback.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+// toWorkoutFeedbackPointResponse mapea el modelo de punto a su shape plano.
+func toWorkoutFeedbackPointResponse(point *dbs.WorkoutFeedbackPoint) workoutfeedback.WorkoutFeedbackPointResponse {
+	return workoutfeedback.WorkoutFeedbackPointResponse{
+		ID:                 point.ID,
+		FeedbackID:         point.FeedbackID,
+		SessionInstanceID:  point.SessionInstanceID,
+		ExerciseInstanceID: point.ExerciseInstanceID,
+		Order:              point.Order,
+		Latitude:           point.Latitude,
+		Longitude:          point.Longitude,
+		RecordedAt:         point.RecordedAt,
+	}
+}
+
+// CreatePoints godoc
+// @Summary      Registrar puntos GPS de una serie de feedback
+// @Description  Registra el recorrido GPS de la serie (bulk idempotente por (feedback_id, order)). Reintentar el mismo recorrido no duplica ni falla: responde { created, skipped }. Utilizable por el atleta, el reportante o el owner del equipo.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id    path  int                                true  "ID del feedback"
+// @Param        body  body  workoutfeedback.CreatePointsRequest true  "Puntos del recorrido"
+// @Success      201  {object}  workoutfeedback.PointsMutationResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/workout-feedback/{id}/points [post]
+func (fc *workoutFeedbackController) CreatePoints(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	feedbackID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	var req workoutfeedback.CreatePointsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	result, err := fc.workoutFeedbackService.CreatePoints(c, authUserID, feedbackID, req)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, workoutfeedback.PointsMutationResponse{
+		Message: workoutfeedback.MsgPointsCreated,
+		Data: workoutfeedback.PointsMutationData{
+			Created: result.Created,
+			Skipped: result.Skipped,
+		},
+	})
+}
+
+// GetPoints godoc
+// @Summary      Listar puntos GPS de una serie de feedback
+// @Description  Devuelve el recorrido GPS de la serie ordenado por order. Visible solo para el atleta, el reportante o el owner del equipo.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id  path  int  true  "ID del feedback"
+// @Success      200  {object}  workoutfeedback.PointsListResponse
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/workout-feedback/{id}/points [get]
+func (fc *workoutFeedbackController) GetPoints(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	feedbackID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	points, err := fc.workoutFeedbackService.GetPoints(c, authUserID, feedbackID)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+
+	response := make([]workoutfeedback.WorkoutFeedbackPointResponse, 0, len(points))
+	for i := range points {
+		response = append(response, toWorkoutFeedbackPointResponse(&points[i]))
+	}
+	c.JSON(http.StatusOK, workoutfeedback.PointsListResponse{Data: response})
+}
+
+// GetBySession godoc
+// @Summary      Listar feedbacks de una sesión asignada
+// @Description  Devuelve los feedbacks activos de la sesión (del atleta self por default, o del atleta indicado si el auth es entrenador del equipo), ordenados por ejercicio y serie. Las series sin feedback no aparecen.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id              path  int  true  "ID de la sesión asignada"
+// @Param        athlete_user_id query int  false "ID del atleta (default: usuario autenticado)"
+// @Success      200  {object}  workoutfeedback.SearchResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Router       /api/v1/session-instances/{id}/feedback [get]
+func (fc *workoutFeedbackController) GetBySession(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	sessionInstanceID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	athleteUserID, err := parseOptionalPositiveQueryParam(c, "athlete_user_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	records, err := fc.workoutFeedbackService.GetSessionFeedback(c, authUserID, sessionInstanceID, athleteUserID)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+
+	response := make([]workoutfeedback.WorkoutFeedbackResponse, 0, len(records))
+	for i := range records {
+		response = append(response, toWorkoutFeedbackResponse(&records[i]))
+	}
+	c.JSON(http.StatusOK, workoutfeedback.SearchResponse{Data: response})
 }
 
 // Create godoc

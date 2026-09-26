@@ -97,6 +97,8 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.PlanDay{},
 		&dbs.GroupCalendarDay{},
 		&dbs.WorkoutFeedback{},
+		&dbs.WorkoutFeedbackPoint{},
+		&dbs.RunnerSession{},
 		// Instancias de asignacion-por-instanciacion (design.md D1): copias
 		// inmutables del catálogo, separadas de exercises/sessions.
 		&dbs.ExerciseInstance{},
@@ -196,6 +198,16 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		END IF;
 	END $$;`).Error; err != nil {
 		customlogger.Error(nil, "error creating rpe check on workout_feedback", err)
+		return nil, err
+	}
+
+	// 6bis. workout_feedback_points: "un punto por posición de serie" vía índice
+	// único — la idempotencia del bulk POST /workout-feedback/:id/points se apoya
+	// en esto (INSERT ... ON CONFLICT DO NOTHING). Ver change
+	// workout-feedback-gps-points. Idempotente (IF NOT EXISTS).
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_point_order
+		ON workout_feedback_points (feedback_id, "order");`).Error; err != nil {
+		customlogger.Error(nil, "error creating unique index on workout_feedback_points", err)
 		return nil, err
 	}
 
