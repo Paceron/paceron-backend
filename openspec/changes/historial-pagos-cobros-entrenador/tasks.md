@@ -35,8 +35,8 @@
 
 ## 8. Controller
 
-- [ ] 8.1 Crear `cmd/api/controllers/payment_history_controller.go` con los tres handlers y su godoc.
-- [ ] 8.2 Tests: 200, 400, 401 y 500.
+- [x] 8.1 Crear `cmd/api/controllers/payment_history_controller.go` con los tres handlers y su godoc.
+- [x] 8.2 Tests: 200, 400, 401 y 500.
 
 ## 9. Wiring, rutas y swagger
 
