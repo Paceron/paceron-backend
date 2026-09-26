@@ -40,8 +40,8 @@
 
 ## 9. Wiring, rutas y swagger
 
-- [ ] 9.1 Wiring en `cmd/api/app/app.go` y rutas en `cmd/api/app/url_mappings.go`.
-- [ ] 9.2 Regenerar swagger con `swag init --parseDependency -g cmd/api/docs.go --output cmd/api/docs`.
+- [x] 9.1 Wiring en `cmd/api/app/app.go` y rutas en `cmd/api/app/url_mappings.go`.
+- [x] 9.2 Regenerar swagger con `swag init --parseDependency -g cmd/api/docs.go --output cmd/api/docs`.
 
 ## 10. Deuda técnica y cierre
 

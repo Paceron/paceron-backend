@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
+	"simple-arq-golang/cmd/api/domains/payment"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -20,6 +21,14 @@ type PaymentHistoryController interface {
 	GetReceivedSummary(c *gin.Context)
 	ListMine(c *gin.Context)
 }
+
+// Los tipos de respuesta se nombran acá para que swag los resuelva: los
+// handlers devuelven lo que arma el service y no los referencian en el código.
+var (
+	_ *payment.ReceivedPaymentsResponse
+	_ *payment.ReceivedSummaryResponse
+	_ *payment.TierPaymentsResponse
+)
 
 type paymentHistoryController struct {
 	service services.PaymentHistoryServiceInterface
