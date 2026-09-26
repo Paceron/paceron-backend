@@ -14,14 +14,14 @@
 
 ## 4. DAO de cobros recibidos
 
-- [ ] 4.1 Crear `cmd/api/daos/payment_history_dao.go` con `ListReceived` (paginado, filtros por equipo y estado) y `ListReceivedSince` (sin paginar, para el resumen).
-- [ ] 4.2 Excluir filas con `payment_id` vacío y extraer el neto real de `raw_response`.
-- [ ] 4.3 Tests contra Postgres: filtro por vendedor y concepto, filas sin `payment_id`, neto de webhook y de `ProcessPayment`, filtros, orden y `has_more`, error de DB.
+- [x] 4.1 Crear `cmd/api/daos/payment_history_dao.go` con `ListReceived` (paginado, filtros por equipo y estado) y `ListReceivedSince` (sin paginar, para el resumen).
+- [x] 4.2 Excluir filas con `payment_id` vacío y extraer el neto real de `raw_response`.
+- [x] 4.3 Tests contra Postgres: filtro por vendedor y concepto, filas sin `payment_id`, neto de webhook y de `ProcessPayment`, filtros, orden y `has_more`, error de DB.
 
 ## 5. DAO de pagos de tier
 
-- [ ] 5.1 Agregar `ListMyTierPayments` al mismo DAO (JOIN a `installments.subscription_id`, filtro opcional por rol).
-- [ ] 5.2 Tests: pago `order` con cuota de tier, cuota de equipo excluida, filtro por rol, error de DB.
+- [x] 5.1 Agregar `ListMyTierPayments` al mismo DAO (JOIN a `installments.subscription_id`, filtro opcional por rol).
+- [x] 5.2 Tests: pago `order` con cuota de tier, cuota de equipo excluida, filtro por rol, error de DB.
 
 ## 6. Service de listados
 
