@@ -4,13 +4,13 @@
 
 ## 2. Constantes de estado de pago
 
-- [x] 2.1 Crear `cmd/api/domains/constants/payment_status.go` con los estados de Mercado Pago, los grupos (`approved`, `pending`, `rejected`, `refunded`), `PaymentStatusGroup()` y `StatusesForGroup()`.
+- [x] 2.1 Crear `cmd/api/domains/constants/payment_status.go` con los estados de Mercado Pago, los grupos (`approved`, `pending`, `rejected`, `refunded`), `GroupOfPaymentStatus()` y `StatusesForGroup()`.
 - [x] 2.2 Tests en `payment_status_test.go`.
 
 ## 3. DTOs e índice
 
-- [ ] 3.1 Crear `cmd/api/domains/payment/payment_history.go` con los DTOs del contrato.
-- [ ] 3.2 Agregar `index` a `SellerUserID` en `cmd/api/domains/dbs/payment.go`.
+- [x] 3.1 Crear `cmd/api/domains/payment/payment_history.go` con los DTOs del contrato.
+- [x] 3.2 Agregar `index` a `SellerUserID` en `cmd/api/domains/dbs/payment.go`.
 
 ## 4. DAO de cobros recibidos
 
