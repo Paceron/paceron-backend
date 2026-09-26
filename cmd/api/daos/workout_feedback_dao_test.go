@@ -407,12 +407,25 @@ func TestWorkoutFeedbackDao_CreatePoints_IdempotentRetry(t *testing.T) {
 		{FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 1, Latitude: -34.61, Longitude: -58.41, RecordedAt: time.Date(2026, 9, 24, 14, 0, 1, 0, time.UTC)},
 	}
 
+	// El caller real (service) arma un slice nuevo desde el request en cada POST,
+	// siempre con ID en 0. Este test reusa el mismo slice, así que hay que
+	// reiniciar la primary key entre intentos: GORM la escribe atrás del primer
+	// insert, y con un ID ya seteado su camino ScanOnConflictDoNothing toma el
+	// elemento por "fila saltada" y created sale distinto del real (mismo
+	// criterio que el dup.ID = 0 del feedback más arriba).
+	resetIDs := func() {
+		for i := range points {
+			points[i].ID = 0
+		}
+	}
+
 	created1, err := dao.BulkCreatePoints(nil, feedback.ID, points)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), created1)
 
 	// Reintento del MISMO bulk: el índice único uq_feedback_point_order +
 	// ON CONFLICT DO NOTHING deja todo como skipped, sin error ni duplicados.
+	resetIDs()
 	created2, err := dao.BulkCreatePoints(nil, feedback.ID, points)
 
 	require.NoError(t, err)
@@ -422,6 +435,7 @@ func TestWorkoutFeedbackDao_CreatePoints_IdempotentRetry(t *testing.T) {
 	points = append(points, dbs.WorkoutFeedbackPoint{
 		FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 2, Latitude: -34.62, Longitude: -58.42, RecordedAt: time.Date(2026, 9, 24, 14, 0, 2, 0, time.UTC),
 	})
+	resetIDs()
 	created3, err := dao.BulkCreatePoints(nil, feedback.ID, points)
 
 	require.NoError(t, err)
@@ -470,20 +484,28 @@ func TestWorkoutFeedbackDao_GetBySession_OrderAndFilter(t *testing.T) {
 	testFeedback(t, db, 1, 1, 1, 1, nil, 0) // ex 1, set 0
 	testFeedback(t, db, 1, 1, 1, 1, nil, 1) // ex 1, set 1
 	testFeedback(t, db, 1, 1, 1, 2, nil, 0) // ex 2, set 0
-	// Sesión 2 (aislada) y otro atleta en sesión 1 (aislado del filtro).
+	// Sesión 2 (aislada por assigned_session_id) y otro atleta en la sesión 1:
+	// con athleteUserID nil NO se filtra por atleta, así que el feedback del
+	// atleta 2 también entra — el filtro por atleta lo cubre el test siguiente.
 	testFeedback(t, db, 1, 1, 2, 1, nil, 0)
 	testFeedback(t, db, 2, 2, 1, 1, nil, 0)
 
 	feedbacks, err := dao.GetBySession(nil, 1, nil)
 
 	require.NoError(t, err)
-	require.Len(t, feedbacks, 3)
+	require.Len(t, feedbacks, 4)
+	// ex 1 / set 0 del atleta 1, luego el del atleta 2 (mismo set, id mayor),
+	// después ex 1 / set 1 y al final ex 2 / set 0.
 	assert.Equal(t, int64(1), feedbacks[0].AssignedExerciseID)
 	assert.Equal(t, 0, feedbacks[0].SetNumber)
+	assert.Equal(t, int64(1), feedbacks[0].AthleteUserID)
 	assert.Equal(t, int64(1), feedbacks[1].AssignedExerciseID)
-	assert.Equal(t, 1, feedbacks[1].SetNumber)
-	assert.Equal(t, int64(2), feedbacks[2].AssignedExerciseID)
-	assert.Equal(t, 0, feedbacks[2].SetNumber)
+	assert.Equal(t, 0, feedbacks[1].SetNumber)
+	assert.Equal(t, int64(2), feedbacks[1].AthleteUserID)
+	assert.Equal(t, int64(1), feedbacks[2].AssignedExerciseID)
+	assert.Equal(t, 1, feedbacks[2].SetNumber)
+	assert.Equal(t, int64(2), feedbacks[3].AssignedExerciseID)
+	assert.Equal(t, 0, feedbacks[3].SetNumber)
 }
 
 func TestWorkoutFeedbackDao_GetBySession_FilterByAthlete(t *testing.T) {
