@@ -42,6 +42,10 @@ type WorkoutFeedback struct {
 	CreatedAt           time.Time        `gorm:"column:created_at;autoCreateTime"`                                                                                        // Fecha de creación
 	UpdatedAt           time.Time        `gorm:"column:updated_at;autoUpdateTime"`                                                                                        // Fecha de última modificación
 	DeletedAt           *time.Time       `gorm:"column:deleted_at"`                                                                                                       // Baja lógica (nil = activo)
+	// PointsCount NO es una columna: se llena en GetBySession con un COUNT
+	// agregado para que el listado por sesión exponga cuántos puntos GPS tiene
+	// cada serie. gorm:"-" lo excluye de toda lectura/escritura.
+	PointsCount int64 `gorm:"-" json:"-"`
 }
 
 func (WorkoutFeedback) TableName() string {

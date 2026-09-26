@@ -232,6 +232,11 @@ func (d *workoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID in
 // orden estable por (assigned_exercise_id, set_number, id) — el agrupamiento
 // por ejercicio/serie que la pantalla de revisión espera. athlete_user_id
 // opcional restringe al atleta. Solo feedbacks con deleted_at IS NULL.
+//
+// Además llena WorkoutFeedback.PointsCount con un UN aggregate COUNT agrupado
+// por feedback_id (no un query por fila): el frontend necesita saber si cada
+// serie tiene trayectoria GPS para dibujar, y hacerlo con N queries sobre
+// workout_feedback_points sería un N+1 sobre toda la sesión.
 func (d *workoutFeedbackDao) GetBySession(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
 	query := d.DB.Model(&dbs.WorkoutFeedback{}).
 		Where("assigned_session_id = ? AND deleted_at IS NULL", sessionInstanceID)
@@ -242,7 +247,45 @@ func (d *workoutFeedbackDao) GetBySession(ctx *gin.Context, sessionInstanceID in
 	if err := query.Order("assigned_exercise_id, set_number, id").Find(&feedbacks).Error; err != nil {
 		return nil, fmt.Errorf("error getting session feedback: %w", err)
 	}
+	if err := d.attachPointsCounts(ctx, feedbacks); err != nil {
+		return nil, err
+	}
 	return feedbacks, nil
+}
+
+// attachPointsCounts llena PointsCount en cada feedback con un solo COUNT
+// agrupado. Si la consulta de conteo falla no aborta el listado: la distancia y
+// los datos del feedback son valiosos aunque el conteo de puntos no venga.
+func (d *workoutFeedbackDao) attachPointsCounts(ctx *gin.Context, feedbacks []dbs.WorkoutFeedback) error {
+	if len(feedbacks) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(feedbacks))
+	for _, f := range feedbacks {
+		ids = append(ids, f.ID)
+	}
+
+	var rows []struct {
+		FeedbackID int64
+		Count      int64
+	}
+	err := d.DB.Model(&dbs.WorkoutFeedbackPoint{}).
+		Select("feedback_id, COUNT(*) AS count").
+		Where("feedback_id IN ?", ids).
+		Group("feedback_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil
+	}
+
+	counts := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		counts[r.FeedbackID] = r.Count
+	}
+	for i := range feedbacks {
+		feedbacks[i].PointsCount = counts[feedbacks[i].ID]
+	}
+	return nil
 }
 
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.

@@ -92,8 +92,14 @@ type WorkoutFeedbackResponse struct {
 	Cadence             *int16   `json:"cadence"`
 	Annotations         *string  `json:"annotations"`
 	MediaURLs           []string `json:"media_urls"`
-	CreatedAt           string   `json:"created_at"`
-	UpdatedAt           string   `json:"updated_at"`
+	// PointsCount = cuántos puntos GPS tiene esta serie. No es una columna de
+	// workout_feedback: se calcula con un COUNT agregado sobre
+	// workout_feedback_points cuando el DAO arma la lista (GetBySession), para
+	// que la pantalla de revisión sepa si hay trayectoria para dibujar sin
+	// pedir el detalle de cada serie (N+1).
+	PointsCount int64  `json:"points_count"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // MutationResponse es la respuesta de create/update/delete (mensaje + recurso).

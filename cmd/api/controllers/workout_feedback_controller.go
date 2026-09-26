@@ -112,6 +112,7 @@ func toWorkoutFeedbackResponse(feedback *dbs.WorkoutFeedback) workoutfeedback.Wo
 		Cadence:             feedback.Cadence,
 		Annotations:         feedback.Annotations,
 		MediaURLs:           mediaURLs,
+		PointsCount:         feedback.PointsCount,
 		CreatedAt:           feedback.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:           feedback.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
