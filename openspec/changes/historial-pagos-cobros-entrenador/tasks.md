@@ -25,8 +25,8 @@
 
 ## 6. Service de listados
 
-- [ ] 6.1 Crear `cmd/api/services/payment_history_service.go` con `ListReceived` y `ListMyTierPayments`: validación de parámetros y mapeo a DTO.
-- [ ] 6.2 Tests con mock del DAO.
+- [x] 6.1 Crear `cmd/api/services/payment_history_service.go` con `ListReceived` y `ListMyTierPayments`: validación de parámetros y mapeo a DTO.
+- [x] 6.2 Tests con mock del DAO.
 
 ## 7. Resumen mensual
 
