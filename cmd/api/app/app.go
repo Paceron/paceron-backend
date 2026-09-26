@@ -46,6 +46,7 @@ type Application struct {
 	calendarController         controllers.CalendarController
 	pushTokenController        controllers.PushTokenController
 	paymentController          controllers.PaymentController
+	paymentHistoryController   controllers.PaymentHistoryController
 	tierSubscriptionController controllers.TierSubscriptionController
 	// suscripcion-teams-split
 	mpConnectController         controllers.MPConnectControllerInterface
@@ -267,6 +268,11 @@ func NewApplication() *Application {
 		sellerConnDao, teamDao, teamUserDao, settingDao, installmentDao, encryptor)
 	paymentController := controllers.NewPaymentController(paymentService)
 
+	// Historial de pagos y cobros (change historial-pagos-cobros-entrenador)
+	paymentHistoryDao := daos.NewPaymentHistoryDao(db)
+	paymentHistoryService := services.NewPaymentHistoryService(paymentHistoryDao)
+	paymentHistoryController := controllers.NewPaymentHistoryController(paymentHistoryService)
+
 	// Tier subscription flow (ledger de suscripciones de tier por usuario/rol)
 	tierSubscriptionService := services.NewTierSubscriptionService(db, userRoleDao, roleDao, tierDao, tierSubscriptionDao, installmentDao)
 	tierSubscriptionController := controllers.NewTierSubscriptionController(tierSubscriptionService)
@@ -319,6 +325,7 @@ func NewApplication() *Application {
 		calendarController:          calendarController,
 		pushTokenController:         pushTokenController,
 		paymentController:           paymentController,
+		paymentHistoryController:    paymentHistoryController,
 		tierSubscriptionController:  tierSubscriptionController,
 		mpConnectController:         mpConnectController,
 		platformSettingController:   platformSettingController,

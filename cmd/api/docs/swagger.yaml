@@ -947,6 +947,30 @@ definitions:
       total_paid_amount:
         type: number
     type: object
+  simple-arq-golang_cmd_api_domains_payment.MonthlyAmount:
+    properties:
+      approved_count:
+        type: integer
+      gross_amount:
+        type: number
+      month:
+        type: string
+      net_amount:
+        type: number
+      net_known_count:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      surname:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_payment.PaymentResponse:
     properties:
       amount:
@@ -976,6 +1000,22 @@ definitions:
       status:
         type: string
       status_detail:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.PaymentTierRef:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      role_name:
         type: string
     type: object
   simple-arq-golang_cmd_api_domains_payment.PreferenceItem:
@@ -1024,6 +1064,86 @@ definitions:
     - token
     - transaction_amount
     type: object
+  simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentItem:
+    properties:
+      created_at:
+        type: string
+      currency_id:
+        type: string
+      gross_amount:
+        type: number
+      id:
+        type: integer
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mp_payment_id:
+        type: string
+      net_amount:
+        type: number
+      payer:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef'
+      payment_method_id:
+        type: string
+      status:
+        type: string
+      status_detail:
+        type: string
+      status_group:
+        type: string
+      team:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef'
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentsResponse:
+    properties:
+      has_more:
+        type: boolean
+      payments:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentItem'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.ReceivedSummaryResponse:
+    properties:
+      by_team:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.TeamAmount'
+        type: array
+      currency_id:
+        type: string
+      generated_at:
+        type: string
+      monthly:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.MonthlyAmount'
+        type: array
+      months:
+        type: integer
+      pending_count:
+        type: integer
+      rejected_count:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.TeamAmount:
+    properties:
+      approved_count:
+        type: integer
+      gross_amount:
+        type: number
+      net_amount:
+        type: number
+      net_known_count:
+        type: integer
+      pending_count:
+        type: integer
+      rejected_count:
+        type: integer
+      team_id:
+        type: integer
+      team_name:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_payment.TestCardTokenRequest:
     properties:
       card_number:
@@ -1061,6 +1181,46 @@ definitions:
     properties:
       token:
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.TierPaymentItem:
+    properties:
+      amount:
+        type: number
+      created_at:
+        type: string
+      currency_id:
+        type: string
+      due_date:
+        type: string
+      id:
+        type: integer
+      installment_id:
+        type: integer
+      installment_number:
+        type: integer
+      mp_payment_id:
+        type: string
+      payment_method_id:
+        type: string
+      status:
+        type: string
+      status_detail:
+        type: string
+      status_group:
+        type: string
+      subscription_id:
+        type: integer
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef'
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.TierPaymentsResponse:
+    properties:
+      has_more:
+        type: boolean
+      payments:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.TierPaymentItem'
+        type: array
     type: object
   simple-arq-golang_cmd_api_domains_payment.WebhookNotification:
     properties:
@@ -2273,6 +2433,14 @@ definitions:
         items:
           type: string
         type: array
+      points_count:
+        description: |-
+          PointsCount = cuántos puntos GPS tiene esta serie. No es una columna de
+          workout_feedback: se calcula con un COUNT agregado sobre
+          workout_feedback_points cuando el DAO arma la lista (GetBySession), para
+          que la pantalla de revisión sepa si hay trayectoria para dibujar sin
+          pedir el detalle de cada serie (N+1).
+        type: integer
       report_source:
         type: string
       reps:
@@ -3830,6 +3998,41 @@ paths:
       summary: Get payment status
       tags:
       - payments
+  /api/v1/payments/mine:
+    get:
+      description: Pagos de suscripción de tier del usuario autenticado, del más reciente
+        al más antiguo. Paginado de a 20.
+      parameters:
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Filtrar por rol del tier (ej. entrenador)
+        in: query
+        name: role
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.TierPaymentsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar mis pagos de suscripción
+      tags:
+      - payments
   /api/v1/payments/mp/{id}:
     get:
       description: Fetches the payment status directly from Mercado Pago API
@@ -3885,6 +4088,83 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Create Mercado Pago preference
+      tags:
+      - payments
+  /api/v1/payments/received:
+    get:
+      description: Cobros de membresía de equipo recibidos por el usuario autenticado,
+        del más reciente al más antiguo. Paginado de a 20. `net_amount` es null salvo
+        que Mercado Pago haya informado el neto real.
+      parameters:
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Filtrar por equipo
+        in: query
+        name: team_id
+        type: integer
+      - description: Filtrar por grupo de estado
+        enum:
+        - approved
+        - pending
+        - rejected
+        - refunded
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar cobros recibidos
+      tags:
+      - payments
+  /api/v1/payments/received/summary:
+    get:
+      description: Totales mensuales (hora argentina, el último es el mes actual),
+        totales por equipo y cantidad de cuotas pendientes o rechazadas según su último
+        intento.
+      parameters:
+      - description: Meses de la ventana, entre 2 y 12 (default 6)
+        in: query
+        name: months
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedSummaryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Resumen de cobros recibidos
       tags:
       - payments
   /api/v1/payments/test-card-token:

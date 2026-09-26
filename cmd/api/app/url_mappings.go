@@ -172,6 +172,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
+	// Historial del usuario autenticado. Van antes de /payments/:id para que se
+	// lea claro; Gin igual prioriza las rutas estáticas sobre el parámetro.
+	r.GET("/api/v1/payments/received", app.paymentHistoryController.ListReceived)
+	r.GET("/api/v1/payments/received/summary", app.paymentHistoryController.GetReceivedSummary)
+	r.GET("/api/v1/payments/mine", app.paymentHistoryController.ListMine)
 	r.GET("/api/v1/payments/:id", app.paymentController.GetPaymentStatus)
 	r.GET("/api/v1/payments/mp/:id", app.paymentController.GetPaymentStatusFromMP)
 	r.POST("/api/v1/payments/test-card-token", app.paymentController.GenerateTestCardToken)
