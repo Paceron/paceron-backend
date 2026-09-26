@@ -157,3 +157,162 @@ func TestPaymentHistoryService_ListMyTierPayments_DaoError(t *testing.T) {
 	_, err := svc.ListMyTierPayments(nil, 7, "", 1)
 	require.Error(t, err)
 }
+
+// --- GetReceivedSummary ---
+
+// summaryNow es un sábado 26/09/2026 a las 15:00 en Argentina.
+var summaryNow = time.Date(2026, 9, 26, 18, 0, 0, 0, time.UTC)
+
+func newSummaryService(dao *mockPaymentHistoryDao) *paymentHistoryService {
+	return &paymentHistoryService{dao: dao, now: func() time.Time { return summaryNow }}
+}
+
+func receivedRow(id, inst, team int64, teamName, status string, gross float64, net *float64, at time.Time) daos.ReceivedPaymentRow {
+	return daos.ReceivedPaymentRow{ID: id, InstallmentID: inst, TeamID: team, TeamName: strPtr(teamName),
+		Status: status, GrossAmount: gross, NetAmount: net, CurrencyID: "ARS", CreatedAt: at}
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_InvalidMonths(t *testing.T) {
+	svc := newSummaryService(&mockPaymentHistoryDao{})
+	for _, m := range []int{0, 1, 13} {
+		_, err := svc.GetReceivedSummary(nil, 7, m)
+		assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery, m)
+	}
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_EmptyWindow(t *testing.T) {
+	var since time.Time
+	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedSinceFn: func(ctx *gin.Context, sellerID int64, s time.Time) ([]daos.ReceivedPaymentRow, error) {
+		since = s
+		return nil, nil
+	}})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6)
+
+	require.NoError(t, err)
+	// 1/4/2026 00:00 en Argentina.
+	assert.True(t, since.Equal(time.Date(2026, 4, 1, 3, 0, 0, 0, time.UTC)), since)
+	assert.Equal(t, "ARS", resp.CurrencyID)
+	assert.Equal(t, 6, resp.Months)
+	require.Len(t, resp.Monthly, 6)
+	months := []string{}
+	for _, m := range resp.Monthly {
+		months = append(months, m.Month)
+		assert.Equal(t, float64(0), m.GrossAmount)
+		assert.Nil(t, m.NetAmount)
+	}
+	assert.Equal(t, []string{"2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"}, months)
+	assert.NotNil(t, resp.ByTeam)
+	assert.Empty(t, resp.ByTeam)
+	assert.Equal(t, "2026-09-26T18:00:00Z", resp.GeneratedAt)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_Aggregates(t *testing.T) {
+	sep10 := time.Date(2026, 9, 10, 15, 0, 0, 0, time.UTC)
+	// 01/09 a las 02:00 UTC es el 31/08 a las 23:00 en Argentina.
+	borde := time.Date(2026, 9, 1, 2, 0, 0, 0, time.UTC)
+	rows := []daos.ReceivedPaymentRow{
+		receivedRow(1, 101, 12, "Runners", "approved", 15000, floatPtr(14000), sep10),
+		// Cuota 102: rechazo seguido de un aprobado -> no cuenta como rechazada.
+		receivedRow(2, 102, 12, "Runners", "rejected", 15000, nil, sep10.Add(-time.Hour)),
+		receivedRow(3, 102, 12, "Runners", "approved", 15000, nil, sep10.Add(time.Hour)),
+		receivedRow(4, 103, 12, "Runners", "approved", 10000, nil, borde),
+		// Cuota 104: el último intento está en proceso -> pendiente.
+		receivedRow(5, 104, 12, "Runners", "rejected", 15000, nil, sep10),
+		receivedRow(6, 104, 12, "Runners", "in_process", 15000, nil, sep10.Add(2*time.Hour)),
+		// Cuota 105: dos rechazos -> una sola rechazada.
+		receivedRow(7, 105, 18, "Trail", "rejected", 30000, nil, sep10),
+		receivedRow(8, 105, 18, "Trail", "cancelled", 30000, nil, sep10.Add(time.Hour)),
+		receivedRow(9, 106, 18, "Trail", "approved", 30000, floatPtr(28000.004), sep10),
+		// Reembolsado: no suma ni cuenta.
+		receivedRow(10, 107, 18, "Trail", "refunded", 30000, nil, sep10),
+	}
+	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedSinceFn: func(*gin.Context, int64, time.Time) ([]daos.ReceivedPaymentRow, error) {
+		return rows, nil
+	}})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6)
+
+	require.NoError(t, err)
+	sep := resp.Monthly[5]
+	assert.Equal(t, "2026-09", sep.Month)
+	assert.Equal(t, float64(60000), sep.GrossAmount)
+	assert.Equal(t, 3, sep.ApprovedCount)
+	assert.Equal(t, 2, sep.NetKnownCount)
+	require.NotNil(t, sep.NetAmount)
+	assert.Equal(t, 42000.0, *sep.NetAmount)
+
+	aug := resp.Monthly[4]
+	assert.Equal(t, "2026-08", aug.Month)
+	assert.Equal(t, float64(10000), aug.GrossAmount)
+	assert.Nil(t, aug.NetAmount)
+
+	assert.Equal(t, 1, resp.PendingCount)
+	assert.Equal(t, 1, resp.RejectedCount)
+
+	require.Len(t, resp.ByTeam, 2)
+	runners, trail := resp.ByTeam[0], resp.ByTeam[1]
+	assert.Equal(t, "Runners", runners.TeamName)
+	assert.Equal(t, float64(40000), runners.GrossAmount)
+	assert.Equal(t, 3, runners.ApprovedCount)
+	assert.Equal(t, 1, runners.PendingCount)
+	assert.Equal(t, 0, runners.RejectedCount)
+	require.NotNil(t, runners.NetAmount)
+	assert.Equal(t, 14000.0, *runners.NetAmount)
+	assert.Equal(t, "Trail", trail.TeamName)
+	assert.Equal(t, 1, trail.RejectedCount)
+	require.NotNil(t, trail.NetAmount)
+	assert.Equal(t, 28000.0, *trail.NetAmount)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_TeamOrderTiesAndOutOfWindow(t *testing.T) {
+	at := time.Date(2026, 9, 10, 15, 0, 0, 0, time.UTC)
+	rows := []daos.ReceivedPaymentRow{
+		receivedRow(1, 201, 30, "Beta", "approved", 5000, nil, at),
+		receivedRow(2, 202, 31, "Alfa", "approved", 5000, nil, at),
+		receivedRow(3, 203, 29, "Alfa", "approved", 5000, nil, at),
+		// Defensivo: una fila anterior a la ventana suma al equipo pero no a ningún mes.
+		receivedRow(4, 204, 40, "Viejo", "approved", 1000, nil, time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)),
+	}
+	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedSinceFn: func(*gin.Context, int64, time.Time) ([]daos.ReceivedPaymentRow, error) {
+		return rows, nil
+	}})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 3)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Monthly, 3)
+	assert.Equal(t, "2026-07", resp.Monthly[0].Month)
+	assert.Equal(t, float64(15000), resp.Monthly[2].GrossAmount)
+	ids := []int64{}
+	for _, tm := range resp.ByTeam {
+		ids = append(ids, tm.TeamID)
+	}
+	assert.Equal(t, []int64{29, 31, 30, 40}, ids)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_LatestAttemptTieBreaksByID(t *testing.T) {
+	at := time.Date(2026, 9, 10, 15, 0, 0, 0, time.UTC)
+	rows := []daos.ReceivedPaymentRow{
+		receivedRow(51, 301, 12, "Runners", "pending", 100, nil, at),
+		receivedRow(50, 301, 12, "Runners", "rejected", 100, nil, at),
+	}
+	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedSinceFn: func(*gin.Context, int64, time.Time) ([]daos.ReceivedPaymentRow, error) {
+		return rows, nil
+	}})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, resp.PendingCount)
+	assert.Equal(t, 0, resp.RejectedCount)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_DaoError(t *testing.T) {
+	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedSinceFn: func(*gin.Context, int64, time.Time) ([]daos.ReceivedPaymentRow, error) {
+		return nil, errors.New("db caída")
+	}})
+	_, err := svc.GetReceivedSummary(nil, 7, 6)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
+}

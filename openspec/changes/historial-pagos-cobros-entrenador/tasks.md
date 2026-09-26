@@ -30,8 +30,8 @@
 
 ## 7. Resumen mensual
 
-- [ ] 7.1 Agregar `GetReceivedSummary`: meses en hora argentina, totales por equipo y conteo por último intento de cada cuota.
-- [ ] 7.2 Tests: mes vacío, borde de huso, rechazo seguido de aprobado, neto parcial, ventana fuera de rango, error del DAO.
+- [x] 7.1 Agregar `GetReceivedSummary`: meses en hora argentina, totales por equipo y conteo por último intento de cada cuota.
+- [x] 7.2 Tests: mes vacío, borde de huso, rechazo seguido de aprobado, neto parcial, ventana fuera de rango, error del DAO.
 
 ## 8. Controller
 
