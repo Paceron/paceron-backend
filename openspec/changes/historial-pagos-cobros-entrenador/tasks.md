@@ -45,6 +45,6 @@
 
 ## 10. Deuda técnica y cierre
 
-- [ ] 10.1 Registrar en `docs/DEUDA_TECNICA_Y_PENDIENTES.md` la lectura del webhook con el token de la plataforma y las filas sin `payment_id`.
-- [ ] 10.2 `go vet ./...`, `go test ./...` y `make coverage-with-db` en 85% o más.
+- [x] 10.1 Registrar en `docs/DEUDA_TECNICA_Y_PENDIENTES.md` la lectura del webhook con el token de la plataforma y las filas sin `payment_id`.
+- [x] 10.2 `go vet ./...`, `go test ./...` y `make coverage-with-db` en 85% o más.
 - [ ] 10.3 Archivar el change después del merge.
