@@ -28,10 +28,10 @@
 
 ### Task 3: Controller + rutas + Swagger
 
-- [ ] 3.1 Handlers en `WorkoutFeedbackController` con parsing de query (patrón member-calendar: parse helpers con errores 400 tipados), llamada al service, mapeo de errores a códigos (403/404/400), JSON 200 con response.
-- [ ] 3.2 Rutas en `url_mappings.go` + wiring `app.go`.
-- [ ] 3.3 Anotaciones Swagger (params + codes 200/400/403/404) y regenerar docs.
-- [ ] 3.4 Tests controller con mock del service (convención del paquete): query parsing, 200 body, 400/403/404.
+- [x] 3.1 Handlers en `WorkoutFeedbackController` con parsing de query (patrón member-calendar: parse helpers con errores 400 tipados), llamada al service, mapeo de errores a códigos (403/404/400), JSON 200 con response.
+- [x] 3.2 Rutas en `url_mappings.go` + wiring `app.go`.
+- [x] 3.3 Anotaciones Swagger (params + codes 200/400/403/404) y regenerar docs.
+- [x] 3.4 Tests controller con mock del service (convención del paquete): query parsing, 200 body, 400/403/404.
 
 ### Task 4: Documentación + verificación final
 
