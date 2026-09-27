@@ -38,6 +38,7 @@ var (
 	ErrCalendarTrainingWithoutInstance = errors.New("los días indicados no tienen una sesión instanciada que conservar")
 	ErrCalendarInvalidDate             = errors.New("exclude_dates debe tener formato YYYY-MM-DD")
 	ErrCalendarPresencialCollision     = errors.New("colisión presencial con otro equipo")
+	ErrCalendarInstanceNotFound        = errors.New("sesión instancia no encontrada")
 )
 
 // CalendarServiceInterface reúne las operaciones de lectura y escritura del
@@ -54,6 +55,7 @@ type CalendarServiceInterface interface {
 	NextPresencialSession(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
 	MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
 	AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
+	SessionInstanceDetail(ctx *gin.Context, id, callerID int64) (*instance.SessionInstanceResponse, error)
 	CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
 }
 
@@ -586,6 +588,34 @@ func (s *calendarService) sessionInstanceResponse(ctx *gin.Context, database *go
 		return nil, err
 	}
 	return &response, nil
+}
+
+// SessionInstanceDetail devuelve el shape completo de una instancia a partir
+// de solo su id (session-instance-detail D1/D3): 404 si no existe, 403 si el
+// caller no tiene el vínculo dual de D2 (día del grupo propio/equipo propio,
+// o feedback activo donde es atleta/reportante/owner).
+func (s *calendarService) SessionInstanceDetail(ctx *gin.Context, id, callerID int64) (*instance.SessionInstanceResponse, error) {
+	if s.db == nil {
+		return nil, errors.New("no hay DB disponible")
+	}
+	dao := daos.NewSessionInstanceDao(s.db)
+	sessionInstance, err := dao.FindByID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding session instance for detail", err, customlogger.TagMethod("SessionInstanceDetail"))
+		return nil, fmt.Errorf("error al buscar sesión instancia: %w", err)
+	}
+	if sessionInstance == nil {
+		return nil, ErrCalendarInstanceNotFound
+	}
+	access, err := dao.HasInstanceAccess(ctx, id, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking session instance access", err, customlogger.TagMethod("SessionInstanceDetail"))
+		return nil, fmt.Errorf("error al chequear acceso a sesión instancia: %w", err)
+	}
+	if !access {
+		return nil, ErrCalendarForbidden
+	}
+	return s.sessionInstanceResponse(ctx, s.db, &id)
 }
 
 // deleteSupersededInstance follows D10 and keeps an instance orphaned when
