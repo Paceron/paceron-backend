@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mercadopago/sdk-go/pkg/config"
 	"github.com/mercadopago/sdk-go/pkg/payment"
 	"github.com/mercadopago/sdk-go/pkg/preference"
+	"github.com/mercadopago/sdk-go/pkg/requester"
 	"github.com/mercadopago/sdk-go/pkg/requestoptions"
 	"github.com/mercadopago/sdk-go/pkg/webhook"
 
@@ -49,6 +51,13 @@ type CreatePaymentRequest struct {
 	ExternalReference string
 	NotificationURL   string
 	ThreeDSecureMode  string
+	// ApplicationFee es la comisión de Paceron en un pago con split
+	// (team_subscription): se descuenta del monto antes de acreditarse en la
+	// cuenta del vendedor. 0 = sin comisión (pago sin split). Mapea a
+	// payment.Request.ApplicationFee del SDK — MP usa `application_fee` en
+	// /v1/payments (Checkout API), a diferencia de `marketplace_fee` que usa
+	// /checkout/preferences (ver CreatePreference).
+	ApplicationFee float64
 }
 
 type PaymentResult struct {
@@ -76,6 +85,14 @@ type UserInfoResponse struct {
 type mpClient struct {
 	apiBaseURL  string
 	authBaseURL string
+	// httpRequester, cuando no es nil, reemplaza el transporte HTTP por
+	// defecto del SDK oficial de MP (config.WithHTTPClient) — únicamente para
+	// tests: permite interceptar CreatePreference/CreatePayment (que usan el
+	// SDK, no net/http directo como el resto de los métodos de este archivo,
+	// así que apiBaseURL/authBaseURL no les aplica) sin pegarle a la API real.
+	// nil en producción → New()/newMP() nunca lo setean → comportamiento
+	// idéntico al de siempre.
+	httpRequester requester.Requester
 }
 
 // New crea el cliente de MercadoPago apuntando a las URLs productivas.
@@ -88,8 +105,18 @@ func newMP(apiBaseURL, authBaseURL string) MercadoPagoClientInterface {
 	return &mpClient{apiBaseURL: apiBaseURL, authBaseURL: authBaseURL}
 }
 
+// mpConfig arma la Config del SDK oficial, inyectando httpRequester si el
+// test lo seteó (ver comentario en mpClient).
+func (c *mpClient) mpConfig(accessToken string) (*config.Config, error) {
+	var opts []config.Option
+	if c.httpRequester != nil {
+		opts = append(opts, config.WithHTTPClient(c.httpRequester))
+	}
+	return config.New(accessToken, opts...)
+}
+
 func (c *mpClient) CreatePreference(ctx context.Context, accessToken string, items []PreferenceItem, externalRef, notificationURL, marketplaceFee string, currencyID string) (string, error) {
-	cfg, err := config.New(accessToken)
+	cfg, err := c.mpConfig(accessToken)
 	if err != nil {
 		return "", fmt.Errorf("error creating MP config: %w", err)
 	}
@@ -112,6 +139,14 @@ func (c *mpClient) CreatePreference(ctx context.Context, accessToken string, ite
 		NotificationURL:   notificationURL,
 	}
 
+	// marketplaceFee llega formateado como string ("0.00" cuando no hay split
+	// — ver payment_service.go#CreatePreference) — 0 no se asigna, así que
+	// `omitempty` en preference.Request.MarketplaceFee lo deja afuera del
+	// JSON y el comportamiento de un pago sin split (Flujo A) no cambia.
+	if fee, parseErr := strconv.ParseFloat(marketplaceFee, 64); parseErr == nil && fee > 0 {
+		req.MarketplaceFee = fee
+	}
+
 	resp, err := client.Create(ctx, req)
 	if err != nil {
 		customlogger.Error(nil, "error creating MP preference", err)
@@ -122,7 +157,7 @@ func (c *mpClient) CreatePreference(ctx context.Context, accessToken string, ite
 }
 
 func (c *mpClient) CreatePayment(ctx context.Context, accessToken string, req CreatePaymentRequest) (*PaymentResult, error) {
-	cfg, err := config.New(accessToken)
+	cfg, err := c.mpConfig(accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("error creating MP config: %w", err)
 	}
@@ -142,6 +177,9 @@ func (c *mpClient) CreatePayment(ctx context.Context, accessToken string, req Cr
 		ExternalReference: req.ExternalReference,
 		NotificationURL:   req.NotificationURL,
 		ThreeDSecureMode:  req.ThreeDSecureMode,
+		// 0 → omitempty lo deja afuera del JSON, el pago sin split (Flujo A)
+		// no cambia. Ver comentario de CreatePaymentRequest.ApplicationFee.
+		ApplicationFee: req.ApplicationFee,
 		Payer: &payment.PayerRequest{
 			Email: payerEmail,
 		},
