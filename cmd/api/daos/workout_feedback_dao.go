@@ -45,6 +45,10 @@ type WorkoutFeedbackSearchFilters struct {
 // AthleteUserID, TeamID, GroupID, DateFrom, DateTo. Segundo nivel (aplican solo
 // a ítems y total; los pools lo ignoran): ExerciseInstanceID, SetNumber,
 // AthleteFilterUserID. Los valores llegan ya validados/autorizados por el service.
+//
+// ExerciseInstanceID matchea por familia de ejercicio: acepta el id de
+// catálogo del pool (todas las instancias con ese source) o, para instancias
+// legado sin origen, su propio id de instancia.
 type WorkoutFeedbackHistoryFilters struct {
 	AthleteUserID       *int64
 	TeamID              *int64
@@ -383,7 +387,11 @@ func applyHistoryFilters(query *gorm.DB, filters WorkoutFeedbackHistoryFilters, 
 		return query
 	}
 	if filters.ExerciseInstanceID != nil {
-		query = query.Where("wf.assigned_exercise_id = ?", *filters.ExerciseInstanceID)
+		// Familia de catálogo, o la instancia misma si es legado sin origen.
+		query = query.Where(
+			"(ei.source_exercise_id = ? OR (ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = ?))",
+			*filters.ExerciseInstanceID, *filters.ExerciseInstanceID,
+		)
 	}
 	if filters.SetNumber != nil {
 		query = query.Where("wf.set_number = ?", *filters.SetNumber)
@@ -431,6 +439,10 @@ func (d *workoutFeedbackDao) HistoryCount(ctx *gin.Context, filters WorkoutFeedb
 	if filters.GroupID != nil {
 		query = query.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
 	}
+	if filters.ExerciseInstanceID != nil {
+		// El filtro de ejercicio matchea por familia vía ei.source_exercise_id.
+		query = query.Joins("LEFT JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id")
+	}
 	var total int64
 	err := applyHistoryFilters(query, filters, true).
 		Select("COUNT(DISTINCT wf.id) AS total").
@@ -461,18 +473,23 @@ func (d *workoutFeedbackDao) HistoryAvailableAthletes(ctx *gin.Context, filters 
 	return athletes, nil
 }
 
-// HistoryAvailableExercises arma el pool de ejercicios: DISTINCT de instancias
-// con feedbacks en el primer nivel, INNER JOIN exercise_instances (un feedback
-// huérfano sin instancia no aporta un item filtrable).
+// HistoryAvailableExercises arma el pool de ejercicios dedupeado por familia
+// de catálogo: COALESCE(source_exercise_id, id) agrupa todas las instancias del
+// mismo ejercicio de catálogo (fallback al id de instancia en las legado sin
+// origen). El representante de cada familia es la instancia con id menor
+// (de ahí sale el nombre). INNER JOIN exercise_instances: un feedback huérfano
+// sin instancia no aporta un item filtrable.
 func (d *workoutFeedbackDao) HistoryAvailableExercises(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
-	query := d.DB.Table("workout_feedback AS wf").
-		Select("DISTINCT wf.assigned_exercise_id AS id, ei.name AS name").
+	inner := d.DB.Table("workout_feedback AS wf").
+		Select("DISTINCT ON (COALESCE(ei.source_exercise_id, ei.id)) COALESCE(ei.source_exercise_id, ei.id) AS id, ei.name AS name").
 		Joins("JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id")
 	if filters.GroupID != nil {
-		query = query.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
+		inner = inner.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
 	}
+	inner = applyHistoryFilters(inner, filters, false).
+		Order("COALESCE(ei.source_exercise_id, ei.id) ASC, ei.id ASC")
 	var exercises []dbs.IDName
-	err := applyHistoryFilters(query, filters, false).
+	err := d.DB.Table("(?) AS pool", inner).
 		Order("name ASC, id ASC").
 		Scan(&exercises).Error
 	if err != nil {

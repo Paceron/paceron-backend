@@ -38,3 +38,9 @@
 - [x] 4.1 `docs/CATALOGO_Y_CALENDARIO.md` (o doc de dominio afín): nueva sección de historial con shapes/errores verificados contra código.
 - [x] 4.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección del gap 13 cerrado (shapes, decisiones: exercise_id=instancia, catalog_exercise_id aditivo, huérfanos con nulls).
 - [x] 4.3 Verificación final: `openspec validate workout-feedback-history --strict`; gofmt en archivos tocados; `go build ./...`; `go vet ./...`; suite completa `go test ./...` con Postgres real (0 FAIL); `go clean -cache` + `make coverage-with-db` + analyzer ≥85 (gate); tildar checkboxes.
+
+### Task 5: Ajuste post-feedback — familia de catálogo (dedupe de pool + filtro)
+
+- [x] 5.1 DAO: `HistoryAvailableExercises` dedupeado por familia (`DISTINCT ON COALESCE(ei.source_exercise_id, ei.id)`, representante = instancia id menor), con test de pool dedupeado.
+- [x] 5.2 DAO: filtro `exercise_id` con semántica de familia (`ei.source_exercise_id = X OR (ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = X)`), join condicional en `HistoryCount`, con tests (source matchea todas sus instancias, legacy matchea por instancia, instancia con origen no matchea como instancia).
+- [x] 5.3 Spec delta + design + docs actualizados a la semántica de familia; `openspec validate --strict`; suite con Postgres real verde.

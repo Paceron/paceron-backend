@@ -56,6 +56,7 @@ type workoutFeedbackHistoryFixture struct {
 	athleteB       *dbs.User // "Benja"
 	sessionInst    *dbs.SessionInstance
 	exA            *dbs.ExerciseInstance // "Zancada larga", con source_exercise_id
+	sourceA        int64                 // id de catálogo de exA (4242)
 	exB            *dbs.ExerciseInstance // "Fartlek corto", sin source
 	fbNormal       *dbs.WorkoutFeedback  // teamA, día groupA, exA, set 0, Jan 15
 	fbNormalSet1   *dbs.WorkoutFeedback  // teamA, día groupA, exA, set 1, Jan 15
@@ -107,6 +108,7 @@ func setupWorkoutFeedbackHistoryFixture(t *testing.T, db *gorm.DB) *workoutFeedb
 		teamA: teamA, teamB: teamB,
 		groupA: groupA, groupB: groupB,
 		athleteA: athleteA, athleteB: athleteB,
+		sourceA:     sourceA,
 		sessionInst: sessionInst,
 		exA:         exA, exB: exB,
 	}
@@ -264,7 +266,7 @@ func TestWorkoutFeedbackDao_HistorySearch_SecondLevelFilters(t *testing.T) {
 	f := setupWorkoutFeedbackHistoryFixture(t, db)
 	teamA := f.teamA.ID
 
-	byExercise, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.exA.ID}, "feedback_date", "desc", 0, 0)
+	byExercise, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.sourceA}, "feedback_date", "desc", 0, 0)
 	require.NoError(t, err)
 	assert.ElementsMatch(t,
 		[]int64{f.fbNormal.ID, f.fbNormalSet1.ID, f.fbTie1.ID},
@@ -281,7 +283,7 @@ func TestWorkoutFeedbackDao_HistorySearch_SecondLevelFilters(t *testing.T) {
 		historyRowIDs(byAthlete))
 
 	set0 := 0
-	combined, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.exA.ID, SetNumber: &set0}, "feedback_date", "desc", 0, 0)
+	combined, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.sourceA, SetNumber: &set0}, "feedback_date", "desc", 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, []int64{f.fbNormal.ID}, historyRowIDs(combined))
 }
@@ -395,7 +397,7 @@ func TestWorkoutFeedbackDao_HistoryCount_MatchesFilters(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total) // solo existía el soft-deleteado con set 9
 
-	total, err = dao.HistoryCount(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.exA.ID})
+	total, err = dao.HistoryCount(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.sourceA})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 
@@ -428,7 +430,7 @@ func TestWorkoutFeedbackDao_HistoryAvailableAthletes_FirstLevelOnly(t *testing.T
 	}, athletes)
 
 	// Segundo nivel seteado: ignorado, mismo pool.
-	athletes, err = dao.HistoryAvailableAthletes(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.exA.ID})
+	athletes, err = dao.HistoryAvailableAthletes(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, ExerciseInstanceID: &f.sourceA})
 	require.NoError(t, err)
 	assert.Len(t, athletes, 2)
 	athletes, err = dao.HistoryAvailableAthletes(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, SetNumber: &[]int{2}[0], AthleteFilterUserID: &f.athleteA.ID})
@@ -458,13 +460,14 @@ func TestWorkoutFeedbackDao_HistoryAvailableExercises_FirstLevelOnly(t *testing.
 	teamA := f.teamA.ID
 	jan := func(d int) time.Time { return time.Date(2026, 1, d, 0, 0, 0, 0, time.UTC) }
 
-	// Ordenado por name ("Fartlek corto" < "Zancada larga"); la instancia
-	// inexistente (777777) no entra al pool (INNER JOIN).
+	// Ordenado por name ("Fartlek corto" < "Zancada larga"); el pool id de
+	// exA es su ejercicio de catálogo (4242) y el de exB su propia instancia
+	// (legado sin origen). La instancia inexistente (777777) no entra (INNER JOIN).
 	exercises, err := dao.HistoryAvailableExercises(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA})
 	require.NoError(t, err)
 	assert.Equal(t, []dbs.IDName{
 		{ID: f.exB.ID, Name: "Fartlek corto"},
-		{ID: f.exA.ID, Name: "Zancada larga"},
+		{ID: 4242, Name: "Zancada larga"},
 	}, exercises)
 
 	// Segundo nivel seteado: ignorado.
@@ -475,14 +478,14 @@ func TestWorkoutFeedbackDao_HistoryAvailableExercises_FirstLevelOnly(t *testing.
 	// Primer nivel sí aplica: un solo día deja solo el ejercicio de ese día.
 	exercises, err = dao.HistoryAvailableExercises(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, DateFrom: ptrTime(jan(15)), DateTo: ptrTime(jan(15))})
 	require.NoError(t, err)
-	assert.Equal(t, []dbs.IDName{{ID: f.exA.ID, Name: "Zancada larga"}}, exercises)
+	assert.Equal(t, []dbs.IDName{{ID: 4242, Name: "Zancada larga"}}, exercises)
 
 	// Scope por atleta sin team: ejercicios de sus feedbacks activos.
 	exercises, err = dao.HistoryAvailableExercises(nil, WorkoutFeedbackHistoryFilters{AthleteUserID: &f.athleteA.ID})
 	require.NoError(t, err)
 	assert.Equal(t, []dbs.IDName{
 		{ID: f.exB.ID, Name: "Fartlek corto"},
-		{ID: f.exA.ID, Name: "Zancada larga"},
+		{ID: 4242, Name: "Zancada larga"},
 	}, exercises)
 
 	// Filtro por grupo con el pool de ejercicios (join gcd también acá):
@@ -491,7 +494,7 @@ func TestWorkoutFeedbackDao_HistoryAvailableExercises_FirstLevelOnly(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, []dbs.IDName{
 		{ID: f.exB.ID, Name: "Fartlek corto"},
-		{ID: f.exA.ID, Name: "Zancada larga"},
+		{ID: 4242, Name: "Zancada larga"},
 	}, exercises)
 }
 
@@ -518,4 +521,58 @@ func TestWorkoutFeedbackDao_History_NoScopeReturnsAllActive(t *testing.T) {
 	exercises, err := dao.HistoryAvailableExercises(nil, WorkoutFeedbackHistoryFilters{})
 	require.NoError(t, err)
 	assert.Len(t, exercises, 2)
+}
+
+func TestWorkoutFeedbackDao_HistorySearch_ExerciseFilterFamiliaCatalogo(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+	// Semántica del filtro de ejercicio (ajuste post-feedback frontend):
+	// matchea por familia de catálogo, no por instancia puntual.
+	owner := persistUser(db, "wf-familia-owner@test.com", "92000001")
+	team := testTeam(db, "wf_familia_team", owner.ID)
+	athlete := historyUser(db, "wf-familia-atleta@test.com", "92000002", "Caro")
+
+	source := int64(5555)
+	instA := &dbs.ExerciseInstance{Name: "Trote", Kind: "running", SourceExerciseID: &source}
+	instB := &dbs.ExerciseInstance{Name: "Trote", Kind: "running", SourceExerciseID: &source}
+	legacy := &dbs.ExerciseInstance{Name: "Zancada legado", Kind: "running"}
+	require.NoError(t, db.Create(instA).Error)
+	require.NoError(t, db.Create(instB).Error)
+	require.NoError(t, db.Create(legacy).Error)
+
+	fbSession := int64(1)
+	fbA := historyFeedback(t, db, athlete.ID, fbSession, instA.ID, &team.ID, 0, time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
+	fbB := historyFeedback(t, db, athlete.ID, fbSession, instB.ID, &team.ID, 0, time.Date(2026, 1, 11, 0, 0, 0, 0, time.UTC))
+	fbLegacy := historyFeedback(t, db, athlete.ID, fbSession, legacy.ID, &team.ID, 0, time.Date(2026, 1, 12, 0, 0, 0, 0, time.UTC))
+
+	// Filtro por el id de catálogo: trae las filas de TODAS las instancias
+	// de esa familia (instA + instB), no solo una puntual.
+	rows, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &team.ID, ExerciseInstanceID: &source}, "feedback_date", "asc", 0, 0)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []int64{fbA.ID, fbB.ID}, historyRowIDs(rows))
+
+	total, err := dao.HistoryCount(nil, WorkoutFeedbackHistoryFilters{TeamID: &team.ID, ExerciseInstanceID: &source})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+
+	// Instancia legado sin origen: su pool id es el propio id de instancia
+	// y el filtro matchea por ese id.
+	rows, err = dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &team.ID, ExerciseInstanceID: &legacy.ID}, "feedback_date", "asc", 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{fbLegacy.ID}, historyRowIDs(rows))
+
+	// Un id de instancia CON origen ya no matchea como instancia: solo
+	// colisionaría si coincidiera con un id de catálogo.
+	rows, err = dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &team.ID, ExerciseInstanceID: &instA.ID}, "feedback_date", "asc", 0, 0)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+
+	// Pool dedupeado por familia: instA+instB → un solo item con id de
+	// catálogo y nombre de la instancia representativa (id menor).
+	exercises, err := dao.HistoryAvailableExercises(nil, WorkoutFeedbackHistoryFilters{TeamID: &team.ID})
+	require.NoError(t, err)
+	assert.Equal(t, []dbs.IDName{
+		{ID: source, Name: "Trote"},
+		{ID: legacy.ID, Name: "Zancada legado"},
+	}, exercises)
 }

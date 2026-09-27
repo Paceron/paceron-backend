@@ -8,7 +8,7 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 - `GET /users/{id}/workout-feedback-history` lista los feedbacks donde `athlete_user_id = {id}`, con `deleted_at IS NULL`.
 - Si `{id}` no es el usuario autenticado, responde `403`.
-- Filtros soportados: `team_id`, `group_id`, `date_from`, `date_to`, `exercise_id` (id de instancia de ejercicio), `set_number`.
+- Filtros soportados: `team_id`, `group_id`, `date_from`, `date_to`, `exercise_id` (matchea por familia de catálogo: `catalog_exercise_id`, con fallback al id de instancia propio en instancias legado sin origen), `set_number`.
 - `group_id` sin `team_id` responde `400`.
 - `date_from` y `date_to` vienen juntos o ninguno; si viene uno solo responde `400`; `date_from > date_to` responde `400`; iguales = un día.
 - `sort` acepta solo `feedback_date`, `set_number`, `exercise_name` (default `feedback_date`); otro valor responde `400`. `order` acepta solo `asc`/`desc` (default `desc`); otro valor responde `400`.
@@ -61,7 +61,7 @@ El sistema DEBE cumplir lo siguiente (MUST):
 - Cada ítem expone: `id`, `athlete_user_id`, `athlete_name`, `team_id`, `team_name`, `group_id`, `group_name`, `date` (`session_date`), `session_name`, `exercise_id` (id de instancia), `exercise_name`, `catalog_exercise_id` (nullable, id de catálogo si existe), `set_number`, `completion_status`, `duration_ms`, `active_duration_ms`, `distance_meters`, `started_at`, `ended_at`.
 - Feedbacks huérfanos se incluyen: `group_id`/`group_name` `null` cuando el día de calendario ya no existe o la instancia nunca se asignó a un día; `team_id`/`team_name` `null` cuando el feedback no registró equipo.
 - `total` = cantidad de feedbacks que matchean TODOS los filtros, sin paginación.
-- `available_athletes` y `available_exercises` = DISTINCT sobre los que matchean solo los filtros de PRIMER nivel (equipo/grupo/rango de fechas y scope de autorización), sin filtros de segundo nivel (atleta/ejercicio/set) ni paginación.
+- `available_athletes` y `available_exercises` = DISTINCT sobre los que matchean solo los filtros de PRIMER nivel (equipo/grupo/rango de fechas y scope de autorización), sin filtros de segundo nivel (atleta/ejercicio/set) ni paginación. `available_exercises` va dedupeado por familia: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia propio en instancias legado sin origen), con el nombre común.
 
 #### Scenario: Huérfano se conserva
 
@@ -72,6 +72,16 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 - **WHEN** se consulta con `exercise_id` y `athlete_user_id` (endpoint entrenador)
 - **THEN** `available_athletes` y `available_exercises` siguen listando todos los atletas/ejercicios del rango filtrado por equipo/fechas, sin verse recortados por esos filtros.
+
+#### Scenario: available_exercises dedupeado por familia
+
+- **WHEN** el rango tiene feedbacks de 3 instancias del mismo ejercicio de catálogo y 1 instancia legado sin origen
+- **THEN** `available_exercises` expone 2 ítems: el de catálogo (id = `catalog_exercise_id`) y el de la instancia legado (id = su propio id de instancia).
+
+#### Scenario: exercise_id filtra por familia de catálogo
+
+- **WHEN** se consulta con `exercise_id` = id de catálogo que tiene 3 instancias con feedback
+- **THEN** `items` incluye las filas de TODAS esas instancias (y `total` las cuenta), sin incluir filas de otras familias.
 
 #### Scenario: Paginación y total
 

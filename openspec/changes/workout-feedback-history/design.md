@@ -63,6 +63,8 @@ WorkoutFeedbackHistoryResponse {
 
 Ítem con `group_id`/`group_name`/`team_id`/`team_name` nullable (omitempty o punteros, según convención del repo — se define en implementación mirando DTOs existentes de workoutfeedback).
 
+Ajuste post-feedback frontend (Task 5): `available_exercises` va **dedupeado por familia** de catálogo — `DISTINCT ON COALESCE(ei.source_exercise_id, ei.id)` con el nombre común, representante = instancia de id menor; y el filtro `exercise_id` matchea **por familia** (`ei.source_exercise_id = X OR (ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = X)`): acepta el id del pool (de catálogo) o el id propio de una instancia legado sin origen; un id de instancia con origen ya no matchea como instancia.
+
 ## D7 — Capas y rutas
 
 - Rutas en `url_mappings.go`: `GET /api/v1/users/:id/workout-feedback-history` y `GET /api/v1/users/:id/administered-workout-feedback-history` (misma convención que member-calendar/administered-calendar).
