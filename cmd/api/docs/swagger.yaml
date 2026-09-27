@@ -502,6 +502,13 @@ definitions:
         description: ID del usuario que asiste
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_dbs.IDName:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest:
     properties:
       description:
@@ -2216,6 +2223,68 @@ definitions:
       weight_kg:
         type: number
     type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem:
+    properties:
+      active_duration_ms:
+        type: integer
+      athlete_name:
+        type: string
+      athlete_user_id:
+        type: integer
+      catalog_exercise_id:
+        type: integer
+      completion_status:
+        type: string
+      date:
+        type: string
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      ended_at:
+        type: string
+      exercise_id:
+        type: integer
+      exercise_name:
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
+      id:
+        type: integer
+      session_name:
+        type: string
+      set_number:
+        type: integer
+      started_at:
+        type: string
+      team_id:
+        type: integer
+      team_name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse:
+    properties:
+      available_athletes:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName'
+        type: array
+      available_exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse:
     properties:
       exercise_instance_id:
@@ -2273,6 +2342,14 @@ definitions:
         items:
           type: string
         type: array
+      points_count:
+        description: |-
+          PointsCount = cuántos puntos GPS tiene esta serie. No es una columna de
+          workout_feedback: se calcula con un COUNT agregado sobre
+          workout_feedback_points cuando el DAO arma la lista (GetBySession), para
+          que la pantalla de revisión sepa si hay trayectoria para dibujar sin
+          pedir el detalle de cada serie (N+1).
+        type: integer
       report_source:
         type: string
       reps:
@@ -2317,15 +2394,15 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: dev@example.com
+    email: dev@paceron.com
     name: API Support
-  description: Base scaffolding for Go APIs with Gin framework
+  description: API para el registro y gestión de usuarios de Paceron
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: Simple Arq Golang API
-  version: 1.0.0
+  title: Paceron Backend API
+  version: "1.0"
 paths:
   /api/v1/attendance/qr:
     get:
@@ -5924,6 +6001,90 @@ paths:
       summary: Calendario agregado del entrenador
       tags:
       - calendar
+  /api/v1/users/{id}/administered-workout-feedback-history:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve los feedbacks de los atletas de un equipo administrado
+        (id debe ser el caller y owner del equipo). team_id es obligatorio. Soporta
+        los filtros del atleta más athlete_user_id.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del equipo
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: ID del grupo
+        in: query
+        name: group_id
+        type: integer
+      - description: Desde (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Hasta (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: ID de instancia de ejercicio
+        in: query
+        name: exercise_id
+        type: integer
+      - description: Número de serie
+        in: query
+        name: set_number
+        type: integer
+      - description: Filtrar a un atleta puntual
+        in: query
+        name: athlete_user_id
+        type: integer
+      - description: feedback_date | set_number | exercise_name (default feedback_date)
+        in: query
+        name: sort
+        type: string
+      - description: asc | desc (default desc)
+        in: query
+        name: order
+        type: string
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página (default 20, máx 100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de entrenamientos administrado por el entrenador
+      tags:
+      - workout-feedback
   /api/v1/users/{id}/calendar-summary:
     get:
       parameters:
@@ -6590,6 +6751,85 @@ paths:
       summary: Activar rol entrenador
       tags:
       - user-roles
+  /api/v1/users/{id}/workout-feedback-history:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve los feedbacks del propio usuario autenticado (id debe
+        ser el caller), con filtros, sort whitelisted, paginación y pools de atletas/ejercicios
+        disponibles.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del equipo
+        in: query
+        name: team_id
+        type: integer
+      - description: ID del grupo (requiere team_id)
+        in: query
+        name: group_id
+        type: integer
+      - description: Desde (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Hasta (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: ID de instancia de ejercicio
+        in: query
+        name: exercise_id
+        type: integer
+      - description: Número de serie
+        in: query
+        name: set_number
+        type: integer
+      - description: feedback_date | set_number | exercise_name (default feedback_date)
+        in: query
+        name: sort
+        type: string
+      - description: asc | desc (default desc)
+        in: query
+        name: order
+        type: string
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página (default 20, máx 100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de entrenamientos del atleta
+      tags:
+      - workout-feedback
   /api/v1/users/search:
     get:
       description: Busca usuarios activos por coincidencia parcial de nombre, apellido

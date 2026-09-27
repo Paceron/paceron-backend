@@ -413,6 +413,63 @@ Dos lecturas nuevas con el mismo item `AggregateCalendarDayResponse`: los campos
   - Aplica las mismas reglas de §8.7 (solo training+presencial, overlap medio-abierto, cancelled fuera) y **detecta colisiones viejas**: días guardados antes de que existiera el guard aparecen marcados, porque la detección corre sobre los datos actuales. No las arregla — solo las hace visibles (arreglo manual: reprogramar o cancelar uno de los dos).
   - El día colisionante también aparece marcado en el item del otro grupo (la detección corre por día presencial, excluyendo la fila misma).
 
+### 8.9 Historial de feedback (Gap 13 — change `workout-feedback-history`)
+
+Dos lecturas paginadas de entrenamientos realizados (filas de `workout_feedback` con `deleted_at IS NULL`), enriquecidas con los nombres que la UI necesita. Spec: `openspec/changes/workout-feedback-history/`; el resto del dominio feedback está en `openspec/specs/workout-feedback/`. `GET /workout-feedback/search` sigue vivo e intacto (decisión: no se depreca).
+
+- **`GET /api/v1/users/{id}/workout-feedback-history`** — historial del propio atleta: `{id}` debe ser el usuario autenticado (`403` si no, checkbox en el controller, patrón member-calendar). Sin filtros trae el historial completo en todos sus equipos.
+- **`GET /api/v1/users/{id}/administered-workout-feedback-history?team_id=`** — historial de los atletas de UN equipo administrado: `{id}` = autenticado (`403`), `team_id` obligatorio (`400` si falta), equipo existente (`404 ErrTeamNotFound`) y caller owner (`403`) — misma secuencia que `Search` con team. Agrega `athlete_user_id` (filtro de atleta puntual).
+
+#### Query params y validaciones (400 en todos los casos, `apierror.APIError`)
+
+| Param | Validez | Default |
+|---|---|---|
+| `team_id` | id > 0 | — (obligatorio solo en el endpoint del entrenador) |
+| `group_id` | id > 0, **requiere `team_id`** | — |
+| `date_from`/`date_to` | `YYYY-MM-DD`, pareados (uno solo → 400), `from <= to` (iguales = 1 día) | — |
+| `exercise_id` | id > 0 = **id de instancia** (`workout_feedback.assigned_exercise_id`) | — |
+| `set_number` | ≥ 0 | — |
+| `athlete_user_id` | id > 0, solo endpoint del entrenador | — |
+| `sort` | `feedback_date` \| `set_number` \| `exercise_name` | `feedback_date` |
+| `order` | `asc` \| `desc` | `desc` |
+| `page` | ≥ 1 | 1 |
+| `page_size` | 1..100 | 20 |
+
+#### Response `200 {items, total, page, page_size, available_athletes, available_exercises}`
+
+Los errores van por `respondFeedbackError` (mismo mapeo del resto del dominio feedback): 400 `ErrWorkoutFeedbackInvalid`, 403 `ErrWorkoutFeedbackForbidden`, 404 `ErrTeamNotFound`.
+
+```json
+{
+  "items": [
+    {
+      "id": 10, "athlete_user_id": 5, "athlete_name": "Ana Gómez",
+      "team_id": 1, "team_name": "Equipo A",
+      "group_id": 2, "group_name": "Fondo B",
+      "date": "2026-09-20", "session_name": "Fartlek 5K",
+      "exercise_id": 456, "exercise_name": "Trote", "catalog_exercise_id": 501,
+      "set_number": 2, "completion_status": "completed",
+      "duration_ms": 60000, "active_duration_ms": 58000, "distance_meters": 1200.5,
+      "started_at": "2026-09-20T18:00:00Z", "ended_at": "2026-09-20T18:10:00Z"
+    }
+  ],
+  "total": 25, "page": 2, "page_size": 10,
+  "available_athletes": [{"id": 5, "name": "Ana Gómez"}],
+  "available_exercises": [{"id": 456, "name": "Trote"}]
+}
+```
+
+Decisions y detalles verificados contra `workout_feedback_dao.go` / `workout_feedback_service.go`:
+
+- **Huérfanos se conservan.** Los joins `group_calendar_days`/`exercise_instances`/`session_instances` son todos LEFT: un feedback cuya session instance ya no tiene día de calendario (borrado/reasignado, §8.4) o cuya exercise instance fue borrada físicamente queda en `items` en vez de desaparecer del historial. Los nulls comunican la razón sin campo extra: `group_id`/`group_name` `null` = sin día de calendario (día borrado o instancia nunca asignada a un día); `team_id`/`team_name` `null` = feedback registrado sin equipo (y si el team persiste pero está soft-borrado, el nombre queda `null` — los batch de nombres resuelven solo entidades activas, `deleted_at IS NULL`); `session_name`/`exercise_name`/`catalog_exercise_id` `null` si la fila de instancia ya no existe. `exercise_id` siempre presente en el ítem (> 0).
+- **`exercise_id` = id de instancia, `catalog_exercise_id` aditivo** (= `exercise_instances.source_exercise_id`, `null` en instancias viejas — §8.2).
+- **Filtro `exercise_id` matchea por familia de catálogo:** acepta el id del pool (que es de catálogo, ver pools abajo) y matchea TODAS las instancias de ese ejercicio de catálogo (`ei.source_exercise_id = X`), con fallback para instancias legado sin origen (`ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = X`). Un id de instancia con origen no matchea como instancia (los ids del pool son directamente usables); los ítems siguen exponiendo el id de instancia de cada fila.
+- **Filtros de primer vs segundo nivel:** primer nivel (`team_id`, `group_id`, rango de fechas + scope de autorización) aplican a ítems, `total` y pools; segundo nivel (`exercise_id`, `set_number`, `athlete_user_id`) aplican SOLO a ítems y `total`. `available_athletes`/`available_exercises` son DISTINCT sobre los que matchean solo el primer nivel, para que el frontend siga pudiendo elegir otro atleta/ejercicio sin perder opciones. Los pools ordenan por `name ASC, id ASC`. `available_exercises` va **dedupeado por familia**: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia propio en instancias legado sin origen), con el nombre común — el `id` del pool es lo que se manda en el filtro `exercise_id`.
+- **`total`** cuenta TODOS los filtros, sin paginación.
+- Sort/order van whitelisted (la API no expone nombres de columna): `feedback_date` → `wf.session_date`, `set_number` → `wf.set_number`, `exercise_name` → `ei.name`, con desempate determinista por `wf.id` en la misma dirección del order (dos feedbacks del día carecen de otra key estable).
+- **Nombres en batch:** la fila del DAO trae ids crudos; el service resuelve `athlete_name`/`team_name`/`group_name` con 1 query por entidad (`IN` deduplicado, sin N+1). `athlete_name` sale de la misma fuente `users.name` que el pool.
+- Sin sumarización server-side (agregados por ejercicio/período): FUERA de alcance, mejora futura.
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

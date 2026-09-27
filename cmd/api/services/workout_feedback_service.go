@@ -49,6 +49,15 @@ type WorkoutFeedbackServiceInterface interface {
 	// (y de un atleta en particular si viene; default self), ordenados por
 	// (assigned_exercise_id, set_number) — el shape de la pantalla de revisión.
 	GetSessionFeedback(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	// AthleteHistory devuelve el historial de entrenamientos del propio atleta
+	// (design.md D3/D4/D6): target debe ser el caller (403 si no); el scope de
+	// datos queda fijado a athlete_user_id = target y el resto de params son
+	// filtros. El atleta endpoint no soporta athlete_user_id (se ignora).
+	AthleteHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
+	// AdministeredHistory devuelve el historial de los atletas que administra
+	// el caller: team_id obligatorio (400), equipo existente (404) y owned por
+	// el caller (403). athlete_user_id filtra a un atleta puntual (2do nivel).
+	AdministeredHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
 }
 
 type workoutFeedbackService struct {
@@ -374,6 +383,66 @@ func (s *workoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUserID
 	return feedbacks, nil
 }
 
+// AthleteHistory resuelve el historial del propio atleta: target == caller
+// (403 si no), scope de datos athlete_user_id = target, validaciones D4 y
+// armado del response con nombres en batch y pools del DAO.
+func (s *workoutFeedbackService) AthleteHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if callerID != targetID {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	norm, err := validateHistoryQuery(query, false)
+	if err != nil {
+		return nil, err
+	}
+	filters := daos.WorkoutFeedbackHistoryFilters{
+		AthleteUserID:      &targetID,
+		TeamID:             norm.TeamID,
+		GroupID:            norm.GroupID,
+		DateFrom:           norm.DateFrom,
+		DateTo:             norm.DateTo,
+		ExerciseInstanceID: norm.ExerciseID,
+		SetNumber:          norm.SetNumber,
+	}
+	return s.buildHistoryResponse(ctx, filters, norm)
+}
+
+// AdministeredHistory resuelve el historial de un equipo administrado: además
+// de target == caller, exige team_id (400), que exista (404) y que el caller
+// sea su owner (403) — misma secuencia que Search con team.
+func (s *workoutFeedbackService) AdministeredHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if callerID != targetID {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	norm, err := validateHistoryQuery(query, true)
+	if err != nil {
+		return nil, err
+	}
+	exists, err := s.workoutFeedbackDao.TeamExists(ctx, *norm.TeamID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrTeamNotFound
+	}
+	isOwner, err := s.workoutFeedbackDao.IsTeamOwner(ctx, *norm.TeamID, callerID)
+	if err != nil {
+		return nil, err
+	}
+	if !isOwner {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	filters := daos.WorkoutFeedbackHistoryFilters{
+		TeamID:              norm.TeamID,
+		GroupID:             norm.GroupID,
+		DateFrom:            norm.DateFrom,
+		DateTo:              norm.DateTo,
+		ExerciseInstanceID:  norm.ExerciseID,
+		SetNumber:           norm.SetNumber,
+		AthleteFilterUserID: norm.AthleteUserID,
+	}
+	return s.buildHistoryResponse(ctx, filters, norm)
+}
+
 // canAccess es el corazón de la matriz: reportante, atleta u owner del team.
 // Un feedback sin team_id solo es accesible por reportante o atleta.
 func (s *workoutFeedbackService) canAccess(ctx *gin.Context, authUserID int64, feedback *dbs.WorkoutFeedback) bool {
@@ -576,4 +645,275 @@ func buildUpdates(req workoutfeedback.UpdateFeedbackRequest) (map[string]interfa
 		updates["media_urls"] = textArray(req.MediaURLs)
 	}
 	return updates, nil
+}
+
+// Valores y defaults del historial (design.md D4). La whitelist de sort se
+// valida acá con los valores de la API; la columna SQL la resuelve el DAO.
+const (
+	historyDefaultSort     = "feedback_date"
+	historyDefaultOrder    = "desc"
+	historyDefaultPageSize = 20
+	historyMaxPageSize     = 100
+)
+
+var historySortWhitelist = map[string]bool{
+	"feedback_date": true,
+	"set_number":    true,
+	"exercise_name": true,
+}
+
+// historyQuery es la HistoryQuery ya validada y normalizada (defaults
+// aplicados, fechas parseadas) lista para convertirse en filtros del DAO.
+type historyQuery struct {
+	TeamID        *int64
+	GroupID       *int64
+	ExerciseID    *int64
+	SetNumber     *int
+	AthleteUserID *int64
+	DateFrom      *time.Time
+	DateTo        *time.Time
+	Page          int
+	PageSize      int
+	Sort          string
+	Order         string
+}
+
+// validateHistoryQuery aplica D4: ids positivos, group_id requiere team_id,
+// fechas pareadas y en orden, page/page_size en rango, sort/order whitelisted.
+// requireTeam exige team_id (endpoint del entrenador). Los 400 salen todos
+// envueltos en ErrWorkoutFeedbackInvalid antes de tocar el DAO.
+func validateHistoryQuery(query workoutfeedback.HistoryQuery, requireTeam bool) (*historyQuery, error) {
+	if requireTeam && query.TeamID == nil {
+		return nil, fmt.Errorf("%w: team_id es obligatorio", ErrWorkoutFeedbackInvalid)
+	}
+	if query.TeamID != nil && *query.TeamID <= 0 {
+		return nil, fmt.Errorf("%w: team_id debe ser un número entero mayor a 0", ErrWorkoutFeedbackInvalid)
+	}
+	if query.GroupID != nil {
+		if *query.GroupID <= 0 {
+			return nil, fmt.Errorf("%w: group_id debe ser un número entero mayor a 0", ErrWorkoutFeedbackInvalid)
+		}
+		if query.TeamID == nil {
+			return nil, fmt.Errorf("%w: group_id requiere team_id", ErrWorkoutFeedbackInvalid)
+		}
+	}
+	if query.ExerciseID != nil && *query.ExerciseID <= 0 {
+		return nil, fmt.Errorf("%w: exercise_id debe ser un número entero mayor a 0", ErrWorkoutFeedbackInvalid)
+	}
+	if query.SetNumber != nil && *query.SetNumber < 0 {
+		return nil, fmt.Errorf("%w: set_number debe ser mayor o igual a 0", ErrWorkoutFeedbackInvalid)
+	}
+	if query.AthleteUserID != nil && *query.AthleteUserID <= 0 {
+		return nil, fmt.Errorf("%w: athlete_user_id debe ser un número entero mayor a 0", ErrWorkoutFeedbackInvalid)
+	}
+
+	if (query.DateFrom == nil) != (query.DateTo == nil) {
+		return nil, fmt.Errorf("%w: date_from y date_to deben venir juntos", ErrWorkoutFeedbackInvalid)
+	}
+	var dateFrom, dateTo *time.Time
+	if query.DateFrom != nil {
+		from, err := parseHistoryDate("date_from", *query.DateFrom)
+		if err != nil {
+			return nil, err
+		}
+		to, err := parseHistoryDate("date_to", *query.DateTo)
+		if err != nil {
+			return nil, err
+		}
+		if from.After(to) {
+			return nil, fmt.Errorf("%w: date_from no puede ser posterior a date_to", ErrWorkoutFeedbackInvalid)
+		}
+		dateFrom, dateTo = &from, &to
+	}
+
+	page := 1
+	if query.Page != nil {
+		if *query.Page < 1 {
+			return nil, fmt.Errorf("%w: page debe ser mayor o igual a 1", ErrWorkoutFeedbackInvalid)
+		}
+		page = *query.Page
+	}
+	pageSize := historyDefaultPageSize
+	if query.PageSize != nil {
+		if *query.PageSize < 1 || *query.PageSize > historyMaxPageSize {
+			return nil, fmt.Errorf("%w: page_size debe estar entre 1 y %d", ErrWorkoutFeedbackInvalid, historyMaxPageSize)
+		}
+		pageSize = *query.PageSize
+	}
+
+	sort := historyDefaultSort
+	if query.Sort != "" {
+		if !historySortWhitelist[query.Sort] {
+			return nil, fmt.Errorf("%w: sort debe ser uno de: feedback_date, set_number, exercise_name", ErrWorkoutFeedbackInvalid)
+		}
+		sort = query.Sort
+	}
+	order := historyDefaultOrder
+	if query.Order != "" {
+		if query.Order != "asc" && query.Order != "desc" {
+			return nil, fmt.Errorf("%w: order debe ser asc o desc", ErrWorkoutFeedbackInvalid)
+		}
+		order = query.Order
+	}
+
+	return &historyQuery{
+		TeamID:        query.TeamID,
+		GroupID:       query.GroupID,
+		ExerciseID:    query.ExerciseID,
+		SetNumber:     query.SetNumber,
+		AthleteUserID: query.AthleteUserID,
+		DateFrom:      dateFrom,
+		DateTo:        dateTo,
+		Page:          page,
+		PageSize:      pageSize,
+		Sort:          sort,
+		Order:         order,
+	}, nil
+}
+
+// parseHistoryDate valida el formato YYYY-MM-DD de un query param de fecha.
+func parseHistoryDate(param, raw string) (time.Time, error) {
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: %s debe tener formato YYYY-MM-DD", ErrWorkoutFeedbackInvalid, param)
+	}
+	return parsed, nil
+}
+
+// buildHistoryResponse ejecuta las 4 lecturas del historial (ítems paginados,
+// total sin paginar, pools) y arma el response D6 con nombres en batch.
+func (s *workoutFeedbackService) buildHistoryResponse(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, q *historyQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	rows, err := s.workoutFeedbackDao.HistorySearch(ctx, filters, q.Sort, q.Order, q.PageSize, (q.Page-1)*q.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.workoutFeedbackDao.HistoryCount(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	athletes, err := s.workoutFeedbackDao.HistoryAvailableAthletes(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	exercises, err := s.workoutFeedbackDao.HistoryAvailableExercises(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := s.historyItems(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []workoutfeedback.WorkoutFeedbackHistoryItem{}
+	}
+	if athletes == nil {
+		athletes = []dbs.IDName{}
+	}
+	if exercises == nil {
+		exercises = []dbs.IDName{}
+	}
+
+	return &workoutfeedback.WorkoutFeedbackHistoryResponse{
+		Items:              items,
+		Total:              total,
+		Page:               q.Page,
+		PageSize:           q.PageSize,
+		AvailableAthletes:  athletes,
+		AvailableExercises: exercises,
+	}, nil
+}
+
+// historyItems mapea las filas del DAO a ítems del response resolviendo
+// athlete/team/group names en batch (1 query por entidad, deduplicada).
+// El nombre de atleta sale de users.name — misma fuente que el pool de
+// available_athletes, para que ítems y pool queden consistentes. El nombre de
+// equipo/grupo queda null si la entidad ya no existe aunque el id persista.
+func (s *workoutFeedbackService) historyItems(ctx *gin.Context, rows []dbs.WorkoutFeedbackHistoryRow) ([]workoutfeedback.WorkoutFeedbackHistoryItem, error) {
+	if len(rows) == 0 {
+		return []workoutfeedback.WorkoutFeedbackHistoryItem{}, nil
+	}
+
+	athleteIDs := make([]int64, 0, len(rows))
+	teamIDs := make([]int64, 0)
+	groupIDs := make([]int64, 0)
+	seenAthlete := map[int64]bool{}
+	seenTeam := map[int64]bool{}
+	seenGroup := map[int64]bool{}
+	for _, r := range rows {
+		if !seenAthlete[r.AthleteUserID] {
+			seenAthlete[r.AthleteUserID] = true
+			athleteIDs = append(athleteIDs, r.AthleteUserID)
+		}
+		if r.TeamID != nil && !seenTeam[*r.TeamID] {
+			seenTeam[*r.TeamID] = true
+			teamIDs = append(teamIDs, *r.TeamID)
+		}
+		if r.GroupID != nil && !seenGroup[*r.GroupID] {
+			seenGroup[*r.GroupID] = true
+			groupIDs = append(groupIDs, *r.GroupID)
+		}
+	}
+
+	users, err := s.workoutFeedbackDao.UsersByIDs(ctx, athleteIDs)
+	if err != nil {
+		return nil, err
+	}
+	athleteNameByID := make(map[int64]string, len(users))
+	for _, u := range users {
+		athleteNameByID[u.ID] = u.Name
+	}
+
+	teamNameByID := map[int64]string{}
+	teams, err := s.workoutFeedbackDao.TeamsByIDs(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range teams {
+		teamNameByID[t.ID] = t.Name
+	}
+
+	groupNameByID := map[int64]string{}
+	groups, err := s.workoutFeedbackDao.GroupsByIDs(ctx, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		groupNameByID[g.ID] = g.Name
+	}
+
+	items := make([]workoutfeedback.WorkoutFeedbackHistoryItem, 0, len(rows))
+	for _, r := range rows {
+		item := workoutfeedback.WorkoutFeedbackHistoryItem{
+			ID:                r.ID,
+			AthleteUserID:     r.AthleteUserID,
+			AthleteName:       athleteNameByID[r.AthleteUserID],
+			TeamID:            r.TeamID,
+			GroupID:           r.GroupID,
+			Date:              r.SessionDate.Format("2006-01-02"),
+			SessionName:       r.SessionName,
+			ExerciseID:        r.ExerciseID,
+			ExerciseName:      r.ExerciseName,
+			CatalogExerciseID: r.CatalogExerciseID,
+			SetNumber:         r.SetNumber,
+			CompletionStatus:  r.CompletionStatus,
+			DurationMs:        r.DurationMs,
+			ActiveDurationMs:  r.ActiveDurationMs,
+			DistanceMeters:    r.DistanceMeters,
+			StartedAt:         r.StartedAt,
+			EndedAt:           r.EndedAt,
+		}
+		if r.TeamID != nil {
+			if name, ok := teamNameByID[*r.TeamID]; ok {
+				item.TeamName = &name
+			}
+		}
+		if r.GroupID != nil {
+			if name, ok := groupNameByID[*r.GroupID]; ok {
+				item.GroupName = &name
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }

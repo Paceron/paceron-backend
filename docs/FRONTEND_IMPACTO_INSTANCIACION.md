@@ -239,3 +239,57 @@ Item (ambos): `AggregateCalendarDayResponse` = los campos de `CalendarDayRespons
 - `presencial_collision` presente sii el día superpone con otro día presencial de **otro grupo administrado**. `type`: `"cross_team"` si algún colisionante es de otro equipo (gana si hay de ambos), `"same_team"` si todos son del mismo. `conflicts` lista todos los colisionantes (el día colisionante aparece marcado también en su propio item).
 - `presencial_collision` ausente = sin colisión. `member-calendar` **nunca** lo trae (es exclusivo de la vista del entrenador).
 - El backend solo **marca** — reprogramar o cancelar uno de los dos días es acción manual del entrenador.
+
+## 9. NUEVOS — historial de feedback (Gap 13, change `workout-feedback-history`)
+
+Cierre del Gap 13 (`BACKEND_API_GAPS.md`): la pestaña "Historial" ya tiene endpoints. **Todo aditivo** — `GET /workout-feedback/search` sigue vivo e intacto (decisión: no se depreca); ningún shape existente cambió. Referencia completa: `docs/CATALOGO_Y_CALENDARIO.md` §8.9; shapes acá verificados contra `cmd/api/domains/workoutfeedback/workout_feedback_history.go` (DTOs con tags json), controller y service.
+
+- **`GET /users/{id}/workout-feedback-history`** (corredor, self-only: `id` == token, `403` si no).
+- **`GET /users/{id}/administered-workout-feedback-history?team_id=`** (entrenador: `id` == token, `team_id` obligatorio `400`, equipo inexistente `404`, no-owner `403`). Extra: `athlete_user_id` para filtrar a un atleta puntual.
+
+Iteración de validaciones 400 (`apierror.APIError {status_code, code, message}`): `group_id` sin `team_id`; `date_from`/`date_to` pareados (uno solo → 400), `from > to` → 400 (iguales = 1 día, formato `YYYY-MM-DD`); `page` ≥ 1; `page_size` 1..100; `sort` ∈ {`feedback_date`, `set_number`, `exercise_name`}; `order` ∈ {`asc`, `desc`}.
+
+Response `200 {items, total, page, page_size, available_athletes, available_exercises}` — ítem (todos los campos siempre presentes, los nullable van `null`, no hay omitempty):
+
+```json
+{
+  "items": [
+    {
+      "id": 10,
+      "athlete_user_id": 5,
+      "athlete_name": "Ana Gómez",
+      "team_id": 1,
+      "team_name": "Equipo A",
+      "group_id": 2,
+      "group_name": "Fondo B",
+      "date": "2026-09-20",
+      "session_name": "Fartlek 5K",
+      "exercise_id": 456,
+      "exercise_name": "Trote",
+      "catalog_exercise_id": 501,
+      "set_number": 2,
+      "completion_status": "completed",
+      "duration_ms": 60000,
+      "active_duration_ms": 58000,
+      "distance_meters": 1200.5,
+      "started_at": "2026-09-20T18:00:00Z",
+      "ended_at": "2026-09-20T18:10:00Z"
+    }
+  ],
+  "total": 25,
+  "page": 2,
+  "page_size": 10,
+  "available_athletes": [{"id": 5, "name": "Ana Gómez"}],
+  "available_exercises": [{"id": 456, "name": "Trote"}]
+}
+```
+
+Decisiones que el frontend necesita conocer:
+
+- **`exercise_id` es id de instancia** (`assigned_exercise_id`), NO de catálogo. Para agrupar por ejercicio a través del tiempo usá `catalog_exercise_id` (nullable: `null` en instancias previas a la instanciación o si el feedback es huérfano sin fila de instancia).
+- **Filtro `exercise_id` matchea por familia de catálogo:** el valor a mandar es el `id` de `available_exercises` (que es de catálogo): matchea todas las instancias de ese ejercicio de catálogo, con fallback a id de instancia propio para instancias legado sin origen. Los `id` del pool son directamente usables en el filtro; los `exercise_id` de los ítems siguen siendo de instancia (por fila).
+- **Huérfanos se conservan en `items`** (no desaparecen del historial): `group_id`/`group_name` `null` = día de calendario borrado o instancia nunca asignada a un día; `team_id`/`team_name` `null` = feedback registrado sin equipo. `session_name`/`exercise_name` también pueden ser `null` si la instancia fue borrada. Sin campo extra de razón — los nulls lo comunican.
+- **`sort=feedback_date` ordena por `session_date`** (la fecha del entrenamiento, no el timestamp de carga).
+- **Pools ignoran de segundo nivel:** `available_athletes`/`available_exercises` ({id, name}) son DISTINCT sobre los matcheos del primer nivel solo (equipo/grupo/fechas + scope de autorización); `exercise_id`, `set_number` y `athlete_user_id` NO los recortan — así al elegir otro atleta/ejercicio no se achican las opciones. `available_exercises` va **dedupeado por familia**: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia en instancias legado), no por instancia.
+- `total` = matcheos de TODOS los filtros sin paginar; paginación `page`/`page_size` defaults 1/20.
+- Sin agregados/sumarización server-side (por período/ejercicio): si el tab los necesita, por ahora se calculan client-side sobre `items`.
