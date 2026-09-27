@@ -55,24 +55,36 @@ Cada cobro MUST incluir `gross_amount`. El campo `net_amount` SHALL ser `null` s
 - **WHEN** el pago está `pending` y `raw_response` trae `net_received_amount = 0`
 - **THEN** `net_amount = null`
 
-### Requirement: Listar los pagos de tier propios
+### Requirement: Listar el historial de pagos del usuario
 
-El sistema MUST devolver los pagos cuya cuota tiene `subscription_id` y `user_id` igual al usuario autenticado, sin importar el `concept` del pago. Con `role`, el sistema SHALL devolver solo los tiers de ese rol.
+El sistema MUST devolver, paginados de a 20 y del más reciente al más antiguo, los pagos cuya cuota tiene `user_id` igual al usuario autenticado, excluyendo los que no tienen `payment_id` de Mercado Pago. Cada pago MUST incluir fecha, monto, método de pago, `type` (`subscription` o `trainer_payment`) y estado. El `type` SHALL derivarse del padre de la cuota, no del `concept` del pago.
+
+#### Scenario: Suscripción y pago a entrenador en el mismo historial
+
+- **WHEN** el usuario pagó una cuota de su tier y una cuota de membresía de un equipo
+- **THEN** los dos pagos aparecen en el historial
+- **AND** el de tier trae `type = subscription` y el `tier`
+- **AND** el de membresía trae `type = trainer_payment`, el `team` y el `trainer`
 
 #### Scenario: Pago de tier guardado como `order`
 
 - **WHEN** un pago tiene `concept = order` y está vinculado a una cuota de tier del usuario
-- **THEN** aparece en el listado
+- **THEN** aparece con `type = subscription`
 
-#### Scenario: Cuota de equipo del usuario
+#### Scenario: Pagos de otro usuario
 
-- **WHEN** el usuario pagó una cuota de membresía de equipo
-- **THEN** ese pago no aparece en sus pagos de tier
+- **WHEN** otro usuario tiene pagos
+- **THEN** no aparecen en el historial
 
-#### Scenario: Filtro por rol
+#### Scenario: Filtros por tipo y estado
 
-- **WHEN** se pide `role=entrenador`
-- **THEN** solo vuelven los pagos de tiers del rol entrenador
+- **WHEN** se pide `type=subscription&status=rejected`
+- **THEN** solo vuelven los pagos de tier con estado `rejected` o `cancelled`
+
+#### Scenario: Tipo inválido
+
+- **WHEN** se pide `type=order`
+- **THEN** el backend responde `400` con `code = INVALID_QUERY`
 
 ### Requirement: Resumir los cobros por mes y por equipo
 

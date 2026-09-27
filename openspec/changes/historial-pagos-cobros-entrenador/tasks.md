@@ -6,6 +6,7 @@
 
 - [x] 2.1 Crear `cmd/api/domains/constants/payment_status.go` con los estados de Mercado Pago, los grupos (`approved`, `pending`, `rejected`, `refunded`), `GroupOfPaymentStatus()` y `StatusesForGroup()`.
 - [x] 2.2 Tests en `payment_status_test.go`.
+- [x] 2.3 Crear `payment_history_type.go` con los tipos del historial (`subscription`, `trainer_payment`) y su validación.
 
 ## 3. DTOs e índice
 
@@ -18,14 +19,14 @@
 - [x] 4.2 Excluir filas con `payment_id` vacío y extraer el neto real de `raw_response`.
 - [x] 4.3 Tests contra Postgres: filtro por vendedor y concepto, filas sin `payment_id`, neto de webhook y de `ProcessPayment`, filtros, orden y `has_more`, error de DB.
 
-## 5. DAO de pagos de tier
+## 5. DAO del historial de pagos
 
-- [x] 5.1 Agregar `ListMyTierPayments` al mismo DAO (JOIN a `installments.subscription_id`, filtro opcional por rol).
-- [x] 5.2 Tests: pago `order` con cuota de tier, cuota de equipo excluida, filtro por rol, error de DB.
+- [x] 5.1 Agregar `ListHistory` al mismo DAO: pagos del usuario por `installments.user_id`, con el tier o el equipo y su entrenador resueltos, filtros por tipo y estado.
+- [x] 5.2 Tests: los dos tipos en el mismo historial, pago `order` con cuota de tier, entrenador por dueño del equipo cuando falta `seller_user_id`, filtros, paginación, error de DB.
 
 ## 6. Service de listados
 
-- [x] 6.1 Crear `cmd/api/services/payment_history_service.go` con `ListReceived` y `ListMyTierPayments`: validación de parámetros y mapeo a DTO.
+- [x] 6.1 Crear `cmd/api/services/payment_history_service.go` con `ListReceived` y `ListHistory`: validación de parámetros y mapeo a DTO.
 - [x] 6.2 Tests con mock del DAO.
 
 ## 7. Resumen mensual

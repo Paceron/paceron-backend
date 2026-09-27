@@ -2,24 +2,26 @@
 
 ## Why
 
-Un entrenador no tiene forma de ver su dinero dentro de Paceron. No puede
-consultar los pagos que hizo por su suscripción de tier ni lo que le pagaron
-los corredores por pertenecer a sus equipos. Los datos ya existen en
+Ningún usuario tiene trazabilidad de su dinero dentro de Paceron: no puede
+consultar los pagos que hizo por su suscripción de tier ni los que le hizo a un
+entrenador por pertenecer a su equipo (HU "Historial de pagos y facturación").
+El entrenador, además, no puede ver lo que le pagaron los corredores. Los datos ya existen en
 `payments` e `installments`, pero **no hay ningún endpoint que liste pagos**:
 el `PaymentDao` solo tiene altas, actualizaciones y búsquedas puntuales.
 
 El frontend necesita esta información para una sección "Pagos y cobros" en el
-perfil del entrenador (ver `docs/BACKEND_PAYMENTS_REQUIREMENTS.md` del repo
+perfil del usuario (ver `docs/BACKEND_PAYMENTS_REQUIREMENTS.md` del repo
 frontend, donde la ubicación ya estaba resuelta).
 
 ## Objetivo
 
 Que un usuario autenticado pueda consultar:
 
-1. Los cobros de membresía de equipo que recibió como entrenador.
-2. Sus propios pagos de suscripción de tier.
-3. Un resumen mensual de sus cobros, con totales por equipo y la cantidad de
-   cuotas pendientes o rechazadas.
+1. Su historial de pagos: suscripciones de tier y pagos a entrenadores, con
+   fecha, monto, método de pago, tipo y estado.
+2. Si es entrenador, los cobros de membresía de equipo que recibió.
+3. Si es entrenador, un resumen mensual de sus cobros, con totales por equipo y
+   la cantidad de cuotas pendientes o rechazadas.
 
 Todo sin inventar comisiones: el monto bruto siempre, y el neto solo cuando
 Mercado Pago lo informó de verdad.
@@ -29,7 +31,7 @@ Mercado Pago lo informó de verdad.
 - Tres endpoints `GET` autenticados:
   - `/api/v1/payments/received`
   - `/api/v1/payments/received/summary`
-  - `/api/v1/payments/mine`
+  - `/api/v1/payments/history`
 - Constantes de estado de pago de Mercado Pago y su agrupación.
 - Un DAO de solo lectura con la extracción del neto real desde `raw_response`
   (jsonb).
@@ -47,8 +49,9 @@ Mercado Pago lo informó de verdad.
   guardado es ficticio mientras el split no se envíe).
 - Evitar que `CreatePreference` deje filas sin `payment_id`: acá solo se filtran.
 - Cuotas adeudadas que todavía no tienen ningún intento de pago.
-- Pagos que un corredor hace a sus equipos (su propio historial).
-- Exportación (CSV, PDF).
+- Comprobante en PDF: lo arma el frontend con los datos del historial (no es una
+  factura fiscal).
+- Exportación masiva (CSV).
 - Guardar la fecha real de aprobación del pago.
 
 ## Métrica de éxito
@@ -65,7 +68,7 @@ Mercado Pago lo informó de verdad.
 - Nuevo `PaymentHistoryDao` de solo lectura, sin tocar `PaymentDaoInterface`.
 - Nuevo `PaymentHistoryService`, que depende únicamente de ese DAO.
 - Nuevo `PaymentHistoryController` con tres handlers.
-- Nuevas constantes `PaymentStatus*` y `PaymentStatusGroup*`.
+- Nuevas constantes `PaymentStatus*`, `PaymentStatusGroup*` y `PaymentHistoryType*`.
 - DTOs nuevos en `domains/payment/payment_history.go`.
 - `dbs.Payment.SellerUserID` pasa a tener índice.
 - **No rompe la API**: no cambia ningún endpoint existente.
@@ -74,8 +77,9 @@ Mercado Pago lo informó de verdad.
 
 ### New Capabilities
 
-- `pagos-y-cobros-entrenador`: consulta paginada de cobros recibidos y de pagos
-  de tier propios, más un resumen mensual de cobros.
+- `pagos-y-cobros-entrenador`: historial paginado de los pagos del usuario
+  (suscripciones y pagos a entrenadores), consulta paginada de cobros recibidos
+  y resumen mensual de cobros.
 
 ### Modified Capabilities
 

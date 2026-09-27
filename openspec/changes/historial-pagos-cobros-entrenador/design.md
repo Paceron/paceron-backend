@@ -90,6 +90,20 @@ Parámetro `page` y tamaño fijo 20. Se piden `pageSize+1` filas para derivar
 Se filtra por quien recibió el dinero, no por `teams.owner_id`, que puede
 cambiar si el equipo cambia de dueño.
 
+### D12 — El historial se resuelve por la cuota
+El historial del usuario son los pagos cuya cuota tiene `installments.user_id`
+igual al usuario, excluyendo filas sin `payment_id` (D7). El tipo sale del padre
+de la cuota (`subscription_id` → `subscription`, `team_id` → `trainer_payment`),
+no del `concept` del pago, que en los pagos de tier suele quedar como `order`.
+El entrenador de un pago de membresía sale de `seller_user_id` (quien cobró) y,
+si falta, del dueño actual del equipo.
+
+### D13 — El comprobante PDF lo genera el frontend
+La HU pide descargar comprobantes. Se arma en el frontend con los datos del
+historial (fecha, monto, método, tipo, estado, id de Mercado Pago). El backend no
+suma una librería de PDF ni un endpoint nuevo. El comprobante no es una factura
+fiscal.
+
 ## Contrato
 
 Estados de Mercado Pago agrupados en `status_group`:
@@ -129,7 +143,11 @@ Solo `approved` suma como cobrado.
 }
 ```
 
-### `GET /api/v1/payments/mine?page=&role=`
+### `GET /api/v1/payments/history?page=&type=&status=`
+
+Pagos que hizo el usuario. `type` es `subscription` o `trainer_payment` y se
+deriva de la cuota: `subscription_id` o `team_id` (D12). Según el tipo viene
+`tier`, o `team` + `trainer`; el otro par queda en `null`.
 
 ```json
 {
@@ -137,6 +155,7 @@ Solo `approved` suma como cobrado.
     {
       "id": 790,
       "mp_payment_id": "1319990011",
+      "type": "subscription",
       "status": "approved",
       "status_group": "approved",
       "status_detail": "accredited",
@@ -147,8 +166,27 @@ Solo `approved` suma como cobrado.
       "installment_id": 210,
       "installment_number": 2,
       "due_date": "2026-09-05T03:00:00Z",
-      "subscription_id": 55,
-      "tier": { "id": 4, "name": "Premium_entrenador", "role_name": "entrenador" }
+      "tier": { "id": 4, "name": "Premium_entrenador", "role_name": "entrenador" },
+      "team": null,
+      "trainer": null
+    },
+    {
+      "id": 812,
+      "mp_payment_id": "1319998877",
+      "type": "trainer_payment",
+      "status": "approved",
+      "status_group": "approved",
+      "status_detail": "accredited",
+      "amount": 15000,
+      "currency_id": "ARS",
+      "payment_method_id": "visa",
+      "created_at": "2026-09-14T16:22:05Z",
+      "installment_id": 301,
+      "installment_number": 3,
+      "due_date": null,
+      "tier": null,
+      "team": { "id": 12, "name": "Runners del Parque" },
+      "trainer": { "id": 3, "name": "Pepa", "surname": "Lota" }
     }
   ],
   "has_more": false
