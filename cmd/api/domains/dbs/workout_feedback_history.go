@@ -31,5 +31,6 @@ type WorkoutFeedbackHistoryRow struct {
 	ExerciseID        int64      `gorm:"column:exercise_id"`
 	ExerciseName      *string    `gorm:"column:exercise_name"`
 	CatalogExerciseID *int64     `gorm:"column:catalog_exercise_id"`
+	SessionInstanceID int64      `gorm:"column:session_instance_id"`
 	SessionName       *string    `gorm:"column:session_name"`
 }

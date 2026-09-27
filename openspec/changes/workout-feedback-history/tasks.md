@@ -44,3 +44,9 @@
 - [x] 5.1 DAO: `HistoryAvailableExercises` dedupeado por familia (`DISTINCT ON COALESCE(ei.source_exercise_id, ei.id)`, representante = instancia id menor), con test de pool dedupeado.
 - [x] 5.2 DAO: filtro `exercise_id` con semántica de familia (`ei.source_exercise_id = X OR (ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = X)`), join condicional en `HistoryCount`, con tests (source matchea todas sus instancias, legacy matchea por instancia, instancia con origen no matchea como instancia).
 - [x] 5.3 Spec delta + design + docs actualizados a la semántica de familia; `openspec validate --strict`; suite con Postgres real verde.
+
+### Task 6: Ajuste post-feedback — `session_instance_id` en los ítems del historial
+
+- [ ] 6.1 DAO: `SessionInstanceID` en `WorkoutFeedbackHistoryRow` + `wf.assigned_session_id AS session_instance_id` en el SELECT de `HistorySearch`, con test de shape de fila.
+- [ ] 6.2 DTO + service: campo `session_instance_id` en `WorkoutFeedbackHistoryItem` (siempre presente, no nullable: es la FK opaca del feedback) + mapeo en `historyItems`, con test de shape.
+- [ ] 6.3 Docs (§8.9 + §9), spec delta, `swag init`, `openspec validate --strict`; suite con Postgres real verde.

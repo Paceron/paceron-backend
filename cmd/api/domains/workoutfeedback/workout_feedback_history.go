@@ -38,6 +38,7 @@ type WorkoutFeedbackHistoryItem struct {
 	GroupName         *string    `json:"group_name"`
 	Date              string     `json:"date"`
 	SessionName       *string    `json:"session_name"`
+	SessionInstanceID int64      `json:"session_instance_id"`
 	ExerciseID        int64      `json:"exercise_id"`
 	ExerciseName      *string    `json:"exercise_name"`
 	CatalogExerciseID *int64     `json:"catalog_exercise_id"`

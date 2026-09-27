@@ -184,7 +184,8 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 		{ID: 1, AthleteUserID: 7, TeamID: &teamID, GroupID: &groupID, SessionDate: sessionDate,
 			SetNumber: 1, CompletionStatus: &status, DurationMs: &duration, ActiveDurationMs: &active,
 			DistanceMeters: &distance, StartedAt: &started, EndedAt: &ended,
-			ExerciseID: 3, ExerciseName: &exName, CatalogExerciseID: &catalog, SessionName: &sessionName},
+			ExerciseID: 3, ExerciseName: &exName, CatalogExerciseID: &catalog, SessionName: &sessionName,
+			SessionInstanceID: 404},
 		// mismo atleta de nuevo: el batch de users debe deduplicar
 		{ID: 2, AthleteUserID: 7, TeamID: &teamID, SessionDate: sessionDate, SetNumber: 2, ExerciseID: 3},
 		// huérfano: sin team, sin group
@@ -220,6 +221,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	assert.Equal(t, "2026-03-10", first.Date)
 	require.NotNil(t, first.SessionName)
 	assert.Equal(t, "Fuerza piernas", *first.SessionName)
+	assert.Equal(t, int64(404), first.SessionInstanceID)
 	assert.Equal(t, int64(3), first.ExerciseID)
 	require.NotNil(t, first.ExerciseName)
 	assert.Equal(t, "Sentadilla", *first.ExerciseName)
@@ -246,6 +248,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	assert.Equal(t, int64(5), resp.Items[2].ExerciseID)
 	assert.Nil(t, resp.Items[2].ExerciseName)
 	assert.Nil(t, resp.Items[2].SessionName)
+	assert.Equal(t, int64(0), resp.Items[2].SessionInstanceID)
 
 	// team no resuelto: team_id presente, team_name null
 	require.NotNil(t, resp.Items[3].TeamID)

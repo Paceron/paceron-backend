@@ -411,7 +411,8 @@ func (d *workoutFeedbackDao) HistorySearch(ctx *gin.Context, filters WorkoutFeed
 			wf.set_number, wf.completion_status, wf.duration_ms, wf.active_duration_ms,
 			wf.distance_meters, wf.started_at, wf.ended_at,
 			wf.assigned_exercise_id AS exercise_id, ei.name AS exercise_name,
-			ei.source_exercise_id AS catalog_exercise_id, si.name AS session_name`).
+			ei.source_exercise_id AS catalog_exercise_id,
+			wf.assigned_session_id AS session_instance_id, si.name AS session_name`).
 		Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id").
 		Joins("LEFT JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id").
 		Joins("LEFT JOIN session_instances si ON si.id = wf.assigned_session_id")
