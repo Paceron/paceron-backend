@@ -35,6 +35,6 @@
 
 ### Task 4: Documentación + verificación final
 
-- [ ] 4.1 `docs/CATALOGO_Y_CALENDARIO.md` (o doc de dominio afín): nueva sección de historial con shapes/errores verificados contra código.
-- [ ] 4.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección del gap 13 cerrado (shapes, decisiones: exercise_id=instancia, catalog_exercise_id aditivo, huérfanos con nulls).
-- [ ] 4.3 Verificación final: `openspec validate workout-feedback-history --strict`; gofmt en archivos tocados; `go build ./...`; `go vet ./...`; suite completa `go test ./...` con Postgres real (0 FAIL); `go clean -cache` + `make coverage-with-db` + analyzer ≥85 (gate); tildar checkboxes.
+- [x] 4.1 `docs/CATALOGO_Y_CALENDARIO.md` (o doc de dominio afín): nueva sección de historial con shapes/errores verificados contra código.
+- [x] 4.2 `docs/FRONTEND_IMPACTO_INSTANCIACION.md`: sección del gap 13 cerrado (shapes, decisiones: exercise_id=instancia, catalog_exercise_id aditivo, huérfanos con nulls).
+- [x] 4.3 Verificación final: `openspec validate workout-feedback-history --strict`; gofmt en archivos tocados; `go build ./...`; `go vet ./...`; suite completa `go test ./...` con Postgres real (0 FAIL); `go clean -cache` + `make coverage-with-db` + analyzer ≥85 (gate); tildar checkboxes.
