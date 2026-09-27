@@ -21,14 +21,16 @@ import (
 )
 
 type mockWorkoutFeedbackService struct {
-	createFn    func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error)
-	getByIDFn   func(ctx *gin.Context, authUserID, feedbackID int64) (*dbs.WorkoutFeedback, error)
-	searchFn    func(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
-	updateFn    func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
-	softDeleteFn func(ctx *gin.Context, authUserID, feedbackID int64) error
-	createPointsFn func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
-	getPointsFn    func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
-	getSessionFeedbackFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	createFn              func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error)
+	getByIDFn             func(ctx *gin.Context, authUserID, feedbackID int64) (*dbs.WorkoutFeedback, error)
+	searchFn              func(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
+	updateFn              func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
+	softDeleteFn          func(ctx *gin.Context, authUserID, feedbackID int64) error
+	createPointsFn        func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
+	getPointsFn           func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
+	getSessionFeedbackFn  func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	athleteHistoryFn      func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
+	administeredHistoryFn func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
 }
 
 func (m *mockWorkoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
@@ -83,6 +85,20 @@ func (m *mockWorkoutFeedbackService) GetPoints(ctx *gin.Context, authUserID, fee
 func (m *mockWorkoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
 	if m.getSessionFeedbackFn != nil {
 		return m.getSessionFeedbackFn(ctx, authUserID, sessionInstanceID, athleteUserID)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackService) AthleteHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if m.athleteHistoryFn != nil {
+		return m.athleteHistoryFn(ctx, callerID, targetID, query)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackService) AdministeredHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if m.administeredHistoryFn != nil {
+		return m.administeredHistoryFn(ctx, callerID, targetID, query)
 	}
 	return nil, nil
 }

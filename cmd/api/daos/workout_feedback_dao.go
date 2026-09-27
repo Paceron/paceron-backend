@@ -108,6 +108,13 @@ type WorkoutFeedbackDAOInterface interface {
 	HistoryAvailableAthletes(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
 	HistoryAvailableExercises(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
 
+	// UsersByIDs/TeamsByIDs/GroupsByIDs resuelven nombres en batch para el
+	// historial (design.md D1: 1 query por entidad con IN, sin N+1). Delegan en
+	// los DAOs de cada entidad. Slice vacío → nil sin tocar la DB.
+	UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error)
+	GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error)
+
 	// Chequeos de membresía de equipo compartidos (TeamMembershipDAO): los usa el
 	// service para la matriz de autorización de equipos. Delegados internamente.
 	TeamExists(ctx *gin.Context, teamID int64) (bool, error)
@@ -118,6 +125,9 @@ type WorkoutFeedbackDAOInterface interface {
 type workoutFeedbackDao struct {
 	DB         *gorm.DB
 	membership TeamMembershipDAOInterface
+	users      UserDaoInterface
+	teams      TeamDaoInterface
+	groups     GroupDaoInterface
 }
 
 // NewWorkoutFeedbackDao crea una nueva instancia de WorkoutFeedbackDao.
@@ -125,6 +135,9 @@ func NewWorkoutFeedbackDao(database *gorm.DB) WorkoutFeedbackDAOInterface {
 	return &workoutFeedbackDao{
 		DB:         database,
 		membership: NewTeamMembershipDao(database),
+		users:      NewUserDao(database),
+		teams:      NewTeamDao(database),
+		groups:     NewGroupDao(database),
 	}
 }
 
@@ -471,6 +484,31 @@ func (d *workoutFeedbackDao) HistoryAvailableExercises(ctx *gin.Context, filters
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.
 func (d *workoutFeedbackDao) TeamExists(ctx *gin.Context, teamID int64) (bool, error) {
 	return d.membership.TeamExists(ctx, teamID)
+}
+
+// UsersByIDs delega en UserDao para el batch de nombres de atletas del
+// historial (misma fuente users.name que el pool de available_athletes).
+func (d *workoutFeedbackDao) UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	return d.users.FindByIDs(ctx, userIDs)
+}
+
+// TeamsByIDs delega en TeamDao para el batch de team_name del historial.
+func (d *workoutFeedbackDao) TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error) {
+	if len(teamIDs) == 0 {
+		return nil, nil
+	}
+	return d.teams.FindByIDs(ctx, teamIDs)
+}
+
+// GroupsByIDs delega en GroupDao para el batch de group_name del historial.
+func (d *workoutFeedbackDao) GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	return d.groups.FindByIDs(ctx, groupIDs)
 }
 
 // IsTeamOwner indica si userID es el owner del team (teams.owner_id).
