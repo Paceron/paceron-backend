@@ -470,6 +470,15 @@ Decisions y detalles verificados contra `workout_feedback_dao.go` / `workout_fee
 - **Nombres en batch:** la fila del DAO trae ids crudos; el service resuelve `athlete_name`/`team_name`/`group_name` con 1 query por entidad (`IN` deduplicado, sin N+1). `athlete_name` sale de la misma fuente `users.name` que el pool.
 - Sin sumarización server-side (agregados por ejercicio/período): FUERA de alcance, mejora futura.
 
+### 8.10 Detalle standalone de sesión instancia (Gap 14 — change `session-instance-detail`)
+
+`GET /api/v1/session-instances/{id}`: instancia completa (shape D9 embebido: `{id, session_id nullable, name, description nullable, created_at, exercises: [{id, exercise_id nullable, name, kind, description, intensity, minutes, distance_m, speed_kph, muscle_group, video_url, role, repeat_count, rest_minutes}]}`) a partir de solo el id — sin depender de un día de calendario. Primera entrada solo-id a la pantalla de revisión (los demás puntos traen la instancia embebida).
+
+- **`404`** si la instancia no existe (las instancias no tienen soft-delete; el borrado es físico, §8.4). **`403`** si existe y el caller no tiene acceso.
+- **Acceso por regla dual** (`HasInstanceAccess` en `session_instance_dao.go`, 2 existence-checks con OR): (a) existe un día de calendario con esa instancia y el caller es miembro activo del grupo (`group_users` con `deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())`) u owner del equipo del grupo; o (b) existe un `workout_feedback` activo (`deleted_at IS NULL`) sobre la instancia (`assigned_session_id`) y el caller es atleta del feedback, reportante (`feedback_owner_user_id`) u owner del equipo del feedback (`LEFT JOIN teams` — feedback sin `team_id` aún puede dar acceso por atleta/reportante). Ningún otro vínculo otorga acceso: no se expone contenido entre equipos.
+- Es el complemento natural del historial (§8.9): la fila trae `session_instance_id`, esta lectura trae el objeto completo. `GET /session-instances/:id/runner` y `/:id/feedback` quedan intactos (subpaths compatibles con la ruta plana).
+- Shape y mapeo reutilizan `sessionInstanceResponse` de `calendar_service.go` (mismo builder que embebe el calendario); un link sin su ejercicio instancia es error interno, no respuesta incompleta silenciosa.
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

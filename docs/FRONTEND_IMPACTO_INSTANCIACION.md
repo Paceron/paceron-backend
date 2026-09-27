@@ -295,3 +295,29 @@ Decisiones que el frontend necesita conocer:
 - **Pools ignoran de segundo nivel:** `available_athletes`/`available_exercises` ({id, name}) son DISTINCT sobre los matcheos del primer nivel solo (equipo/grupo/fechas + scope de autorización); `exercise_id`, `set_number` y `athlete_user_id` NO los recortan — así al elegir otro atleta/ejercicio no se achican las opciones. `available_exercises` va **dedupeado por familia**: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia en instancias legado), no por instancia.
 - `total` = matcheos de TODOS los filtros sin paginar; paginación `page`/`page_size` defaults 1/20.
 - Sin agregados/sumarización server-side (por período/ejercicio): si el tab los necesita, por ahora se calculan client-side sobre `items`.
+
+## 10. NUEVO — detalle standalone de instancia (Gap 14, change `session-instance-detail`)
+
+`GET /api/v1/session-instances/{id}`: la instancia completa (el mismo objeto que el calendario embebe como `session_instance`) a partir de solo el id — el complemento del `session_instance_id` del historial (§9). Todo aditivo, nada de lo existente cambia.
+
+```json
+{
+  "id": 88,
+  "session_id": 12,
+  "name": "Series de velocidad",
+  "description": "...",
+  "created_at": "2026-09-20T15:00:00Z",
+  "exercises": [
+    {
+      "id": 501, "exercise_id": 44, "name": "Series 400m", "kind": "training",
+      "description": null, "intensity": null, "minutes": null, "distance_m": null,
+      "speed_kph": null, "muscle_group": null, "video_url": null,
+      "role": "principal", "repeat_count": 4, "rest_minutes": 2
+    }
+  ]
+}
+```
+
+- **Uso:** historial (§9) trae `session_instance_id` → este endpoint trae el objeto completo para la pantalla de revisión.
+- **Códigos:** `404` instancia inexistente; `403` si el caller no tiene vínculo con ella. Acceso si: hay un día de calendario con esta instancia y el caller es miembro activo del grupo u owner del equipo; **o** hay un feedback activo sobre la instancia del caller (atleta/reportante/owner del equipo). Nada más.
+- Los ejercicios vienen congelados por instancia (id de instancia en `id`; `exercise_id` = origen catálogo, nullable). `GET /session-instances/:id/feedback` y `/:id/runner` siguen intactos.
