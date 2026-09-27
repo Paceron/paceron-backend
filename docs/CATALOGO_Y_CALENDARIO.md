@@ -412,6 +412,7 @@ Dos lecturas nuevas con el mismo item `AggregateCalendarDayResponse`: los campos
   - `type`: `"cross_team"` si algún colisionante es de otro equipo (gana sobre `"same_team"` si hay de ambos), `"same_team"` si todos lo son. `conflicts` lista **todos** los colisionantes. Ausente (`omitempty`) si el día no colisiona.
   - Aplica las mismas reglas de §8.7 (solo training+presencial, overlap medio-abierto, cancelled fuera) y **detecta colisiones viejas**: días guardados antes de que existiera el guard aparecen marcados, porque la detección corre sobre los datos actuales. No las arregla — solo las hace visibles (arreglo manual: reprogramar o cancelar uno de los dos).
   - El día colisionante también aparece marcado en el item del otro grupo (la detección corre por día presencial, excluyendo la fila misma).
+
 ### 8.9 Historial de feedback (Gap 13 — change `workout-feedback-history`)
 
 Dos lecturas paginadas de entrenamientos realizados (filas de `workout_feedback` con `deleted_at IS NULL`), enriquecidas con los nombres que la UI necesita. Spec: `openspec/changes/workout-feedback-history/`; el resto del dominio feedback está en `openspec/specs/workout-feedback/`. `GET /workout-feedback/search` sigue vivo e intacto (decisión: no se depreca).
@@ -453,7 +454,7 @@ Los errores van por `respondFeedbackError` (mismo mapeo del resto del dominio fe
     }
   ],
   "total": 25, "page": 2, "page_size": 10,
-  "available_athletes":  [{"id": 5, "name": "Ana Gómez"}],
+  "available_athletes": [{"id": 5, "name": "Ana Gómez"}],
   "available_exercises": [{"id": 456, "name": "Trote"}]
 }
 ```
