@@ -3070,6 +3070,44 @@
                 }
             }
         },
+        "/api/v1/session-instances/{id}": {
+            "get": {
+                "description": "Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "calendar"
+                ],
+                "summary": "Detalle completo de una sesión instancia",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Session Instance ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "sin vínculo con la instancia"
+                    },
+                    "404": {
+                        "description": "instancia no encontrada"
+                    }
+                }
+            }
+        },
         "/api/v1/session-instances/{id}/feedback": {
             "get": {
                 "description": "Devuelve los feedbacks activos de la sesión (del atleta self por default, o del atleta indicado si el auth es entrenador del equipo), ordenados por ejercicio y serie. Las series sin feedback no aparecen.",

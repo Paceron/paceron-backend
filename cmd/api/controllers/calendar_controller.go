@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/calendar"
+	_ "simple-arq-golang/cmd/api/domains/instance"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
