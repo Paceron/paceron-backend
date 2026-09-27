@@ -4460,6 +4460,34 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/session-instances/{id}:
+    get:
+      description: Devuelve la instancia completa (nombre, descripción, ejercicios
+        con series) a partir de solo su id. Acceso si hay un día de calendario del
+        grupo/equipo del caller con esta instancia, o un feedback activo del caller
+        (atleta/reportante/owner) sobre ella.
+      parameters:
+      - description: Session Instance ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
+        "401":
+          description: Unauthorized
+        "403":
+          description: sin vínculo con la instancia
+        "404":
+          description: instancia no encontrada
+      summary: Detalle completo de una sesión instancia
+      tags:
+      - calendar
   /api/v1/session-instances/{id}/feedback:
     get:
       consumes:

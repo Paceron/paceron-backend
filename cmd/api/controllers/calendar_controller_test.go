@@ -15,23 +15,25 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/domains/calendar"
+	"simple-arq-golang/cmd/api/domains/instance"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
 
 type mockCalendarService struct {
-	getRangeFn        func(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error)
-	upsertDayFn       func(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error)
-	deleteDayFn       func(ctx *gin.Context, groupID, callerID int64, date time.Time) error
-	stampFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error)
-	bulkFn            func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error)
-	bulkClearFn       func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
-	shiftFn           func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
-	nextSessionFn     func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
-	nextPresencialFn  func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
-	memberCalendarFn  func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
-	administeredCalFn func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
-	calendarSummaryFn func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
+	getRangeFn              func(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error)
+	upsertDayFn             func(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error)
+	deleteDayFn             func(ctx *gin.Context, groupID, callerID int64, date time.Time) error
+	stampFn                 func(ctx *gin.Context, groupID, callerID int64, req calendar.StampRequest) (calendar.CalendarMutationResponse, error)
+	bulkFn                  func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkRequest) (calendar.CalendarMutationResponse, error)
+	bulkClearFn             func(ctx *gin.Context, groupID, callerID int64, req calendar.BulkClearRequest) error
+	shiftFn                 func(ctx *gin.Context, groupID, callerID int64, req calendar.ShiftRequest) (calendar.CalendarMutationResponse, error)
+	nextSessionFn           func(ctx *gin.Context, userID int64) (*calendar.NextSessionResponse, error)
+	nextPresencialFn        func(ctx *gin.Context, userID int64) (*calendar.NextPresencialSessionResponse, error)
+	memberCalendarFn        func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
+	administeredCalFn       func(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error)
+	calendarSummaryFn       func(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error)
+	sessionInstanceDetailFn func(ctx *gin.Context, id, callerID int64) (*instance.SessionInstanceResponse, error)
 }
 
 func (m *mockCalendarService) GetRange(ctx *gin.Context, groupID, callerID int64, from, to time.Time) ([]calendar.CalendarDayResponse, error) {
@@ -70,6 +72,9 @@ func (m *mockCalendarService) AdministeredCalendar(ctx *gin.Context, userID int6
 func (m *mockCalendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
 	return m.calendarSummaryFn(ctx, userID)
 }
+func (m *mockCalendarService) SessionInstanceDetail(ctx *gin.Context, id, callerID int64) (*instance.SessionInstanceResponse, error) {
+	return m.sessionInstanceDetailFn(ctx, id, callerID)
+}
 func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -90,6 +95,7 @@ func setupCalendarRouter(svc services.CalendarServiceInterface, authUserID int64
 	r.GET("/users/:id/member-calendar", ctrl.MemberCalendar)
 	r.GET("/users/:id/administered-calendar", ctrl.AdministeredCalendar)
 	r.GET("/users/:id/calendar-summary", ctrl.CalendarSummary)
+	r.GET("/session-instances/:id", ctrl.SessionInstanceDetail)
 	return r
 }
 

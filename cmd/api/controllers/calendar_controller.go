@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/calendar"
+	_ "simple-arq-golang/cmd/api/domains/instance"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -26,6 +27,7 @@ type CalendarController interface {
 	MemberCalendar(c *gin.Context)
 	AdministeredCalendar(c *gin.Context)
 	CalendarSummary(c *gin.Context)
+	SessionInstanceDetail(c *gin.Context)
 }
 
 type calendarController struct {
@@ -40,6 +42,8 @@ func mapCalendarError(err error) (int, string) {
 	switch {
 	case errors.Is(err, services.ErrCalendarGroupNotFound):
 		return http.StatusNotFound, "grupo no encontrado"
+	case errors.Is(err, services.ErrCalendarInstanceNotFound):
+		return http.StatusNotFound, "sesión instancia no encontrada"
 	case errors.Is(err, services.ErrCalendarPlanNotFound):
 		return http.StatusNotFound, "plan no encontrado"
 	case errors.Is(err, services.ErrCalendarForbidden):
@@ -547,6 +551,36 @@ func (cc *calendarController) CalendarSummary(c *gin.Context) {
 		return
 	}
 	resp, err := cc.calendarService.CalendarSummary(c, userID)
+	if err != nil {
+		respondCalendarError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// SessionInstanceDetail godoc
+// @Summary      Detalle completo de una sesión instancia
+// @Description  Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella.
+// @Tags         calendar
+// @Produce      json
+// @Param        id   path  int  true  "Session Instance ID"
+// @Success      200  {object}  instance.SessionInstanceResponse
+// @Failure      401
+// @Failure      403  "sin vínculo con la instancia"
+// @Failure      404  "instancia no encontrada"
+// @Router       /api/v1/session-instances/{id} [get]
+func (cc *calendarController) SessionInstanceDetail(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		respondCatalogError(c, http.StatusUnauthorized, "no se pudo resolver el usuario autenticado")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		respondCatalogError(c, http.StatusBadRequest, "id debe ser un número válido")
+		return
+	}
+	resp, err := cc.calendarService.SessionInstanceDetail(c, id, authUserID)
 	if err != nil {
 		respondCalendarError(c, err)
 		return
