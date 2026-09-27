@@ -12,7 +12,7 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@example.com"
+            "email": "dev@paceron.com"
         },
         "license": {
             "name": "MIT",
@@ -5398,6 +5398,129 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/users/{id}/administered-workout-feedback-history": {
+            "get": {
+                "description": "Devuelve los feedbacks de los atletas de un equipo administrado (id debe ser el caller y owner del equipo). team_id es obligatorio. Soporta los filtros del atleta más athlete_user_id.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Historial de entrenamientos administrado por el entrenador",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del grupo",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD)",
+                        "name": "date_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de instancia de ejercicio",
+                        "name": "exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Número de serie",
+                        "name": "set_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filtrar a un atleta puntual",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "feedback_date | set_number | exercise_name (default feedback_date)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "asc | desc (default desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamaño de página (default 20, máx 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/calendar-summary": {
             "get": {
                 "produces": [
@@ -6340,6 +6463,122 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/workout-feedback-history": {
+            "get": {
+                "description": "Devuelve los feedbacks del propio usuario autenticado (id debe ser el caller), con filtros, sort whitelisted, paginación y pools de atletas/ejercicios disponibles.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workout-feedback"
+                ],
+                "summary": "Historial de entrenamientos del atleta",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "team_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del grupo (requiere team_id)",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD)",
+                        "name": "date_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID de instancia de ejercicio",
+                        "name": "exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Número de serie",
+                        "name": "set_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "feedback_date | set_number | exercise_name (default feedback_date)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "asc | desc (default desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamaño de página (default 20, máx 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -7547,6 +7786,17 @@ const docTemplate = `{
                 "userID": {
                     "description": "ID del usuario que asiste",
                     "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dbs.IDName": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },
@@ -10075,6 +10325,100 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "athlete_name": {
+                    "type": "string"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "catalog_exercise_id": {
+                    "type": "integer"
+                },
+                "completion_status": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "exercise_name": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "session_name": {
+                    "type": "string"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "available_athletes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName"
+                    }
+                },
+                "available_exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse": {
             "type": "object",
             "properties": {
@@ -10161,6 +10505,10 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "points_count": {
+                    "description": "PointsCount = cuántos puntos GPS tiene esta serie. No es una columna de\nworkout_feedback: se calcula con un COUNT agregado sobre\nworkout_feedback_points cuando el DAO arma la lista (GetBySession), para\nque la pantalla de revisión sepa si hay trayectoria para dibujar sin\npedir el detalle de cada serie (N+1).",
+                    "type": "integer"
+                },
                 "report_source": {
                     "type": "string"
                 },
@@ -10229,12 +10577,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0.0",
+	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Simple Arq Golang API",
-	Description:      "Base scaffolding for Go APIs with Gin framework",
+	Title:            "Paceron Backend API",
+	Description:      "API para el registro y gestión de usuarios de Paceron",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
