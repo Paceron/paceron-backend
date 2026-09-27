@@ -2196,16 +2196,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/payments/mine": {
+        "/api/v1/payments/history": {
             "get": {
-                "description": "Pagos de suscripción de tier del usuario autenticado, del más reciente al más antiguo. Paginado de a 20.",
+                "description": "Pagos que hizo el usuario autenticado, del más reciente al más antiguo: suscripciones de tier (` + "`" + `type=subscription` + "`" + `) y pagos a entrenadores por la membresía de un equipo (` + "`" + `type=trainer_payment` + "`" + `). Paginado de a 20.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "payments"
                 ],
-                "summary": "Listar mis pagos de suscripción",
+                "summary": "Historial de pagos del usuario",
                 "parameters": [
                     {
                         "type": "integer",
@@ -2214,9 +2214,25 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "subscription",
+                            "trainer_payment"
+                        ],
                         "type": "string",
-                        "description": "Filtrar por rol del tier (ej. entrenador)",
-                        "name": "role",
+                        "description": "Filtrar por tipo",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "approved",
+                            "pending",
+                            "rejected",
+                            "refunded"
+                        ],
+                        "type": "string",
+                        "description": "Filtrar por grupo de estado",
+                        "name": "status",
                         "in": "query"
                     }
                 ],
@@ -2224,7 +2240,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.TierPaymentsResponse"
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.HistoryPaymentsResponse"
                         }
                     },
                     "400": {
@@ -8194,6 +8210,73 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.HistoryPaymentItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "currency_id": {
+                    "type": "string"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "installment_id": {
+                    "type": "integer"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "mp_payment_id": {
+                    "type": "string"
+                },
+                "payment_method_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_detail": {
+                    "type": "string"
+                },
+                "status_group": {
+                    "type": "string"
+                },
+                "team": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef"
+                },
+                "tier": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef"
+                },
+                "trainer": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.HistoryPaymentsResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "payments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.HistoryPaymentItem"
+                    }
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.MPPaymentStatusCard": {
             "type": "object",
             "properties": {
@@ -8485,6 +8568,20 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "surname": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.PreferenceItem": {
             "type": "object",
             "required": [
@@ -8718,67 +8815,6 @@ const docTemplate = `{
             "properties": {
                 "token": {
                     "type": "string"
-                }
-            }
-        },
-        "simple-arq-golang_cmd_api_domains_payment.TierPaymentItem": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "number"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "currency_id": {
-                    "type": "string"
-                },
-                "due_date": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "installment_id": {
-                    "type": "integer"
-                },
-                "installment_number": {
-                    "type": "integer"
-                },
-                "mp_payment_id": {
-                    "type": "string"
-                },
-                "payment_method_id": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "status_detail": {
-                    "type": "string"
-                },
-                "status_group": {
-                    "type": "string"
-                },
-                "subscription_id": {
-                    "type": "integer"
-                },
-                "tier": {
-                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef"
-                }
-            }
-        },
-        "simple-arq-golang_cmd_api_domains_payment.TierPaymentsResponse": {
-            "type": "object",
-            "properties": {
-                "has_more": {
-                    "type": "boolean"
-                },
-                "payments": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.TierPaymentItem"
-                    }
                 }
             }
         },
