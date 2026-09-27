@@ -50,28 +50,39 @@ type PaymentTierRef struct {
 	RoleName string `json:"role_name"`
 }
 
-// TierPaymentItem es un pago de suscripción de tier del usuario.
-type TierPaymentItem struct {
-	ID                int64           `json:"id"`
-	MPPaymentID       string          `json:"mp_payment_id"`
-	Status            string          `json:"status"`
-	StatusGroup       string          `json:"status_group"`
-	StatusDetail      string          `json:"status_detail"`
-	Amount            float64         `json:"amount"`
-	CurrencyID        string          `json:"currency_id"`
-	PaymentMethodID   string          `json:"payment_method_id"`
-	CreatedAt         string          `json:"created_at"`
-	InstallmentID     int64           `json:"installment_id"`
-	InstallmentNumber int             `json:"installment_number"`
-	DueDate           *string         `json:"due_date"`
-	SubscriptionID    int64           `json:"subscription_id"`
-	Tier              *PaymentTierRef `json:"tier"`
+// PaymentTrainerRef identifica al entrenador que recibió un pago de membresía.
+type PaymentTrainerRef struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
 }
 
-// TierPaymentsResponse es la página de GET /api/v1/payments/mine.
-type TierPaymentsResponse struct {
-	Payments []TierPaymentItem `json:"payments"`
-	HasMore  bool              `json:"has_more"`
+// HistoryPaymentItem es un pago del historial del usuario. Type es
+// "subscription" (tier) o "trainer_payment" (membresía de un equipo); según el
+// tipo viene Tier, o Team + Trainer, y el otro par queda en null.
+type HistoryPaymentItem struct {
+	ID                int64              `json:"id"`
+	MPPaymentID       string             `json:"mp_payment_id"`
+	Type              string             `json:"type"`
+	Status            string             `json:"status"`
+	StatusGroup       string             `json:"status_group"`
+	StatusDetail      string             `json:"status_detail"`
+	Amount            float64            `json:"amount"`
+	CurrencyID        string             `json:"currency_id"`
+	PaymentMethodID   string             `json:"payment_method_id"`
+	CreatedAt         string             `json:"created_at"`
+	InstallmentID     int64              `json:"installment_id"`
+	InstallmentNumber int                `json:"installment_number"`
+	DueDate           *string            `json:"due_date"`
+	Tier              *PaymentTierRef    `json:"tier"`
+	Team              *PaymentTeamRef    `json:"team"`
+	Trainer           *PaymentTrainerRef `json:"trainer"`
+}
+
+// HistoryPaymentsResponse es la página de GET /api/v1/payments/history.
+type HistoryPaymentsResponse struct {
+	Payments []HistoryPaymentItem `json:"payments"`
+	HasMore  bool                 `json:"has_more"`
 }
 
 // MonthlyAmount es el total cobrado en un mes (YYYY-MM, hora argentina).

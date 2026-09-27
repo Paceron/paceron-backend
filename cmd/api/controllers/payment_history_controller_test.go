@@ -17,7 +17,7 @@ import (
 
 type mockPaymentHistoryService struct {
 	listReceivedFn       func(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
-	listMyTierPaymentsFn func(ctx *gin.Context, userID int64, roleName string, page int) (*payment.TierPaymentsResponse, error)
+	listHistoryFn        func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	getReceivedSummaryFn func(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error)
 }
 
@@ -25,8 +25,8 @@ func (m *mockPaymentHistoryService) ListReceived(ctx *gin.Context, sellerID int6
 	return m.listReceivedFn(ctx, sellerID, teamID, statusGroup, page)
 }
 
-func (m *mockPaymentHistoryService) ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page int) (*payment.TierPaymentsResponse, error) {
-	return m.listMyTierPaymentsFn(ctx, userID, roleName, page)
+func (m *mockPaymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
+	return m.listHistoryFn(ctx, userID, paymentType, statusGroup, page)
 }
 
 func (m *mockPaymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error) {
@@ -139,30 +139,42 @@ func TestPaymentHistoryController_GetReceivedSummary_Errors(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-// --- ListMine ---
+// --- ListHistory ---
 
-func TestPaymentHistoryController_ListMine(t *testing.T) {
-	svc := &mockPaymentHistoryService{listMyTierPaymentsFn: func(ctx *gin.Context, userID int64, roleName string, page int) (*payment.TierPaymentsResponse, error) {
-		assert.Equal(t, "entrenador", roleName)
-		return &payment.TierPaymentsResponse{Payments: []payment.TierPaymentItem{}}, nil
+func TestPaymentHistoryController_ListHistory(t *testing.T) {
+	svc := &mockPaymentHistoryService{listHistoryFn: func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
+		assert.Equal(t, int64(7), userID)
+		assert.Equal(t, "trainer_payment", paymentType)
+		assert.Equal(t, "approved", statusGroup)
+		assert.Equal(t, 2, page)
+		return &payment.HistoryPaymentsResponse{Payments: []payment.HistoryPaymentItem{}}, nil
 	}}
-	c, w := paymentHistoryRequest("/api/v1/payments/mine?role=entrenador", true)
-	NewPaymentHistoryController(svc).ListMine(c)
+	c, w := paymentHistoryRequest("/api/v1/payments/history?page=2&type=trainer_payment&status=approved", true)
+	NewPaymentHistoryController(svc).ListHistory(c)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"payments":[]`)
+}
 
-	c, w = paymentHistoryRequest("/api/v1/payments/mine?page=x", true)
-	NewPaymentHistoryController(svc).ListMine(c)
+func TestPaymentHistoryController_ListHistory_Errors(t *testing.T) {
+	c, w := paymentHistoryRequest("/api/v1/payments/history?page=x", true)
+	NewPaymentHistoryController(&mockPaymentHistoryService{}).ListHistory(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
-	c, w = paymentHistoryRequest("/api/v1/payments/mine", false)
-	NewPaymentHistoryController(svc).ListMine(c)
+	c, w = paymentHistoryRequest("/api/v1/payments/history", false)
+	NewPaymentHistoryController(&mockPaymentHistoryService{}).ListHistory(c)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
-	failing := &mockPaymentHistoryService{listMyTierPaymentsFn: func(*gin.Context, int64, string, int) (*payment.TierPaymentsResponse, error) {
+	invalid := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, int) (*payment.HistoryPaymentsResponse, error) {
+		return nil, fmt.Errorf("%w: type", services.ErrInvalidPaymentHistoryQuery)
+	}}
+	c, w = paymentHistoryRequest("/api/v1/payments/history?type=order", true)
+	NewPaymentHistoryController(invalid).ListHistory(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	failing := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, int) (*payment.HistoryPaymentsResponse, error) {
 		return nil, errors.New("db caída")
 	}}
-	c, w = paymentHistoryRequest("/api/v1/payments/mine", true)
-	NewPaymentHistoryController(failing).ListMine(c)
+	c, w = paymentHistoryRequest("/api/v1/payments/history", true)
+	NewPaymentHistoryController(failing).ListHistory(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

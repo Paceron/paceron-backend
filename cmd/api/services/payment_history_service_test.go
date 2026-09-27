@@ -15,7 +15,7 @@ import (
 type mockPaymentHistoryDao struct {
 	listReceivedFn       func(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error)
 	listReceivedSinceFn  func(ctx *gin.Context, sellerID int64, since time.Time) ([]daos.ReceivedPaymentRow, error)
-	listMyTierPaymentsFn func(ctx *gin.Context, userID int64, roleName string, page, pageSize int) ([]daos.TierPaymentRow, bool, error)
+	listHistoryFn        func(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error)
 }
 
 func (m *mockPaymentHistoryDao) ListReceived(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error) {
@@ -32,9 +32,9 @@ func (m *mockPaymentHistoryDao) ListReceivedSince(ctx *gin.Context, sellerID int
 	return nil, nil
 }
 
-func (m *mockPaymentHistoryDao) ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page, pageSize int) ([]daos.TierPaymentRow, bool, error) {
-	if m.listMyTierPaymentsFn != nil {
-		return m.listMyTierPaymentsFn(ctx, userID, roleName, page, pageSize)
+func (m *mockPaymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error) {
+	if m.listHistoryFn != nil {
+		return m.listHistoryFn(ctx, userID, filters, page, pageSize)
 	}
 	return nil, false, nil
 }
@@ -113,49 +113,84 @@ func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
-// --- ListMyTierPayments ---
+// --- ListHistory ---
 
-func TestPaymentHistoryService_ListMyTierPayments_InvalidPage(t *testing.T) {
+
+func TestPaymentHistoryService_ListHistory_InvalidParams(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
-	_, err := svc.ListMyTierPayments(nil, 7, "entrenador", -1)
+	_, err := svc.ListHistory(nil, 7, "", "", 0)
+	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
+	_, err = svc.ListHistory(nil, 7, "order", "", 1)
+	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
+	_, err = svc.ListHistory(nil, 7, "", "other", 1)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
-func TestPaymentHistoryService_ListMyTierPayments_MapsRows(t *testing.T) {
-	tierID := int64(4)
+func TestPaymentHistoryService_ListHistory_MapsBothTypes(t *testing.T) {
 	due := time.Date(2026, 9, 5, 3, 0, 0, 0, time.UTC)
-	dao := &mockPaymentHistoryDao{listMyTierPaymentsFn: func(ctx *gin.Context, userID int64, roleName string, page, pageSize int) ([]daos.TierPaymentRow, bool, error) {
-		assert.Equal(t, "entrenador", roleName)
-		return []daos.TierPaymentRow{
-			{ID: 790, Status: "approved", Amount: 9999, InstallmentNumber: 2, DueDate: &due, SubscriptionID: 55,
-				TierID: &tierID, TierName: strPtr("Premium_entrenador"), TierRoleName: strPtr("entrenador")},
-			{ID: 791, Status: "in_process", Amount: 9999, InstallmentNumber: 1, SubscriptionID: 55},
-		}, false, nil
+	dao := &mockPaymentHistoryDao{listHistoryFn: func(ctx *gin.Context, userID int64, f daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error) {
+		assert.Equal(t, int64(7), userID)
+		assert.Equal(t, "trainer_payment", f.Type)
+		assert.ElementsMatch(t, []string{"approved"}, f.Statuses)
+		assert.Equal(t, 20, pageSize)
+		return []daos.HistoryPaymentRow{
+			{ID: 790, Status: "approved", Amount: 9999, PaymentMethodID: "master", InstallmentNumber: 2, DueDate: &due,
+				SubscriptionID: int64Ptr(55), TierID: int64Ptr(4), TierName: strPtr("Premium_entrenador"), TierRoleName: strPtr("entrenador")},
+			{ID: 791, Status: "in_process", Amount: 15000, InstallmentNumber: 1,
+				TeamID: int64Ptr(12), TeamName: strPtr("Runners"), TrainerID: int64Ptr(3), TrainerName: strPtr("Pepa"), TrainerSurname: strPtr("Lota")},
+			{ID: 792, Status: "approved", Amount: 100, SubscriptionID: int64Ptr(56)},
+			{ID: 793, Status: "approved", Amount: 100},
+		}, true, nil
 	}}
-	svc := NewPaymentHistoryService(dao)
 
-	resp, err := svc.ListMyTierPayments(nil, 7, "entrenador", 1)
+	resp, err := NewPaymentHistoryService(dao).ListHistory(nil, 7, "trainer_payment", "approved", 1)
 
 	require.NoError(t, err)
-	assert.False(t, resp.HasMore)
-	require.Len(t, resp.Payments, 2)
-	first := resp.Payments[0]
-	assert.Equal(t, "approved", first.StatusGroup)
-	require.NotNil(t, first.DueDate)
-	assert.Equal(t, "2026-09-05T03:00:00Z", *first.DueDate)
-	require.NotNil(t, first.Tier)
-	assert.Equal(t, "Premium_entrenador", first.Tier.Name)
-	assert.Equal(t, "pending", resp.Payments[1].StatusGroup)
-	assert.Nil(t, resp.Payments[1].DueDate)
-	assert.Nil(t, resp.Payments[1].Tier)
+	assert.True(t, resp.HasMore)
+	require.Len(t, resp.Payments, 4)
+
+	tier := resp.Payments[0]
+	assert.Equal(t, "subscription", tier.Type)
+	assert.Equal(t, "master", tier.PaymentMethodID)
+	require.NotNil(t, tier.Tier)
+	assert.Equal(t, "Premium_entrenador", tier.Tier.Name)
+	require.NotNil(t, tier.DueDate)
+	assert.Equal(t, "2026-09-05T03:00:00Z", *tier.DueDate)
+	assert.Nil(t, tier.Team)
+	assert.Nil(t, tier.Trainer)
+
+	team := resp.Payments[1]
+	assert.Equal(t, "trainer_payment", team.Type)
+	assert.Equal(t, "pending", team.StatusGroup)
+	require.NotNil(t, team.Team)
+	assert.Equal(t, "Runners", team.Team.Name)
+	require.NotNil(t, team.Trainer)
+	assert.Equal(t, "Lota", team.Trainer.Surname)
+	assert.Nil(t, team.Tier)
+	assert.Nil(t, team.DueDate)
+
+	// Referencias borradas: tipo resuelto igual, refs en null.
+	assert.Equal(t, "subscription", resp.Payments[2].Type)
+	assert.Nil(t, resp.Payments[2].Tier)
+	assert.Equal(t, "trainer_payment", resp.Payments[3].Type)
+	assert.Nil(t, resp.Payments[3].Team)
+	assert.Nil(t, resp.Payments[3].Trainer)
 }
 
-func TestPaymentHistoryService_ListMyTierPayments_DaoError(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listMyTierPaymentsFn: func(*gin.Context, int64, string, int, int) ([]daos.TierPaymentRow, bool, error) {
+func TestPaymentHistoryService_ListHistory_EmptyIsNotNil(t *testing.T) {
+	resp, err := NewPaymentHistoryService(&mockPaymentHistoryDao{}).ListHistory(nil, 7, "", "", 1)
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Payments)
+	assert.Empty(t, resp.Payments)
+}
+
+func TestPaymentHistoryService_ListHistory_DaoError(t *testing.T) {
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listHistoryFn: func(*gin.Context, int64, daos.HistoryPaymentFilters, int, int) ([]daos.HistoryPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
 	}})
-	_, err := svc.ListMyTierPayments(nil, 7, "", 1)
+	_, err := svc.ListHistory(nil, 7, "", "", 1)
 	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 // --- GetReceivedSummary ---

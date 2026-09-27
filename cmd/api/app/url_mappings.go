@@ -176,7 +176,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// lea claro; Gin igual prioriza las rutas estáticas sobre el parámetro.
 	r.GET("/api/v1/payments/received", app.paymentHistoryController.ListReceived)
 	r.GET("/api/v1/payments/received/summary", app.paymentHistoryController.GetReceivedSummary)
-	r.GET("/api/v1/payments/mine", app.paymentHistoryController.ListMine)
+	r.GET("/api/v1/payments/history", app.paymentHistoryController.ListHistory)
 	r.GET("/api/v1/payments/:id", app.paymentController.GetPaymentStatus)
 	r.GET("/api/v1/payments/mp/:id", app.paymentController.GetPaymentStatusFromMP)
 	r.POST("/api/v1/payments/test-card-token", app.paymentController.GenerateTestCardToken)

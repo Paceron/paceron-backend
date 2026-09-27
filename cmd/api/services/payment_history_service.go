@@ -38,7 +38,7 @@ var argentinaTZ = time.FixedZone("ART", -3*3600)
 // usuario autenticado (change historial-pagos-cobros-entrenador).
 type PaymentHistoryServiceInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
-	ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page int) (*payment.TierPaymentsResponse, error)
+	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error)
 }
 
@@ -79,22 +79,35 @@ func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, t
 	return &payment.ReceivedPaymentsResponse{Payments: items, HasMore: hasMore}, nil
 }
 
-func (s *paymentHistoryService) ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page int) (*payment.TierPaymentsResponse, error) {
+// ListHistory lista los pagos que hizo el usuario: suscripciones de tier y
+// pagos a entrenadores. paymentType y statusGroup son filtros opcionales.
+func (s *paymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
 	if page < 1 {
 		return nil, fmt.Errorf("%w: page debe ser mayor o igual a 1", ErrInvalidPaymentHistoryQuery)
 	}
+	if paymentType != "" && !constants.IsValidPaymentHistoryType(paymentType) {
+		return nil, fmt.Errorf("%w: type desconocido %q", ErrInvalidPaymentHistoryQuery, paymentType)
+	}
+	filters := daos.HistoryPaymentFilters{Type: paymentType}
+	if statusGroup != "" {
+		statuses, ok := constants.StatusesForGroup(statusGroup)
+		if !ok {
+			return nil, fmt.Errorf("%w: status desconocido %q", ErrInvalidPaymentHistoryQuery, statusGroup)
+		}
+		filters.Statuses = statuses
+	}
 
-	rows, hasMore, err := s.dao.ListMyTierPayments(ctx, userID, roleName, page, paymentHistoryPageSize)
+	rows, hasMore, err := s.dao.ListHistory(ctx, userID, filters, page, paymentHistoryPageSize)
 	if err != nil {
-		customlogger.Error(ctx, "error listing tier payments", err, customlogger.TagMethod("ListMyTierPayments"))
-		return nil, fmt.Errorf("error al obtener los pagos de suscripción: %w", err)
+		customlogger.Error(ctx, "error listing payment history", err, customlogger.TagMethod("ListHistory"))
+		return nil, fmt.Errorf("error al obtener el historial de pagos: %w", err)
 	}
 
-	items := make([]payment.TierPaymentItem, 0, len(rows))
+	items := make([]payment.HistoryPaymentItem, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, toTierPaymentItem(r))
+		items = append(items, toHistoryPaymentItem(r))
 	}
-	return &payment.TierPaymentsResponse{Payments: items, HasMore: hasMore}, nil
+	return &payment.HistoryPaymentsResponse{Payments: items, HasMore: hasMore}, nil
 }
 
 // GetReceivedSummary resume los cobros de la ventana de meses. La agregación se
@@ -263,8 +276,8 @@ func toReceivedPaymentItem(r daos.ReceivedPaymentRow) payment.ReceivedPaymentIte
 	}
 }
 
-func toTierPaymentItem(r daos.TierPaymentRow) payment.TierPaymentItem {
-	item := payment.TierPaymentItem{
+func toHistoryPaymentItem(r daos.HistoryPaymentRow) payment.HistoryPaymentItem {
+	item := payment.HistoryPaymentItem{
 		ID:                r.ID,
 		MPPaymentID:       r.MPPaymentID,
 		Status:            r.Status,
@@ -276,14 +289,26 @@ func toTierPaymentItem(r daos.TierPaymentRow) payment.TierPaymentItem {
 		CreatedAt:         formatUTC(r.CreatedAt),
 		InstallmentID:     r.InstallmentID,
 		InstallmentNumber: r.InstallmentNumber,
-		SubscriptionID:    r.SubscriptionID,
 	}
 	if r.DueDate != nil {
 		due := formatUTC(*r.DueDate)
 		item.DueDate = &due
 	}
-	if r.TierID != nil {
-		item.Tier = &payment.PaymentTierRef{ID: *r.TierID, Name: deref(r.TierName), RoleName: deref(r.TierRoleName)}
+	// La cuota tiene exactamente un padre (CHECK en installments): o una
+	// suscripción de tier, o un equipo.
+	if r.SubscriptionID != nil {
+		item.Type = string(constants.PaymentHistoryTypeSubscription)
+		if r.TierID != nil {
+			item.Tier = &payment.PaymentTierRef{ID: *r.TierID, Name: deref(r.TierName), RoleName: deref(r.TierRoleName)}
+		}
+		return item
+	}
+	item.Type = string(constants.PaymentHistoryTypeTrainerPayment)
+	if r.TeamID != nil {
+		item.Team = &payment.PaymentTeamRef{ID: *r.TeamID, Name: deref(r.TeamName)}
+	}
+	if r.TrainerID != nil {
+		item.Trainer = &payment.PaymentTrainerRef{ID: *r.TrainerID, Name: deref(r.TrainerName), Surname: deref(r.TrainerSurname)}
 	}
 	return item
 }

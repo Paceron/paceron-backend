@@ -51,8 +51,17 @@ type ReceivedPaymentRow struct {
 	PayerEmail        *string   `gorm:"column:payer_email"`
 }
 
-// TierPaymentRow es un pago de suscripción de tier con su cuota y su tier.
-type TierPaymentRow struct {
+// HistoryPaymentFilters son los filtros opcionales del historial del usuario.
+// Type es "subscription" o "trainer_payment" ("" = ambos).
+type HistoryPaymentFilters struct {
+	Type     string
+	Statuses []string
+}
+
+// HistoryPaymentRow es un pago que hizo el usuario, con su cuota resuelta hacia
+// el tier (si es una suscripción) o hacia el equipo y su entrenador (si es una
+// membresía).
+type HistoryPaymentRow struct {
 	ID                int64      `gorm:"column:id"`
 	MPPaymentID       string     `gorm:"column:mp_payment_id"`
 	Status            string     `gorm:"column:status"`
@@ -64,10 +73,15 @@ type TierPaymentRow struct {
 	InstallmentID     int64      `gorm:"column:installment_id"`
 	InstallmentNumber int        `gorm:"column:installment_number"`
 	DueDate           *time.Time `gorm:"column:due_date"`
-	SubscriptionID    int64      `gorm:"column:subscription_id"`
+	SubscriptionID    *int64     `gorm:"column:subscription_id"`
 	TierID            *int64     `gorm:"column:tier_id"`
 	TierName          *string    `gorm:"column:tier_name"`
 	TierRoleName      *string    `gorm:"column:tier_role_name"`
+	TeamID            *int64     `gorm:"column:team_id"`
+	TeamName          *string    `gorm:"column:team_name"`
+	TrainerID         *int64     `gorm:"column:trainer_id"`
+	TrainerName       *string    `gorm:"column:trainer_name"`
+	TrainerSurname    *string    `gorm:"column:trainer_surname"`
 }
 
 // PaymentHistoryDaoInterface es el acceso de solo lectura al historial de
@@ -75,7 +89,7 @@ type TierPaymentRow struct {
 type PaymentHistoryDaoInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, filters ReceivedPaymentFilters, page, pageSize int) ([]ReceivedPaymentRow, bool, error)
 	ListReceivedSince(ctx *gin.Context, sellerID int64, since time.Time) ([]ReceivedPaymentRow, error)
-	ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page, pageSize int) ([]TierPaymentRow, bool, error)
+	ListHistory(ctx *gin.Context, userID int64, filters HistoryPaymentFilters, page, pageSize int) ([]HistoryPaymentRow, bool, error)
 }
 
 type paymentHistoryDao struct {
@@ -134,28 +148,39 @@ func (d *paymentHistoryDao) ListReceivedSince(ctx *gin.Context, sellerID int64, 
 	return rows, nil
 }
 
-// ListMyTierPayments lista los pagos de suscripción de tier de un usuario. Se
-// resuelve por la cuota y no por payments.user_id ni por concept: el primero no
-// es confiable y los pagos de tier suelen quedar guardados como "order".
-func (d *paymentHistoryDao) ListMyTierPayments(ctx *gin.Context, userID int64, roleName string, page, pageSize int) ([]TierPaymentRow, bool, error) {
+// ListHistory lista los pagos que hizo un usuario: suscripciones de tier y
+// membresías de equipo. Se resuelve por la cuota (installments.user_id) y no por
+// payments.user_id ni por concept: el primero no es confiable y los pagos de
+// tier suelen quedar guardados como "order". El entrenador sale de
+// seller_user_id (quien cobró) y, si falta, del dueño actual del equipo.
+func (d *paymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filters HistoryPaymentFilters, page, pageSize int) ([]HistoryPaymentRow, bool, error) {
 	query := d.DB.Table("payments AS p").
 		Select(`p.id, p.payment_id AS mp_payment_id, p.status, p.status_detail, p.amount,
 			p.currency_id, p.payment_method_id, p.created_at, p.installment_id,
-			i.installment_number, i.due_date, i.subscription_id,
-			tr.id AS tier_id, tr.name AS tier_name, tr.role_name AS tier_role_name`).
-		Joins("JOIN installments i ON i.id = p.installment_id AND i.subscription_id IS NOT NULL").
+			i.installment_number, i.due_date, i.subscription_id, i.team_id,
+			tr.id AS tier_id, tr.name AS tier_name, tr.role_name AS tier_role_name,
+			t.name AS team_name, o.id AS trainer_id, o.name AS trainer_name, o.surname AS trainer_surname`).
+		Joins("JOIN installments i ON i.id = p.installment_id").
 		Joins("LEFT JOIN user_role_tier_subscriptions s ON s.id = i.subscription_id").
 		Joins("LEFT JOIN tiers tr ON tr.id = s.tier_id").
+		Joins("LEFT JOIN teams t ON t.id = i.team_id").
+		Joins("LEFT JOIN users o ON o.id = COALESCE(p.seller_user_id, t.owner_id) AND i.team_id IS NOT NULL").
 		Where("i.user_id = ?", userID).
 		Where(withMercadoPagoPaymentID)
-	if roleName != "" {
-		query = query.Where("tr.role_name = ?", roleName)
+	switch filters.Type {
+	case string(constants.PaymentHistoryTypeSubscription):
+		query = query.Where("i.subscription_id IS NOT NULL")
+	case string(constants.PaymentHistoryTypeTrainerPayment):
+		query = query.Where("i.team_id IS NOT NULL")
+	}
+	if len(filters.Statuses) > 0 {
+		query = query.Where("p.status IN ?", filters.Statuses)
 	}
 
-	var rows []TierPaymentRow
+	var rows []HistoryPaymentRow
 	offset := (page - 1) * pageSize
 	if err := query.Order("p.created_at DESC, p.id DESC").Offset(offset).Limit(pageSize + 1).Scan(&rows).Error; err != nil {
-		return nil, false, fmt.Errorf("error listing tier payments: %w", err)
+		return nil, false, fmt.Errorf("error listing payment history: %w", err)
 	}
 	return trimPage(rows, pageSize)
 }

@@ -265,86 +265,137 @@ func TestPaymentHistoryDao_ListReceivedSince(t *testing.T) {
 	assert.Equal(t, "mp-at", rows[1].MPPaymentID)
 }
 
-// --- ListMyTierPayments ---
+// --- ListHistory ---
 
-func TestPaymentHistoryDao_ListMyTierPayments(t *testing.T) {
-	db := testutils.SetupTestDB(t)
-	dao := NewPaymentHistoryDao(db)
-	user := persistUser(db, "ph-tier-user@test.com", "43000001")
-	otherUser := persistUser(db, "ph-tier-other@test.com", "43000002")
-	trainerRole := testRole(db, "entrenador_ph")
-	runnerRole := testRole(db, "corredor_ph")
-	trainerTier := &dbs.Tier{Name: "Premium_entrenador", RoleID: trainerRole.ID, RoleName: "entrenador"}
-	db.Create(trainerTier)
-	runnerTier := &dbs.Tier{Name: "Premium_corredor", RoleID: runnerRole.ID, RoleName: "corredor"}
-	db.Create(runnerTier)
-
-	trainerSub := persistSubscription(db, user.ID, trainerRole.ID, trainerTier.ID, "active")
-	runnerSub := persistSubscription(db, user.ID, runnerRole.ID, runnerTier.ID, "active")
-	otherSub := persistSubscription(db, otherUser.ID, trainerRole.ID, trainerTier.ID, "active")
-	trainerInst := persistTierInstallment(db, trainerSub.ID, user.ID, 2)
-	due := time.Date(2026, 9, 5, 3, 0, 0, 0, time.UTC)
-	db.Model(trainerInst).Update("due_date", due)
-	runnerInst := persistTierInstallment(db, runnerSub.ID, user.ID, 1)
-	otherInst := persistTierInstallment(db, otherSub.ID, otherUser.ID, 1)
-
-	// Cuota de equipo del mismo usuario: no es un pago de tier.
-	owner := persistUser(db, "ph-tier-owner@test.com", "43000003")
-	team := testTeam(db, "Equipo tier", owner.ID)
-	teamInst := persistTeamInstallment(db, team.ID, user.ID, 1)
-
-	now := time.Now().UTC()
-	tierPayment := func(instID int64, mpID string, at time.Time) paymentFixture {
-		return paymentFixture{installmentID: instID, concept: string(constants.PaymentConceptOrder),
-			mpPaymentID: mpID, status: "approved", amount: 9999, createdAt: at}
-	}
-	persistPayment(db, tierPayment(trainerInst.ID, "mp-trainer", now))
-	persistPayment(db, tierPayment(runnerInst.ID, "mp-runner", now.Add(-time.Minute)))
-	persistPayment(db, tierPayment(otherInst.ID, "mp-other", now))
-	persistPayment(db, tierPayment(trainerInst.ID, "", now))
-	persistPayment(db, tierPayment(teamInst.ID, "mp-team", now))
-
-	all, hasMore, err := dao.ListMyTierPayments(nil, user.ID, "", 1, 20)
-	require.NoError(t, err)
-	assert.False(t, hasMore)
-	require.Len(t, all, 2)
-	assert.Equal(t, "mp-trainer", all[0].MPPaymentID)
-	assert.Equal(t, "mp-runner", all[1].MPPaymentID)
-
-	onlyTrainer, _, err := dao.ListMyTierPayments(nil, user.ID, "entrenador", 1, 20)
-	require.NoError(t, err)
-	require.Len(t, onlyTrainer, 1)
-	r := onlyTrainer[0]
-	assert.Equal(t, trainerSub.ID, r.SubscriptionID)
-	assert.Equal(t, 2, r.InstallmentNumber)
-	require.NotNil(t, r.DueDate)
-	assert.True(t, due.Equal(*r.DueDate))
-	require.NotNil(t, r.TierName)
-	assert.Equal(t, "Premium_entrenador", *r.TierName)
-	require.NotNil(t, r.TierRoleName)
-	assert.Equal(t, "entrenador", *r.TierRoleName)
+// historySeed arma un usuario con una suscripción de tier y una membresía de
+// equipo, más un tercero con sus propios pagos que no tienen que aparecer.
+type historySeed struct {
+	user        *dbs.User
+	trainer     *dbs.User
+	team        *dbs.Team
+	tierInst    *dbs.Installment
+	teamInst    *dbs.Installment
+	otherInst   *dbs.Installment
+	trainerTier *dbs.Tier
+	sub         *dbs.UserRoleTierSubscription
 }
 
-func TestPaymentHistoryDao_ListMyTierPayments_Pagination(t *testing.T) {
+func seedHistory(db *gorm.DB) historySeed {
+	user := persistUser(db, "ph-hist-user@test.com", "44000001")
+	other := persistUser(db, "ph-hist-other@test.com", "44000002")
+	trainer := persistUser(db, "ph-hist-trainer@test.com", "44000003")
+	role := testRole(db, "entrenador_ph_hist")
+	tier := &dbs.Tier{Name: "Premium_entrenador", RoleID: role.ID, RoleName: "entrenador"}
+	db.Create(tier)
+	sub := persistSubscription(db, user.ID, role.ID, tier.ID, "active")
+	tierInst := persistTierInstallment(db, sub.ID, user.ID, 2)
+	db.Model(tierInst).Update("due_date", time.Date(2026, 9, 5, 3, 0, 0, 0, time.UTC))
+	team := testTeam(db, "Runners del Parque", trainer.ID)
+	teamInst := persistTeamInstallment(db, team.ID, user.ID, 1)
+	otherSub := persistSubscription(db, other.ID, role.ID, tier.ID, "active")
+	otherInst := persistTierInstallment(db, otherSub.ID, other.ID, 1)
+	return historySeed{user: user, trainer: trainer, team: team, tierInst: tierInst, teamInst: teamInst, otherInst: otherInst, trainerTier: tier, sub: sub}
+}
+
+func historyPayment(instID int64, concept, mpID, status string, seller *int64, at time.Time) paymentFixture {
+	return paymentFixture{installmentID: instID, concept: concept, mpPaymentID: mpID, status: status, amount: 9999, sellerID: seller, createdAt: at}
+}
+
+func TestPaymentHistoryDao_ListHistory_BothTypes(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewPaymentHistoryDao(db)
-	user := persistUser(db, "ph-tier-page@test.com", "43000004")
-	role := testRole(db, "entrenador_ph_page")
-	tier := testTier(db, "base_ph_page", role.ID)
-	sub := persistSubscription(db, user.ID, role.ID, tier.ID, "active")
-	inst := persistTierInstallment(db, sub.ID, user.ID, 1)
+	h := seedHistory(db)
+	now := time.Now().UTC()
+
+	// Pago de tier guardado como "order": tiene que aparecer igual.
+	persistPayment(db, historyPayment(h.tierInst.ID, string(constants.PaymentConceptOrder), "mp-tier", "approved", nil, now.Add(-time.Hour)))
+	persistPayment(db, historyPayment(h.teamInst.ID, string(constants.PaymentConceptTeamSubscription), "mp-team", "approved", &h.trainer.ID, now))
+	persistPayment(db, historyPayment(h.tierInst.ID, "subscription", "", "pending", nil, now))
+	persistPayment(db, historyPayment(h.otherInst.ID, "subscription", "mp-other", "approved", nil, now))
+
+	rows, hasMore, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{}, 1, 20)
+
+	require.NoError(t, err)
+	assert.False(t, hasMore)
+	require.Len(t, rows, 2)
+	team, tier := rows[0], rows[1]
+
+	assert.Equal(t, "mp-team", team.MPPaymentID)
+	assert.Nil(t, team.SubscriptionID)
+	require.NotNil(t, team.TeamID)
+	assert.Equal(t, h.team.ID, *team.TeamID)
+	require.NotNil(t, team.TeamName)
+	assert.Equal(t, "Runners del Parque", *team.TeamName)
+	require.NotNil(t, team.TrainerID)
+	assert.Equal(t, h.trainer.ID, *team.TrainerID)
+	assert.Nil(t, team.TierID)
+
+	assert.Equal(t, "mp-tier", tier.MPPaymentID)
+	require.NotNil(t, tier.SubscriptionID)
+	assert.Equal(t, h.sub.ID, *tier.SubscriptionID)
+	require.NotNil(t, tier.TierName)
+	assert.Equal(t, "Premium_entrenador", *tier.TierName)
+	require.NotNil(t, tier.DueDate)
+	assert.Nil(t, tier.TeamID)
+	assert.Nil(t, tier.TrainerID)
+}
+
+func TestPaymentHistoryDao_ListHistory_TrainerFallsBackToTeamOwner(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	h := seedHistory(db)
+
+	// Sin seller_user_id (pago viejo), el entrenador sale del dueño del equipo.
+	persistPayment(db, historyPayment(h.teamInst.ID, string(constants.PaymentConceptTeamSubscription), "mp-team", "approved", nil, time.Now().UTC()))
+
+	rows, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Type: "trainer_payment"}, 1, 20)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.NotNil(t, rows[0].TrainerID)
+	assert.Equal(t, h.trainer.ID, *rows[0].TrainerID)
+}
+
+func TestPaymentHistoryDao_ListHistory_Filters(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	h := seedHistory(db)
+	now := time.Now().UTC()
+	persistPayment(db, historyPayment(h.tierInst.ID, "subscription", "mp-tier-ok", "approved", nil, now))
+	persistPayment(db, historyPayment(h.tierInst.ID, "subscription", "mp-tier-rej", "rejected", nil, now.Add(-time.Minute)))
+	persistPayment(db, historyPayment(h.teamInst.ID, "team_subscription", "mp-team-ok", "approved", &h.trainer.ID, now))
+
+	subs, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Type: "subscription"}, 1, 20)
+	require.NoError(t, err)
+	assert.Len(t, subs, 2)
+
+	teams, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Type: "trainer_payment"}, 1, 20)
+	require.NoError(t, err)
+	require.Len(t, teams, 1)
+	assert.Equal(t, "mp-team-ok", teams[0].MPPaymentID)
+
+	rejected, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Type: "subscription", Statuses: []string{"rejected", "cancelled"}}, 1, 20)
+	require.NoError(t, err)
+	require.Len(t, rejected, 1)
+	assert.Equal(t, "mp-tier-rej", rejected[0].MPPaymentID)
+}
+
+func TestPaymentHistoryDao_ListHistory_Pagination(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	h := seedHistory(db)
 	base := time.Now().UTC().Add(-time.Hour)
 	for i := 0; i < 3; i++ {
-		persistPayment(db, paymentFixture{installmentID: inst.ID, concept: "subscription",
-			mpPaymentID: fmt.Sprintf("mp-t%d", i), status: "rejected", amount: 100, createdAt: base.Add(time.Duration(i) * time.Minute)})
+		persistPayment(db, historyPayment(h.tierInst.ID, "subscription", fmt.Sprintf("mp-h%d", i), "approved", nil, base.Add(time.Duration(i)*time.Minute)))
 	}
 
-	page1, more, err := dao.ListMyTierPayments(nil, user.ID, "", 1, 2)
+	page1, more, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{}, 1, 2)
 	require.NoError(t, err)
 	assert.Len(t, page1, 2)
 	assert.True(t, more)
+	assert.Equal(t, "mp-h2", page1[0].MPPaymentID)
 
-	page2, more, err := dao.ListMyTierPayments(nil, user.ID, "", 2, 2)
+	page2, more, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{}, 2, 2)
 	require.NoError(t, err)
 	assert.Len(t, page2, 1)
 	assert.False(t, more)
@@ -369,7 +420,7 @@ func TestPaymentHistoryDao_DBFail(t *testing.T) {
 
 	failing = testutils.FailingDB(t, db, nthFail("select", 1))
 	dao = NewPaymentHistoryDao(failing)
-	_, _, err = dao.ListMyTierPayments(nil, 1, "entrenador", 1, 20)
+	_, _, err = dao.ListHistory(nil, 1, HistoryPaymentFilters{}, 1, 20)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error listing tier payments")
+	assert.Contains(t, err.Error(), "error listing payment history")
 }

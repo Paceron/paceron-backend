@@ -19,7 +19,7 @@ import (
 type PaymentHistoryController interface {
 	ListReceived(c *gin.Context)
 	GetReceivedSummary(c *gin.Context)
-	ListMine(c *gin.Context)
+	ListHistory(c *gin.Context)
 }
 
 // Los tipos de respuesta se nombran acá para que swag los resuelva: los
@@ -27,7 +27,7 @@ type PaymentHistoryController interface {
 var (
 	_ *payment.ReceivedPaymentsResponse
 	_ *payment.ReceivedSummaryResponse
-	_ *payment.TierPaymentsResponse
+	_ *payment.HistoryPaymentsResponse
 )
 
 type paymentHistoryController struct {
@@ -109,19 +109,20 @@ func (pc *paymentHistoryController) GetReceivedSummary(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// ListMine godoc
-// @Summary      Listar mis pagos de suscripción
-// @Description  Pagos de suscripción de tier del usuario autenticado, del más reciente al más antiguo. Paginado de a 20.
+// ListHistory godoc
+// @Summary      Historial de pagos del usuario
+// @Description  Pagos que hizo el usuario autenticado, del más reciente al más antiguo: suscripciones de tier (`type=subscription`) y pagos a entrenadores por la membresía de un equipo (`type=trainer_payment`). Paginado de a 20.
 // @Tags         payments
 // @Produce      json
-// @Param        page  query     int     false  "Página (default 1)"
-// @Param        role  query     string  false  "Filtrar por rol del tier (ej. entrenador)"
-// @Success      200  {object}  payment.TierPaymentsResponse
+// @Param        page    query     int     false  "Página (default 1)"
+// @Param        type    query     string  false  "Filtrar por tipo"  Enums(subscription, trainer_payment)
+// @Param        status  query     string  false  "Filtrar por grupo de estado"  Enums(approved, pending, rejected, refunded)
+// @Success      200  {object}  payment.HistoryPaymentsResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
-// @Router       /api/v1/payments/mine [get]
-func (pc *paymentHistoryController) ListMine(c *gin.Context) {
+// @Router       /api/v1/payments/history [get]
+func (pc *paymentHistoryController) ListHistory(c *gin.Context) {
 	userID, ok := utils.GetAuthUserID(c)
 	if !ok {
 		respondUnauthorized(c)
@@ -132,7 +133,7 @@ func (pc *paymentHistoryController) ListMine(c *gin.Context) {
 		return
 	}
 
-	resp, err := pc.service.ListMyTierPayments(c, userID, c.Query("role"), page)
+	resp, err := pc.service.ListHistory(c, userID, c.Query("type"), c.Query("status"), page)
 	if err != nil {
 		respondPaymentHistoryError(c, err)
 		return
