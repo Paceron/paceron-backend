@@ -58,7 +58,7 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 El sistema DEBE cumplir lo siguiente (MUST):
 
-- Cada ítem expone: `id`, `athlete_user_id`, `athlete_name`, `team_id`, `team_name`, `group_id`, `group_name`, `date` (`session_date`), `session_name`, `exercise_id` (id de instancia), `exercise_name`, `catalog_exercise_id` (nullable, id de catálogo si existe), `set_number`, `completion_status`, `duration_ms`, `active_duration_ms`, `distance_meters`, `started_at`, `ended_at`.
+- Cada ítem expone: `id`, `athlete_user_id`, `athlete_name`, `team_id`, `team_name`, `group_id`, `group_name`, `date` (`session_date`), `session_name`, `session_instance_id` (siempre presente: es `assigned_session_id`, el id de la instancia de sesión que la pantalla de revisión carga por `GET /session-instances/:id/feedback`), `exercise_id` (id de instancia), `exercise_name`, `catalog_exercise_id` (nullable, id de catálogo si existe), `set_number`, `completion_status`, `duration_ms`, `active_duration_ms`, `distance_meters`, `started_at`, `ended_at`.
 - Feedbacks huérfanos se incluyen: `group_id`/`group_name` `null` cuando el día de calendario ya no existe o la instancia nunca se asignó a un día; `team_id`/`team_name` `null` cuando el feedback no registró equipo.
 - `total` = cantidad de feedbacks que matchean TODOS los filtros, sin paginación.
 - `available_athletes` y `available_exercises` = DISTINCT sobre los que matchean solo los filtros de PRIMER nivel (equipo/grupo/rango de fechas y scope de autorización), sin filtros de segundo nivel (atleta/ejercicio/set) ni paginación. `available_exercises` va dedupeado por familia: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia propio en instancias legado sin origen), con el nombre común.

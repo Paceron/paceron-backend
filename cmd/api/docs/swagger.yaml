@@ -2253,6 +2253,8 @@ definitions:
         type: string
       id:
         type: integer
+      session_instance_id:
+        type: integer
       session_name:
         type: string
       set_number:

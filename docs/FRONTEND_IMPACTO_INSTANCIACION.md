@@ -264,6 +264,7 @@ Response `200 {items, total, page, page_size, available_athletes, available_exer
       "group_name": "Fondo B",
       "date": "2026-09-20",
       "session_name": "Fartlek 5K",
+      "session_instance_id": 77,
       "exercise_id": 456,
       "exercise_name": "Trote",
       "catalog_exercise_id": 501,
@@ -287,6 +288,7 @@ Response `200 {items, total, page, page_size, available_athletes, available_exer
 Decisiones que el frontend necesita conocer:
 
 - **`exercise_id` es id de instancia** (`assigned_exercise_id`), NO de catálogo. Para agrupar por ejercicio a través del tiempo usá `catalog_exercise_id` (nullable: `null` en instancias previas a la instanciación o si el feedback es huérfano sin fila de instancia).
+- **`session_instance_id`** (siempre presente, > 0): es `assigned_session_id`, el id de la instancia de sesión — lo que hay que mandar a `GET /session-instances/:id/feedback` (junto al `athlete_user_id` del ítem) para la pantalla de revisión. Si la instancia fue borrada físicamente (huérfano), el id queda expuesto pero esa pantalla responderá 404.
 - **Filtro `exercise_id` matchea por familia de catálogo:** el valor a mandar es el `id` de `available_exercises` (que es de catálogo): matchea todas las instancias de ese ejercicio de catálogo, con fallback a id de instancia propio para instancias legado sin origen. Los `id` del pool son directamente usables en el filtro; los `exercise_id` de los ítems siguen siendo de instancia (por fila).
 - **Huérfanos se conservan en `items`** (no desaparecen del historial): `group_id`/`group_name` `null` = día de calendario borrado o instancia nunca asignada a un día; `team_id`/`team_name` `null` = feedback registrado sin equipo. `session_name`/`exercise_name` también pueden ser `null` si la instancia fue borrada. Sin campo extra de razón — los nulls lo comunican.
 - **`sort=feedback_date` ordena por `session_date`** (la fecha del entrenamiento, no el timestamp de carga).

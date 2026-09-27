@@ -10370,6 +10370,9 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "session_instance_id": {
+                    "type": "integer"
+                },
                 "session_name": {
                     "type": "string"
                 },

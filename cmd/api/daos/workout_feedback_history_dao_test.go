@@ -173,12 +173,14 @@ func TestWorkoutFeedbackDao_HistorySearch_TeamScopeEnrichedRows(t *testing.T) {
 	assert.Equal(t, int64(4242), *row.CatalogExerciseID)
 	require.NotNil(t, row.SessionName)
 	assert.Equal(t, "WF Hist Sesión", *row.SessionName)
+	assert.Equal(t, f.sessionInst.ID, row.SessionInstanceID)
 
 	// Huérfano sin día: group/session nulls, pero team y ejercicio sí.
 	orphan := historyRowByID(rows, f.fbOrphan.ID)
 	require.NotNil(t, orphan)
 	assert.Nil(t, orphan.GroupID)
 	assert.Nil(t, orphan.SessionName)
+	assert.Equal(t, int64(987654321), orphan.SessionInstanceID)
 	require.NotNil(t, orphan.TeamID)
 	assert.Equal(t, f.teamA.ID, *orphan.TeamID)
 	require.NotNil(t, orphan.ExerciseName)
