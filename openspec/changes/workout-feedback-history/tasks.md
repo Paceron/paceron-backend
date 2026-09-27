@@ -14,17 +14,17 @@
 
 ### Task 1: DAO de historial (queries + pools + tests)
 
-- [ ] 1.1 Crear struct de filtros `WorkoutFeedbackHistoryFilters` (scope athlete o team, TeamID, GroupID, DateFrom/DateTo, ExerciseInstanceID, SetNumber, AthleteFilterUserID) y fila `WorkoutFeedbackHistoryRow` (campos del design D2) — ubicación según D2.
-- [ ] 1.2 Agregar a `WorkoutFeedbackDAO` interface + impl: `HistorySearch` (joins D1, WHERE dinámico `deleted_at IS NULL`, ORDER BY whitelisted con desempate por `wf.id`), `HistoryCount`, `HistoryAvailableAthletes`, `HistoryAvailableExercises` (solo primer nivel; ver D5).
-- [ ] 1.3 Tests DAO contra Postgres real (fixture: 2 equipos, grupos, día con instancia, feedbacks normal + huérfano sin día + sin team + soft-deleted): filtros 1er/2do nivel, sort whitelist + order + desempate id, paginación offset/limit, count sin paginación, pools ignorando 2do nivel, huérfano incluido con group null, deleted_at excluido.
-- [ ] 1.4 Build + `go test ./cmd/api/daos` con DB real verde.
+- [x] 1.1 Crear struct de filtros `WorkoutFeedbackHistoryFilters` (scope athlete o team, TeamID, GroupID, DateFrom/DateTo, ExerciseInstanceID, SetNumber, AthleteFilterUserID) y fila `WorkoutFeedbackHistoryRow` (campos del design D2) — ubicación según D2.
+- [x] 1.2 Agregar a `WorkoutFeedbackDAO` interface + impl: `HistorySearch` (joins D1, WHERE dinámico `deleted_at IS NULL`, ORDER BY whitelisted con desempate por `wf.id`), `HistoryCount`, `HistoryAvailableAthletes`, `HistoryAvailableExercises` (solo primer nivel; ver D5).
+- [x] 1.3 Tests DAO contra Postgres real (fixture: 2 equipos, grupos, día con instancia, feedbacks normal + huérfano sin día + sin team + soft-deleted): filtros 1er/2do nivel, sort whitelist + order + desempate id, paginación offset/limit, count sin paginación, pools ignorando 2do nivel, huérfano incluido con group null, deleted_at excluido.
+- [x] 1.4 Build + `go test ./cmd/api/daos` con DB real verde.
 
 ### Task 2: Service de historial (autorización + validación + armado de response)
 
-- [ ] 2.1 `WorkoutFeedbackService`: `AthleteHistory(ctx, callerID, targetID, query)` y `AdministeredHistory(ctx, callerID, targetID, query)` según D3/D4 (sentinels de error nuevos o reuso: `ErrWorkoutFeedbackForbidden`, `ErrTeamNotFound`).
-- [ ] 2.2 Validaciones D4 (fechas pareadas, group requiere team, page/page_size, sort/order whitelist) → errores con código HTTP via `apierror`/patrón del paquete.
-- [ ] 2.3 Armado del response DTO D6: mapear filas → ítems, nombres en batch (users/teams/groups), pools del DAO, total.
-- [ ] 2.4 Tests service (mocks de DAO): matriz de autorización, validaciones 400, response shape, pools passthrough.
+- [x] 2.1 `WorkoutFeedbackService`: `AthleteHistory(ctx, callerID, targetID, query)` y `AdministeredHistory(ctx, callerID, targetID, query)` según D3/D4 (sentinels de error nuevos o reuso: `ErrWorkoutFeedbackForbidden`, `ErrTeamNotFound`).
+- [x] 2.2 Validaciones D4 (fechas pareadas, group requiere team, page/page_size, sort/order whitelist) → errores con código HTTP via `apierror`/patrón del paquete.
+- [x] 2.3 Armado del response DTO D6: mapear filas → ítems, nombres en batch (users/teams/groups), pools del DAO, total.
+- [x] 2.4 Tests service (mocks de DAO): matriz de autorización, validaciones 400, response shape, pools passthrough.
 
 ### Task 3: Controller + rutas + Swagger
 
