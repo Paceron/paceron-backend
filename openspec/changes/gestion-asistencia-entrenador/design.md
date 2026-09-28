@@ -407,6 +407,20 @@ mensaje que lo explique, no desaparecer del resultado.
    Las dos cosas que hacen fallar el `ON CONFLICT` y que el `IF NOT EXISTS` por
    nombre NO detectan: **orden distinto** de las columnas, y **índice parcial** (con
    `WHERE`). Por eso la guarda mira `indexdef` y no el catálogo de constraints.
+### Migración manual, no AutoMigrate (decisión, 2026-09-28)
+
+El SQL de esta migración quedó versionado en **`scripts/migrate_attendance_source_provenance.sql`**, y es **manual y obligatorio en cada base nueva**.
+
+Motivo: los modelos GORM de `cmd/api/domains/dbs/` no declaran asociaciones `constraint:` —`grep "constraint:" cmd/api/domains/dbs/*.go` no devuelve nada—, así que `AutoMigrate` crea tablas, columnas e índices pero **ninguna foreign key**. La FK del paso 6 existe en la base de desarrollo solo porque el SQL se corrió a mano.
+
+Consecuencias, aceptadas a propósito:
+
+- CI, `make test-db-up` y la máquina de un compañero levantan bases **sin** la FK. Por eso la tarea 0.8 no puede ser un test de comportamiento: correría contra una base sin la restricción y fallaría siempre. Lo que se automatiza es que el script no se pierda ni se corrompa (`cmd/api/daos/attendance_migration_test.go`).
+- `docs/TESTING.md` decía que el `AutoMigrate` de test nunca diverge del de producción. Era falso para FKs; corregido.
+- La verificación real de la FK es manual, contra una base migrada: es el paso 5.7 del change.
+
+La alternativa descartada era declarar la asociación GORM con `constraint:OnDelete:RESTRICT` en el modelo, que haría la FK reproducible por código y dejaría de hacer falta el script. Se descarta para no ser el primer modelo del repo con una decisión de schema que los demás no siguen; si algún día se toma, `TestAttendanceMigration_ElModeloNoDeclaraLaForeignKey` falla a propósito para avisar que el script quedó obsoleto.
+
 6. **FK** — `ALTER TABLE attendances ADD CONSTRAINT fk_attendances_session_instance
    FOREIGN KEY (training_session_id) REFERENCES session_instances(id);`
 
