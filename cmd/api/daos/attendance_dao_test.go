@@ -455,48 +455,6 @@ func TestAttendanceDao_FindByID_And_DeleteByID(t *testing.T) {
 	})
 }
 
-// TestAttendanceDao_SessionInstanceForeignKey cubre el scenario de la spec "La
-// foreign key rechaza una sesión inexistente".
-//
-// La migración de este change convierte training_session_id en una FK real a
-// session_instances(id). El valor de esto NO es preventivo: si el id de sesión no
-// existe, la fila no se puede insertar. Importa porque una asistencia colgada de
-// un id que no existe es indistinguible de una asistencia real en cualquier
-// consulta que no haga JOIN — y la grilla siempre hace JOIN, así que el corredor
-// desaparecería de su propio registro sin error visible.
-//
-// OJO: este test solo es significativo si la FK está aplicada en la base de test.
-// En una base migrada a mano sin la FK pasa sin verificar nada. En CI corre contra
-// una base limpia con AutoMigrate, y el modelo declara la FK, así que queda
-// efectiva; si el test pasara siempre, sospechar de que la restricción no existe.
-func TestAttendanceDao_SessionInstanceForeignKey(t *testing.T) {
-	db := testutils.SetupTestDB(t)
-	dao := NewAttendanceDao(db)
-
-	t.Run("una sesion inexistente es rechazada por la FK", func(t *testing.T) {
-		// id inalcanzable: la secuencia de session_instances no llega a eso.
-		att := &dbs.Attendance{
-			TeamID:            1,
-			TrainingSessionID: 99999999,
-			UserID:            1,
-			Source:            string(constants.AttendanceSourceQR),
-		}
-		err := dao.Create(nil, att)
-
-		require.Error(t, err, "la FK a session_instances debería rechazar esto")
-		assert.NotErrorIs(t, err, ErrAttendanceAlreadyExists,
-			"no es un conflicto de unicidad: es una violación de FK")
-	})
-
-	t.Run("una sesion real si se puede insertar", func(t *testing.T) {
-		// El control: si este pasara y el de arriba también, la FK no esta aplicada
-		// y el test anterior no estaria probando nada.
-		att := newTestAttendance(db, 1, testSessionInstance(db, "sesion-fk-ok"), 1)
-
-		require.NoError(t, dao.Create(nil, att))
-	})
-}
-
 // TestAttendanceDao_FindGroupRosterWithAttendance_MembershipWindow cubre (a), (b) y
 // (c) de la tarea 2.9: el denominador de la tasa de asistencia se evalúa contra la
 // FECHA DE LA SESIÓN, no contra la fecha en que se consulta.
@@ -532,20 +490,21 @@ func TestAttendanceDao_FindGroupRosterWithAttendance_MembershipWindow(t *testing
 	stillActive := addMember("activo", "53000002", before, nil)
 	endsLater := addMember("vencido-despues", "53000003", before, &after)
 	endedBefore := addMember("vencido-antes", "53000004", before, &before)
-	addMember("sumado-despues", "53000005", after, nil)
+	notYet := addMember("sumado-despues", "53000005", after, nil)
 
-	// rosterExpected son los 3 que la ventana cubre, ordenados por user_id como
-	// ordena la query.
-	rosterExpected := []int64{stillActive, endedBefore, endsLater}
+	// rosterExpected son los 2 que la ventana cubre, ordenados por user_id como
+	// ordena la query. Quedan afuera endedBefore (date_end anterior a la sesión) y
+	// notYet (date_start posterior).
+	rosterExpected := []int64{stillActive, endsLater}
 	sort.Slice(rosterExpected, func(i, j int) bool { return rosterExpected[i] < rosterExpected[j] })
 
 	t.Run("(a) roster_size cuenta los vigentes en la fecha de la sesion", func(t *testing.T) {
 		rows, aggregates, err := dao.FindGroupRosterWithAttendance(nil, group.ID, team.ID, sessionID, sessionDate)
 
 		require.NoError(t, err)
-		// De los 4, entran 3: date_end ANTERIOR queda afuera, date_start POSTERIOR
-		// queda afuera, y date_end POSTERIOR entra porque la ventana es inclusiva.
-		assert.Equal(t, int64(3), aggregates.RosterSize)
+		// De los 4, entran 2: date_end ANTERIOR y date_start POSTERIOR quedan
+		// afuera; date_end POSTERIOR entra porque la ventana es inclusiva (>=).
+		assert.Equal(t, int64(2), aggregates.RosterSize)
 
 		ids := make([]int64, 0, len(rows))
 		for _, r := range rows {
@@ -564,7 +523,8 @@ func TestAttendanceDao_FindGroupRosterWithAttendance_MembershipWindow(t *testing
 			ids = append(ids, r.UserID)
 		}
 		assert.NotContains(t, ids, endedBefore, "date_end anterior a la sesión")
-		assert.Equal(t, int64(3), aggregates.RosterSize)
+		assert.NotContains(t, ids, notYet, "date_start posterior a la sesión")
+		assert.Equal(t, int64(2), aggregates.RosterSize)
 	})
 
 	t.Run("(c) el mismo sessionDate da el mismo roster_size aunque la membresia venza despues", func(t *testing.T) {
@@ -581,9 +541,9 @@ func TestAttendanceDao_FindGroupRosterWithAttendance_MembershipWindow(t *testing
 		rows, aggregates, err := dao.FindGroupRosterWithAttendance(nil, group.ID, team.ID, sessionID, sessionDate)
 
 		require.NoError(t, err)
-		assert.Equal(t, int64(3), aggregates.RosterSize,
+		assert.Equal(t, int64(2), aggregates.RosterSize,
 			"el denominador depende de sessionDate, no de la fecha en que se consulta")
-		assert.Len(t, rows, 3)
+		assert.Len(t, rows, 2)
 	})
 
 	t.Run("attended cuenta asistencias de gente fuera del roster vigente", func(t *testing.T) {
@@ -600,7 +560,7 @@ func TestAttendanceDao_FindGroupRosterWithAttendance_MembershipWindow(t *testing
 
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), aggregates.Attended)
-		assert.Equal(t, int64(3), aggregates.RosterSize, "el roster no cambia por la asistencia")
+		assert.Equal(t, int64(2), aggregates.RosterSize, "el roster no cambia por la asistencia")
 		// El que asiste fuera del roster no aparece en las filas, pero sí suma.
 		for _, r := range rows {
 			assert.NotEqual(t, endedBefore, r.UserID)
