@@ -1,22 +1,99 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "API para el registro y gestión de usuarios de Paceron",
-        "title": "Paceron Backend API",
+        "description": "Base scaffolding for Go APIs with Gin framework",
+        "title": "Simple Arq Golang API",
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "email": "dev@paceron.com"
+            "email": "dev@example.com"
         },
         "license": {
             "name": "MIT",
             "url": "https://opensource.org/licenses/MIT"
         },
-        "version": "1.0"
+        "version": "1.0.0"
     },
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/v1/attendance/bulk": {
+            "post": {
+                "description": "Crea o actualiza la asistencia de varios corredores a una misma sesión. Idempotente. Todo-o-nada: si algún corredor no era miembro del grupo en la fecha de la sesión, no se escribe ninguna fila.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Carga masiva de asistencia de una sesión",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Corredores a marcar",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/attendance/qr": {
             "get": {
                 "description": "Genera el código QR determinista para registrar asistencias de una sesión de entrenamiento de un equipo. Requiere autenticación. Mismos inputs siempre producen el mismo QR.",
@@ -148,6 +225,88 @@
                 }
             }
         },
+        "/api/v1/attendance/session/{session_instance_id}": {
+            "get": {
+                "description": "Devuelve el roster del grupo cruzado con el estado de asistencia de cada corredor, más los agregados de la sesión. El roster son los miembros con membresía activa en la FECHA DE LA SESIÓN (no en la fecha de hoy). Exige que el usuario autenticado sea entrenador del team_id, que la sesión sea presencial y no cancelada, y que pertenezca al grupo y al equipo indicados.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Ver la grilla de asistencia de una sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión instanciada",
+                        "name": "session_instance_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del grupo",
+                        "name": "group_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo (obligatorio)",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/attendance/team/{team_id}/session/{training_session_id}": {
             "post": {
                 "description": "Registra la asistencia del usuario autenticado a la sesión de entrenamiento. Idempotente: la primera vez responde 201, si ya estaba registrada responde 200 sin duplicar.",
@@ -198,6 +357,76 @@
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/attendance/{attendance_id}": {
+            "delete": {
+                "description": "Borra físicamente una asistencia por id. Requiere ser entrenador del equipo indicado. 404 si la asistencia no existe; 403 si es de otro equipo o el usuario no es entrenador.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Borrar una asistencia cargada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bearer token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Id de la asistencia",
+                        "name": "attendance_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Equipo de la asistencia",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -905,6 +1134,75 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/groups/{group_id}/attendance-sessions": {
+            "get": {
+                "description": "Devuelve las sesiones presenciales ya ocurridas de un grupo, ordenadas de la más reciente a la más antigua, con la cantidad de asistencias de cada una. Solo días training + presencial + fecha \u003c= hoy. Exige que el usuario autenticado sea entrenador del team_id y que el grupo pertenezca a ese equipo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attendance"
+                ],
+                "summary": "Listar sesiones con asistencia gestionable de un grupo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo (obligatorio)",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -7103,10 +7401,68 @@
                 "code": {
                     "type": "string"
                 },
+                "details": {
+                    "description": "Details lleva datos estructurados del error cuando el mensaje solo no\nalcanza para que el cliente reaccione bien. Es aditivo y con omitempty a\npropósito: los endpoints que no lo usan no cambian su respuesta.\n\nHoy lo usa el 422 de la carga masiva de asistencia, que tiene que\nidentificar QUÉ user_id no eran miembros del grupo: un mensaje genérico\nobligaría al frontend a adivinar qué filas marcar en la grilla.",
+                    "type": "object",
+                    "additionalProperties": true
+                },
                 "message": {
                     "type": "string"
                 },
                 "status_code": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.AttendanceSummary": {
+            "type": "object",
+            "properties": {
+                "attendance_rate_pct": {
+                    "type": "number"
+                },
+                "attended": {
+                    "type": "integer"
+                },
+                "not_confirmed": {
+                    "type": "integer"
+                },
+                "roster_size": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.BulkSaveEntryItem": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.BulkSaveRequest": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveEntryItem"
+                    }
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "training_session_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.BulkSaveResult": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "updated": {
                     "type": "integer"
                 }
             }
@@ -7140,6 +7496,118 @@
                     "items": {
                         "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dbs.Attendance"
                     }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceListResponse": {
+            "type": "object",
+            "properties": {
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceOption"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceOption": {
+            "type": "object",
+            "properties": {
+                "attended_count": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceResponse": {
+            "type": "object",
+            "properties": {
+                "roster": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceRow"
+                    }
+                },
+                "session": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionInfo"
+                },
+                "summary": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_attendance.AttendanceSummary"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceRow": {
+            "type": "object",
+            "properties": {
+                "attendance_id": {
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "registered_at": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_attendance.SessionInfo": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "presencial_location": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location"
+                },
+                "presencial_time_from": {
+                    "type": "string"
+                },
+                "presencial_time_to": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
                 }
             }
         },
@@ -7803,12 +8271,20 @@
                     "description": "ID único de la asistencia (autoincremental)",
                     "type": "integer"
                 },
+                "registeredByUserID": {
+                    "description": "Quién cargó la asistencia (nullable, sin FK)",
+                    "type": "integer"
+                },
+                "source": {
+                    "description": "Procedencia: \"qr\" o \"manual\"",
+                    "type": "string"
+                },
                 "teamID": {
                     "description": "ID del equipo",
                     "type": "integer"
                 },
                 "trainingSessionID": {
-                    "description": "ID de la sesión de entrenamiento (FK opaca, ver doc)",
+                    "description": "ID de la sesión (FK a session_instances.id)",
                     "type": "integer"
                 },
                 "updatedAt": {
