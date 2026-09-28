@@ -3,6 +3,10 @@ package attendance
 import "simple-arq-golang/cmd/api/domains/dbs"
 
 // Mensajes estandarizados del registro de asistencia.
+//
+// La procedencia de cada fila (source, registered_by_user_id) vive en
+// dbs.Attendance y no acá: este archivo es el contrato HTTP, no el modelo de
+// persistencia.
 const (
 	// MessageRegistered indica que la asistencia se registró por primera vez (201).
 	MessageRegistered = "asistencia registrada"
@@ -11,6 +15,11 @@ const (
 )
 
 // QRResponse es la respuesta del endpoint de generación de QR.
+//
+// El QR no depende del usuario que lo pide: la URL y el PNG se derivan solo de
+// (team_id, training_session_id), así que el entrenador puede reemitir el mismo QR
+// y obtener exactamente los mismos bytes. Quién puede pedirlo lo valida el service
+// (entrenador del equipo + sesión presencial, no cancelada y del equipo).
 type QRResponse struct {
 	QRCodeBase64 string `json:"qr_code_base64"` // Imagen PNG en base64
 	URLEncoded   string `json:"url_encoded"`    // URL codificada en el QR
@@ -22,6 +31,9 @@ type SearchResponse struct {
 }
 
 // RegisterResponse es la respuesta del endpoint de registro de asistencia (201/200).
+//
+// El 403 de "no sos miembro del grupo de esta sesión" NO se representa acá: es un
+// error, y va como apierror.APIError. Este tipo solo cubre el caso exitoso.
 type RegisterResponse struct {
 	Message string `json:"message"`
 }

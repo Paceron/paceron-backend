@@ -279,9 +279,9 @@ func NewApplication() *Application {
 	teamConfigurationService := services.NewTeamConfigurationService(roleDao, userRoleDao, tierSubscriptionDao, tierDao)
 	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
 
-	// Attendance flow (asistencia por QR)
+	// Attendance flow (asistencia por QR + gestión de asistencia del entrenador)
 	attendanceDao := daos.NewAttendanceDao(db)
-	attendanceService := services.NewAttendanceService(attendanceDao, config.AttendanceBaseURL)
+	attendanceService := services.NewAttendanceService(attendanceDao, groupDao, groupUserDao, userDao, config.AttendanceBaseURL)
 	attendanceController := controllers.NewAttendanceController(attendanceService)
 
 	// Workout Feedback flow (feedback de entrenamiento)
