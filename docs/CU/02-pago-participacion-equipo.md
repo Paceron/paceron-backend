@@ -321,11 +321,16 @@ Authorization: Bearer {token}
 | `SELLER_NOT_CONNECTED` | 409 | el entrenador no conectó MP | falta P2 |
 | `Not Found` | 404 | la cuota no existe / no es de equipo | installment_id inválido |
 
-> **Gap conocido (a verificar):** el `marketplace_fee` se persiste localmente en
-> `payments.marketplace_fee`, pero el request que se envía a Mercado Pago **no
-> incorpora el fee/split** en la preferencia ni en el pago. El "split" efectivo
-> hoy depende del Bricks Marketplace del frontend (`marketplace=true`). El pago
-> se cobra con el **access token del entrenador**. Es un punto a validar/mejorar.
+> **Resuelto (2026-09-27):** el `marketplace_fee` ahora sí se manda a Mercado
+> Pago — `preference.Request.MarketplaceFee` en `POST /payments/preference`
+> (`marketplace_fee` en el request real a MP) y `payment.Request.ApplicationFee`
+> en `POST /payments` (`application_fee`). Antes se calculaba y persistía en
+> `payments.marketplace_fee` pero nunca viajaba en el request real, así que el
+> 100% del dinero quedaba en la cuenta del entrenador. El pago se sigue
+> cobrando con el **access token del entrenador**, ahora con la comisión de
+> Paceron descontada por MP en el mismo request. Ver
+> `cmd/api/restclients/mercadopagoclient/client.go` (`mpConfig`,
+> `CreatePreference`, `CreatePayment`) y sus tests.
 
 ---
 

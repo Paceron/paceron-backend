@@ -1,7 +1,9 @@
 package mercadopagoclient
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +14,35 @@ import (
 
 	appconfig "simple-arq-golang/cmd/api/config"
 )
+
+// captureRequester implementa requester.Requester (misma firma que
+// http.Client.Do) para interceptar lo que CreatePreference/CreatePayment le
+// mandarían de verdad a Mercado Pago — esos dos métodos usan el SDK oficial
+// (preference.NewClient/payment.NewClient), que arma la URL real
+// (api.mercadopago.com) hardcodeada adentro del SDK, así que apiBaseURL de
+// mpClient no les aplica (a diferencia de ExchangeCodeForToken/GetUserInfo,
+// que usan net/http directo). config.WithHTTPClient(...) es el único punto de
+// inyección real: reemplaza el transporte, nunca sale a la red.
+type captureRequester struct {
+	lastBody []byte
+	status   int
+	respBody string
+}
+
+func (r *captureRequester) Do(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		r.lastBody, _ = io.ReadAll(req.Body)
+	}
+	status := r.status
+	if status == 0 {
+		status = http.StatusCreated
+	}
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(bytes.NewReader([]byte(r.respBody))),
+		Header:     make(http.Header),
+	}, nil
+}
 
 func TestNew_ImplementsInterface(t *testing.T) {
 	client := New()
@@ -153,4 +184,80 @@ func TestGetUserInfo_HTTPErrorStatus(t *testing.T) {
 	_, err := client.GetUserInfo(context.Background(), "invalid-token")
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "error getting user info"))
+}
+
+// Los 4 tests de acá abajo cubren el fix del split de Mercado Pago
+// (plan_fix_pagos.md quedaba con el diagnóstico completo pero el fix de la
+// PK del vendedor sin implementar en ese momento — verificado empíricamente
+// el 2026-09-27 que ese fix ya está en develop; el que faltaba, y sigue
+// faltando hasta este commit, era este: marketplaceFee/ApplicationFee nunca
+// llegaban al request real de MP, así que la comisión de Paceron se calculaba
+// y persistía local pero el 100% del dinero quedaba en la cuenta del
+// vendedor). Usan captureRequester en vez de httptest.NewServer porque
+// CreatePreference/CreatePayment pasan por el SDK oficial de MP, que arma la
+// URL real internamente — apiBaseURL no les aplica, config.WithHTTPClient es
+// el único punto de inyección real (ver mpClient.httpRequester).
+
+func TestCreatePreference_SendsMarketplaceFee(t *testing.T) {
+	capture := &captureRequester{respBody: `{"id":"pref-123"}`}
+	c := newMP("http://api.local", "http://auth.local").(*mpClient)
+	c.httpRequester = capture
+
+	id, err := c.CreatePreference(context.Background(), "TEST-seller-token",
+		[]PreferenceItem{{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500}},
+		"ext-1", "https://webhook.local", "75.00", "ARS")
+
+	require.NoError(t, err)
+	assert.Equal(t, "pref-123", id)
+	assert.Contains(t, string(capture.lastBody), `"marketplace_fee":75`)
+}
+
+func TestCreatePreference_ZeroFeeOmitsField(t *testing.T) {
+	capture := &captureRequester{respBody: `{"id":"pref-456"}`}
+	c := newMP("http://api.local", "http://auth.local").(*mpClient)
+	c.httpRequester = capture
+
+	_, err := c.CreatePreference(context.Background(), "TEST-token",
+		[]PreferenceItem{{Title: "Item", Quantity: 1, UnitPrice: 100}},
+		"ext-2", "https://webhook.local", "0.00", "ARS")
+
+	require.NoError(t, err)
+	assert.NotContains(t, string(capture.lastBody), "marketplace_fee")
+}
+
+func TestCreatePayment_SendsApplicationFee(t *testing.T) {
+	capture := &captureRequester{respBody: `{"id":789,"status":"approved","status_detail":"accredited"}`}
+	c := newMP("http://api.local", "http://auth.local").(*mpClient)
+	c.httpRequester = capture
+
+	result, err := c.CreatePayment(context.Background(), "TEST-seller-token", CreatePaymentRequest{
+		Token:             "card-tok",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "master",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		ApplicationFee:    75,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 789, result.ID)
+	assert.Contains(t, string(capture.lastBody), `"application_fee":75`)
+}
+
+func TestCreatePayment_ZeroFeeOmitsField(t *testing.T) {
+	capture := &captureRequester{respBody: `{"id":790,"status":"approved","status_detail":"accredited"}`}
+	c := newMP("http://api.local", "http://auth.local").(*mpClient)
+	c.httpRequester = capture
+
+	_, err := c.CreatePayment(context.Background(), "TEST-token", CreatePaymentRequest{
+		Token:             "card-tok",
+		TransactionAmount: 1000,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, string(capture.lastBody), "application_fee")
 }

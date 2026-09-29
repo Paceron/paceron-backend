@@ -6,6 +6,25 @@
 - **Estado:** diagnóstico completo, fix **sin implementar todavía**.
 - **Problema a resolver:** el E2E de "pago de participación de equipo con split" falla al aprobar el pago en Mercado Pago con error `400 Invalid users involved (código 2034)`. Y el E2E **sin split** (pago de suscripción individual / cambio de tier) ya funciona y **no debe romperse**.
 
+> **Actualización 2026-09-27 — el fix de la sección 2 (PK del vendedor en el card
+> token) ya está implementado en `develop`**, confirmado empíricamente
+> (`POST /payments/preference` con split devuelve una public key distinta a la
+> del integrador). El `2034 Invalid users involved` verificado ese día es un
+> problema **distinto**, de sandbox: comprador y vendedor de prueba creados
+> bajo la misma app de MP quedan tratados como la misma identidad — no se
+> reproduce necesariamente con cuentas reales o de apps distintas, y no bloquea
+> producción. Detalle en `docs/superpowers/` del repo frontend (rama
+> `feature/team-subscription-join-payment`, spec
+> `2026-09-26-team-subscription-join-payment-design.md`).
+>
+> Aparte, y sin relación con el `2034`, esa misma sesión encontró y arregló un
+> segundo bug real: `marketplace_fee`/`ApplicationFee` se calculaba y persistía
+> local pero **nunca se enviaba a Mercado Pago** — el 100% del dinero quedaba
+> en la cuenta del vendedor. Fix en `fix/mercadopago-marketplace-fee-split`
+> (`cmd/api/restclients/mercadopagoclient/client.go`,
+> `cmd/api/services/payment_service.go`). Ver `docs/CU/02-pago-participacion-equipo.md`
+> §Paso 4 (nota actualizada).
+
 ---
 
 ## 1. Qué estamos intentando resolver

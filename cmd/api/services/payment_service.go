@@ -262,6 +262,9 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		ExternalReference: externalRef,
 		NotificationURL:   config.MyMP.WebhookURL,
 		ThreeDSecureMode:  "optional",
+		// marketplaceFee ya es 0 para pagos sin split (resuelto arriba) — ver
+		// CreatePaymentRequest.ApplicationFee para el porqué de este campo.
+		ApplicationFee: marketplaceFee,
 	}
 
 	result, err := s.mpClient.CreatePayment(ctx, mpAccessToken, mpReq)
