@@ -19,6 +19,11 @@ import (
 var ErrAttendanceAlreadyExists = errors.New("esta asistencia fue previamente registrada")
 
 // postgresUniqueViolation es el SQLSTATE que Postgres reporta al violar una UNIQUE o PK.
+// attendanceUniqueConstraint es el nombre del índice único compuesto
+// (team_id, training_session_id, user_id) declarado en dbs.Attendance. Lo compara
+// el Create para NO confundir una violación suya con la de otro índice.
+const attendanceUniqueConstraint = "uq_att_team_session_user"
+
 const postgresUniqueViolation = "23505"
 
 // AttendanceSessionContext es el contexto completo de la sesión objetivo de una
@@ -119,7 +124,18 @@ func (d *attendanceDao) Create(ctx *gin.Context, attendance *dbs.Attendance) err
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == postgresUniqueViolation {
-		return ErrAttendanceAlreadyExists
+		// Solo el índice compuesto significa "ya estaba". La tabla tiene otro
+		// unique —el pkey de `id`— y mapear cualquier violación a
+		// ErrAttendanceAlreadyExists hacía que un problema distinto se le dijera al
+		// corredor "ya tenías la asistencia registrada" cuando en realidad no se
+		// registró nada. Se chequea el constraint: la pkey no se puede violar con un
+		// insert normal (va por secuencia), pero el chequeo explícito evita que
+		// este día se convierta en un "ya registrada" fantasma si algún día aparece
+		// otra restricción.
+		if pgErr.ConstraintName == attendanceUniqueConstraint {
+			return ErrAttendanceAlreadyExists
+		}
+		return fmt.Errorf("error creating attendance: unique violation on %q (no es el índice de duplicado): %w", pgErr.ConstraintName, err)
 	}
 	return fmt.Errorf("error creating attendance: %w", err)
 }
