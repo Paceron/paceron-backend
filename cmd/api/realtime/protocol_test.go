@@ -34,6 +34,21 @@ func TestParseInbound(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("presence con payload null", func(t *testing.T) {
+		_, err := ParseInbound([]byte(`{"type":"presence","payload":null}`))
+		require.Error(t, err)
+	})
+
+	t.Run("presence con payload arreglo", func(t *testing.T) {
+		_, err := ParseInbound([]byte(`{"type":"presence","payload":[1,2]}`))
+		require.Error(t, err)
+	})
+
+	t.Run("control con payload arreglo", func(t *testing.T) {
+		_, err := ParseInbound([]byte(`{"type":"control","payload":["x"]}`))
+		require.Error(t, err)
+	})
+
 	t.Run("presence sin payload", func(t *testing.T) {
 		_, err := ParseInbound([]byte(`{"type":"presence"}`))
 		require.Error(t, err)

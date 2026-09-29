@@ -334,11 +334,11 @@ Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`**
 
 **Eventos:**
 
-- `{"type":"presence","from":12,"payload":{...}}` / `{"type":"control","from":12,"payload":{...}}` — reenvíos de otros usuarios suscriptos al mismo canal (emisor excluido; `payload` opaco, esquema acordado entre clientes). El destino se resuelve del `channel` del frame o de la única suscripción activa.
+- `{"type":"presence","from":12,"payload":{...}}` / `{"type":"control","from":12,"payload":{...}}` — reenvíos de otros usuarios suscriptos al mismo canal (emisor excluido; `payload` opaco pero **debe ser un objeto JSON** al enviarlo — `null`/arreglo responden `error`). El destino se resuelve del `channel` del frame o de la única suscripción activa.
 - `{"type":"update:set_event","data":{...}}` — server-originado: alguien creó feedback de esa sesión. **`data` es el MISMO body HTTP 201 de `POST /workout-feedback`** (`{message: "feedback registrado", data: {...WorkoutFeedbackResponse con athlete_user_id}}`) — reutilizar el normalizador HTTP. Solo `Create` emite; nadie suscripto = evento no existe (no hay replay ni cola: lo que se perdió offline se recupera por fetch).
 
 **Errores sin cortar conexión:** cualquier rechazo puntual (canal ajeno, canal desconocido, JSON inválido, `type` desconocido, tope de canales) llega como `{"type":"error","message":"..."}` y la conexión queda abierta y utilizable. No hacer retry-desconectar sobre `error`.
 
 **Heartbeat JSON:** mandar `{"type":"ping"}` cada 20-30 s → responde `{"type":"pong"}`. Cualquier mensaje refresca el deadline de 45 s — sin tráfico en 45 s el servidor corta. Frames del cliente > 4 KB cortan la conexión (única excepción).
 
-**Reconexión:** los deploys cortan las conexiones — reconectar con backoff y re-suscribirse; las suscripciones no sobreviven a la desconexión.
+**Reconexión:** los deploys cortan las conexiones — reconectar con backoff y re-suscribirse; las suscripciones no sobreviven a la desconexión. El servidor también puede cortar por **overflow sostenido** del buffer de salida (cliente que no drena su cola): es un caso más de reconexión, no de error.

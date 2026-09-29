@@ -29,6 +29,7 @@ func newChannelAuthorizer(dao daos.SessionInstanceDaoInterface) realtime.Channel
 		if !ok {
 			return false, nil
 		}
+		// ctx nil: HasInstanceAccess no usa gin.Context hoy — invariante a respetar.
 		return dao.HasInstanceAccess(nil, id, userID)
 	})
 }

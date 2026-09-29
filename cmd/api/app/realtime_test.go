@@ -67,11 +67,6 @@ func (s *channelAuthorizerStubDAO) HasFeedback(*gin.Context, int64) (bool, error
 	return false, nil
 }
 
-func (s *channelAuthorizerStubDAO) requireNoQueries(t *testing.T) {
-	t.Helper()
-	assert.False(t, s.queried, "no debe consultar la DB")
-}
-
 func TestChannelAuthorizer(t *testing.T) {
 	stub := &channelAuthorizerStubDAO{}
 	authorizer := newChannelAuthorizer(stub)

@@ -144,10 +144,15 @@ func relayChannel(msg *clientMessage, channels map[string]struct{}) (string, str
 	return "", "presence/control requieren un canal suscripto (channel o única suscripción)"
 }
 
-// handleSubscribe valida tope y autorización antes de suscribir. Tope
-// alcanzado, canal ajeno o desconocido responden `error` sin cortar; el
-// resubscribe del mismo canal es idempotente (el set del Hub deduplica).
+// handleSubscribe valida tope y autorización antes de suscribir. El resub de
+// un canal propio es idempotente (responde `subscribed`) y se chequea ANTES
+// del tope. Tope alcanzado, canal ajeno o desconocido responden `error` sin
+// cortar.
 func (g *Gateway) handleSubscribe(sc *serveState, channel string) {
+	if _, dup := sc.channels[channel]; dup {
+		sc.enqueue(MarshalOutbound(&outboundMessage{Type: TypeSubscribed, Channel: channel}))
+		return
+	}
 	if len(sc.channels) >= maxChannelsPerConn {
 		sc.enqueue(MarshalOutbound(errOutbound("tope de canales por conexión alcanzado")))
 		return

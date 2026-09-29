@@ -34,7 +34,7 @@ const EventSetEvent = "set_event"
 const UpdateSetEventType = TypeUpdate + ":" + EventSetEvent
 
 // clientMessage es el decode de todo frame cliente → servidor. payload de
-// presence/control viaja opaco: solo se exige JSON válido.
+// presence/control viaja opaco pero debe ser un objeto JSON (ver ParseInbound).
 type clientMessage struct {
 	Type    string          `json:"type"`
 	Channel string          `json:"channel,omitempty"`
@@ -94,6 +94,13 @@ func ParseInbound(raw []byte) (*clientMessage, error) {
 	case TypePresence, TypeControl:
 		if len(msg.Payload) == 0 || !json.Valid(msg.Payload) {
 			return nil, errors.New(msg.Type + " requiere payload JSON")
+		}
+		// El payload debe decodificar a objeto JSON: el backend reenvía pero
+		// no transmite túneles de null/arreglos (Unmarshal de null no falla
+		// pero deja el map nil).
+		var obj map[string]any
+		if err := json.Unmarshal(msg.Payload, &obj); err != nil || obj == nil {
+			return nil, errors.New(msg.Type + " requiere payload objeto JSON")
 		}
 	case TypePing:
 		return &msg, nil

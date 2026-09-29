@@ -448,6 +448,33 @@ func TestRelayChannelResolution(t *testing.T) {
 	assert.Equal(t, TypePong, peer.waitFrame(t, TypePong).Type)
 }
 
+func TestPresencePayloadMustBeJSONObject(t *testing.T) {
+	setGatewayJWTConfig(t)
+	server := newWSUpgradeServer(t, fakeFullAuthorizer(1))
+	sender := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
+	peer := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
+
+	subscribe(sender, t, "session:7")
+	subscribe(peer, t, "session:7")
+	sender.waitFrame(t, TypeSubscribed)
+	peer.waitFrame(t, TypeSubscribed)
+
+	// payload null → error, conexión viva.
+	sender.sendRaw(t, []byte(`{"type":"presence","payload":null}`))
+	assert.Contains(t, sender.waitFrame(t, TypeError).Message, "objeto JSON")
+
+	// payload arreglo → error, conexión viva.
+	sender.sendRaw(t, []byte(`{"type":"presence","payload":[1]}`))
+	assert.Contains(t, sender.waitFrame(t, TypeError).Message, "objeto JSON")
+	assert.Equal(t, 2, server.hub.Count("session:7")) // nada reenviado
+
+	// payload objeto → reenvío normal.
+	sender.send(t, map[string]any{"type": TypePresence, "payload": map[string]any{"n": 1}})
+	assert.Equal(t, int64(1), peer.waitFrame(t, TypePresence).From)
+
+	pingPong(t, sender)
+}
+
 func TestUnsubscribeStopsDelivery(t *testing.T) {
 	setGatewayJWTConfig(t)
 	server := newWSUpgradeServer(t, fakeFullAuthorizer(1))
@@ -495,6 +522,16 @@ func TestChannelLimitKeepsAliveAndKeepsExisting(t *testing.T) {
 	subscribe(client, t, "session:999")
 	assert.Contains(t, client.waitFrame(t, TypeError).Message, "tope")
 	assert.Equal(t, 0, server.hub.Count("session:999"))
+
+	// Resub a un canal PROPIO con el tope lleno: `subscribed` idempotente,
+	// el tope se evalúa después de la dedup.
+	subscribe(client, t, "session:101")
+	assert.Equal(t, "session:101", client.waitFrame(t, TypeSubscribed).Channel)
+	assert.Equal(t, 1, server.hub.Count("session:101"))
+
+	// Resub a un canal AJENO con el tope lleno: error, conexión viva.
+	subscribe(client, t, "session:888")
+	assert.Contains(t, client.waitFrame(t, TypeError).Message, "tope")
 
 	// Cada canal deja de tener exactamente 1 suscriptor (sin perder los primeros).
 	assert.Equal(t, 1, server.hub.Count("session:101"))

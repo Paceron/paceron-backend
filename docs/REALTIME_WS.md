@@ -50,8 +50,8 @@ Semántica por tipo:
 |---|---|---|
 | `subscribe` | c→s | Suscribirse a `channel`. Responde `subscribed` (con el mismo `channel`). Requiere `channel`. |
 | `unsubscribe` | c→s | Dejar de recibir de `channel`. Sin respuesta explícita — a partir de ahí no llegan más frames de ese canal. Requiere `channel`. |
-| `presence` | c→s | Estado efímero ("estoy viendo la serie"). Requiere `payload` JSON válido. |
-| `control` | c→s | Señal efímera (ej. "marcá el set en tu UI"). Requiere `payload` JSON válido. |
+| `presence` | c→s | Estado efímero ("estoy viendo la serie"). Requiere `payload` **objeto JSON** (no vacío, no `null`, no arreglo). |
+| `control` | c→s | Señal efímera (ej. "marcá el set en tu UI"). Requiere `payload` **objeto JSON** (no vacío, no `null`, no arreglo). |
 | `ping` | c→s | Heartbeat app-level → responde `pong`. |
 | `subscribed` | s→c | Confirmación de suscripción (con `channel`). |
 | `error` | s→c | Rechazo de algo puntual. **Nunca corta la conexión** (ver §4). |
@@ -63,7 +63,7 @@ Reglas comunes:
 
 - **presence/control no traen channel en el formato base** — el destino se resuelve: si el frame trae `channel` explícito, debe ser un canal ya suscripto; si no trae, se usa la **única** suscripción activa de la conexión (multi-canal sin `channel` → `error`). Se reenvía a **todos los demás suscriptores** del canal, excluyendo al emisor (el emisor no recibe su propio frame). Único suscriptor del canal → nadie recibe nada, sin error.
 - **Resubscribe idempotente:** suscribirse dos veces al mismo canal es un no-op que responde `subscribed` de nuevo (el Hub deduplica por set).
-- `payload` de presence/control es opaco: solo se exige que sea JSON válido (no vacío). Cualquier esquema adentro es cosa del frontend.
+- `payload` de presence/control es opaco pero debe ser un **objeto JSON** (`{...}`, no vacío, no `null`, no arreglo — si no, `error`): cualquier esquema adentro es cosa del frontend.
 
 ## 3. Autorización de canales
 
@@ -87,7 +87,7 @@ El único patrón registrado hoy: **`session:{id}`**, con `{id}` = ID de **sessi
 | Canales por conexión | 20 | Subscribe adicional → `error` ("tope de canales por conexión alcanzado"), conexión viva, suscripciones existentes intactas |
 | Buffer de salida por cliente | 32 frames | Frame descartado para ese cliente (feed best-effort); 8 descartes consecutivos → conexión cerrada |
 
-- **`error` NUNCA corta la conexión:** tope de canales, canal ajeno, canal desconocido, JSON inválido, `type` desconocido, presence/control sin canal resoluble, fallo del authorizer. Todo responde `error` y el loop sigue — la única salida es un error de read/write del socket o el frame over-size.
+- **`error` NUNCA corta la conexión:** tope de canales, canal ajeno, canal desconocido, JSON inválido, `type` desconocido, presence/control sin canal resoluble o con payload que no es objeto JSON, fallo del authorizer. Todo responde `error` y el loop sigue; al corte se llega solo por tres caminos: error de read/write del socket, frame over-size, o drop por overflow sostenido del buffer de salida (ver tabla de arriba).
 - **Heartbeat:** cualquier mensaje del cliente refresca el deadline — un `ping` cada 20-30 s sobra. No hace falta ping a nivel TCP.
 - Al caer la conexión (cualquier motivo) se limpian todas sus suscripciones — no hay estado zombie de canales.
 

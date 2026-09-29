@@ -2,7 +2,8 @@ package realtime
 
 // Notifier es el emisor genérico de eventos server→client: quien decide el
 // nombre del canal es el caller (el paquete no conoce ningún patrón de canal).
-// Emit debe ser no-bloqueante y async-safe; un valor nil es válido y hace de
+// Emit debe ser no-bloqueante y async-safe; el payload no debe mutarse
+// después de Emit (el fan-out es async). Un valor nil es válido y hace de
 // la llamada un no-op para que el wiring opcional no exija chequeos en el hook.
 type Notifier interface {
 	Emit(channel string, payload []byte)
