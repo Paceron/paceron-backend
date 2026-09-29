@@ -1,15 +1,19 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/attendance"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/services"
@@ -18,7 +22,7 @@ import (
 
 type mockAttendanceService struct {
 	generateQRFn     func(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error)
-	registerFn       func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error)
+	registerFn       func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error)
 	searchFn         func(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error)
 	listSessionsFn   func(ctx *gin.Context, authUserID, teamID, groupID int64) (*attendance.SessionAttendanceListResponse, error)
 	getSessionGridFn func(ctx *gin.Context, authUserID, teamID, groupID, sessionInstanceID int64) (*attendance.SessionAttendanceResponse, error)
@@ -33,11 +37,17 @@ func (m *mockAttendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID,
 	return nil, nil
 }
 
-func (m *mockAttendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error) {
+// sessionCtxFor arma el contexto que devuelve el mock: el controller lo usa
+// solo para armar el deep link de la respuesta (group_id + session_date).
+func sessionCtxFor(groupID, teamID int64, date time.Time) *daos.AttendanceSessionContext {
+	return &daos.AttendanceSessionContext{SessionInstanceID: 9, GroupID: groupID, TeamID: teamID, Date: date, SessionName: "Sesión de prueba"}
+}
+
+func (m *mockAttendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
 	if m.registerFn != nil {
 		return m.registerFn(ctx, userID, teamID, sessionID)
 	}
-	return false, nil
+	return false, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 }
 
 func (m *mockAttendanceService) Search(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error) {
@@ -132,11 +142,11 @@ func TestAttendanceController_GenerateQR_Unauthorized(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_Created(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error) {
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
 			assert.Equal(t, int64(7), userID)
 			assert.Equal(t, int64(5), teamID)
 			assert.Equal(t, int64(9), sessionID)
-			return true, nil
+			return true, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 		},
 	}
 	controller := NewAttendanceController(mock)
@@ -154,8 +164,8 @@ func TestAttendanceController_RegisterAttendance_Created(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_AlreadyExists(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error) {
-			return false, nil
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+			return false, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 		},
 	}
 	controller := NewAttendanceController(mock)
@@ -198,8 +208,8 @@ func TestAttendanceController_RegisterAttendance_Unauthorized(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_InternalError(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error) {
-			return false, errors.New("db caída")
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+			return false, nil, errors.New("db caída")
 		},
 	}
 	controller := NewAttendanceController(mock)
@@ -622,4 +632,41 @@ func TestAttendanceController_DeleteAttendance(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.Contains(t, w.Body.String(), "attendance_id")
 	})
+}
+
+// El deep link de la pantalla de día es /teams/:team/groups/:group/calendar/:date.
+// El QR solo trae team_id y session_instance_id, así que sin group_id y
+// session_date en la respuesta el front no puede llevar al corredor a la sesión
+// que acaba de registrar. Este test fija ese contrato.
+func TestAttendanceController_RegisterAttendance_ReturnsSessionContextForDeepLink(t *testing.T) {
+	sesion := time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)
+	mock := &mockAttendanceService{
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+			return true, &daos.AttendanceSessionContext{
+				SessionInstanceID: sessionID,
+				TeamID:            teamID,
+				GroupID:           7,
+				Date:              sesion,
+				SessionName:       "Jueves 19hs",
+			}, nil
+		},
+	}
+	controller := NewAttendanceController(mock)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
+	c.Params = []gin.Param{{Key: "team_id", Value: "5"}, {Key: "training_session_id", Value: "9"}}
+	setAuthUserID(c, 7)
+
+	controller.RegisterAttendance(c)
+
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	var body attendance.RegisterResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, int64(7), body.GroupID)
+	// La fecha sale en YYYY-MM-DD, que es el formato que espera el segment de
+	// ruta /calendar/[date] — no una ISO con hora, que no matchearía.
+	assert.Equal(t, "2026-09-28", body.SessionDate)
+	assert.Equal(t, "Jueves 19hs", body.SessionName)
 }

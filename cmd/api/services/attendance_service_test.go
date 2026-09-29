@@ -242,10 +242,14 @@ func TestAttendanceService_Register_Created(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, err := svc.Register(nil, 7, 5, 9)
+	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.NoError(t, err)
 	assert.True(t, created)
+	// El contexto se devuelve para que el front pueda armar el deep link de la
+	// sesión: sin grupo ni fecha no hay ruta a la que llevar al corredor.
+	require.NotNil(t, sessionCtx)
+	assert.Equal(t, int64(7), sessionCtx.GroupID, "el grupo del fixture: es lo que arma el deep link del front")
 }
 
 func TestAttendanceService_Register_AlreadyExists(t *testing.T) {
@@ -256,10 +260,14 @@ func TestAttendanceService_Register_AlreadyExists(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, err := svc.Register(nil, 7, 5, 9)
+	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.NoError(t, err)
 	assert.False(t, created)
+	// Idempotencia con contexto: el 200 también tiene que poder llevar al
+	// corredor a la sesión, no solo el 201.
+	require.NotNil(t, sessionCtx)
+	assert.Equal(t, int64(7), sessionCtx.GroupID, "el grupo del fixture: es lo que arma el deep link del front")
 }
 
 func TestAttendanceService_Register_DAOError(t *testing.T) {
@@ -268,10 +276,12 @@ func TestAttendanceService_Register_DAOError(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, err := svc.Register(nil, 7, 5, 9)
+	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.Error(t, err)
 	assert.False(t, created)
+	// Con error no hay contexto: el front no tiene a dónde llevar al corredor.
+	assert.Nil(t, sessionCtx)
 }
 
 // TestAttendanceService_Register_RequiresGroupMembership cubre la brecha que este
@@ -290,10 +300,11 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		}
 		svc := NewAttendanceService(mock, nil, gu, nil, "http://x")
 
-		created, err := svc.Register(nil, 77, 5, 9)
+		created, sessionCtx, err := svc.Register(nil, 77, 5, 9)
 
 		require.ErrorIs(t, err, ErrAttendanceNotGroupMember)
 		assert.False(t, created)
+		assert.Nil(t, sessionCtx)
 		assert.False(t, inserted, "sin membresía no se escribe ninguna fila")
 	})
 
@@ -308,7 +319,7 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		gu := &attendanceGroupUserStub{}
 		svc := NewAttendanceService(mock, nil, gu, nil, "http://x")
 
-		_, err := svc.Register(nil, 12, 5, 9)
+		_, _, err := svc.Register(nil, 12, 5, 9)
 
 		require.NoError(t, err)
 		assert.Equal(t, []int64{7}, gu.lastGroupIDs, "contra el grupo de la sesión, no contra el del request")
@@ -322,7 +333,7 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		}
 		svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://x")
 
-		_, err := svc.Register(nil, 12, 5, 999)
+		_, _, err := svc.Register(nil, 12, 5, 999)
 
 		// 404 confirmaría que ese id de sesión existe; no hay grupo al que
 		// pertenecer, así que la respuesta no filtra nada.
@@ -719,7 +730,7 @@ func TestAttendanceService_Register_SourceQR(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, err := svc.Register(nil, 12, 5, 42)
+	created, _, err := svc.Register(nil, 12, 5, 42)
 
 	require.NoError(t, err)
 	assert.True(t, created)

@@ -34,8 +34,19 @@ type SearchResponse struct {
 //
 // El 403 de "no sos miembro del grupo de esta sesión" NO se representa acá: es un
 // error, y va como apierror.APIError. Este tipo solo cubre el caso exitoso.
+// RegisterResponse es la respuesta del registro por QR del corredor.
+//
+// GroupID y SessionDate van además del mensaje porque el front, tras un
+// registro exitoso, lleva al corredor directo a la sesión que acaba de registrar
+// y el deep link de la pantalla de día necesita los tres: /teams/:team/groups/
+// :group/calendar/:date. El QR solo trae team_id y session_instance_id, así que
+// sin estos dos campos el front no puede armar la ruta y tendría que dejar al
+// usuario buscando la sesión a mano.
 type RegisterResponse struct {
-	Message string `json:"message"`
+	Message     string `json:"message"`
+	GroupID     int64  `json:"group_id"`
+	SessionDate string `json:"session_date"` // YYYY-MM-DD, la fecha local de la sesión
+	SessionName string `json:"session_name"`
 }
 
 // SearchFilters agrupa los query params opcionales del endpoint de búsqueda.

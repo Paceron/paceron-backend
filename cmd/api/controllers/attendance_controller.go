@@ -169,7 +169,7 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 		return
 	}
 
-	created, err := ac.attendanceService.Register(c, authUserID, teamID, sessionID)
+	created, sessionCtx, err := ac.attendanceService.Register(c, authUserID, teamID, sessionID)
 	if err != nil {
 		// 403 si el corredor no es miembro activo del grupo de la sesión. La
 		// idempotencia (200 en vez de 201) no pasa por acá: esa es la única
@@ -197,7 +197,12 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 		statusCode = http.StatusOK
 		message = attendance.MessageAlreadyExists
 	}
-	c.JSON(statusCode, attendance.RegisterResponse{Message: message})
+	c.JSON(statusCode, attendance.RegisterResponse{
+		Message:     message,
+		GroupID:     sessionCtx.GroupID,
+		SessionDate: sessionCtx.Date.Format("2006-01-02"),
+		SessionName: sessionCtx.SessionName,
+	})
 }
 
 // Search godoc

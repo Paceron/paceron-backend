@@ -58,7 +58,7 @@ const (
 // AttendanceServiceInterface define las operaciones de negocio de asistencias.
 type AttendanceServiceInterface interface {
 	GenerateQR(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error)
-	Register(ctx *gin.Context, userID, teamID, sessionID int64) (created bool, err error)
+	Register(ctx *gin.Context, userID, teamID, sessionID int64) (created bool, sessionCtx *daos.AttendanceSessionContext, err error)
 	Search(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error)
 	ListAttendanceSessions(ctx *gin.Context, authUserID, teamID, groupID int64) (*attendance.SessionAttendanceListResponse, error)
 	GetSessionAttendance(ctx *gin.Context, authUserID, teamID, groupID, sessionInstanceID int64) (*attendance.SessionAttendanceResponse, error)
@@ -160,25 +160,31 @@ func (s *attendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID, ses
 //
 // La idempotencia no cambia: la primera vez responde true (201) y si ya existía
 // responde false (200) sin insertar un duplicado.
-func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, error) {
+// Devuelve (created, sessionCtx, err). El contexto se agrega a la respuesta
+// porque el corredor, después de registrarse, tiene que poder saltar a la sesión
+// que acaba de registrar: el deep link del día es /teams/:team/groups/:group/
+// calendar/:date, y sin el grupo y la fecha el front no puede armarlo — el QR
+// solo trae team_id y session_instance_id. El dato ya estaba cargado acá para
+// validar la membresía, así que no es una consulta extra.
+func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
 	// Se resuelve el contexto de la sesión solo para saber su grupo y su fecha.
 	// NO se usa resolveAttendanceSession: esa función valida presencial y no
 	// cancelada, que son reglas del camino del entrenador. El escaneo del
 	// corredor se describe en la spec únicamente con la exigencia de membresía.
 	sessionCtx, err := s.attendanceDao.FindSessionContext(ctx, sessionID)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if sessionCtx == nil {
-		return false, ErrAttendanceNotGroupMember
+		return false, nil, ErrAttendanceNotGroupMember
 	}
 
 	isMember, err := s.groupUserDao.IsActiveGroupMember(ctx, sessionCtx.GroupID, userID, sessionCtx.Date)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if !isMember {
-		return false, ErrAttendanceNotGroupMember
+		return false, nil, ErrAttendanceNotGroupMember
 	}
 
 	attendance := &dbs.Attendance{
@@ -191,11 +197,13 @@ func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID
 
 	if err := s.attendanceDao.Create(ctx, attendance); err != nil {
 		if errors.Is(err, daos.ErrAttendanceAlreadyExists) {
-			return false, nil
+			// Idempotencia: ya estaba, y el contexto se devuelve igual para que el
+			// front pueda llevar al corredor a la misma sesión que en el 201.
+			return false, sessionCtx, nil
 		}
-		return false, fmt.Errorf("error registrando la asistencia: %w", err)
+		return false, nil, fmt.Errorf("error registrando la asistencia: %w", err)
 	}
-	return true, nil
+	return true, sessionCtx, nil
 }
 
 // Search valida las restricciones de la búsqueda de asistencias y delega al DAO
