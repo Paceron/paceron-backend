@@ -247,22 +247,49 @@ func TestPaymentHistoryDao_ListReceived_OrderAndPagination(t *testing.T) {
 	assert.Equal(t, "mp-00", page2[0].MPPaymentID)
 }
 
-func TestPaymentHistoryDao_ListReceivedSince(t *testing.T) {
+func TestPaymentHistoryDao_ListReceivedBetween(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewPaymentHistoryDao(db)
 	s := seedReceived(db, "000008")
-	cut := time.Date(2026, 5, 1, 3, 0, 0, 0, time.UTC)
+	from := time.Date(2026, 5, 1, 3, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 6, 1, 3, 0, 0, 0, time.UTC)
 
-	persistPayment(db, teamPayment(s, "mp-before", "approved", nil, cut.Add(-time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-at", "approved", nil, cut))
-	persistPayment(db, teamPayment(s, "mp-after", "rejected", nil, cut.Add(time.Hour)))
+	persistPayment(db, teamPayment(s, "mp-before", "approved", nil, from.Add(-time.Minute)))
+	persistPayment(db, teamPayment(s, "mp-at-from", "approved", nil, from))
+	persistPayment(db, teamPayment(s, "mp-inside", "rejected", nil, from.Add(time.Hour)))
+	// El fin del rango es exclusivo: el 1/6 00:00 en Argentina ya es el mes siguiente.
+	persistPayment(db, teamPayment(s, "mp-at-to", "approved", nil, to))
 
-	rows, err := dao.ListReceivedSince(nil, s.trainer.ID, cut)
+	rows, err := dao.ListReceivedBetween(nil, s.trainer.ID, from, to)
 
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
-	assert.Equal(t, "mp-after", rows[0].MPPaymentID)
-	assert.Equal(t, "mp-at", rows[1].MPPaymentID)
+	assert.Equal(t, "mp-inside", rows[0].MPPaymentID)
+	assert.Equal(t, "mp-at-from", rows[1].MPPaymentID)
+}
+
+func TestPaymentHistoryDao_EarliestReceivedAt(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	s := seedReceived(db, "000009")
+	other := seedReceived(db, "000010")
+
+	earliest, err := dao.EarliestReceivedAt(nil, s.trainer.ID)
+	require.NoError(t, err)
+	assert.Nil(t, earliest)
+
+	oldest := time.Date(2026, 2, 10, 15, 0, 0, 0, time.UTC)
+	persistPayment(db, teamPayment(s, "mp-old", "rejected", nil, oldest))
+	persistPayment(db, teamPayment(s, "mp-new", "approved", nil, oldest.AddDate(0, 3, 0)))
+	// Ni la fila fantasma (sin payment_id) ni los cobros de otro vendedor cuentan.
+	persistPayment(db, teamPayment(s, "", "pending", nil, oldest.AddDate(-1, 0, 0)))
+	persistPayment(db, teamPayment(other, "mp-other", "approved", nil, oldest.AddDate(-2, 0, 0)))
+
+	earliest, err = dao.EarliestReceivedAt(nil, s.trainer.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, earliest)
+	assert.True(t, earliest.Equal(oldest), earliest)
 }
 
 // --- ListHistory ---
@@ -414,9 +441,15 @@ func TestPaymentHistoryDao_DBFail(t *testing.T) {
 
 	failing = testutils.FailingDB(t, db, nthFail("select", 1))
 	dao = NewPaymentHistoryDao(failing)
-	_, err = dao.ListReceivedSince(nil, 1, time.Now())
+	_, err = dao.ListReceivedBetween(nil, 1, time.Now(), time.Now())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error listing received payments since date")
+	assert.Contains(t, err.Error(), "error listing received payments between dates")
+
+	failing = testutils.FailingDB(t, db, nthFail("select", 1))
+	dao = NewPaymentHistoryDao(failing)
+	_, err = dao.EarliestReceivedAt(nil, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error getting earliest received payment")
 
 	failing = testutils.FailingDB(t, db, nthFail("select", 1))
 	dao = NewPaymentHistoryDao(failing)

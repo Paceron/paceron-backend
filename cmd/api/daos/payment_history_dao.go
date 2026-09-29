@@ -1,6 +1,7 @@
 package daos
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -88,7 +89,8 @@ type HistoryPaymentRow struct {
 // pagos. Vive aparte de PaymentDaoInterface para no tocar sus mocks (design D1).
 type PaymentHistoryDaoInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, filters ReceivedPaymentFilters, page, pageSize int) ([]ReceivedPaymentRow, bool, error)
-	ListReceivedSince(ctx *gin.Context, sellerID int64, since time.Time) ([]ReceivedPaymentRow, error)
+	ListReceivedBetween(ctx *gin.Context, sellerID int64, from, to time.Time) ([]ReceivedPaymentRow, error)
+	EarliestReceivedAt(ctx *gin.Context, sellerID int64) (*time.Time, error)
 	ListHistory(ctx *gin.Context, userID int64, filters HistoryPaymentFilters, page, pageSize int) ([]HistoryPaymentRow, bool, error)
 }
 
@@ -134,18 +136,32 @@ func (d *paymentHistoryDao) ListReceived(ctx *gin.Context, sellerID int64, filte
 	return trimPage(rows, pageSize)
 }
 
-// ListReceivedSince devuelve todos los cobros desde since, sin paginar, para
-// armar el resumen (design D9).
-func (d *paymentHistoryDao) ListReceivedSince(ctx *gin.Context, sellerID int64, since time.Time) ([]ReceivedPaymentRow, error) {
+// ListReceivedBetween devuelve todos los cobros de [from, to), sin paginar,
+// para armar el resumen de una ventana de meses (design D9 y D14).
+func (d *paymentHistoryDao) ListReceivedBetween(ctx *gin.Context, sellerID int64, from, to time.Time) ([]ReceivedPaymentRow, error) {
 	var rows []ReceivedPaymentRow
 	err := d.receivedBaseQuery(sellerID).
-		Where("p.created_at >= ?", since).
+		Where("p.created_at >= ? AND p.created_at < ?", from, to).
 		Order("p.created_at DESC, p.id DESC").
 		Scan(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("error listing received payments since date: %w", err)
+		return nil, fmt.Errorf("error listing received payments between dates: %w", err)
 	}
 	return rows, nil
+}
+
+// EarliestReceivedAt devuelve la fecha del primer cobro del vendedor, con los
+// mismos filtros que el listado, o nil si no tiene ninguno. El frontend la usa
+// para saber hasta dónde deja correr la ventana del gráfico (design D14).
+func (d *paymentHistoryDao) EarliestReceivedAt(ctx *gin.Context, sellerID int64) (*time.Time, error) {
+	var earliest sql.NullTime
+	if err := d.receivedBaseQuery(sellerID).Select("MIN(p.created_at)").Row().Scan(&earliest); err != nil {
+		return nil, fmt.Errorf("error getting earliest received payment: %w", err)
+	}
+	if !earliest.Valid {
+		return nil, nil
+	}
+	return &earliest.Time, nil
 }
 
 // ListHistory lista los pagos que hizo un usuario: suscripciones de tier y

@@ -39,7 +39,7 @@ var argentinaTZ = time.FixedZone("ART", -3*3600)
 type PaymentHistoryServiceInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
 	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
-	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error)
+	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
 }
 
 type paymentHistoryService struct {
@@ -110,21 +110,44 @@ func (s *paymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paym
 	return &payment.HistoryPaymentsResponse{Payments: items, HasMore: hasMore}, nil
 }
 
-// GetReceivedSummary resume los cobros de la ventana de meses. La agregación se
-// hace acá y no en SQL: el volumen por entrenador es chico y así la lógica queda
-// testeable con mocks (design D9).
-func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error) {
+// GetReceivedSummary resume los cobros de la ventana de meses que termina en
+// until (YYYY-MM) o, si viene vacío, en el mes actual. La agregación se hace acá
+// y no en SQL: el volumen por entrenador es chico y así la lógica queda
+// testeable con mocks (design D9 y D14).
+func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error) {
 	if months < paymentSummaryMinMonths || months > paymentSummaryMaxMonths {
 		return nil, fmt.Errorf("%w: months debe estar entre %d y %d", ErrInvalidPaymentHistoryQuery, paymentSummaryMinMonths, paymentSummaryMaxMonths)
 	}
 
 	now := s.now().In(argentinaTZ)
-	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, argentinaTZ).AddDate(0, -(months - 1), 0)
+	currentMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, argentinaTZ)
+	end := currentMonth
+	if until != "" {
+		parsed, err := time.ParseInLocation("2006-01", until, argentinaTZ)
+		if err != nil {
+			return nil, fmt.Errorf("%w: until debe tener formato YYYY-MM", ErrInvalidPaymentHistoryQuery)
+		}
+		if parsed.After(currentMonth) {
+			return nil, fmt.Errorf("%w: until no puede ser posterior al mes actual", ErrInvalidPaymentHistoryQuery)
+		}
+		end = parsed
+	}
+	start := end.AddDate(0, -(months - 1), 0)
 
-	rows, err := s.dao.ListReceivedSince(ctx, sellerID, start)
+	rows, err := s.dao.ListReceivedBetween(ctx, sellerID, start, end.AddDate(0, 1, 0))
 	if err != nil {
 		customlogger.Error(ctx, "error listing received payments for summary", err, customlogger.TagMethod("GetReceivedSummary"))
 		return nil, fmt.Errorf("error al obtener el resumen de cobros: %w", err)
+	}
+	earliest, err := s.dao.EarliestReceivedAt(ctx, sellerID)
+	if err != nil {
+		customlogger.Error(ctx, "error getting earliest received payment", err, customlogger.TagMethod("GetReceivedSummary"))
+		return nil, fmt.Errorf("error al obtener el resumen de cobros: %w", err)
+	}
+	var earliestMonth *string
+	if earliest != nil {
+		m := earliest.In(argentinaTZ).Format("2006-01")
+		earliestMonth = &m
 	}
 
 	monthly := make([]payment.MonthlyAmount, months)
@@ -220,6 +243,7 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		ByTeam:        byTeam,
 		PendingCount:  pending,
 		RejectedCount: rejected,
+		EarliestMonth: earliestMonth,
 		GeneratedAt:   formatUTC(s.now()),
 	}, nil
 }

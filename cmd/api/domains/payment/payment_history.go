@@ -114,5 +114,8 @@ type ReceivedSummaryResponse struct {
 	ByTeam        []TeamAmount    `json:"by_team"`
 	PendingCount  int             `json:"pending_count"`
 	RejectedCount int             `json:"rejected_count"`
-	GeneratedAt   string          `json:"generated_at"`
+	// EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
+	// argentina), o null si no tiene ninguno (design D14).
+	EarliestMonth *string `json:"earliest_month"`
+	GeneratedAt   string  `json:"generated_at"`
 }
