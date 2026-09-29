@@ -104,6 +104,24 @@ historial (fecha, monto, método, tipo, estado, id de Mercado Pago). El backend 
 suma una librería de PDF ni un endpoint nuevo. El comprobante no es una factura
 fiscal.
 
+### D14 — La ventana del resumen se puede correr con `until`
+Pedido de la revisión con el equipo: poder ver otros 6 meses que no sean los
+últimos. `GET /payments/received/summary` suma `until=YYYY-MM` (opcional): la
+ventana termina en ese mes en vez del actual. Sin `until`, igual que antes.
+
+- `until` tiene que ser `YYYY-MM` válido y no posterior al mes actual en hora
+  argentina; si no, `400 INVALID_QUERY`.
+- La consulta pasa de "desde" a un rango `[inicio de la ventana, inicio del mes
+  siguiente a until)`: `ListReceivedSince` se reemplaza por `ListReceivedBetween`.
+- Pendientes, rechazados y totales por equipo se cuentan dentro de esa misma
+  ventana, igual que hoy.
+- La respuesta suma `earliest_month` (`YYYY-MM` del primer cobro del vendedor en
+  hora argentina, o `null` si no tiene): el frontend lo usa para saber hasta dónde
+  deja ir hacia atrás. Sale de un `MIN(created_at)` aparte, con el mismo filtro de
+  filas fantasma (D7).
+- No hay otro consumidor del endpoint (existe solo en este change, no está en
+  `develop`), así que el cambio no rompe a nadie.
+
 ## Contrato
 
 Estados de Mercado Pago agrupados en `status_group`:
@@ -195,8 +213,10 @@ deriva de la cuota: `subscription_id` o `team_id` (D12). Según el tipo viene
 
 ### `GET /api/v1/payments/received/summary?months=`
 
-`months` entre 2 y 12, 6 por defecto. `monthly` siempre trae `months` meses
-seguidos y el último es el mes actual.
+`months` entre 2 y 12, 6 por defecto. `until` (`YYYY-MM`, opcional) es el último
+mes de la ventana; sin él, el mes actual (D14). `monthly` siempre trae `months`
+meses seguidos y el último es `until`. `earliest_month` es el primer mes con cobros,
+o `null`.
 
 ```json
 {
@@ -210,6 +230,7 @@ seguidos y el último es el mes actual.
   ],
   "pending_count": 2,
   "rejected_count": 1,
+  "earliest_month": "2026-02",
   "generated_at": "2026-09-26T18:00:00Z"
 }
 ```

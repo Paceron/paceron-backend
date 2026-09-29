@@ -88,7 +88,7 @@ El sistema MUST devolver, paginados de a 20 y del más reciente al más antiguo,
 
 ### Requirement: Resumir los cobros por mes y por equipo
 
-El sistema MUST devolver `months` meses seguidos que terminan en el mes actual en hora argentina, con el bruto aprobado, el neto conocido y la cantidad de cobros de cada mes. MUST incluir los totales por equipo y la cantidad de cuotas pendientes y rechazadas, contadas sobre el último intento de cada cuota. `months` SHALL estar entre 2 y 12.
+El sistema MUST devolver `months` meses seguidos que terminan en el mes `until` (o en el mes actual si no se manda) en hora argentina, con el bruto aprobado, el neto conocido y la cantidad de cobros de cada mes. MUST incluir los totales por equipo y la cantidad de cuotas pendientes y rechazadas de esa ventana, contadas sobre el último intento de cada cuota, y el primer mes con cobros del vendedor (`earliest_month`, o `null`). `months` SHALL estar entre 2 y 12. `until` SHALL tener formato `YYYY-MM` y no ser posterior al mes actual.
 
 #### Scenario: Mes sin cobros
 
@@ -114,6 +114,23 @@ El sistema MUST devolver `months` meses seguidos que terminan en el mes actual e
 
 - **WHEN** se pide `months=13`
 - **THEN** el backend responde `400` con `code = INVALID_QUERY`
+
+#### Scenario: Ventana corrida hacia atrás
+
+- **WHEN** se pide `months=6&until=2026-05`
+- **THEN** `monthly` va de `2025-12` a `2026-05`
+- **AND** los cobros de `2026-06` en adelante no suman en ningún total
+
+#### Scenario: `until` en el futuro o mal formado
+
+- **WHEN** se pide `until=2099-01` o `until=mayo`
+- **THEN** el backend responde `400` con `code = INVALID_QUERY`
+
+#### Scenario: Primer mes con cobros
+
+- **WHEN** el vendedor tiene cobros desde `2026-02`
+- **THEN** `earliest_month = "2026-02"`, sin importar la ventana pedida
+- **AND** si no tiene ningún cobro, `earliest_month = null`
 
 ### Requirement: Requerir autenticación
 

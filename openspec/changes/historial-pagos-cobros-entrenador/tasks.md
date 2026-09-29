@@ -49,3 +49,10 @@
 - [x] 10.1 Registrar en `docs/DEUDA_TECNICA_Y_PENDIENTES.md` la lectura del webhook con el token de la plataforma y las filas sin `payment_id`.
 - [x] 10.2 `go vet ./...`, `go test ./...` y `make coverage-with-db` en 85% o más.
 - [ ] 10.3 Archivar el change después del merge.
+
+## 11. Ventana del resumen con `until` (revisión con el equipo)
+
+- [ ] 11.1 DAO: reemplazar `ListReceivedSince` por `ListReceivedBetween(from, to)` y sumar `EarliestReceivedAt`. Tests: bordes del rango, filas fantasma, vendedor sin cobros, error de DB.
+- [ ] 11.2 Service: `until` opcional en `GetReceivedSummary`, validación (formato, no futuro) y `earliest_month`. Tests: ventana corrida, `until` en el futuro, `earliest_month` nulo y con valor.
+- [ ] 11.3 Controller: parsear `until`, godoc y tests de 200/400.
+- [ ] 11.4 Regenerar swagger y medir coverage (85% o más).
