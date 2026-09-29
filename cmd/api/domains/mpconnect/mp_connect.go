@@ -22,8 +22,14 @@ type CallbackResponse struct {
 
 // StatusResponse es la respuesta de GET /api/v1/mercadopago/connect/status.
 type StatusResponse struct {
+	// Connected es true si la conexión está autorizada y su access token no
+	// venció: es lo que hace falta para poder cobrar.
 	Connected     bool   `json:"connected"`
 	AccountStatus string `json:"account_status"` // authorized | deauthorized
+	// TokenExpiresAt es el vencimiento del access token (RFC3339 UTC), o null si
+	// no hay conexión o no se registró. Mercado Pago lo emite por 180 días y
+	// nada lo renueva: pasada esa fecha hay que volver a conectar la cuenta.
+	TokenExpiresAt *string `json:"token_expires_at"`
 }
 
 // DeauthWebhookRequest es el cuerpo del webhook de desautorización de Mercado

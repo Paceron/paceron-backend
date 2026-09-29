@@ -145,7 +145,7 @@ func (c *mpConnectController) HandleCallback(ctx *gin.Context) {
 
 // GetStatus godoc
 // @Summary      Get Mercado Pago connection status
-// @Description  Returns whether the authenticated user has a connected Mercado Pago account.
+// @Description  Returns whether the authenticated user has a connected Mercado Pago account and when its access token expires (`token_expires_at`). An expired token is reported as not connected.
 // @Tags         mercadopago-connect
 // @Accept       json
 // @Produce      json
