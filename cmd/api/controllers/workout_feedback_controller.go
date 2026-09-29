@@ -13,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -33,13 +34,24 @@ type WorkoutFeedbackController interface {
 
 type workoutFeedbackController struct {
 	workoutFeedbackService services.WorkoutFeedbackServiceInterface
+	// notifier es opcional (nil en tests = sin cambios de comportamiento):
+	// emite update:set_event a session:{id} al crear feedback (D7, best-effort).
+	notifier realtime.Notifier
 }
 
 // NewWorkoutFeedbackController crea una nueva instancia de WorkoutFeedbackController.
-func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface) WorkoutFeedbackController {
+func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface, notifier realtime.Notifier) WorkoutFeedbackController {
 	return &workoutFeedbackController{
 		workoutFeedbackService: workoutFeedbackService,
+		notifier:               notifier,
 	}
+}
+
+// sessionChannel arma el canal canónico del gateway para una sesión
+// instanciada: "session:{id}" decimal sin padding, el ÚNICO formato que
+// parseSessionChannel (app) acepta — un alias partiría la sala del broadcast.
+func sessionChannel(assignedSessionID int64) string {
+	return "session:" + strconv.FormatInt(assignedSessionID, 10)
 }
 
 // parsePositivePathParam parsea un path param como int64 estrictamente mayor a 0.
@@ -338,10 +350,14 @@ func (fc *workoutFeedbackController) Create(c *gin.Context) {
 	}
 
 	response := toWorkoutFeedbackResponse(feedback)
-	c.JSON(http.StatusCreated, workoutfeedback.MutationResponse{
+	mutation := workoutfeedback.MutationResponse{
 		Message: workoutfeedback.MsgFeedbackCreated,
 		Data:    &response,
-	})
+	}
+	if fc.notifier != nil {
+		fc.notifier.Emit(sessionChannel(feedback.AssignedSessionID), realtime.MarshalUpdateSetEvent(mutation))
+	}
+	c.JSON(http.StatusCreated, mutation)
 }
 
 // GetByID godoc

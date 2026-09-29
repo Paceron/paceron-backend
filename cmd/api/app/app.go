@@ -290,18 +290,21 @@ func NewApplication() *Application {
 	// Workout Feedback flow (feedback de entrenamiento)
 	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
 	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao)
-	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService)
-
-	// Runner Session flow (estado de sesión del corredor, wip -> finished)
-	runnerSessionDao := daos.NewRunnerSessionDao(db)
-	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
-	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
 
 	// Realtime WS gateway (ws-gateway-sesiones D8): hub en memoria + authorizer
 	// session:{id} (delega HasInstanceAccess) + mismos orígenes que el middleware CORS.
 	sessionInstanceDao := daos.NewSessionInstanceDao(db)
 	realtimeHub := realtime.NewHub()
 	realtimeGateway := realtime.NewGateway(realtimeHub, newChannelAuthorizer(sessionInstanceDao), allowedOrigins())
+
+	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
+	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
+	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
+
+	// Runner Session flow (estado de sesión del corredor, wip -> finished)
+	runnerSessionDao := daos.NewRunnerSessionDao(db)
+	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
 
 	return &Application{
 		pingController:              controllers.NewPingController(),
