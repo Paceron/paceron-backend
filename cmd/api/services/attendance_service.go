@@ -37,7 +37,22 @@ var (
 const (
 	qrSizePx     = 256
 	qrErrorLevel = qrcode.Medium
-	qrAPIPathFmt = "/api/v1/attendance/team/%d/session/%d"
+
+	// El QR codifica una ruta del FRONTEND, no de la API. Antes era
+	// `/api/v1/attendance/team/%d/session/%d`, lo que estaba roto para el uso
+	// real: el corredor escanea con la app de cámara o Google Lens, el link
+	// abre el browser contra la API, y la respuesta es un 401 en crudo —no hay
+	// pantalla, ni app, ni mensaje. La API nunca se pone en el QR.
+	//
+	// Ahora apunta a la pantalla que el corredor abre desde el link:
+	// `team_id` y `session_instance_id` viajan como query params porque son los
+	// que la pantalla necesita para llamar al endpoint de registro.
+	//
+	// El prefijo de la ruta es `/attendance`, la misma pantalla que usa el
+	// entrenador pero con el sub-segmento `register`: son dos vistas distintas
+	// del mismo dominio y `attendance` a secas ya está en el catálogo de rutas
+	// con `role: 'trainer'`.
+	qrWebPathFmt = "/attendance/register?team_id=%d&session_instance_id=%d"
 )
 
 // AttendanceServiceInterface define las operaciones de negocio de asistencias.
@@ -106,7 +121,7 @@ func (s *attendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID, ses
 	}
 
 	baseURL := strings.TrimRight(s.baseURL, "/")
-	url := fmt.Sprintf("%s%s", baseURL, fmt.Sprintf(qrAPIPathFmt, teamID, sessionID))
+	url := fmt.Sprintf("%s%s", baseURL, fmt.Sprintf(qrWebPathFmt, teamID, sessionID))
 
 	png, err := qrcode.Encode(url, qrErrorLevel, qrSizePx)
 	if err != nil {

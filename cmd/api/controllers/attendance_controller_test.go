@@ -80,7 +80,7 @@ func TestAttendanceController_GenerateQR_Success(t *testing.T) {
 		generateQRFn: func(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error) {
 			assert.Equal(t, int64(5), teamID)
 			assert.Equal(t, int64(9), sessionID)
-			return &attendance.QRResponse{QRCodeBase64: "cG5n", URLEncoded: "http://localhost:8080/api/v1/attendance/team/5/session/9"}, nil
+			return &attendance.QRResponse{QRCodeBase64: "cG5n", URLEncoded: "http://localhost:8080/attendance/register?team_id=5&session_instance_id=9"}, nil
 		},
 	}
 	controller := NewAttendanceController(mock)

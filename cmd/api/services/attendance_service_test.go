@@ -129,7 +129,7 @@ func TestAttendanceService_GenerateQR_DeterministicAndURL(t *testing.T) {
 	qr2, err := svc.GenerateQR(nil, 1, 5, 9)
 	require.NoError(t, err)
 
-	assert.Equal(t, "http://localhost:8080/api/v1/attendance/team/5/session/9", qr1.URLEncoded)
+	assert.Equal(t, "http://localhost:8080/attendance/register?team_id=5&session_instance_id=9", qr1.URLEncoded)
 	assert.Equal(t, qr1.QRCodeBase64, qr2.QRCodeBase64)
 	assert.NotEmpty(t, qr1.QRCodeBase64)
 }
@@ -141,7 +141,7 @@ func TestAttendanceService_GenerateQR_BaseURLWithoutTrailingSlash(t *testing.T) 
 	// qrCoachDao (5), o la validación de equipo lo rechaza antes de generar el QR.
 	qr, err := svc.GenerateQR(nil, 1, 5, 2)
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:8080/api/v1/attendance/team/5/session/2", qr.URLEncoded)
+	assert.Equal(t, "http://localhost:8080/attendance/register?team_id=5&session_instance_id=2", qr.URLEncoded)
 }
 
 // TestAttendanceService_GenerateQR_AuthorizationAndSessionValidation cubre los 4
