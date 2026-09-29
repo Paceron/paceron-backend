@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
@@ -55,6 +56,8 @@ type Application struct {
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
 	runnerSessionController     controllers.RunnerSessionController
+	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
+	realtimeGateway *realtime.Gateway
 }
 
 func NewApplication() *Application {
@@ -294,6 +297,12 @@ func NewApplication() *Application {
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
 
+	// Realtime WS gateway (ws-gateway-sesiones D8): hub en memoria + authorizer
+	// session:{id} (delega HasInstanceAccess) + mismos orígenes que el middleware CORS.
+	sessionInstanceDao := daos.NewSessionInstanceDao(db)
+	realtimeHub := realtime.NewHub()
+	realtimeGateway := realtime.NewGateway(realtimeHub, newChannelAuthorizer(sessionInstanceDao), allowedOrigins())
+
 	return &Application{
 		pingController:              controllers.NewPingController(),
 		userController:              userController,
@@ -327,5 +336,6 @@ func NewApplication() *Application {
 		attendanceController:        attendanceController,
 		workoutFeedbackController:   workoutFeedbackController,
 		runnerSessionController:     runnerSessionController,
+		realtimeGateway:             realtimeGateway,
 	}
 }

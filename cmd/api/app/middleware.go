@@ -47,15 +47,13 @@ func SetFlow() gin.HandlerFunc {
 	}
 }
 
-func CORSMiddleware() gin.HandlerFunc {
+// allowedOrigins devuelve la lista configurada de orígenes permitidos.
+// CORSMiddleware y el upgrade del gateway WebSocket la comparten: al agregar
+// un dominio nuevo no hay que actualizar dos lecturas del env.
+func allowedOrigins() []string {
 	allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-	var origins []string
-	if allowedOrigins != "" {
-		for _, o := range strings.Split(allowedOrigins, ",") {
-			origins = append(origins, strings.TrimSpace(o))
-		}
-	} else {
-		origins = []string{
+	if allowedOrigins == "" {
+		return []string{
 			"http://localhost:8081",
 			"http://localhost:8082",
 			"http://localhost:8083",
@@ -66,8 +64,16 @@ func CORSMiddleware() gin.HandlerFunc {
 		}
 	}
 
-	originMap := make(map[string]bool, len(origins))
-	for _, o := range origins {
+	origins := make([]string, 0, strings.Count(allowedOrigins, ",")+1)
+	for _, o := range strings.Split(allowedOrigins, ",") {
+		origins = append(origins, strings.TrimSpace(o))
+	}
+	return origins
+}
+
+func CORSMiddleware() gin.HandlerFunc {
+	originMap := make(map[string]bool, len(allowedOrigins()))
+	for _, o := range allowedOrigins() {
 		originMap[o] = true
 	}
 
@@ -91,6 +97,23 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
+// authorizeAccessToken valida un access token crudo (sin el prefijo Bearer) y
+// devuelve el userID de su subject. Compartido por AuthMiddleware (header) y
+// el upgrade del gateway WS (query param): mismo parseo/errores.
+func authorizeAccessToken(tokenString string) (*utils.AccessTokenClaims, error) {
+	claims, err := utils.ParseAccessToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	if err != nil {
+		return nil, errors.New("el subject del token no es un user id válido")
+	}
+	claims.UserID = userID
+	return claims, nil
+}
+
 // AuthMiddleware valida el access token del header Authorization y deja la identidad
 // del usuario disponible en el contexto (auth_user_id, auth_session_id, auth_roles)
 // para que los controllers/services la usen en vez de confiar en un user_id que mande
@@ -109,8 +132,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		tokenString := strings.TrimPrefix(header, prefix)
-		claims, err := utils.ParseAccessToken(tokenString)
+		claims, err := authorizeAccessToken(strings.TrimPrefix(header, prefix))
 		if err != nil {
 			code := "unauthorized"
 			message := "token inválido"
@@ -126,17 +148,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		userID, err := strconv.ParseInt(claims.Subject, 10, 64)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, apierror.APIError{
-				StatusCode: http.StatusUnauthorized,
-				Code:       "unauthorized",
-				Message:    "token inválido",
-			})
-			return
-		}
-
-		c.Set(utils.AuthUserIDKey, userID)
+		c.Set(utils.AuthUserIDKey, claims.UserID)
 		c.Set(utils.AuthSessionIDKey, claims.SessionID)
 		c.Set(utils.AuthRolesKey, claims.Roles)
 		c.Next()
