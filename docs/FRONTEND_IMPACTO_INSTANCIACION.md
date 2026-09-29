@@ -321,3 +321,24 @@ Decisiones que el frontend necesita conocer:
 - **Uso:** historial (§9) trae `session_instance_id` → este endpoint trae el objeto completo para la pantalla de revisión.
 - **Códigos:** `404` instancia inexistente; `403` si el caller no tiene vínculo con ella. Acceso si: hay un día de calendario con esta instancia y el caller es miembro activo del grupo u owner del equipo; **o** hay un feedback activo sobre la instancia del caller (atleta/reportante/owner del equipo). Nada más.
 - Los ejercicios vienen congelados por instancia (id de instancia en `id`; `exercise_id` = origen catálogo, nullable). `GET /session-instances/:id/feedback` y `/:id/runner` siguen intactos.
+
+## 11. NUEVO — gateway WebSocket para sesiones (Gap 18, change `ws-gateway-sesiones`)
+
+Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`** (shapes acá verificados contra `cmd/api/realtime/*.go` y `cmd/api/app/realtime.go`). Todo nuevo — nada de la API HTTP existente cambia.
+
+> **NOTA — el endpoint WS NO está en el Swagger** (por diseño: el handshake WS no es OpenAPI-representable). Este doc y `REALTIME_WS.md` son su único contrato.
+
+**Conexión:** `wss://host/api/v1/ws?token=<access_token>` — mismo access token JWT del resto de la API, en query param (no hay header `Authorization` en el handshake). Falta/inválido/expirado → `401` JSON `apierror.APIError` antes del upgrade (`code` ∈ {`unauthorized`, `token_expired`}). Clientes nativos sin header `Origin` pasan; browser con origin fuera de `CORS_ALLOWED_ORIGINS` → upgrade rechazado.
+
+**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla dual de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
+
+**Eventos:**
+
+- `{"type":"presence","from":12,"payload":{...}}` / `{"type":"control","from":12,"payload":{...}}` — reenvíos de otros usuarios suscriptos al mismo canal (emisor excluido; `payload` opaco, esquema acordado entre clientes). El destino se resuelve del `channel` del frame o de la única suscripción activa.
+- `{"type":"update:set_event","data":{...}}` — server-originado: alguien creó feedback de esa sesión. **`data` es el MISMO body HTTP 201 de `POST /workout-feedback`** (`{message: "feedback registrado", data: {...WorkoutFeedbackResponse con athlete_user_id}}`) — reutilizar el normalizador HTTP. Solo `Create` emite; nadie suscripto = evento no existe (no hay replay ni cola: lo que se perdió offline se recupera por fetch).
+
+**Errores sin cortar conexión:** cualquier rechazo puntual (canal ajeno, canal desconocido, JSON inválido, `type` desconocido, tope de canales) llega como `{"type":"error","message":"..."}` y la conexión queda abierta y utilizable. No hacer retry-desconectar sobre `error`.
+
+**Heartbeat JSON:** mandar `{"type":"ping"}` cada 20-30 s → responde `{"type":"pong"}`. Cualquier mensaje refresca el deadline de 45 s — sin tráfico en 45 s el servidor corta. Frames del cliente > 4 KB cortan la conexión (única excepción).
+
+**Reconexión:** los deploys cortan las conexiones — reconectar con backoff y re-suscribirse; las suscripciones no sobreviven a la desconexión.
