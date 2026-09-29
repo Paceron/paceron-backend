@@ -1165,6 +1165,11 @@ definitions:
         type: array
       currency_id:
         type: string
+      earliest_month:
+        description: |-
+          EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
+          argentina), o null si no tiene ninguno (design D14).
+        type: string
       generated_at:
         type: string
       monthly:
@@ -4163,14 +4168,20 @@ paths:
       - payments
   /api/v1/payments/received/summary:
     get:
-      description: Totales mensuales (hora argentina, el último es el mes actual),
-        totales por equipo y cantidad de cuotas pendientes o rechazadas según su último
-        intento.
+      description: Totales mensuales (hora argentina; el último es `until` o, sin
+        él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas
+        según su último intento, dentro de la ventana. `earliest_month` es el primer
+        mes con cobros del vendedor.
       parameters:
       - description: Meses de la ventana, entre 2 y 12 (default 6)
         in: query
         name: months
         type: integer
+      - description: 'Último mes de la ventana (YYYY-MM), no posterior al actual (default:
+          el mes actual)'
+        in: query
+        name: until
+        type: string
       produces:
       - application/json
       responses:

@@ -52,7 +52,7 @@
 
 ## 11. Ventana del resumen con `until` (revisión con el equipo)
 
-- [ ] 11.1 DAO: reemplazar `ListReceivedSince` por `ListReceivedBetween(from, to)` y sumar `EarliestReceivedAt`. Tests: bordes del rango, filas fantasma, vendedor sin cobros, error de DB.
-- [ ] 11.2 Service: `until` opcional en `GetReceivedSummary`, validación (formato, no futuro) y `earliest_month`. Tests: ventana corrida, `until` en el futuro, `earliest_month` nulo y con valor.
-- [ ] 11.3 Controller: parsear `until`, godoc y tests de 200/400.
-- [ ] 11.4 Regenerar swagger y medir coverage (85% o más).
+- [x] 11.1 DAO: reemplazar `ListReceivedSince` por `ListReceivedBetween(from, to)` y sumar `EarliestReceivedAt`. Tests: bordes del rango, filas fantasma, vendedor sin cobros, error de DB.
+- [x] 11.2 Service: `until` opcional en `GetReceivedSummary`, validación (formato, no futuro) y `earliest_month`. Tests: ventana corrida, `until` en el futuro, `earliest_month` nulo y con valor.
+- [x] 11.3 Controller: parsear `until`, godoc y tests de 200/400.
+- [x] 11.4 Regenerar swagger y medir coverage (85% o más).
