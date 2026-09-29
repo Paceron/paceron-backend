@@ -24,7 +24,7 @@ Dos proyectos de Supabase separados — DB y storage S3, mismo split. **Default 
 
 | Variable | Descripción |
 |---|---|
-| `ATTENDANCE_BASE_URL` | URL pública del backend que se embebe en el QR de asistencia (`GET /api/v1/attendance/qr`). Se usa default `http://localhost:8080` en dev; en Render (ver `render.yaml`) apunta a la URL pública de cada service (`paceron-backend.onrender.com` en producción, `paceron-backend-develop.onrender.com` en la preview de develop).
+| `ATTENDANCE_BASE_URL` | Base del **frontend** que se embebe en el QR de asistencia (`GET /api/v1/attendance/qr`) — **no** la del backend, pese al nombre. El QR lo escanea el teléfono del corredor y tiene que abrir una pantalla, no la API: si apunta al backend, el link devuelve un 401 en crudo. El QR codifica `{/attendance/register?team_id=&session_instance_id=}`. Default `http://localhost:8081` (el server web de Expo en dev); en Render (ver `render.yaml`) apunta al frontend de cada ambiente: `paceron-frontend.vercel.app` en producción, `paceron-frontend-git-develop-paceron.vercel.app` en la preview de develop. **Para probar con un teléfono físico hay que setearla con la IP de la máquina en la red local** (ej. `http://192.168.100.66:8081`), porque el `localhost` del teléfono es el teléfono. |
 
 ## Deploys en Render
 
