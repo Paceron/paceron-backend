@@ -81,10 +81,11 @@ func (pc *paymentHistoryController) ListReceived(c *gin.Context) {
 
 // GetReceivedSummary godoc
 // @Summary      Resumen de cobros recibidos
-// @Description  Totales mensuales (hora argentina, el último es el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento.
+// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor.
 // @Tags         payments
 // @Produce      json
-// @Param        months  query     int  false  "Meses de la ventana, entre 2 y 12 (default 6)"
+// @Param        months  query     int     false  "Meses de la ventana, entre 2 y 12 (default 6)"
+// @Param        until   query     string  false  "Último mes de la ventana (YYYY-MM), no posterior al actual (default: el mes actual)"
 // @Success      200  {object}  payment.ReceivedSummaryResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -101,7 +102,7 @@ func (pc *paymentHistoryController) GetReceivedSummary(c *gin.Context) {
 		return
 	}
 
-	resp, err := pc.service.GetReceivedSummary(c, userID, months)
+	resp, err := pc.service.GetReceivedSummary(c, userID, months, c.Query("until"))
 	if err != nil {
 		respondPaymentHistoryError(c, err)
 		return

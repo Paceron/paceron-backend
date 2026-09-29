@@ -18,7 +18,7 @@ import (
 type mockPaymentHistoryService struct {
 	listReceivedFn       func(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
 	listHistoryFn        func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
-	getReceivedSummaryFn func(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error)
+	getReceivedSummaryFn func(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
 }
 
 func (m *mockPaymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
@@ -29,8 +29,8 @@ func (m *mockPaymentHistoryService) ListHistory(ctx *gin.Context, userID int64, 
 	return m.listHistoryFn(ctx, userID, paymentType, statusGroup, page)
 }
 
-func (m *mockPaymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error) {
-	return m.getReceivedSummaryFn(ctx, sellerID, months)
+func (m *mockPaymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error) {
+	return m.getReceivedSummaryFn(ctx, sellerID, months, until)
 }
 
 func paymentHistoryRequest(target string, authenticated bool) (*gin.Context, *httptest.ResponseRecorder) {
@@ -111,8 +111,9 @@ func TestPaymentHistoryController_ListReceived_Unauthorized(t *testing.T) {
 // --- GetReceivedSummary ---
 
 func TestPaymentHistoryController_GetReceivedSummary_DefaultMonths(t *testing.T) {
-	svc := &mockPaymentHistoryService{getReceivedSummaryFn: func(ctx *gin.Context, sellerID int64, months int) (*payment.ReceivedSummaryResponse, error) {
+	svc := &mockPaymentHistoryService{getReceivedSummaryFn: func(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error) {
 		assert.Equal(t, services.PaymentSummaryDefaultMonths, months)
+		assert.Equal(t, "", until)
 		return &payment.ReceivedSummaryResponse{Months: months}, nil
 	}}
 	c, w := paymentHistoryRequest("/api/v1/payments/received/summary", true)
@@ -127,7 +128,7 @@ func TestPaymentHistoryController_GetReceivedSummary_Errors(t *testing.T) {
 	NewPaymentHistoryController(&mockPaymentHistoryService{}).GetReceivedSummary(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
-	svc := &mockPaymentHistoryService{getReceivedSummaryFn: func(*gin.Context, int64, int) (*payment.ReceivedSummaryResponse, error) {
+	svc := &mockPaymentHistoryService{getReceivedSummaryFn: func(*gin.Context, int64, int, string) (*payment.ReceivedSummaryResponse, error) {
 		return nil, fmt.Errorf("%w: months", services.ErrInvalidPaymentHistoryQuery)
 	}}
 	c, w = paymentHistoryRequest("/api/v1/payments/received/summary?months=13", true)
@@ -137,6 +138,19 @@ func TestPaymentHistoryController_GetReceivedSummary_Errors(t *testing.T) {
 	c, w = paymentHistoryRequest("/api/v1/payments/received/summary", false)
 	NewPaymentHistoryController(svc).GetReceivedSummary(c)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestPaymentHistoryController_GetReceivedSummary_Until(t *testing.T) {
+	svc := &mockPaymentHistoryService{getReceivedSummaryFn: func(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error) {
+		assert.Equal(t, 6, months)
+		assert.Equal(t, "2026-05", until)
+		return &payment.ReceivedSummaryResponse{Months: months}, nil
+	}}
+	c, w := paymentHistoryRequest("/api/v1/payments/received/summary?months=6&until=2026-05", true)
+
+	NewPaymentHistoryController(svc).GetReceivedSummary(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // --- ListHistory ---
