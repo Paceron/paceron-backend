@@ -72,8 +72,9 @@ func allowedOrigins() []string {
 }
 
 func CORSMiddleware() gin.HandlerFunc {
-	originMap := make(map[string]bool, len(allowedOrigins()))
-	for _, o := range allowedOrigins() {
+	origins := allowedOrigins()
+	originMap := make(map[string]bool, len(origins))
+	for _, o := range origins {
 		originMap[o] = true
 	}
 

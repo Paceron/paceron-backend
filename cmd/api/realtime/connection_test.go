@@ -426,7 +426,7 @@ func TestPresenceWithNoOtherSubscribersIsSilentNoop(t *testing.T) {
 func TestRelayChannelResolution(t *testing.T) {
 	setGatewayJWTConfig(t)
 	server := newWSUpgradeServer(t, lenientAuthorizer{})
-	// Dos suscripciones + channel explícito的那一刻 del frame resuelve el canal.
+	// Dos suscripciones + channel explícito del frame resuelve el canal.
 	pepe := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
 	peer := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
 
@@ -469,6 +469,15 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 	stayer.send(t, map[string]any{"type": TypePresence, "payload": map[string]any{"n": 2}})
 	leaver.waitSilence(t, 300*time.Millisecond)
 	assert.Equal(t, 1, server.hub.Count("session:7"))
+}
+
+func TestOversizeFrameClosesConnection(t *testing.T) {
+	setGatewayJWTConfig(t)
+	server := newWSUpgradeServer(t, fakeFullAuthorizer(1))
+	client := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
+
+	client.sendRaw(t, []byte(`{"type":"presence","payload":{"blob":"`+strings.Repeat("x", maxMessageSize+1)+`"}}`))
+	client.expectDisconnect(t, 2*time.Second)
 }
 
 func TestChannelLimitKeepsAliveAndKeepsExisting(t *testing.T) {

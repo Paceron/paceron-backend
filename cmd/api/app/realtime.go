@@ -2,8 +2,8 @@ package app
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -39,14 +39,17 @@ func (f channelAuthorizerFunc) Authorize(channel string, userID int64) (bool, er
 	return f(channel, userID)
 }
 
-// parseSessionChannel acepta `session:{id}` con id entero > 0.
+// parseSessionChannel acepta el canal canónico `session:{id}` con id entero
+// > 0. El roundtrip FormatInt rechaza alias no canónicos (p. ej.
+// `session:7abc`, `session:07` o `session:+7`) que partirían la sala en
+// strings distintos sin recibir el broadcast del canal canónico.
 func parseSessionChannel(channel string) (int64, bool) {
 	raw, ok := strings.CutPrefix(channel, sessionChannelPrefix)
 	if !ok || raw == "" {
 		return 0, false
 	}
-	var id int64
-	if _, err := fmt.Sscanf(raw, "%d", &id); err != nil || id <= 0 {
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 || channel != sessionChannelPrefix+strconv.FormatInt(id, 10) {
 		return 0, false
 	}
 	return id, true
