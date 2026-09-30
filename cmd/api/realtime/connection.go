@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -43,9 +44,18 @@ func NewGateway(hub *Hub, authorizer ChannelAuthorizer, allowedOrigins []string)
 func (g *Gateway) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "" || g.allowedOrigins[origin]
+		return origin == "" || g.allowedOrigins[origin] || sameHost(origin, r.Host)
 	}}
 	return upgrader.Upgrade(w, r, nil)
+}
+
+// sameHost acepta clientes nativos (React Native manda como Origin la URL
+// del server al que conecta): si el host:puerto del origin coincide con el
+// Host del request, es un cliente legítimo a esta misma instancia. Cubre
+// LAN/dispositivos físicos sin mantener IPs en env ni código.
+func sameHost(origin, host string) bool {
+	u, err := url.Parse(origin)
+	return err == nil && u.Host != "" && u.Host == host
 }
 
 // Serve atiende conn ya autenticada como userID hasta que se caiga (read

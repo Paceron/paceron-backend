@@ -311,6 +311,18 @@ func TestUpgradeAllowsConfiguredOrigin(t *testing.T) {
 	pingPong(t, client)
 }
 
+func TestUpgradeAllowsSameHostOrigin(t *testing.T) {
+	setGatewayJWTConfig(t)
+	server := newWSUpgradeServer(t, fakeFullAuthorizer(1))
+
+	// Cliente nativo: React Native manda como Origin la URL del server al que
+	// conecta (misma IP/puerto que el Host del request). Sin env, sin IPs fijas.
+	header := http.Header{}
+	header.Set("Origin", server.wsURL)
+	client := dialWS(t, server.wsURL+"?token="+tok(t, 1), header)
+	pingPong(t, client)
+}
+
 func TestSubscribeAuthorizedRepliesSubscribedIdempotent(t *testing.T) {
 	setGatewayJWTConfig(t)
 	server := newWSUpgradeServer(t, fakeFullAuthorizer(1))
