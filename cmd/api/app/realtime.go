@@ -89,7 +89,9 @@ func wsUpgrade(gateway *realtime.Gateway) gin.HandlerFunc {
 		conn, err := gateway.Upgrade(c.Writer, c.Request)
 		if err != nil {
 			// El Upgrader ya escribió la respuesta HTTP de error (p.ej. Origin prohibido).
-			customlogger.Info(c, "upgrade websocket rechazado", customlogger.Tag("error", err.Error()))
+			customlogger.Info(c, "upgrade websocket rechazado",
+				customlogger.Tag("error", err.Error()),
+				customlogger.Tag("origin", c.Request.Header.Get("Origin")))
 			return
 		}
 		gateway.Serve(conn, claims.UserID)
