@@ -39,6 +39,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// del AuthMiddleware porque sí requieren sesión.
 	r.GET("/api/v1/mercadopago/connect/callback", app.mpConnectController.HandleCallback)
 
+	// Gateway WebSocket (ws-gateway-sesiones): pública a propósito, el handler
+	// valida su propio token en el query param (no hay header Authorization en
+	// el handshake) — D3. No entra al Swagger (no es OpenAPI-representable).
+	r.GET("/api/v1/ws", wsUpgrade(app.realtimeGateway))
+
 	mapSwagger(r)
 	mapGuide(r)
 
