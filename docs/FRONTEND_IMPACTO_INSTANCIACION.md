@@ -335,7 +335,7 @@ Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`**
 **Eventos:**
 
 - `{"type":"presence","from":12,"payload":{...}}` / `{"type":"control","from":12,"payload":{...}}` — reenvíos de otros usuarios suscriptos al mismo canal (emisor excluido; `payload` opaco pero **debe ser un objeto JSON** al enviarlo — `null`/arreglo responden `error`). El destino se resuelve del `channel` del frame o de la única suscripción activa.
-- `{"type":"update:set_event","data":{...}}` — server-originado: alguien creó feedback de esa sesión. **`data` es el MISMO body HTTP 201 de `POST /workout-feedback`** (`{message: "feedback registrado", data: {...WorkoutFeedbackResponse con athlete_user_id}}`) — reutilizar el normalizador HTTP. Solo `Create` emite; nadie suscripto = evento no existe (no hay replay ni cola: lo que se perdió offline se recupera por fetch).
+- `{"type":"update:set_event","channel":"session:<id>","data":{...}}` — server-originado: alguien creó feedback de esa sesión. **`data` es el MISMO body HTTP 201 de `POST /workout-feedback`** (`{message: "feedback registrado", data: {...WorkoutFeedbackResponse con athlete_user_id}}`) — reutilizar el normalizador HTTP. El frame incluye `channel` (el cliente rutea por `msg.channel` igual que los relayeados). Solo `Create` emite; nadie suscripto = evento no existe (no hay replay ni cola: lo que se perdió offline se recupera por fetch).
 
 **Errores sin cortar conexión:** cualquier rechazo puntual (canal ajeno, canal desconocido, JSON inválido, `type` desconocido, tope de canales) llega como `{"type":"error","message":"..."}` y la conexión queda abierta y utilizable. No hacer retry-desconectar sobre `error`.
 

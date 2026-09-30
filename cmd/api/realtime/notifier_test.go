@@ -12,10 +12,11 @@ import (
 // TestUpdateSetEventPayloadShape: el data del frame replica el body HTTP del
 // endpoint que origina el evento (D4) para reutilizar el normalizador frontend.
 func TestUpdateSetEventPayloadShape(t *testing.T) {
-	raw := MarshalUpdateSetEvent(Remote{Message: "feedback registrado", Data: map[string]any{"id": 1, "athlete_user_id": 7}})
+	raw := MarshalUpdateSetEvent("session:7", Remote{Message: "feedback registrado", Data: map[string]any{"id": 1, "athlete_user_id": 7}})
 	var frame map[string]any
 	require.NoError(t, json.Unmarshal(raw, &frame))
 	assert.Equal(t, UpdateSetEventType, frame["type"])
+	assert.Equal(t, "session:7", frame["channel"])
 	assert.Equal(t, map[string]any{"message": "feedback registrado", "data": map[string]any{"id": 1.0, "athlete_user_id": 7.0}}, frame["data"])
 }
 

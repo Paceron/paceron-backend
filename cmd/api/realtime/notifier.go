@@ -34,10 +34,12 @@ func (n *HubNotifier) Emit(channel string, payload []byte) {
 // MarshalUpdateSetEvent arma el frame `update:set_event` (D4): data es el
 // objeto que el endpoint devuelve en su body HTTP (p.ej. MutationResponse),
 // de modo que el wrapper {message, data} replica el body exacto y el frontend
-// reutiliza su normalizador.
-func MarshalUpdateSetEvent(data any) []byte {
+// reutiliza su normalizador. El canal viaja en el frame para que el cliente
+// pueda rutearlo igual que los frames relayeados.
+func MarshalUpdateSetEvent(channel string, data any) []byte {
 	return MarshalOutbound(&outboundMessage{
-		Type: UpdateSetEventType,
-		Data: data,
+		Type:    UpdateSetEventType,
+		Channel: channel,
+		Data:    data,
 	})
 }

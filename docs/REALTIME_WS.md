@@ -41,7 +41,7 @@ Servidor → cliente:
 {"type":"pong"}
 {"type":"presence", "from":12, "payload":{...}}
 {"type":"control", "from":12, "payload":{...}}
-{"type":"update:set_event", "data":{...}}
+{"type":"update:set_event", "channel":"session:123", "data":{...}}
 ```
 
 Semántica por tipo:
@@ -57,7 +57,7 @@ Semántica por tipo:
 | `error` | s→c | Rechazo de algo puntual. **Nunca corta la conexión** (ver §4). |
 | `pong` | s→c | Respuesta al `ping`. |
 | `presence` / `control` | s→c | Reenvío del frame de otro usuario: `from` = userID del emisor, `payload` intacto (opaco — el backend no valida ni modifica su contenido). |
-| `update:set_event` | s→c | Evento server-originado: se creó feedback de la sesión (ver §5). |
+| `update:set_event` | s→c | Evento server-originado: se creó feedback de la sesión (ver §5). El frame incluye `channel`. |
 
 Reglas comunes:
 
@@ -98,6 +98,7 @@ El único evento server-originado: al crear feedback vía `POST /api/v1/workout-
 ```json
 {
   "type": "update:set_event",
+  "channel": "session:123",
   "data": {
     "message": "feedback registrado",
     "data": { "id": 10, "assigned_session_id": 123, "athlete_user_id": 5, "...": "..." }

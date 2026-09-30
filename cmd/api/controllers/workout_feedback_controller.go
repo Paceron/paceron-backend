@@ -355,7 +355,8 @@ func (fc *workoutFeedbackController) Create(c *gin.Context) {
 		Data:    &response,
 	}
 	if fc.notifier != nil {
-		fc.notifier.Emit(sessionChannel(feedback.AssignedSessionID), realtime.MarshalUpdateSetEvent(mutation))
+		channel := sessionChannel(feedback.AssignedSessionID)
+		fc.notifier.Emit(channel, realtime.MarshalUpdateSetEvent(channel, mutation))
 	}
 	c.JSON(http.StatusCreated, mutation)
 }
