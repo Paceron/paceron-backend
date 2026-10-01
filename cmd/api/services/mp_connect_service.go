@@ -251,10 +251,21 @@ func (s *mpConnectService) GetStatus(ctx *gin.Context, userID int64) (*mpconnect
 		return &mpconnect.StatusResponse{Connected: false, AccountStatus: string(constants.SellerConnectionStatusDeauthorized)}, nil
 	}
 
-	return &mpconnect.StatusResponse{
+	// El refresh token solo se usa en el callback: nada renueva el access token
+	// después, así que una conexión "authorized" con el token vencido ya no
+	// sirve para cobrar y se informa como no conectada.
+	resp := &mpconnect.StatusResponse{
 		Connected:     conn.Status == string(constants.SellerConnectionStatusAuthorized),
 		AccountStatus: conn.Status,
-	}, nil
+	}
+	if conn.TokenExpiresAt != nil {
+		expiresAt := conn.TokenExpiresAt.UTC().Format(time.RFC3339)
+		resp.TokenExpiresAt = &expiresAt
+		if !time.Now().Before(*conn.TokenExpiresAt) {
+			resp.Connected = false
+		}
+	}
+	return resp, nil
 }
 
 // HandleDeauthorization procesa la notificación de desautorización desde MP.

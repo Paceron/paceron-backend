@@ -938,7 +938,16 @@ definitions:
         description: authorized | deauthorized
         type: string
       connected:
+        description: |-
+          Connected es true si la conexión está autorizada y su access token no
+          venció: es lo que hace falta para poder cobrar.
         type: boolean
+      token_expires_at:
+        description: |-
+          TokenExpiresAt es el vencimiento del access token (RFC3339 UTC), o null si
+          no hay conexión o no se registró. Mercado Pago lo emite por 180 días y
+          nada lo renueva: pasada esa fecha hay que volver a conectar la cuenta.
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_payment.CreatePreferenceRequest:
     properties:
@@ -4303,7 +4312,8 @@ paths:
       consumes:
       - application/json
       description: Returns whether the authenticated user has a connected Mercado
-        Pago account.
+        Pago account and when its access token expires (`token_expires_at`). An expired
+        token is reported as not connected.
       produces:
       - application/json
       responses:

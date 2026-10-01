@@ -366,6 +366,41 @@ func TestGetStatus_Success(t *testing.T) {
 	assert.Equal(t, "client-id", gotClientID)
 	assert.True(t, resp.Connected)
 	assert.Equal(t, string(constants.SellerConnectionStatusAuthorized), resp.AccountStatus)
+	assert.Nil(t, resp.TokenExpiresAt)
+}
+
+func TestGetStatus_ExposesTokenExpiry(t *testing.T) {
+	ctx := &gin.Context{}
+	expires := time.Now().Add(90 * 24 * time.Hour).UTC().Truncate(time.Second)
+	connDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{UserID: userID, Status: string(constants.SellerConnectionStatusAuthorized), TokenExpiresAt: &expires}, nil
+		},
+	}
+	svc := newTestMPConnectService(connDao, new(mockMercadoPagoClient), &mockEncryptor{})
+	resp, err := svc.GetStatus(ctx, 5)
+	require.NoError(t, err)
+	assert.True(t, resp.Connected)
+	require.NotNil(t, resp.TokenExpiresAt)
+	assert.Equal(t, expires.Format(time.RFC3339), *resp.TokenExpiresAt)
+}
+
+// Nada renueva el access token después del callback: pasada la fecha, el token
+// ya no sirve para cobrar, aunque la conexión siga "authorized" en la base.
+func TestGetStatus_ExpiredTokenIsNotConnected(t *testing.T) {
+	ctx := &gin.Context{}
+	expired := time.Now().Add(-time.Hour)
+	connDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{UserID: userID, Status: string(constants.SellerConnectionStatusAuthorized), TokenExpiresAt: &expired}, nil
+		},
+	}
+	svc := newTestMPConnectService(connDao, new(mockMercadoPagoClient), &mockEncryptor{})
+	resp, err := svc.GetStatus(ctx, 5)
+	require.NoError(t, err)
+	assert.False(t, resp.Connected)
+	assert.Equal(t, string(constants.SellerConnectionStatusAuthorized), resp.AccountStatus)
+	require.NotNil(t, resp.TokenExpiresAt)
 }
 
 func TestGetStatus_NotConnected(t *testing.T) {
@@ -394,6 +429,7 @@ func TestGetStatus_NoConnection(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, resp.Connected)
 	assert.Equal(t, string(constants.SellerConnectionStatusDeauthorized), resp.AccountStatus)
+	assert.Nil(t, resp.TokenExpiresAt)
 }
 
 func TestGetStatus_DaoError(t *testing.T) {
