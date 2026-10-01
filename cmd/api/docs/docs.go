@@ -7673,7 +7673,17 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_attendance.RegisterResponse": {
             "type": "object",
             "properties": {
+                "group_id": {
+                    "type": "integer"
+                },
                 "message": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "description": "YYYY-MM-DD, la fecha local de la sesión",
+                    "type": "string"
+                },
+                "session_name": {
                     "type": "string"
                 }
             }
