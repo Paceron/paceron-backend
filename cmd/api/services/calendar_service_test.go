@@ -248,12 +248,12 @@ func TestCalendarService_Stamp_Success(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&planDays).Error)
 
-	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: "2026-10-01"})
+	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: "2099-10-01"})
 
 	require.NoError(t, err)
 	assert.Len(t, resp.Days, 2)
 
-	stampedDays, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC))
+	stampedDays, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2099, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2099, 10, 2, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
 	assert.Len(t, stampedDays, 2, "las 2 filas del plan deben haber quedado commiteadas por la transacción")
 }
@@ -270,7 +270,7 @@ func TestCalendarService_Stamp_PlanFromOtherOwnerForbidden(t *testing.T) {
 	}}
 	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, &mockGroupUserDao{}, nil, planDao, &mockPlanDayDao{}, nil, nil)
 
-	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
+	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2099-10-01"})
 
 	assert.ErrorIs(t, err, ErrCalendarPlanForbidden)
 }
@@ -294,12 +294,12 @@ func TestCalendarService_Bulk_Success(t *testing.T) {
 	group := &dbs.Group{Name: "Grupo bulk", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 
-	resp, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{"2026-10-01", "2026-10-02"}, Kind: "rest"})
+	resp, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{"2099-10-01", "2099-10-02"}, Kind: "rest"})
 
 	require.NoError(t, err)
 	assert.Len(t, resp.Days, 2)
 
-	rows, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC))
+	rows, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2099, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2099, 10, 2, 0, 0, 0, 0, time.UTC))
 	require.NoError(t, err)
 	assert.Len(t, rows, 2, "las 2 fechas del bulk deben haber quedado commiteadas por la transacción")
 }
@@ -318,7 +318,7 @@ func TestCalendarService_BulkClear_Success(t *testing.T) {
 	}}
 	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 
-	err := svc.BulkClear(nil, 1, 7, calendar.BulkClearRequest{Dates: []string{"2026-10-01"}})
+	err := svc.BulkClear(nil, 1, 7, calendar.BulkClearRequest{Dates: []string{"2099-10-01"}})
 
 	require.NoError(t, err)
 	assert.True(t, deleted)
@@ -343,10 +343,10 @@ func TestCalendarService_Shift_NoCollision(t *testing.T) {
 	group := &dbs.Group{Name: "Grupo shift", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 
-	fromDate, _ := time.Parse("2006-01-02", "2026-10-01")
+	fromDate, _ := time.Parse("2006-01-02", "2099-10-01")
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: fromDate, Kind: "rest"}))
 
-	resp, err := svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: "2026-10-01", Days: 2})
+	resp, err := svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: "2099-10-01", Days: 2})
 
 	require.NoError(t, err)
 	assert.Len(t, resp.Days, 1)
@@ -374,13 +374,13 @@ func TestCalendarService_Stamp_ConflictWithoutForce(t *testing.T) {
 	dayDao := &mockPlanDayDao{findByPlanFn: func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
 		return []dbs.PlanDay{{SequenceNo: 1, Kind: "rest"}}, nil
 	}}
-	occupiedDate, _ := time.Parse("2006-01-02", "2026-10-01")
+	occupiedDate, _ := time.Parse("2006-01-02", "2099-10-01")
 	calDao := &mockGroupCalendarDao{findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return []dbs.GroupCalendarDay{{GroupID: groupID, Date: occupiedDate, Kind: "rest"}}, nil
 	}}
 	svc := NewCalendarService(calDao, groupDao, teamDao, &mockGroupUserDao{}, nil, planDao, dayDao, nil, nil)
 
-	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2026-10-01"})
+	_, err := svc.Stamp(nil, 1, 7, calendar.StampRequest{PlanID: 1, StartDate: "2099-10-01"})
 
 	assert.ErrorIs(t, err, ErrCalendarStampConflict)
 }
@@ -392,7 +392,7 @@ func TestCalendarService_NextSession_BothBanners(t *testing.T) {
 	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
 		return []dbs.Group{{ID: 1, Name: "Grupo 1"}}, nil
 	}}
-	nextDate, _ := time.Parse("2006-01-02", "2026-10-10")
+	nextDate, _ := time.Parse("2006-01-02", "2099-10-10")
 	var capturedKinds []string
 	var capturedToday time.Time
 	calDao := &mockGroupCalendarDao{findNextForGroupsByKindFn: func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
@@ -433,7 +433,7 @@ func TestCalendarService_NextSession_OnlyTraining(t *testing.T) {
 	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
 		return []dbs.Group{{ID: 1, Name: "Grupo 1"}}, nil
 	}}
-	nextDate, _ := time.Parse("2006-01-02", "2026-10-10")
+	nextDate, _ := time.Parse("2006-01-02", "2099-10-10")
 	calDao := &mockGroupCalendarDao{findNextForGroupsByKindFn: func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 		if kind == "training" {
 			return &dbs.GroupCalendarDay{GroupID: 1, Date: nextDate, Kind: "training", SessionInstanceID: nil}, nil
@@ -769,10 +769,10 @@ func TestCalendarService_MemberCalendar_MergesBothGroups(t *testing.T) {
 		return []dbs.Team{{ID: 10, Name: "Equipo 10"}, {ID: 11, Name: "Equipo 11"}}, nil
 	}}
 	var capturedGroupIDs []int64
-	from, _ := time.Parse("2006-01-02", "2026-10-01")
-	to, _ := time.Parse("2006-01-02", "2026-10-31")
-	d1, _ := time.Parse("2006-01-02", "2026-10-05")
-	d2, _ := time.Parse("2006-01-02", "2026-10-06")
+	from, _ := time.Parse("2006-01-02", "2099-10-01")
+	to, _ := time.Parse("2006-01-02", "2099-10-31")
+	d1, _ := time.Parse("2006-01-02", "2099-10-05")
+	d2, _ := time.Parse("2006-01-02", "2099-10-06")
 	calDao := &mockGroupCalendarDao{findForGroupsInRangeFn: func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		capturedGroupIDs = groupIDs
 		return []dbs.GroupCalendarDay{
@@ -787,12 +787,12 @@ func TestCalendarService_MemberCalendar_MergesBothGroups(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []int64{1, 2}, capturedGroupIDs, "consulta los días con todos los group_ids de las membresías activas")
 	require.Len(t, resp, 2)
-	assert.Equal(t, "2026-10-05", resp[0].Date)
+	assert.Equal(t, "2099-10-05", resp[0].Date)
 	assert.Equal(t, int64(1), resp[0].GroupID)
 	assert.Equal(t, "Grupo 1", resp[0].GroupName)
 	assert.Equal(t, int64(10), resp[0].TeamID)
 	assert.Equal(t, "Equipo 10", resp[0].TeamName)
-	assert.Equal(t, "2026-10-06", resp[1].Date)
+	assert.Equal(t, "2099-10-06", resp[1].Date)
 	assert.Equal(t, int64(2), resp[1].GroupID)
 	assert.Equal(t, "Grupo 2", resp[1].GroupName)
 	assert.Equal(t, int64(11), resp[1].TeamID)
