@@ -2494,6 +2494,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/payments/history": {
+            "get": {
+                "description": "Pagos que hizo el usuario autenticado, del más reciente al más antiguo: suscripciones de tier (` + "`" + `type=subscription` + "`" + `) y pagos a entrenadores por la membresía de un equipo (` + "`" + `type=trainer_payment` + "`" + `). Paginado de a 20.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payments"
+                ],
+                "summary": "Historial de pagos del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "subscription",
+                            "trainer_payment"
+                        ],
+                        "type": "string",
+                        "description": "Filtrar por tipo",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "approved",
+                            "pending",
+                            "rejected",
+                            "refunded"
+                        ],
+                        "type": "string",
+                        "description": "Filtrar por grupo de estado",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.HistoryPaymentsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/payments/mp/{id}": {
             "get": {
                 "description": "Fetches the payment status directly from Mercado Pago API",
@@ -2568,6 +2636,122 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/received": {
+            "get": {
+                "description": "Cobros de membresía de equipo recibidos por el usuario autenticado, del más reciente al más antiguo. Paginado de a 20. ` + "`" + `net_amount` + "`" + ` es null salvo que Mercado Pago haya informado el neto real.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payments"
+                ],
+                "summary": "Listar cobros recibidos",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filtrar por equipo",
+                        "name": "team_id",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "approved",
+                            "pending",
+                            "rejected",
+                            "refunded"
+                        ],
+                        "type": "string",
+                        "description": "Filtrar por grupo de estado",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/received/summary": {
+            "get": {
+                "description": "Totales mensuales (hora argentina; el último es ` + "`" + `until` + "`" + ` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. ` + "`" + `earliest_month` + "`" + ` es el primer mes con cobros del vendedor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payments"
+                ],
+                "summary": "Resumen de cobros recibidos",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Meses de la ventana, entre 2 y 12 (default 6)",
+                        "name": "months",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Último mes de la ventana (YYYY-MM), no posterior al actual (default: el mes actual)",
+                        "name": "until",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedSummaryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -7489,7 +7673,17 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_attendance.RegisterResponse": {
             "type": "object",
             "properties": {
+                "group_id": {
+                    "type": "integer"
+                },
                 "message": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "description": "YYYY-MM-DD, la fecha local de la sesión",
+                    "type": "string"
+                },
+                "session_name": {
                     "type": "string"
                 }
             }
@@ -8796,6 +8990,73 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.HistoryPaymentItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "currency_id": {
+                    "type": "string"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "installment_id": {
+                    "type": "integer"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "mp_payment_id": {
+                    "type": "string"
+                },
+                "payment_method_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_detail": {
+                    "type": "string"
+                },
+                "status_group": {
+                    "type": "string"
+                },
+                "team": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef"
+                },
+                "tier": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef"
+                },
+                "trainer": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.HistoryPaymentsResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "payments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.HistoryPaymentItem"
+                    }
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.MPPaymentStatusCard": {
             "type": "object",
             "properties": {
@@ -8978,6 +9239,43 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.MonthlyAmount": {
+            "type": "object",
+            "properties": {
+                "approved_count": {
+                    "type": "integer"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "month": {
+                    "type": "string"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "net_known_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "surname": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.PaymentResponse": {
             "type": "object",
             "properties": {
@@ -9021,6 +9319,45 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status_detail": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.PaymentTierRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "surname": {
                     "type": "string"
                 }
             }
@@ -9086,6 +9423,132 @@ const docTemplate = `{
                 "transaction_amount": {
                     "type": "number",
                     "minimum": 0
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "currency_id": {
+                    "type": "string"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "installment_id": {
+                    "type": "integer"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "mp_payment_id": {
+                    "type": "string"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "payer": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef"
+                },
+                "payment_method_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_detail": {
+                    "type": "string"
+                },
+                "status_group": {
+                    "type": "string"
+                },
+                "team": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentsResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "payments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ReceivedPaymentItem"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.ReceivedSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "by_team": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.TeamAmount"
+                    }
+                },
+                "currency_id": {
+                    "type": "string"
+                },
+                "earliest_month": {
+                    "description": "EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora\nargentina), o null si no tiene ninguno (design D14).",
+                    "type": "string"
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "monthly": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.MonthlyAmount"
+                    }
+                },
+                "months": {
+                    "type": "integer"
+                },
+                "pending_count": {
+                    "type": "integer"
+                },
+                "rejected_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.TeamAmount": {
+            "type": "object",
+            "properties": {
+                "approved_count": {
+                    "type": "integer"
+                },
+                "gross_amount": {
+                    "type": "number"
+                },
+                "net_amount": {
+                    "type": "number"
+                },
+                "net_known_count": {
+                    "type": "integer"
+                },
+                "pending_count": {
+                    "type": "integer"
+                },
+                "rejected_count": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "team_name": {
+                    "type": "string"
                 }
             }
         },

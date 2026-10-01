@@ -18,7 +18,7 @@ type Payment struct {
 	Installments    int       `gorm:"column:installments"`
 	PayerEmail      string    `gorm:"column:payer_email"`
 	MarketplaceFee  *float64  `gorm:"column:marketplace_fee"`
-	SellerUserID    *int64    `gorm:"column:seller_user_id"`
+	SellerUserID    *int64    `gorm:"column:seller_user_id;index"`
 	InstallmentID   *int64    `gorm:"column:installment_id"` // FK -> installments.id (pago de cuota)
 	RawResponse     *string   `gorm:"column:raw_response;type:jsonb"`
 	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime"`

@@ -18,6 +18,22 @@ Dos alternativas, a decidir:
 
 Riesgo acotado: el webhook siempre re-consulta el estado real del pago vía `GET /v1/payments/:id` a la API de MP por ID, así que un atacante no puede forjar un "approved" falso, solo disparar un re-fetch de un pago real conocido. Deferido a propósito por decisión del usuario mientras un compañero trabajaba activamente en pagos/tiers — **antes de arreglarlo, revisar si ese trabajo ya lo cubrió** (`grep HandleWebhook\|ValidateWebhookSignature` en `payment_service.go`). Si sigue faltando, el fix es chico: llamar `mpClient.ValidateWebhookSignature(xSignature, xRequestID, notification.Data.ID, s.webhookSecret)` en `HandleWebhook` antes de procesar.
 
+### El webhook lee los pagos de equipo con el token de la plataforma
+
+`HandleWebhook` (`services/payment_service.go`) consulta el pago a Mercado Pago con `s.accessToken`, el token de Paceron. Los pagos de membresía de equipo (`concept = team_subscription`) se crean con el token OAuth del **entrenador** (`resolveTeamSplitConfig`), así que el pago vive en la cuenta del vendedor y esa lectura probablemente falla (404/403). No verificado contra MP.
+
+Consecuencias, si se confirma:
+- La cuota de equipo no pasa a `paid`: el paso que la confirma (`applyApprovedTeamInstallment`) corre dentro del webhook.
+- `payments.raw_response` se queda con el `PaymentResult` que guardó `ProcessPayment`, que no trae `transaction_details`. Por eso el historial de cobros (`GET /api/v1/payments/received`, change `historial-pagos-cobros-entrenador`) devuelve `net_amount = null` en casi todos los cobros: el neto real solo existe cuando el webhook guardó el `payment.Response` completo.
+
+Fix probable: en el webhook, si el pago local es `team_subscription`, resolver el vendedor por `seller_user_id`, descifrar su token desde `seller_connections` y consultar con ese. Toca el flujo de pagos, así que va en su propio change.
+
+### `CreatePreference` deja una fila `pending` sin `payment_id` por cada cobro
+
+`CreatePreference` inserta un `payments` con `status = pending` y `payment_id = ''`, y le pone `external_reference` = su propio id local. Después `ProcessPayment` busca una fila existente con `FindByExternalReference(req.PreferenceID)`: compara contra el `preference_id` de MP, nunca coincide y crea otra fila. Resultado: por cada pago real queda una fila huérfana que nunca llegó a Mercado Pago.
+
+El historial de pagos las filtra con `COALESCE(payment_id, '') <> ''` (design D7 de `historial-pagos-cobros-entrenador`). Cualquier consulta nueva sobre `payments` tiene que hacer lo mismo, o va a contar pendientes de más. Fix de fondo: que `ProcessPayment` reutilice la fila de la preferencia buscándola por `preference_id`, o que `CreatePreference` no inserte nada.
+
 ## Datos desactualizados (testing)
 
 ### `tiers`: `hierarchy`/`payment_required`/`tier_amount` sin backfill
