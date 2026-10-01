@@ -18,6 +18,7 @@ import (
 type AccessTokenClaims struct {
 	SessionID string   `json:"sid"`
 	Roles     []string `json:"roles"`
+	UserID    int64    `json:"-"` // resuelto del subject tras validar; no viaja en el token
 	jwt.RegisteredClaims
 }
 
