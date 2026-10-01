@@ -13,20 +13,22 @@ import (
 	gl "gorm.io/gorm/logger"
 )
 
-func ConfigDB(configDB config.DB) (*gorm.DB, error) {
-	loc := time.UTC
-
-	connString := fmt.Sprintf(
+// ConnString arma el DSN de la app. Exportado para que el setup de test tome
+// un advisory lock de migración sobre el mismo conn string.
+func ConnString(configDB config.DB) string {
+	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable TimeZone=%s",
 		configDB.Host,
 		configDB.Port,
 		configDB.Username,
 		configDB.Password,
 		configDB.Name,
-		loc.String(),
+		time.UTC.String(),
 	)
+}
 
-	db, err := gorm.Open(postgres.Open(connString), &gorm.Config{
+func ConfigDB(configDB config.DB) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(ConnString(configDB)), &gorm.Config{
 		Logger: gl.Default.LogMode(gl.Silent),
 	})
 

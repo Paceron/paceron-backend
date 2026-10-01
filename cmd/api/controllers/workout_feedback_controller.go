@@ -13,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -27,17 +28,30 @@ type WorkoutFeedbackController interface {
 	CreatePoints(c *gin.Context)
 	GetPoints(c *gin.Context)
 	GetBySession(c *gin.Context)
+	AthleteHistory(c *gin.Context)
+	AdministeredHistory(c *gin.Context)
 }
 
 type workoutFeedbackController struct {
 	workoutFeedbackService services.WorkoutFeedbackServiceInterface
+	// notifier es opcional (nil en tests = sin cambios de comportamiento):
+	// emite update:set_event a session:{id} al crear feedback (D7, best-effort).
+	notifier realtime.Notifier
 }
 
 // NewWorkoutFeedbackController crea una nueva instancia de WorkoutFeedbackController.
-func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface) WorkoutFeedbackController {
+func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface, notifier realtime.Notifier) WorkoutFeedbackController {
 	return &workoutFeedbackController{
 		workoutFeedbackService: workoutFeedbackService,
+		notifier:               notifier,
 	}
+}
+
+// sessionChannel arma el canal canónico del gateway para una sesión
+// instanciada: "session:{id}" decimal sin padding, el ÚNICO formato que
+// parseSessionChannel (app) acepta — un alias partiría la sala del broadcast.
+func sessionChannel(assignedSessionID int64) string {
+	return "session:" + strconv.FormatInt(assignedSessionID, 10)
 }
 
 // parsePositivePathParam parsea un path param como int64 estrictamente mayor a 0.
@@ -336,10 +350,15 @@ func (fc *workoutFeedbackController) Create(c *gin.Context) {
 	}
 
 	response := toWorkoutFeedbackResponse(feedback)
-	c.JSON(http.StatusCreated, workoutfeedback.MutationResponse{
+	mutation := workoutfeedback.MutationResponse{
 		Message: workoutfeedback.MsgFeedbackCreated,
 		Data:    &response,
-	})
+	}
+	if fc.notifier != nil {
+		channel := sessionChannel(feedback.AssignedSessionID)
+		fc.notifier.Emit(channel, realtime.MarshalUpdateSetEvent(channel, mutation))
+	}
+	c.JSON(http.StatusCreated, mutation)
 }
 
 // GetByID godoc
@@ -567,4 +586,205 @@ func (fc *workoutFeedbackController) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// parseOptionalIntQueryParam parsea un query param opcional como int. nil si
+// ausente; los rangos (page, set_number) los valida el service.
+func parseOptionalIntQueryParam(c *gin.Context, name string) (*int, error) {
+	raw := c.Query(name)
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s debe ser un número entero", name)
+	}
+	return &value, nil
+}
+
+// parseHistoryQuery lee los query params de los endpoints de historial y los
+// pasa crudos al service (que valida y normaliza). El endpoint del atleta no
+// recibe athlete_user_id.
+func parseHistoryQuery(c *gin.Context, includeAthlete bool) (workoutfeedback.HistoryQuery, error) {
+	var query workoutfeedback.HistoryQuery
+	var err error
+
+	if query.TeamID, err = parseOptionalPositiveQueryParam(c, "team_id"); err != nil {
+		return query, err
+	}
+	if query.GroupID, err = parseOptionalPositiveQueryParam(c, "group_id"); err != nil {
+		return query, err
+	}
+	if query.ExerciseID, err = parseOptionalPositiveQueryParam(c, "exercise_id"); err != nil {
+		return query, err
+	}
+	if query.SetNumber, err = parseOptionalIntQueryParam(c, "set_number"); err != nil {
+		return query, err
+	}
+	if query.Page, err = parseOptionalIntQueryParam(c, "page"); err != nil {
+		return query, err
+	}
+	if query.PageSize, err = parseOptionalIntQueryParam(c, "page_size"); err != nil {
+		return query, err
+	}
+	if from := c.Query("date_from"); from != "" {
+		fromCopy := from
+		query.DateFrom = &fromCopy
+	}
+	if to := c.Query("date_to"); to != "" {
+		toCopy := to
+		query.DateTo = &toCopy
+	}
+	query.Sort = c.Query("sort")
+	query.Order = c.Query("order")
+	if includeAthlete {
+		if query.AthleteUserID, err = parseOptionalPositiveQueryParam(c, "athlete_user_id"); err != nil {
+			return query, err
+		}
+	}
+	return query, nil
+}
+
+// respondHistoryTargetError aplica el guard id==caller del patrón member-calendar.
+func respondHistoryTargetError(c *gin.Context, targetID, authUserID int64) bool {
+	if targetID != authUserID {
+		c.JSON(http.StatusForbidden, apierror.APIError{
+			StatusCode: http.StatusForbidden,
+			Code:       "Forbidden",
+			Message:    "no podés consultar los datos de otro usuario",
+		})
+		return true
+	}
+	return false
+}
+
+// AthleteHistory godoc
+// @Summary      Historial de entrenamientos del atleta
+// @Description  Devuelve los feedbacks del propio usuario autenticado (id debe ser el caller), con filtros, sort whitelisted, paginación y pools de atletas/ejercicios disponibles.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id          path   int     true   "ID del usuario (debe ser el autenticado)"
+// @Param        team_id     query  int     false  "ID del equipo"
+// @Param        group_id    query  int     false  "ID del grupo (requiere team_id)"
+// @Param        date_from   query  string  false  "Desde (YYYY-MM-DD)"
+// @Param        date_to     query  string  false  "Hasta (YYYY-MM-DD)"
+// @Param        exercise_id query  int     false  "ID de instancia de ejercicio"
+// @Param        set_number  query  int     false  "Número de serie"
+// @Param        sort        query  string  false  "feedback_date | set_number | exercise_name (default feedback_date)"
+// @Param        order       query  string  false  "asc | desc (default desc)"
+// @Param        page        query  int     false  "Página (default 1)"
+// @Param        page_size   query  int     false  "Tamaño de página (default 20, máx 100)"
+// @Success      200  {object}  workoutfeedback.WorkoutFeedbackHistoryResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/workout-feedback-history [get]
+func (fc *workoutFeedbackController) AthleteHistory(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	targetID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	if respondHistoryTargetError(c, targetID, authUserID) {
+		return
+	}
+
+	query, err := parseHistoryQuery(c, false)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	resp, err := fc.workoutFeedbackService.AthleteHistory(c, authUserID, targetID, query)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// AdministeredHistory godoc
+// @Summary      Historial de entrenamientos administrado por el entrenador
+// @Description  Devuelve los feedbacks de los atletas de un equipo administrado (id debe ser el caller y owner del equipo). team_id es obligatorio. Soporta los filtros del atleta más athlete_user_id.
+// @Tags         workout-feedback
+// @Accept       json
+// @Produce      json
+// @Param        id              path   int     true   "ID del usuario (debe ser el autenticado)"
+// @Param        team_id         query  int     true   "ID del equipo"
+// @Param        group_id        query  int     false  "ID del grupo"
+// @Param        date_from       query  string  false  "Desde (YYYY-MM-DD)"
+// @Param        date_to         query  string  false  "Hasta (YYYY-MM-DD)"
+// @Param        exercise_id     query  int     false  "ID de instancia de ejercicio"
+// @Param        set_number      query  int     false  "Número de serie"
+// @Param        athlete_user_id query  int     false  "Filtrar a un atleta puntual"
+// @Param        sort            query  string  false  "feedback_date | set_number | exercise_name (default feedback_date)"
+// @Param        order           query  string  false  "asc | desc (default desc)"
+// @Param        page            query  int     false  "Página (default 1)"
+// @Param        page_size       query  int     false  "Tamaño de página (default 20, máx 100)"
+// @Success      200  {object}  workoutfeedback.WorkoutFeedbackHistoryResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/users/{id}/administered-workout-feedback-history [get]
+func (fc *workoutFeedbackController) AdministeredHistory(c *gin.Context) {
+	authUserID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "no se pudo resolver el usuario autenticado",
+		})
+		return
+	}
+
+	targetID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	if respondHistoryTargetError(c, targetID, authUserID) {
+		return
+	}
+
+	query, err := parseHistoryQuery(c, true)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+
+	resp, err := fc.workoutFeedbackService.AdministeredHistory(c, authUserID, targetID, query)
+	if err != nil {
+		respondFeedbackError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }

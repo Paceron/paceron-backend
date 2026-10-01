@@ -626,3 +626,13 @@ func TestGroupUserService_GetUsersByGroup_Empty(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, resp, 0)
 }
+
+// IsActiveGroupMember y MissingGroupMembers son de la asistencia (D7) y no los usa
+// ningún service de calendario o grupo; los stubs existen solo para satisfacer la interfaz.
+func (m *mockGroupUserDao) IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, sessionDate time.Time) (bool, error) {
+	return false, nil
+}
+
+func (m *mockGroupUserDao) MissingGroupMembers(ctx *gin.Context, groupID int64, userIDs []int64, sessionDate time.Time) ([]int64, error) {
+	return nil, nil
+}

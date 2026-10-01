@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,19 +18,22 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
 
 type mockWorkoutFeedbackService struct {
-	createFn    func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error)
-	getByIDFn   func(ctx *gin.Context, authUserID, feedbackID int64) (*dbs.WorkoutFeedback, error)
-	searchFn    func(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
-	updateFn    func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
-	softDeleteFn func(ctx *gin.Context, authUserID, feedbackID int64) error
-	createPointsFn func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
-	getPointsFn    func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
-	getSessionFeedbackFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	createFn              func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error)
+	getByIDFn             func(ctx *gin.Context, authUserID, feedbackID int64) (*dbs.WorkoutFeedback, error)
+	searchFn              func(ctx *gin.Context, authUserID int64, filters workoutfeedback.SearchFilters) ([]dbs.WorkoutFeedback, error)
+	updateFn              func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error)
+	softDeleteFn          func(ctx *gin.Context, authUserID, feedbackID int64) error
+	createPointsFn        func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error)
+	getPointsFn           func(ctx *gin.Context, authUserID, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
+	getSessionFeedbackFn  func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	athleteHistoryFn      func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
+	administeredHistoryFn func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error)
 }
 
 func (m *mockWorkoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
@@ -87,6 +92,52 @@ func (m *mockWorkoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUs
 	return nil, nil
 }
 
+func (m *mockWorkoutFeedbackService) AthleteHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if m.athleteHistoryFn != nil {
+		return m.athleteHistoryFn(ctx, callerID, targetID, query)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackService) AdministeredHistory(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	if m.administeredHistoryFn != nil {
+		return m.administeredHistoryFn(ctx, callerID, targetID, query)
+	}
+	return nil, nil
+}
+
+// newTestWorkoutFeedbackController arma el controller SIN notifier: los tests
+// HTTP no deben ver frames (nil = comportamiento anterior intacto).
+func newTestWorkoutFeedbackController(svc services.WorkoutFeedbackServiceInterface) WorkoutFeedbackController {
+	return NewWorkoutFeedbackController(svc, nil)
+}
+
+// stubFeedbackNotifier registra las llamadas Emit del hook de Create (D7).
+type stubFeedbackNotifier struct {
+	mu    sync.Mutex
+	calls []stubNotifierCall
+}
+
+type stubNotifierCall struct {
+	channel string
+	payload []byte
+}
+
+func (s *stubFeedbackNotifier) Emit(channel string, payload []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, stubNotifierCall{channel: channel, payload: payload})
+}
+
+// fixtureFeedbackForSession clona el feedback genérico con otra sesión/atleta
+// para tests de broadcast al canal de una sesión puntual.
+func fixtureFeedbackForSession(sessionID, athleteID int64) *dbs.WorkoutFeedback {
+	fb := fixtureFeedback()
+	fb.AssignedSessionID = sessionID
+	fb.AthleteUserID = athleteID
+	return fb
+}
+
 // fixtureFeedback arma un feedback persistido con media_urls lista en []string,
 // para verificar el shape plano de la respuesta.
 func fixtureFeedback() *dbs.WorkoutFeedback {
@@ -105,7 +156,7 @@ func fixtureFeedback() *dbs.WorkoutFeedback {
 }
 
 func TestWorkoutFeedbackController_Unauthorized(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -123,7 +174,7 @@ func TestWorkoutFeedbackController_Create_Success(t *testing.T) {
 			return fixtureFeedback(), nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	body := `{"assigned_session_id":1,"assigned_exercise_id":2,"report_source":"corredor","session_date":"2026-01-15","set_number":1}`
@@ -144,8 +195,131 @@ func TestWorkoutFeedbackController_Create_Success(t *testing.T) {
 	assert.Equal(t, []string{"https://media.foo/a.jpg"}, resp.Data.MediaURLs)
 }
 
+// setEventFrame es el frame server→cliente de update:set_event con el wrapper
+// {message, data} replicando el body HTTP (D4/D7).
+type setEventFrame struct {
+	Type string `json:"type"`
+	Data struct {
+		Message string                                  `json:"message"`
+		Data    workoutfeedback.WorkoutFeedbackResponse `json:"data"`
+	} `json:"data"`
+}
+
+// setupFeedbackBroadcastRouter arma las rutas del módulo con auth inyectada y
+// el controller configurable (notifier opcional), para probar el hook de D7
+// por la ruta real y status codes flusheados por ServeHTTP.
+func setupFeedbackBroadcastRouter(svc services.WorkoutFeedbackServiceInterface, notifier realtime.Notifier) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(7))
+		c.Next()
+	})
+	ctrl := NewWorkoutFeedbackController(svc, notifier)
+	r.POST("/workout-feedback", ctrl.Create)
+	r.PUT("/workout-feedback/:id", ctrl.Update)
+	r.DELETE("/workout-feedback/:id", ctrl.Delete)
+	r.POST("/workout-feedback/:id/points", ctrl.CreatePoints)
+	return r
+}
+
+func createFeedbackRequest(sessionID int64) *strings.Reader {
+	return strings.NewReader(`{"assigned_session_id":` + strconv.FormatInt(sessionID, 10) + `,"assigned_exercise_id":2,"report_source":"corredor","session_date":"2026-01-15","set_number":1}`)
+}
+
+func TestWorkoutFeedbackController_Create_EmitsUpdateSetEventToSessionChannel(t *testing.T) {
+	notifier := &stubFeedbackNotifier{}
+	mockSvc := &mockWorkoutFeedbackService{
+		createFn: func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
+			return fixtureFeedbackForSession(42, 7), nil
+		},
+	}
+	router := setupFeedbackBroadcastRouter(mockSvc, notifier)
+
+	req := httptest.NewRequest(http.MethodPost, "/workout-feedback", createFeedbackRequest(42))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	// Canal canónico exacto: session:{assigned_session_id} decimal sin padding.
+	require.Len(t, notifier.calls, 1)
+	assert.Equal(t, "session:42", notifier.calls[0].channel)
+
+	var frame setEventFrame
+	require.NoError(t, json.Unmarshal(notifier.calls[0].payload, &frame))
+	assert.Equal(t, realtime.UpdateSetEventType, frame.Type)
+	assert.Equal(t, workoutfeedback.MsgFeedbackCreated, frame.Data.Message)
+	require.Equal(t, int64(42), frame.Data.Data.AssignedSessionID)
+	assert.Equal(t, int64(7), frame.Data.Data.AthleteUserID)
+
+	// El payload WS y el body HTTP transportan el mismo objeto de respuesta.
+	var httpResp workoutfeedback.MutationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &httpResp))
+	require.NotNil(t, httpResp.Data)
+	assert.Equal(t, *httpResp.Data, frame.Data.Data)
+}
+
+func TestWorkoutFeedbackController_Create_NilNotifierKeepsHTTPBehavior(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		createFn: func(ctx *gin.Context, authUserID int64, req workoutfeedback.CreateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
+			return fixtureFeedbackForSession(42, 7), nil
+		},
+	}
+	router := setupFeedbackBroadcastRouter(mockSvc, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/workout-feedback", createFeedbackRequest(42))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var resp workoutfeedback.MutationResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, workoutfeedback.MsgFeedbackCreated, resp.Message)
+	require.NotNil(t, resp.Data)
+	assert.Equal(t, int64(7), resp.Data.AthleteUserID)
+}
+
+func TestWorkoutFeedbackController_MutationsOtherThanCreateDoNotEmit(t *testing.T) {
+	notifier := &stubFeedbackNotifier{}
+	mockSvc := &mockWorkoutFeedbackService{
+		updateFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
+			return fixtureFeedbackForSession(42, 7), nil
+		},
+		softDeleteFn: func(ctx *gin.Context, authUserID, feedbackID int64) error {
+			return nil
+		},
+		createPointsFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.CreatePointsRequest) (*services.PointsResult, error) {
+			return &services.PointsResult{Created: 1, Skipped: 0}, nil
+		},
+	}
+	router := setupFeedbackBroadcastRouter(mockSvc, notifier)
+
+	req := httptest.NewRequest(http.MethodPut, "/workout-feedback/1", strings.NewReader(`{"rpe":8}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	req = httptest.NewRequest(http.MethodDelete, "/workout-feedback/1", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/workout-feedback/1/points", strings.NewReader(
+		`{"points":[{"order":0,"session_instance_id":3,"exercise_instance_id":4,"latitude":-34.6,"longitude":-58.4,"recorded_at":"2026-09-24T14:00:00Z"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	assert.Empty(t, notifier.calls)
+}
+
 func TestWorkoutFeedbackController_Create_MissingRequired(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	body := `{"report_source":"corredor"}`
@@ -159,7 +333,7 @@ func TestWorkoutFeedbackController_Create_MissingRequired(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_Create_BadJSON(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -192,7 +366,7 @@ func TestWorkoutFeedbackController_ErrorMapping(t *testing.T) {
 					return nil, tc.serviceErr
 				},
 			}
-			controller := NewWorkoutFeedbackController(mockSvc)
+			controller := newTestWorkoutFeedbackController(mockSvc)
 
 			response := httptest.NewRecorder()
 			body := `{"assigned_session_id":1,"assigned_exercise_id":2,"report_source":"corredor","session_date":"2026-01-15"}`
@@ -214,7 +388,7 @@ func TestWorkoutFeedbackController_GetByID_Success(t *testing.T) {
 			return fixtureFeedback(), nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -231,7 +405,7 @@ func TestWorkoutFeedbackController_GetByID_Success(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_GetByID_InvalidID(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -248,7 +422,7 @@ func TestWorkoutFeedbackController_Search_Success(t *testing.T) {
 			return []dbs.WorkoutFeedback{*fixtureFeedback()}, nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -264,7 +438,7 @@ func TestWorkoutFeedbackController_Search_Success(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_Search_InvalidParam(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -281,7 +455,7 @@ func TestWorkoutFeedbackController_Update_Success(t *testing.T) {
 			return fixtureFeedback(), nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	body := `{"rpe":8}`
@@ -299,7 +473,7 @@ func TestWorkoutFeedbackController_Update_Success(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_Update_InvalidID(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -353,7 +527,7 @@ func setupWorkoutFeedbackRouter(svc services.WorkoutFeedbackServiceInterface, au
 		c.Set(utils.AuthUserIDKey, authUserID)
 		c.Next()
 	})
-	ctrl := NewWorkoutFeedbackController(svc)
+	ctrl := newTestWorkoutFeedbackController(svc)
 	r.POST("/workout-feedback", ctrl.Create)
 	r.GET("/workout-feedback/:id/points", ctrl.GetPoints)
 	r.POST("/workout-feedback/:id/points", ctrl.CreatePoints)
@@ -371,7 +545,7 @@ func TestWorkoutFeedbackController_CreatePoints_Success(t *testing.T) {
 			return &services.PointsResult{Created: 2, Skipped: 1}, nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	body := `{"points":[
@@ -394,7 +568,7 @@ func TestWorkoutFeedbackController_CreatePoints_Success(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_CreatePoints_InvalidPayload(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -408,7 +582,7 @@ func TestWorkoutFeedbackController_CreatePoints_InvalidPayload(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_CreatePoints_InvalidID(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -440,7 +614,7 @@ func TestWorkoutFeedbackController_CreatePoints_ErrorMapping(t *testing.T) {
 					return nil, tc.serviceErr
 				},
 			}
-			controller := NewWorkoutFeedbackController(mockSvc)
+			controller := newTestWorkoutFeedbackController(mockSvc)
 
 			response := httptest.NewRecorder()
 			body := `{"points":[{"order":0,"recorded_at":"2026-09-24T14:00:00Z"}]}`
@@ -465,7 +639,7 @@ func TestWorkoutFeedbackController_GetPoints_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -495,7 +669,7 @@ func TestWorkoutFeedbackController_GetBySession_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -524,7 +698,7 @@ func TestWorkoutFeedbackController_GetBySession_ForwardsAthleteQuery(t *testing.
 			return []dbs.WorkoutFeedback{}, nil
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -539,7 +713,7 @@ func TestWorkoutFeedbackController_GetBySession_ForwardsAthleteQuery(t *testing.
 }
 
 func TestWorkoutFeedbackController_GetBySession_Unauthorized(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -562,7 +736,7 @@ func TestWorkoutFeedbackController_GetBySession_InvalidParams(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+			controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 			response := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(response)
@@ -582,7 +756,7 @@ func TestWorkoutFeedbackController_GetBySession_Forbidden(t *testing.T) {
 			return nil, services.ErrWorkoutFeedbackForbidden
 		},
 	}
-	controller := NewWorkoutFeedbackController(mockSvc)
+	controller := newTestWorkoutFeedbackController(mockSvc)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -595,7 +769,7 @@ func TestWorkoutFeedbackController_GetBySession_Forbidden(t *testing.T) {
 }
 
 func TestWorkoutFeedbackController_GetPoints_InvalidID(t *testing.T) {
-	controller := NewWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -605,4 +779,228 @@ func TestWorkoutFeedbackController_GetPoints_InvalidID(t *testing.T) {
 	controller.GetPoints(c)
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+// fixtureHistoryResponse arma la respuesta del service con un item y pools,
+// para verificar el shape de los endpoints de historial.
+func fixtureHistoryResponse() *workoutfeedback.WorkoutFeedbackHistoryResponse {
+	return &workoutfeedback.WorkoutFeedbackHistoryResponse{
+		Items: []workoutfeedback.WorkoutFeedbackHistoryItem{{
+			ID:            1,
+			AthleteUserID: 7,
+			AthleteName:   "Anita",
+			ExerciseID:    2,
+			Date:          "2026-01-15",
+			SetNumber:     1,
+		}},
+		Total:              1,
+		Page:               1,
+		PageSize:           20,
+		AvailableAthletes:  []dbs.IDName{{ID: 7, Name: "Anita"}},
+		AvailableExercises: []dbs.IDName{{ID: 2, Name: "Sentadilla"}},
+	}
+}
+
+func TestWorkoutFeedbackController_AthleteHistory_Success(t *testing.T) {
+	var gotCaller, gotTarget int64
+	var gotQuery workoutfeedback.HistoryQuery
+	mockSvc := &mockWorkoutFeedbackService{
+		athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			gotCaller, gotTarget, gotQuery = callerID, targetID, query
+			return fixtureHistoryResponse(), nil
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history?team_id=4&group_id=6&date_from=2026-01-01&date_to=2026-01-31&exercise_id=2&set_number=1&sort=exercise_name&order=asc&page=2&page_size=10", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "7"}}
+	setAuthUserID(c, 7)
+	controller.AthleteHistory(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, int64(7), gotCaller)
+	assert.Equal(t, int64(7), gotTarget)
+	require.NotNil(t, gotQuery.TeamID)
+	assert.Equal(t, int64(4), *gotQuery.TeamID)
+	require.NotNil(t, gotQuery.GroupID)
+	assert.Equal(t, int64(6), *gotQuery.GroupID)
+	require.NotNil(t, gotQuery.ExerciseID)
+	assert.Equal(t, int64(2), *gotQuery.ExerciseID)
+	require.NotNil(t, gotQuery.SetNumber)
+	assert.Equal(t, 1, *gotQuery.SetNumber)
+	require.NotNil(t, gotQuery.DateFrom)
+	assert.Equal(t, "2026-01-01", *gotQuery.DateFrom)
+	require.NotNil(t, gotQuery.DateTo)
+	assert.Equal(t, "2026-01-31", *gotQuery.DateTo)
+	assert.Equal(t, "exercise_name", gotQuery.Sort)
+	assert.Equal(t, "asc", gotQuery.Order)
+	require.NotNil(t, gotQuery.Page)
+	assert.Equal(t, 2, *gotQuery.Page)
+	require.NotNil(t, gotQuery.PageSize)
+	assert.Equal(t, 10, *gotQuery.PageSize)
+
+	var resp workoutfeedback.WorkoutFeedbackHistoryResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "Anita", resp.Items[0].AthleteName)
+	assert.Equal(t, int64(1), resp.Total)
+	require.Len(t, resp.AvailableAthletes, 1)
+	assert.Equal(t, "Anita", resp.AvailableAthletes[0].Name)
+}
+
+func TestWorkoutFeedbackController_AthleteHistory_IgnoresAthleteUserID(t *testing.T) {
+	var gotQuery workoutfeedback.HistoryQuery
+	mockSvc := &mockWorkoutFeedbackService{
+		athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			gotQuery = query
+			return fixtureHistoryResponse(), nil
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history?athlete_user_id=5", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "7"}}
+	setAuthUserID(c, 7)
+	controller.AthleteHistory(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Nil(t, gotQuery.AthleteUserID)
+}
+
+func TestWorkoutFeedbackController_History_Unauthorized(t *testing.T) {
+	controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history", nil)
+	controller.AthleteHistory(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestWorkoutFeedbackController_AthleteHistory_OtherUserForbidden(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			t.Fatal("el service no debió invocarse")
+			return nil, nil
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/99/workout-feedback-history", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "99"}}
+	setAuthUserID(c, 7)
+	controller.AthleteHistory(c)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestWorkoutFeedbackController_AdministeredHistory_Success(t *testing.T) {
+	var gotCaller, gotTarget int64
+	var gotQuery workoutfeedback.HistoryQuery
+	mockSvc := &mockWorkoutFeedbackService{
+		administeredHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			gotCaller, gotTarget, gotQuery = callerID, targetID, query
+			return fixtureHistoryResponse(), nil
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/administered-workout-feedback-history?team_id=4&athlete_user_id=9&set_number=2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "7"}}
+	setAuthUserID(c, 7)
+	controller.AdministeredHistory(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, int64(7), gotCaller)
+	assert.Equal(t, int64(7), gotTarget)
+	require.NotNil(t, gotQuery.TeamID)
+	assert.Equal(t, int64(4), *gotQuery.TeamID)
+	require.NotNil(t, gotQuery.AthleteUserID)
+	assert.Equal(t, int64(9), *gotQuery.AthleteUserID)
+	require.NotNil(t, gotQuery.SetNumber)
+	assert.Equal(t, 2, *gotQuery.SetNumber)
+}
+
+func TestWorkoutFeedbackController_History_InvalidParams(t *testing.T) {
+	cases := []struct {
+		name       string
+		endpoint   string
+		query      string
+		callsWrong string
+	}{
+		{"path no numerico", "AthleteHistory", "?", "abc"},
+		{"path 0", "AthleteHistory", "?", "0"},
+		{"team_id invalido", "AthleteHistory", "?team_id=abc", "7"},
+		{"team_id 0", "AthleteHistory", "?team_id=0", "7"},
+		{"exercise_id invalido", "AthleteHistory", "?exercise_id=x", "7"},
+		{"set_number no numerico", "AthleteHistory", "?set_number=abc", "7"},
+		{"page no numerico", "AthleteHistory", "?page=primera", "7"},
+		{"page_size no numerico", "AthleteHistory", "?page_size=veinte", "7"},
+		{"athlete_user_id invalido", "AdministeredHistory", "?athlete_user_id=x", "7"},
+		{"athlete_user_id 0", "AdministeredHistory", "?athlete_user_id=0", "7"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller := newTestWorkoutFeedbackController(&mockWorkoutFeedbackService{})
+
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			var handler func(c *gin.Context)
+			if tc.endpoint == "AdministeredHistory" {
+				handler = controller.AdministeredHistory
+			} else {
+				handler = controller.AthleteHistory
+			}
+			path := "/api/v1/users/" + tc.callsWrong + "/workout-feedback-history"
+			if tc.endpoint == "AdministeredHistory" {
+				path = "/api/v1/users/" + tc.callsWrong + "/administered-workout-feedback-history"
+			}
+			c.Request, _ = http.NewRequest(http.MethodGet, path+tc.query, nil)
+			c.Params = []gin.Param{{Key: "id", Value: tc.callsWrong}}
+			setAuthUserID(c, 7)
+			handler(c)
+
+			assert.Equal(t, http.StatusBadRequest, response.Code)
+		})
+	}
+}
+
+func TestWorkoutFeedbackController_History_ServiceErrorMapping(t *testing.T) {
+	cases := []struct {
+		name         string
+		serviceErr   error
+		expectedCode int
+	}{
+		{"forbidden -> 403", services.ErrWorkoutFeedbackForbidden, http.StatusForbidden},
+		{"team not found -> 404", services.ErrTeamNotFound, http.StatusNotFound},
+		{"invalid -> 400", services.ErrWorkoutFeedbackInvalid, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSvc := &mockWorkoutFeedbackService{
+				athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+					return nil, tc.serviceErr
+				},
+			}
+			controller := newTestWorkoutFeedbackController(mockSvc)
+
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history", nil)
+			c.Params = []gin.Param{{Key: "id", Value: "7"}}
+			setAuthUserID(c, 7)
+			controller.AthleteHistory(c)
+
+			assert.Equal(t, tc.expectedCode, response.Code)
+		})
+	}
 }

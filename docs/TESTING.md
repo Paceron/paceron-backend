@@ -20,7 +20,11 @@ make test-db-down       # baja y borra el container cuando termines
 Vive en `cmd/api/testutils/db.go`. Por test:
 
 1. Lee `TEST_DB_HOST` — si está vacía, `t.Skip(...)`.
-2. Conecta una sola vez por proceso de test (`sync.Once`) vía `postgresdb.ConfigDB` — el mismo `AutoMigrate` que usa la app en arranque real, así el schema de test nunca diverge del de producción.
+2. Conecta una sola vez por proceso de test (`sync.Once`) vía `postgresdb.ConfigDB` — el mismo `AutoMigrate` que usa la app en arranque real.
+
+   **Ojo: `AutoMigrate` NO crea foreign keys en este proyecto.** Los modelos GORM de `cmd/api/domains/dbs/` no declaran asociaciones `constraint:` (se puede verificar con `grep "constraint:" cmd/api/domains/dbs/*.go` → 0 resultados), así que el AutoMigrate genera tablas, columnas e índices, pero ninguna FK. Consecuencia práctica: **una base creada por `AutoMigrate` —CI, `make test-db-up`, la máquina de un compañero— no tiene las FK que sí tiene una base migrada a mano.** Las migraciones que agregan FKs viven como SQL manual versionado en `scripts/` (ej. `scripts/migrate_attendance_source_provenance.sql`) y hay que correrlas a mano en cada base nueva.
+
+   Por eso ningún test de comportamiento puede asumir que una FK está aplicada en la base de test. Lo que sí se automatiza es que el script de migración no se pierda: `cmd/api/daos/attendance_migration_test.go` verifica que el SQL siga declarando la constraint, el nombre correcto, sin `ON DELETE CASCADE`, y con el backfill en `qr`. Si algún día se agrega `constraint:` al modelo, ese test falla a propósito para marcar la migración manual como obsoleta.
 3. Por test individual: abre una transacción (`db.Begin()`), la pasa al DAO, y la revierte al final (`t.Cleanup`). Esto da aislamiento total entre tests sin necesidad de truncar tablas ni preocuparse por colisiones de índices únicos entre tests distintos (cada transacción no ve lo que insertó otra, al no haber commit).
 
 Variables (con default para el container de `test-db-up`, mismos valores que usa `ci.yml`):

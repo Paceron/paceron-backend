@@ -88,6 +88,9 @@ Decisión: no parchear un solo call site (evaluado `SELECT ... FOR UPDATE` solo 
 
 ## Pendientes de limpieza
 
+### Flake de `TestFailingDB_*`: race de migraciones concurrentes sobre la misma test DB
+
+Cuando corren a la vez dos paquetes que migran (SetupTestDB de `testutils`) contra la misma DB de test, a veces uno falla con SQLSTATE 23505 (unique violation en tablas de migración). Pasa aislado y en re-run; no es un bug del helper. Se detectó con `go test ./...` en paralelo (2026-09-22, change `cobertura-calendario-recientes`, confirmado también en `workout-feedback-history`). Mitigación hoy: re-correr el paquete; fix futuro si molesta: locking de migración (advisory lock de Postgres en SetupTestDB) o DB por paquete.
 ### Archivo trackeado por error: `.superpowers/sdd/tasks/task-3-report.md`
 
 Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change `asignacion-por-instanciacion`, `df18d60`/`2babf15`, por un `git add` amplio del implementador que forzó/bypaseó el ignore del workspace SDD). El workspace `.superpowers/sdd/` es scratch auto-ignoreado (su propio `.gitignore` con `*`) — briefs/reports/ledger de `subagent-driven-development` son artefactos de recuperación intra-sesión, sin valor en el historial. Fix: `git rm .superpowers/sdd/tasks/task-3-report.md`, aprovechado cualquier rama futura (no amerita PR propio). Prevención: en dispatchs de implementadores exigir stageear rutas explícitas por commit, nunca `git add -A`/`git add .` en la raíz del repo ni force-add de rutas ignoradas (registrado también en `AGENTS.md` §9).

@@ -13,9 +13,54 @@ definitions:
     properties:
       code:
         type: string
+      details:
+        additionalProperties: true
+        description: |-
+          Details lleva datos estructurados del error cuando el mensaje solo no
+          alcanza para que el cliente reaccione bien. Es aditivo y con omitempty a
+          propósito: los endpoints que no lo usan no cambian su respuesta.
+
+          Hoy lo usa el 422 de la carga masiva de asistencia, que tiene que
+          identificar QUÉ user_id no eran miembros del grupo: un mensaje genérico
+          obligaría al frontend a adivinar qué filas marcar en la grilla.
+        type: object
       message:
         type: string
       status_code:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.AttendanceSummary:
+    properties:
+      attendance_rate_pct:
+        type: number
+      attended:
+        type: integer
+      not_confirmed:
+        type: integer
+      roster_size:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.BulkSaveEntryItem:
+    properties:
+      user_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.BulkSaveRequest:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveEntryItem'
+        type: array
+      team_id:
+        type: integer
+      training_session_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.BulkSaveResult:
+    properties:
+      created:
+        type: integer
+      updated:
         type: integer
     type: object
   simple-arq-golang_cmd_api_domains_attendance.QRResponse:
@@ -38,6 +83,79 @@ definitions:
         items:
           $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.Attendance'
         type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceListResponse:
+    properties:
+      sessions:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceOption'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceOption:
+    properties:
+      attended_count:
+        type: integer
+      date:
+        type: string
+      name:
+        type: string
+      presencial_time_from:
+        type: string
+      presencial_time_to:
+        type: string
+      session_instance_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceResponse:
+    properties:
+      roster:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceRow'
+        type: array
+      session:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionInfo'
+      summary:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.AttendanceSummary'
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceRow:
+    properties:
+      attendance_id:
+        type: integer
+      email:
+        type: string
+      name:
+        type: string
+      registered_at:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_attendance.SessionInfo:
+    properties:
+      date:
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
+      name:
+        type: string
+      presencial_location:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_trainingplan.Location'
+      presencial_time_from:
+        type: string
+      presencial_time_to:
+        type: string
+      session_instance_id:
+        type: integer
+      team_id:
+        type: integer
+      team_name:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_auth.ForgotPasswordRequest:
     properties:
@@ -489,11 +607,17 @@ definitions:
       id:
         description: ID único de la asistencia (autoincremental)
         type: integer
+      registeredByUserID:
+        description: Quién cargó la asistencia (nullable, sin FK)
+        type: integer
+      source:
+        description: 'Procedencia: "qr" o "manual"'
+        type: string
       teamID:
         description: ID del equipo
         type: integer
       trainingSessionID:
-        description: ID de la sesión de entrenamiento (FK opaca, ver doc)
+        description: ID de la sesión (FK a session_instances.id)
         type: integer
       updatedAt:
         description: Fecha de última actualización
@@ -501,6 +625,13 @@ definitions:
       userID:
         description: ID del usuario que asiste
         type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dbs.IDName:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
     type: object
   simple-arq-golang_cmd_api_domains_exercise.ExerciseRequest:
     properties:
@@ -2394,6 +2525,70 @@ definitions:
       weight_kg:
         type: number
     type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem:
+    properties:
+      active_duration_ms:
+        type: integer
+      athlete_name:
+        type: string
+      athlete_user_id:
+        type: integer
+      catalog_exercise_id:
+        type: integer
+      completion_status:
+        type: string
+      date:
+        type: string
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      ended_at:
+        type: string
+      exercise_id:
+        type: integer
+      exercise_name:
+        type: string
+      group_id:
+        type: integer
+      group_name:
+        type: string
+      id:
+        type: integer
+      session_instance_id:
+        type: integer
+      session_name:
+        type: string
+      set_number:
+        type: integer
+      started_at:
+        type: string
+      team_id:
+        type: integer
+      team_name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse:
+    properties:
+      available_athletes:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName'
+        type: array
+      available_exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dbs.IDName'
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryItem'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
   simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackPointResponse:
     properties:
       exercise_instance_id:
@@ -2513,6 +2708,108 @@ info:
   title: Simple Arq Golang API
   version: 1.0.0
 paths:
+  /api/v1/attendance/{attendance_id}:
+    delete:
+      description: Borra físicamente una asistencia por id. Requiere ser entrenador
+        del equipo indicado. 404 si la asistencia no existe; 403 si es de otro equipo
+        o el usuario no es entrenador.
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Id de la asistencia
+        in: path
+        name: attendance_id
+        required: true
+        type: integer
+      - description: Equipo de la asistencia
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Borrar una asistencia cargada
+      tags:
+      - attendance
+  /api/v1/attendance/bulk:
+    post:
+      consumes:
+      - application/json
+      description: 'Crea o actualiza la asistencia de varios corredores a una misma
+        sesión. Idempotente. Todo-o-nada: si algún corredor no era miembro del grupo
+        en la fecha de la sesión, no se escribe ninguna fila.'
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Corredores a marcar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.BulkSaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Carga masiva de asistencia de una sesión
+      tags:
+      - attendance
   /api/v1/attendance/qr:
     get:
       consumes:
@@ -2603,6 +2900,65 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Buscar asistencias
+      tags:
+      - attendance
+  /api/v1/attendance/session/{session_instance_id}:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve el roster del grupo cruzado con el estado de asistencia
+        de cada corredor, más los agregados de la sesión. El roster son los miembros
+        con membresía activa en la FECHA DE LA SESIÓN (no en la fecha de hoy). Exige
+        que el usuario autenticado sea entrenador del team_id, que la sesión sea presencial
+        y no cancelada, y que pertenezca al grupo y al equipo indicados.
+      parameters:
+      - description: ID de la sesión instanciada
+        in: path
+        name: session_instance_id
+        required: true
+        type: integer
+      - description: ID del grupo
+        in: query
+        name: group_id
+        required: true
+        type: integer
+      - description: ID del equipo (obligatorio)
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Ver la grilla de asistencia de una sesión
       tags:
       - attendance
   /api/v1/attendance/team/{team_id}/session/{training_session_id}:
@@ -3128,6 +3484,55 @@ paths:
       summary: Crear grupo
       tags:
       - groups
+  /api/v1/groups/{group_id}/attendance-sessions:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve las sesiones presenciales ya ocurridas de un grupo, ordenadas
+        de la más reciente a la más antigua, con la cantidad de asistencias de cada
+        una. Solo días training + presencial + fecha <= hoy. Exige que el usuario
+        autenticado sea entrenador del team_id y que el grupo pertenezca a ese equipo.
+      parameters:
+      - description: ID del grupo
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del equipo (obligatorio)
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_attendance.SessionAttendanceListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar sesiones con asistencia gestionable de un grupo
+      tags:
+      - attendance
   /api/v1/groups/{id}:
     delete:
       description: Elimina lógicamente un grupo. Solo el entrenador del equipo puede
@@ -4698,6 +5103,34 @@ paths:
       summary: Get role by name
       tags:
       - roles
+  /api/v1/session-instances/{id}:
+    get:
+      description: Devuelve la instancia completa (nombre, descripción, ejercicios
+        con series) a partir de solo su id. Acceso si hay un día de calendario del
+        grupo/equipo del caller con esta instancia, o un feedback activo del caller
+        (atleta/reportante/owner) sobre ella.
+      parameters:
+      - description: Session Instance ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse'
+        "401":
+          description: Unauthorized
+        "403":
+          description: sin vínculo con la instancia
+        "404":
+          description: instancia no encontrada
+      summary: Detalle completo de una sesión instancia
+      tags:
+      - calendar
   /api/v1/session-instances/{id}/feedback:
     get:
       consumes:
@@ -6241,6 +6674,90 @@ paths:
       summary: Calendario agregado del entrenador
       tags:
       - calendar
+  /api/v1/users/{id}/administered-workout-feedback-history:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve los feedbacks de los atletas de un equipo administrado
+        (id debe ser el caller y owner del equipo). team_id es obligatorio. Soporta
+        los filtros del atleta más athlete_user_id.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del equipo
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: ID del grupo
+        in: query
+        name: group_id
+        type: integer
+      - description: Desde (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Hasta (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: ID de instancia de ejercicio
+        in: query
+        name: exercise_id
+        type: integer
+      - description: Número de serie
+        in: query
+        name: set_number
+        type: integer
+      - description: Filtrar a un atleta puntual
+        in: query
+        name: athlete_user_id
+        type: integer
+      - description: feedback_date | set_number | exercise_name (default feedback_date)
+        in: query
+        name: sort
+        type: string
+      - description: asc | desc (default desc)
+        in: query
+        name: order
+        type: string
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página (default 20, máx 100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de entrenamientos administrado por el entrenador
+      tags:
+      - workout-feedback
   /api/v1/users/{id}/calendar-summary:
     get:
       parameters:
@@ -6907,6 +7424,85 @@ paths:
       summary: Activar rol entrenador
       tags:
       - user-roles
+  /api/v1/users/{id}/workout-feedback-history:
+    get:
+      consumes:
+      - application/json
+      description: Devuelve los feedbacks del propio usuario autenticado (id debe
+        ser el caller), con filtros, sort whitelisted, paginación y pools de atletas/ejercicios
+        disponibles.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: ID del equipo
+        in: query
+        name: team_id
+        type: integer
+      - description: ID del grupo (requiere team_id)
+        in: query
+        name: group_id
+        type: integer
+      - description: Desde (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Hasta (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: ID de instancia de ejercicio
+        in: query
+        name: exercise_id
+        type: integer
+      - description: Número de serie
+        in: query
+        name: set_number
+        type: integer
+      - description: feedback_date | set_number | exercise_name (default feedback_date)
+        in: query
+        name: sort
+        type: string
+      - description: asc | desc (default desc)
+        in: query
+        name: order
+        type: string
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página (default 20, máx 100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_workoutfeedback.WorkoutFeedbackHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de entrenamientos del atleta
+      tags:
+      - workout-feedback
   /api/v1/users/search:
     get:
       description: Busca usuarios activos por coincidencia parcial de nombre, apellido

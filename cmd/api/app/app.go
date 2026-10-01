@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/httpclient"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/infrastructure/postgresdb"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/restclients/exampleweatherclient"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/restclients/mercadopagoclient"
@@ -56,6 +57,8 @@ type Application struct {
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
 	runnerSessionController     controllers.RunnerSessionController
+	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
+	realtimeGateway *realtime.Gateway
 }
 
 func NewApplication() *Application {
@@ -285,15 +288,24 @@ func NewApplication() *Application {
 	teamConfigurationService := services.NewTeamConfigurationService(roleDao, userRoleDao, tierSubscriptionDao, tierDao)
 	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
 
-	// Attendance flow (asistencia por QR)
+	// Attendance flow (asistencia por QR + gestión de asistencia del entrenador)
 	attendanceDao := daos.NewAttendanceDao(db)
-	attendanceService := services.NewAttendanceService(attendanceDao, config.AttendanceBaseURL)
+	attendanceService := services.NewAttendanceService(attendanceDao, groupDao, groupUserDao, userDao, config.AttendanceBaseURL)
 	attendanceController := controllers.NewAttendanceController(attendanceService)
 
 	// Workout Feedback flow (feedback de entrenamiento)
 	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
 	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao)
-	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService)
+
+	// Realtime WS gateway (ws-gateway-sesiones D8): hub en memoria + authorizer
+	// session:{id} (delega HasInstanceAccess) + mismos orígenes que el middleware CORS.
+	sessionInstanceDao := daos.NewSessionInstanceDao(db)
+	realtimeHub := realtime.NewHub()
+	realtimeGateway := realtime.NewGateway(realtimeHub, newChannelAuthorizer(sessionInstanceDao), allowedOrigins())
+
+	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
+	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
+	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
 
 	// Runner Session flow (estado de sesión del corredor, wip -> finished)
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
@@ -334,5 +346,6 @@ func NewApplication() *Application {
 		attendanceController:        attendanceController,
 		workoutFeedbackController:   workoutFeedbackController,
 		runnerSessionController:     runnerSessionController,
+		realtimeGateway:             realtimeGateway,
 	}
 }

@@ -14,17 +14,24 @@ import (
 )
 
 type mockWorkoutFeedbackDao struct {
-	createFn            func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error
-	getByIDFn           func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error)
-	updateFn            func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error)
-	softDeleteFn        func(ctx *gin.Context, id int64) error
-	searchFn            func(ctx *gin.Context, filters daos.WorkoutFeedbackSearchFilters) ([]dbs.WorkoutFeedback, error)
-	teamExistsFn        func(ctx *gin.Context, teamID int64) (bool, error)
-	isTeamOwnerFn       func(ctx *gin.Context, teamID, userID int64) (bool, error)
-	userInTeamOwnedByFn func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
-	bulkCreatePointsFn   func(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
+	createFn              func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error
+	getByIDFn             func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error)
+	updateFn              func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error)
+	softDeleteFn          func(ctx *gin.Context, id int64) error
+	searchFn              func(ctx *gin.Context, filters daos.WorkoutFeedbackSearchFilters) ([]dbs.WorkoutFeedback, error)
+	teamExistsFn          func(ctx *gin.Context, teamID int64) (bool, error)
+	isTeamOwnerFn         func(ctx *gin.Context, teamID, userID int64) (bool, error)
+	userInTeamOwnedByFn   func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
+	bulkCreatePointsFn    func(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
 	getPointsByFeedbackFn func(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
-	getBySessionFn       func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	getBySessionFn        func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error)
+	historySearchFn       func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, sortCol, order string, limit, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error)
+	historyCountFn        func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) (int64, error)
+	historyAthletesFn     func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
+	historyExercisesFn    func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
+	usersByIDsFn          func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	teamsByIDsFn          func(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error)
+	groupsByIDsFn         func(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error)
 }
 
 func (m *mockWorkoutFeedbackDao) Create(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
@@ -104,6 +111,55 @@ func (m *mockWorkoutFeedbackDao) GetBySession(ctx *gin.Context, sessionInstanceI
 	return nil, nil
 }
 
+func (m *mockWorkoutFeedbackDao) HistorySearch(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, sortCol, order string, limit, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error) {
+	if m.historySearchFn != nil {
+		return m.historySearchFn(ctx, filters, sortCol, order, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) HistoryCount(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) (int64, error) {
+	if m.historyCountFn != nil {
+		return m.historyCountFn(ctx, filters)
+	}
+	return 0, nil
+}
+
+func (m *mockWorkoutFeedbackDao) HistoryAvailableAthletes(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+	if m.historyAthletesFn != nil {
+		return m.historyAthletesFn(ctx, filters)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) HistoryAvailableExercises(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+	if m.historyExercisesFn != nil {
+		return m.historyExercisesFn(ctx, filters)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	if m.usersByIDsFn != nil {
+		return m.usersByIDsFn(ctx, userIDs)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error) {
+	if m.teamsByIDsFn != nil {
+		return m.teamsByIDsFn(ctx, teamIDs)
+	}
+	return nil, nil
+}
+
+func (m *mockWorkoutFeedbackDao) GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error) {
+	if m.groupsByIDsFn != nil {
+		return m.groupsByIDsFn(ctx, groupIDs)
+	}
+	return nil, nil
+}
+
 func validCreateRequest() workoutfeedback.CreateFeedbackRequest {
 	return workoutfeedback.CreateFeedbackRequest{
 		AssignedSessionID:  1,
@@ -129,8 +185,8 @@ func TestWorkoutFeedbackService_Create_Self(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, captured)
-	assert.Equal(t, int64(7), feedback.AthleteUserID)              // atleta = auth por default
-	assert.Equal(t, int64(7), feedback.FeedbackOwnerUserID)        // reportante = auth
+	assert.Equal(t, int64(7), feedback.AthleteUserID)       // atleta = auth por default
+	assert.Equal(t, int64(7), feedback.FeedbackOwnerUserID) // reportante = auth
 	assert.Equal(t, "corredor", feedback.ReportSource)
 	assert.Equal(t, int64(10), feedback.ID)
 }
@@ -191,8 +247,8 @@ func TestWorkoutFeedbackService_Create_Duplicate(t *testing.T) {
 
 func TestWorkoutFeedbackService_Create_Validation(t *testing.T) {
 	cases := []struct {
-		name    string
-		mutate  func(*workoutfeedback.CreateFeedbackRequest)
+		name   string
+		mutate func(*workoutfeedback.CreateFeedbackRequest)
 	}{
 		{
 			name: "session of assignment 0",
@@ -386,7 +442,7 @@ func TestWorkoutFeedbackService_Search_TeamScope(t *testing.T) {
 	var captured daos.WorkoutFeedbackSearchFilters
 	teamID := int64(3)
 	mock := &mockWorkoutFeedbackDao{
-		teamExistsFn: func(ctx *gin.Context, id int64) (bool, error) { return true, nil },
+		teamExistsFn:  func(ctx *gin.Context, id int64) (bool, error) { return true, nil },
 		isTeamOwnerFn: func(ctx *gin.Context, id, user int64) (bool, error) { return true, nil },
 		searchFn: func(ctx *gin.Context, filters daos.WorkoutFeedbackSearchFilters) ([]dbs.WorkoutFeedback, error) {
 			captured = filters
@@ -691,8 +747,8 @@ func TestWorkoutFeedbackService_CreatePoints_Validation(t *testing.T) {
 	base := validPointsRequest()
 
 	cases := []struct {
-		name    string
-		mutate  func(*workoutfeedback.CreatePointsRequest)
+		name   string
+		mutate func(*workoutfeedback.CreatePointsRequest)
 	}{
 		{
 			name: "empty points",
@@ -942,9 +998,9 @@ func TestWorkoutFeedbackService_GetSessionFeedback_DAOErrorPropagates(t *testing
 }
 
 // Helpers de punteros.
-func fbInt16Ptr(v int16) *int16    { return &v }
-func fbIntPtr(v int) *int          { return &v }
-func fbInt64Ptr(v int64) *int64    { return &v }
+func fbInt16Ptr(v int16) *int16       { return &v }
+func fbIntPtr(v int) *int             { return &v }
+func fbInt64Ptr(v int64) *int64       { return &v }
 func fbFloat64Ptr(v float64) *float64 { return &v }
 
 var (

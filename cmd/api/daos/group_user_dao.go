@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,6 +18,8 @@ type GroupUserDaoInterface interface {
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
+	IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, sessionDate time.Time) (bool, error)
+	MissingGroupMembers(ctx *gin.Context, groupID int64, userIDs []int64, sessionDate time.Time) ([]int64, error)
 }
 
 type groupUserDao struct {
@@ -83,4 +86,66 @@ func (d *groupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error 
 	return d.DB.Model(&dbs.GroupUser{}).
 		Where("deleted_at IS NULL AND group_id IN (SELECT id FROM groups WHERE team_id = ?)", teamID).
 		Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// activeGroupMemberWhere es el criterio de "miembro activo" de la asistencia
+// (design.md D7). Evalúa la ventana de membresía contra la fecha de la SESIÓN, no
+// contra NOW(): la sesión que se está revisando ya ocurrió, así que la pregunta
+// correcta es "quién era miembro cuando la sesión pasó".
+//
+// Deliberadamente NO se usa el criterio de FindByGroupID/FindByGroupAndUser
+// (solo deleted_at IS NULL): esos responden "¿quién integra el grupo hoy?" y
+// alimentan el roster de la pantalla de equipo, que tiene otra semántica. La
+// diferencia observable — un corredor que dejó el grupo DESPUÉS de la sesión
+// sigue apareciendo en la grilla de esa sesión — es intencional.
+func activeGroupMemberWhere(query *gorm.DB, sessionDate time.Time) *gorm.DB {
+	return query.Where("deleted_at IS NULL").
+		Where("date_start <= ?", sessionDate).
+		Where("date_end IS NULL OR date_end >= ?", sessionDate)
+}
+
+// IsActiveGroupMember indica si userID era miembro activo de groupID en la fecha
+// de la sesión, según la ventana de membresía (D7).
+func (d *groupUserDao) IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, sessionDate time.Time) (bool, error) {
+	var count int64
+	err := activeGroupMemberWhere(d.DB.Model(&dbs.GroupUser{}), sessionDate).
+		Where("group_id = ?", groupID).
+		Where("user_id = ?", userID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("error checking group membership: %w", err)
+	}
+	return count > 0, nil
+}
+
+// MissingGroupMembers devuelve, en el mismo orden que userIDs, los que NO eran
+// miembros activos del grupo en la fecha de la sesión. Es lo que permite que
+// POST /attendance/bulk rechace el lote entero con 422 indicando los user_id
+// culpables, sin escribir nada.
+//
+// userIDs vacío devuelve nil sin tocar la DB: un lote vacío es un no-op.
+func (d *groupUserDao) MissingGroupMembers(ctx *gin.Context, groupID int64, userIDs []int64, sessionDate time.Time) ([]int64, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var found []dbs.GroupUser
+	err := activeGroupMemberWhere(d.DB.Model(&dbs.GroupUser{}), sessionDate).
+		Where("group_id = ?", groupID).
+		Where("user_id IN ?", userIDs).
+		Find(&found).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding group members: %w", err)
+	}
+
+	member := make(map[int64]struct{}, len(found))
+	for _, gu := range found {
+		member[gu.UserID] = struct{}{}
+	}
+	missing := make([]int64, 0, len(userIDs))
+	for _, id := range userIDs {
+		if _, ok := member[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	return missing, nil
 }

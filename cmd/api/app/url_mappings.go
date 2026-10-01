@@ -39,6 +39,11 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// del AuthMiddleware porque sí requieren sesión.
 	r.GET("/api/v1/mercadopago/connect/callback", app.mpConnectController.HandleCallback)
 
+	// Gateway WebSocket (ws-gateway-sesiones): pública a propósito, el handler
+	// valida su propio token en el query param (no hay header Authorization en
+	// el handshake) — D3. No entra al Swagger (no es OpenAPI-representable).
+	r.GET("/api/v1/ws", wsUpgrade(app.realtimeGateway))
+
 	mapSwagger(r)
 	mapGuide(r)
 
@@ -169,6 +174,10 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/users/:id/administered-calendar", app.calendarController.AdministeredCalendar)
 	r.GET("/api/v1/users/:id/calendar-summary", app.calendarController.CalendarSummary)
 
+	// Workout feedback history (workout-feedback-history Task 3)
+	r.GET("/api/v1/users/:id/workout-feedback-history", app.workoutFeedbackController.AthleteHistory)
+	r.GET("/api/v1/users/:id/administered-workout-feedback-history", app.workoutFeedbackController.AdministeredHistory)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
@@ -195,10 +204,17 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Team Subscription (suscripcion-teams-split D3)
 	r.GET("/api/v1/users/:id/teams/:team_id/subscription", app.teamSubscriptionController.GetTeamSubscription)
 
-	// Attendance (asistencia por QR)
+	// Attendance (asistencia por QR + gestion de asistencia del entrenador)
 	r.GET("/api/v1/attendance/qr", app.attendanceController.GenerateQR)
 	r.POST("/api/v1/attendance/team/:team_id/session/:training_session_id", app.attendanceController.RegisterAttendance)
 	r.GET("/api/v1/attendance/search", app.attendanceController.Search)
+	r.GET("/api/v1/groups/:id/attendance-sessions", app.attendanceController.ListAttendanceSessions)
+	r.GET("/api/v1/attendance/session/:session_instance_id", app.attendanceController.GetSessionAttendance)
+	// Carga masiva y borrado. El `team_id` va en el body (bulk) o en el query
+	// (delete) y no en el path de la asistencia: la asistencia se identifica por
+	// su id, y el equipo es contra el que se autoriza, no parte de su identidad.
+	r.POST("/api/v1/attendance/bulk", app.attendanceController.BulkSaveAttendance)
+	r.DELETE("/api/v1/attendance/:attendance_id", app.attendanceController.DeleteAttendance)
 
 	// Workout Feedback (feedback de entrenamiento)
 	r.GET("/api/v1/workout-feedback/search", app.workoutFeedbackController.Search)
@@ -216,4 +232,5 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PATCH("/api/v1/session-instances/:id/runner", app.runnerSessionController.Finish)
 	r.GET("/api/v1/session-instances/:id/runner", app.runnerSessionController.Get)
 	r.GET("/api/v1/session-instances/:id/feedback", app.workoutFeedbackController.GetBySession)
+	r.GET("/api/v1/session-instances/:id", app.calendarController.SessionInstanceDetail)
 }

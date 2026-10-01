@@ -192,10 +192,17 @@ func loadDBConfig() {
 	JWTAudience = getEnvOrDefault("JWT_AUDIENCE", "paceron-app")
 	AccessTokenDuration = getDurationOrDefault("ACCESS_TOKEN_DURATION", 15*time.Minute)
 	RefreshTokenDuration = getDurationOrDefault("REFRESH_TOKEN_DURATION", 30*24*time.Hour)
-	// AttendanceBaseURL es la URL pública del backend que se embebe en el QR de
-	// asistencia. Cambia por ambiente (localhost en dev, onrender en prod/testing)
-	// porque el QR lo escanea el teléfono del corredor, no el backend.
-	AttendanceBaseURL = getEnvOrDefault("ATTENDANCE_BASE_URL", "http://localhost:8080")
+	// AttendanceBaseURL es la URL base del FRONTEND que se embebe en el QR de
+	// asistencia —no la del backend, aunque el nombre histórico diga "base URL".
+	// Cambia por ambiente porque el QR lo escanea el teléfono del corredor: si
+	// apunta al backend, el link abre la API y responde 401 en crudo.
+	//
+	// El default es el servidor de desarrollo web de Expo (8081), que es contra
+	// el que corre `npm run web`. OJO para probar con un teléfono físico: el
+	// localhost del teléfono es el teléfono, así que hay que setear esta var con
+	// la IP de la máquina en la red local (ej.
+	// http://192.168.100.66:8081) o el QR no abre nada desde el celular.
+	AttendanceBaseURL = getEnvOrDefault("ATTENDANCE_BASE_URL", "http://localhost:8081")
 }
 
 // stagedDatabaseURL resuelve qué proyecto de Supabase usar según IsProductionStage.

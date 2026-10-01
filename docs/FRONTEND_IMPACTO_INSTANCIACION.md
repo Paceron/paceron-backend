@@ -239,3 +239,106 @@ Item (ambos): `AggregateCalendarDayResponse` = los campos de `CalendarDayRespons
 - `presencial_collision` presente sii el día superpone con otro día presencial de **otro grupo administrado**. `type`: `"cross_team"` si algún colisionante es de otro equipo (gana si hay de ambos), `"same_team"` si todos son del mismo. `conflicts` lista todos los colisionantes (el día colisionante aparece marcado también en su propio item).
 - `presencial_collision` ausente = sin colisión. `member-calendar` **nunca** lo trae (es exclusivo de la vista del entrenador).
 - El backend solo **marca** — reprogramar o cancelar uno de los dos días es acción manual del entrenador.
+
+## 9. NUEVOS — historial de feedback (Gap 13, change `workout-feedback-history`)
+
+Cierre del Gap 13 (`BACKEND_API_GAPS.md`): la pestaña "Historial" ya tiene endpoints. **Todo aditivo** — `GET /workout-feedback/search` sigue vivo e intacto (decisión: no se depreca); ningún shape existente cambió. Referencia completa: `docs/CATALOGO_Y_CALENDARIO.md` §8.9; shapes acá verificados contra `cmd/api/domains/workoutfeedback/workout_feedback_history.go` (DTOs con tags json), controller y service.
+
+- **`GET /users/{id}/workout-feedback-history`** (corredor, self-only: `id` == token, `403` si no).
+- **`GET /users/{id}/administered-workout-feedback-history?team_id=`** (entrenador: `id` == token, `team_id` obligatorio `400`, equipo inexistente `404`, no-owner `403`). Extra: `athlete_user_id` para filtrar a un atleta puntual.
+
+Iteración de validaciones 400 (`apierror.APIError {status_code, code, message}`): `group_id` sin `team_id`; `date_from`/`date_to` pareados (uno solo → 400), `from > to` → 400 (iguales = 1 día, formato `YYYY-MM-DD`); `page` ≥ 1; `page_size` 1..100; `sort` ∈ {`feedback_date`, `set_number`, `exercise_name`}; `order` ∈ {`asc`, `desc`}.
+
+Response `200 {items, total, page, page_size, available_athletes, available_exercises}` — ítem (todos los campos siempre presentes, los nullable van `null`, no hay omitempty):
+
+```json
+{
+  "items": [
+    {
+      "id": 10,
+      "athlete_user_id": 5,
+      "athlete_name": "Ana Gómez",
+      "team_id": 1,
+      "team_name": "Equipo A",
+      "group_id": 2,
+      "group_name": "Fondo B",
+      "date": "2026-09-20",
+      "session_name": "Fartlek 5K",
+      "session_instance_id": 77,
+      "exercise_id": 456,
+      "exercise_name": "Trote",
+      "catalog_exercise_id": 501,
+      "set_number": 2,
+      "completion_status": "completed",
+      "duration_ms": 60000,
+      "active_duration_ms": 58000,
+      "distance_meters": 1200.5,
+      "started_at": "2026-09-20T18:00:00Z",
+      "ended_at": "2026-09-20T18:10:00Z"
+    }
+  ],
+  "total": 25,
+  "page": 2,
+  "page_size": 10,
+  "available_athletes": [{"id": 5, "name": "Ana Gómez"}],
+  "available_exercises": [{"id": 456, "name": "Trote"}]
+}
+```
+
+Decisiones que el frontend necesita conocer:
+
+- **`exercise_id` es id de instancia** (`assigned_exercise_id`), NO de catálogo. Para agrupar por ejercicio a través del tiempo usá `catalog_exercise_id` (nullable: `null` en instancias previas a la instanciación o si el feedback es huérfano sin fila de instancia).
+- **`session_instance_id`** (siempre presente, > 0): es `assigned_session_id`, el id de la instancia de sesión — lo que hay que mandar a `GET /session-instances/:id/feedback` (junto al `athlete_user_id` del ítem) para la pantalla de revisión. Si la instancia fue borrada físicamente (huérfano), el id queda expuesto pero esa pantalla responderá 404.
+- **Filtro `exercise_id` matchea por familia de catálogo:** el valor a mandar es el `id` de `available_exercises` (que es de catálogo): matchea todas las instancias de ese ejercicio de catálogo, con fallback a id de instancia propio para instancias legado sin origen. Los `id` del pool son directamente usables en el filtro; los `exercise_id` de los ítems siguen siendo de instancia (por fila).
+- **Huérfanos se conservan en `items`** (no desaparecen del historial): `group_id`/`group_name` `null` = día de calendario borrado o instancia nunca asignada a un día; `team_id`/`team_name` `null` = feedback registrado sin equipo. `session_name`/`exercise_name` también pueden ser `null` si la instancia fue borrada. Sin campo extra de razón — los nulls lo comunican.
+- **`sort=feedback_date` ordena por `session_date`** (la fecha del entrenamiento, no el timestamp de carga).
+- **Pools ignoran de segundo nivel:** `available_athletes`/`available_exercises` ({id, name}) son DISTINCT sobre los matcheos del primer nivel solo (equipo/grupo/fechas + scope de autorización); `exercise_id`, `set_number` y `athlete_user_id` NO los recortan — así al elegir otro atleta/ejercicio no se achican las opciones. `available_exercises` va **dedupeado por familia**: un ítem por ejercicio de catálogo (`catalog_exercise_id`, fallback al id de instancia en instancias legado), no por instancia.
+- `total` = matcheos de TODOS los filtros sin paginar; paginación `page`/`page_size` defaults 1/20.
+- Sin agregados/sumarización server-side (por período/ejercicio): si el tab los necesita, por ahora se calculan client-side sobre `items`.
+
+## 10. NUEVO — detalle standalone de instancia (Gap 14, change `session-instance-detail`)
+
+`GET /api/v1/session-instances/{id}`: la instancia completa (el mismo objeto que el calendario embebe como `session_instance`) a partir de solo el id — el complemento del `session_instance_id` del historial (§9). Todo aditivo, nada de lo existente cambia.
+
+```json
+{
+  "id": 88,
+  "session_id": 12,
+  "name": "Series de velocidad",
+  "description": "...",
+  "created_at": "2026-09-20T15:00:00Z",
+  "exercises": [
+    {
+      "id": 501, "exercise_id": 44, "name": "Series 400m", "kind": "training",
+      "description": null, "intensity": null, "minutes": null, "distance_m": null,
+      "speed_kph": null, "muscle_group": null, "video_url": null,
+      "role": "principal", "repeat_count": 4, "rest_minutes": 2
+    }
+  ]
+}
+```
+
+- **Uso:** historial (§9) trae `session_instance_id` → este endpoint trae el objeto completo para la pantalla de revisión.
+- **Códigos:** `404` instancia inexistente; `403` si el caller no tiene vínculo con ella. Acceso si: hay un día de calendario con esta instancia y el caller es miembro activo del grupo u owner del equipo; **o** hay un feedback activo sobre la instancia del caller (atleta/reportante/owner del equipo). Nada más.
+- Los ejercicios vienen congelados por instancia (id de instancia en `id`; `exercise_id` = origen catálogo, nullable). `GET /session-instances/:id/feedback` y `/:id/runner` siguen intactos.
+
+## 11. NUEVO — gateway WebSocket para sesiones (Gap 18, change `ws-gateway-sesiones`)
+
+Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`** (shapes acá verificados contra `cmd/api/realtime/*.go` y `cmd/api/app/realtime.go`). Todo nuevo — nada de la API HTTP existente cambia.
+
+> **NOTA — el endpoint WS NO está en el Swagger** (por diseño: el handshake WS no es OpenAPI-representable). Este doc y `REALTIME_WS.md` son su único contrato.
+
+**Conexión:** `wss://host/api/v1/ws?token=<access_token>` — mismo access token JWT del resto de la API, en query param (no hay header `Authorization` en el handshake). Falta/inválido/expirado → `401` JSON `apierror.APIError` antes del upgrade (`code` ∈ {`unauthorized`, `token_expired`}). Clientes nativos sin header `Origin` pasan; browser con origin fuera de `CORS_ALLOWED_ORIGINS` → upgrade rechazado.
+
+**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla dual de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
+
+**Eventos:**
+
+- `{"type":"presence","from":12,"payload":{...}}` / `{"type":"control","from":12,"payload":{...}}` — reenvíos de otros usuarios suscriptos al mismo canal (emisor excluido; `payload` opaco pero **debe ser un objeto JSON** al enviarlo — `null`/arreglo responden `error`). El destino se resuelve del `channel` del frame o de la única suscripción activa.
+- `{"type":"update:set_event","channel":"session:<id>","data":{...}}` — server-originado: alguien creó feedback de esa sesión. **`data` es el MISMO body HTTP 201 de `POST /workout-feedback`** (`{message: "feedback registrado", data: {...WorkoutFeedbackResponse con athlete_user_id}}`) — reutilizar el normalizador HTTP. El frame incluye `channel` (el cliente rutea por `msg.channel` igual que los relayeados). Solo `Create` emite; nadie suscripto = evento no existe (no hay replay ni cola: lo que se perdió offline se recupera por fetch).
+
+**Errores sin cortar conexión:** cualquier rechazo puntual (canal ajeno, canal desconocido, JSON inválido, `type` desconocido, tope de canales) llega como `{"type":"error","message":"..."}` y la conexión queda abierta y utilizable. No hacer retry-desconectar sobre `error`.
+
+**Heartbeat JSON:** mandar `{"type":"ping"}` cada 20-30 s → responde `{"type":"pong"}`. Cualquier mensaje refresca el deadline de 45 s — sin tráfico en 45 s el servidor corta. Frames del cliente > 4 KB cortan la conexión (única excepción).
+
+**Reconexión:** los deploys cortan las conexiones — reconectar con backoff y re-suscribirse; las suscripciones no sobreviven a la desconexión. El servidor también puede cortar por **overflow sostenido** del buffer de salida (cliente que no drena su cola): es un caso más de reconexión, no de error.

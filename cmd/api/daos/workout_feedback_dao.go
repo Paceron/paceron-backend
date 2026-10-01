@@ -3,6 +3,7 @@ package daos
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,26 @@ type WorkoutFeedbackSearchFilters struct {
 	AssignedExerciseID  *int64
 	SessionDateFrom     *time.Time
 	SessionDateTo       *time.Time
+}
+
+// WorkoutFeedbackHistoryFilters agrupa los filtros del historial de
+// entrenamientos (design.md D5). Primer nivel (aplican a ítems, total y pools):
+// AthleteUserID, TeamID, GroupID, DateFrom, DateTo. Segundo nivel (aplican solo
+// a ítems y total; los pools lo ignoran): ExerciseInstanceID, SetNumber,
+// AthleteFilterUserID. Los valores llegan ya validados/autorizados por el service.
+//
+// ExerciseInstanceID matchea por familia de ejercicio: acepta el id de
+// catálogo del pool (todas las instancias con ese source) o, para instancias
+// legado sin origen, su propio id de instancia.
+type WorkoutFeedbackHistoryFilters struct {
+	AthleteUserID       *int64
+	TeamID              *int64
+	GroupID             *int64
+	DateFrom            *time.Time
+	DateTo              *time.Time
+	ExerciseInstanceID  *int64
+	SetNumber           *int
+	AthleteFilterUserID *int64
 }
 
 // WorkoutFeedbackDAOInterface define las operaciones de acceso a datos para
@@ -74,6 +95,30 @@ type WorkoutFeedbackDAOInterface interface {
 	// GetPointsByFeedback devuelve el recorrido de la serie ordenado por "order".
 	GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 
+	// HistorySearch devuelve las filas enriquecidas del historial (design.md D1/D5)
+	// que cumplen los filtros (1er + 2do nivel), con ORDER BY whitelisted
+	// (feedback_date/set_number/exercise_name) y desempate determinista por wf.id
+	// en la misma dirección; sort/order desconocidos caen al default
+	// (feedback_date DESC) — validar la whitelist antes es del service. limit <= 0
+	// significa sin tope.
+	HistorySearch(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters, sortCol string, order string, limit int, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error)
+	// HistoryCount cuenta los feedbacks que cumplen TODOS los filtros (1er + 2do
+	// nivel), sin paginación.
+	HistoryCount(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) (int64, error)
+	// HistoryAvailableAthletes e HistoryAvailableExercises arman los pools de
+	// filtros de la UI: DISTINCT sobre los feedbacks que cumplen SOLO el primer
+	// nivel (ignoran ExerciseInstanceID/SetNumber/AthleteFilterUserID aunque
+	// vengan seteados en filters).
+	HistoryAvailableAthletes(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
+	HistoryAvailableExercises(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error)
+
+	// UsersByIDs/TeamsByIDs/GroupsByIDs resuelven nombres en batch para el
+	// historial (design.md D1: 1 query por entidad con IN, sin N+1). Delegan en
+	// los DAOs de cada entidad. Slice vacío → nil sin tocar la DB.
+	UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error)
+	GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error)
+
 	// Chequeos de membresía de equipo compartidos (TeamMembershipDAO): los usa el
 	// service para la matriz de autorización de equipos. Delegados internamente.
 	TeamExists(ctx *gin.Context, teamID int64) (bool, error)
@@ -84,6 +129,9 @@ type WorkoutFeedbackDAOInterface interface {
 type workoutFeedbackDao struct {
 	DB         *gorm.DB
 	membership TeamMembershipDAOInterface
+	users      UserDaoInterface
+	teams      TeamDaoInterface
+	groups     GroupDaoInterface
 }
 
 // NewWorkoutFeedbackDao crea una nueva instancia de WorkoutFeedbackDao.
@@ -91,6 +139,9 @@ func NewWorkoutFeedbackDao(database *gorm.DB) WorkoutFeedbackDAOInterface {
 	return &workoutFeedbackDao{
 		DB:         database,
 		membership: NewTeamMembershipDao(database),
+		users:      NewUserDao(database),
+		teams:      NewTeamDao(database),
+		groups:     NewGroupDao(database),
 	}
 }
 
@@ -288,9 +339,194 @@ func (d *workoutFeedbackDao) attachPointsCounts(ctx *gin.Context, feedbacks []db
 	return nil
 }
 
+// workoutFeedbackHistorySortColumns mapea los sort values de la API (whitelist
+// validada por el service) a columnas SQL del join de HistorySearch.
+var workoutFeedbackHistorySortColumns = map[string]string{
+	"feedback_date": "wf.session_date",
+	"set_number":    "wf.set_number",
+	"exercise_name": "ei.name",
+}
+
+// historyOrderClause arma el ORDER BY con desempate determinista por wf.id en la
+// misma dirección. sort u order fuera de la whitelist caen al default
+// (feedback_date DESC); el service valida y responde 400 antes de llegar acá.
+func historyOrderClause(sortCol, order string) string {
+	col, ok := workoutFeedbackHistorySortColumns[sortCol]
+	if !ok {
+		col = workoutFeedbackHistorySortColumns["feedback_date"]
+	}
+	dir := "DESC"
+	if strings.EqualFold(order, "asc") {
+		dir = "ASC"
+	}
+	return col + " " + dir + ", wf.id " + dir
+}
+
+// applyHistoryFilters agrega el WHERE dinámico sobre la tabla aliaseada wf.
+// withSecondLevel en false deja pasar solo el primer nivel (pools).
+// Ojo: GroupID filtra por gcd.group_id, así que el caller debe haber agregado el
+// join con group_calendar_days si puede venir seteado.
+func applyHistoryFilters(query *gorm.DB, filters WorkoutFeedbackHistoryFilters, withSecondLevel bool) *gorm.DB {
+	query = query.Where("wf.deleted_at IS NULL")
+	if filters.AthleteUserID != nil {
+		query = query.Where("wf.athlete_user_id = ?", *filters.AthleteUserID)
+	}
+	if filters.TeamID != nil {
+		query = query.Where("wf.team_id = ?", *filters.TeamID)
+	}
+	if filters.GroupID != nil {
+		query = query.Where("gcd.group_id = ?", *filters.GroupID)
+	}
+	if filters.DateFrom != nil {
+		query = query.Where("wf.session_date >= ?", *filters.DateFrom)
+	}
+	if filters.DateTo != nil {
+		query = query.Where("wf.session_date <= ?", *filters.DateTo)
+	}
+	if !withSecondLevel {
+		return query
+	}
+	if filters.ExerciseInstanceID != nil {
+		// Familia de catálogo, o la instancia misma si es legado sin origen.
+		query = query.Where(
+			"(ei.source_exercise_id = ? OR (ei.source_exercise_id IS NULL AND wf.assigned_exercise_id = ?))",
+			*filters.ExerciseInstanceID, *filters.ExerciseInstanceID,
+		)
+	}
+	if filters.SetNumber != nil {
+		query = query.Where("wf.set_number = ?", *filters.SetNumber)
+	}
+	if filters.AthleteFilterUserID != nil {
+		query = query.Where("wf.athlete_user_id = ?", *filters.AthleteFilterUserID)
+	}
+	return query
+}
+
+// HistorySearch devuelve las filas enriquecidas del historial. Los joins son
+// todos LEFT: los huérfanos (sin día de calendario o sin fila de instancia)
+// quedan dentro con los nulls correspondientes (decisión del usuario, D1).
+func (d *workoutFeedbackDao) HistorySearch(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters, sortCol string, order string, limit int, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error) {
+	query := d.DB.Table("workout_feedback AS wf").
+		Select(`wf.id, wf.athlete_user_id, wf.team_id, gcd.group_id, wf.session_date,
+			wf.set_number, wf.completion_status, wf.duration_ms, wf.active_duration_ms,
+			wf.distance_meters, wf.started_at, wf.ended_at,
+			wf.assigned_exercise_id AS exercise_id, ei.name AS exercise_name,
+			ei.source_exercise_id AS catalog_exercise_id,
+			wf.assigned_session_id AS session_instance_id, si.name AS session_name`).
+		Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id").
+		Joins("LEFT JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id").
+		Joins("LEFT JOIN session_instances si ON si.id = wf.assigned_session_id")
+	query = applyHistoryFilters(query, filters, true)
+	query = query.Order(historyOrderClause(sortCol, order))
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if offset > 0 {
+		query = query.Offset(offset)
+	}
+	var rows []dbs.WorkoutFeedbackHistoryRow
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("error searching workout feedback history: %w", err)
+	}
+	return rows, nil
+}
+
+// HistoryCount cuenta con todos los niveles de filtro, sin paginación. El join
+// con group_calendar_days solo se agrega si el filtro de grupo lo necesita
+// (los demás filtros son columnas de wf); COUNT DISTINCT por si algún día el
+// join llegara a multiplicar filas (D5).
+func (d *workoutFeedbackDao) HistoryCount(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) (int64, error) {
+	query := d.DB.Table("workout_feedback AS wf")
+	if filters.GroupID != nil {
+		query = query.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
+	}
+	if filters.ExerciseInstanceID != nil {
+		// El filtro de ejercicio matchea por familia vía ei.source_exercise_id.
+		query = query.Joins("LEFT JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id")
+	}
+	var total int64
+	err := applyHistoryFilters(query, filters, true).
+		Select("COUNT(DISTINCT wf.id) AS total").
+		Scan(&total).Error
+	if err != nil {
+		return 0, fmt.Errorf("error counting workout feedback history: %w", err)
+	}
+	return total, nil
+}
+
+// HistoryAvailableAthletes arma el pool de atletas: DISTINCT de atletas con
+// feedbacks en el primer nivel, INNER JOIN users (sin fila de user no hay nombre
+// útil para el filtro de la UI).
+func (d *workoutFeedbackDao) HistoryAvailableAthletes(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+	query := d.DB.Table("workout_feedback AS wf").
+		Select("DISTINCT wf.athlete_user_id AS id, u.name AS name").
+		Joins("JOIN users u ON u.id = wf.athlete_user_id")
+	if filters.GroupID != nil {
+		query = query.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
+	}
+	var athletes []dbs.IDName
+	err := applyHistoryFilters(query, filters, false).
+		Order("name ASC, id ASC").
+		Scan(&athletes).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing workout feedback history athletes: %w", err)
+	}
+	return athletes, nil
+}
+
+// HistoryAvailableExercises arma el pool de ejercicios dedupeado por familia
+// de catálogo: COALESCE(source_exercise_id, id) agrupa todas las instancias del
+// mismo ejercicio de catálogo (fallback al id de instancia en las legado sin
+// origen). El representante de cada familia es la instancia con id menor
+// (de ahí sale el nombre). INNER JOIN exercise_instances: un feedback huérfano
+// sin instancia no aporta un item filtrable.
+func (d *workoutFeedbackDao) HistoryAvailableExercises(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+	inner := d.DB.Table("workout_feedback AS wf").
+		Select("DISTINCT ON (COALESCE(ei.source_exercise_id, ei.id)) COALESCE(ei.source_exercise_id, ei.id) AS id, ei.name AS name").
+		Joins("JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id")
+	if filters.GroupID != nil {
+		inner = inner.Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id")
+	}
+	inner = applyHistoryFilters(inner, filters, false).
+		Order("COALESCE(ei.source_exercise_id, ei.id) ASC, ei.id ASC")
+	var exercises []dbs.IDName
+	err := d.DB.Table("(?) AS pool", inner).
+		Order("name ASC, id ASC").
+		Scan(&exercises).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing workout feedback history exercises: %w", err)
+	}
+	return exercises, nil
+}
+
 // TeamExists indica si existe un team activo (sin soft-delete) con ese id.
 func (d *workoutFeedbackDao) TeamExists(ctx *gin.Context, teamID int64) (bool, error) {
 	return d.membership.TeamExists(ctx, teamID)
+}
+
+// UsersByIDs delega en UserDao para el batch de nombres de atletas del
+// historial (misma fuente users.name que el pool de available_athletes).
+func (d *workoutFeedbackDao) UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	return d.users.FindByIDs(ctx, userIDs)
+}
+
+// TeamsByIDs delega en TeamDao para el batch de team_name del historial.
+func (d *workoutFeedbackDao) TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error) {
+	if len(teamIDs) == 0 {
+		return nil, nil
+	}
+	return d.teams.FindByIDs(ctx, teamIDs)
+}
+
+// GroupsByIDs delega en GroupDao para el batch de group_name del historial.
+func (d *workoutFeedbackDao) GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	return d.groups.FindByIDs(ctx, groupIDs)
 }
 
 // IsTeamOwner indica si userID es el owner del team (teams.owner_id).
