@@ -12,6 +12,13 @@ import (
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
 
+// Estados de runner_session (string sin constraint en DB; el POST crea en wip).
+const (
+	runnerSessionStatusWip         = "wip"
+	runnerSessionStatusFinished    = "finished"
+	runnerSessionStatusInterrupted = "interrupted"
+)
+
 // Errores de negocio del módulo de estado de sesión del corredor. El controller
 // los mapea a 400/403/404 vía errors.Is.
 var (
@@ -29,8 +36,9 @@ type RunnerSessionServiceInterface interface {
 	// existía la fila (idempotencia), devuelve la actual. second return: true si
 	// se creó, false si ya existía.
 	Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error)
-	// Finish pasa la fila a finished con end_date = now() del servidor. Si ya
-	// estaba finished devuelve la fila sin cambios (idempotente).
+	// Finish aplica la transición de status pedida (finished|interrupted) con
+	// end_date = now() del servidor. Idempotente si la fila ya está en el
+	// status destino; finished→interrupted es rechazada (400).
 	Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error)
 	// Get devuelve el estado actual (404 si no existe la fila).
 	Get(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error)
@@ -87,12 +95,16 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 	return rs, true, nil
 }
 
-// Finish valida el estado pedido, resuelve el atleta y marca la sesión como
-// finished con end_date seteada por el servidor. Idempotente: una sesión ya
-// finished se devuelve sin cambios. Sin fila → ErrRunnerSessionNotFound (404).
+// Finish aplica la transición de status pedida (finished|interrupted) con
+// end_date seteada por el servidor. Idempotente: pedir el status que ya tiene
+// la fila la devuelve sin cambios. finished→interrupted es ilegal (400) y una
+// fila finished jamás cambia. Sin fila → ErrRunnerSessionNotFound (404).
+//
+// Legales: wip→finished, wip→interrupted, interrupted→finished (re-setea
+// end_date = now, momento del finish explícito).
 func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
-	if req.Status != "finished" {
-		return nil, fmt.Errorf("%w: status solo admite 'finished'", ErrRunnerSessionInvalid)
+	if req.Status != runnerSessionStatusFinished && req.Status != runnerSessionStatusInterrupted {
+		return nil, fmt.Errorf("%w: status solo admite 'finished' o 'interrupted'", ErrRunnerSessionInvalid)
 	}
 
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
@@ -104,17 +116,15 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 	if err != nil {
 		return nil, err
 	}
-	if current.Status == "finished" {
+	if current.Status == req.Status {
 		return current, nil
+	}
+	if current.Status == runnerSessionStatusFinished {
+		return nil, fmt.Errorf("%w: no se puede interrumpir una sesión ya finalizada", ErrRunnerSessionInvalid)
 	}
 
 	now := time.Now()
-	finish := &dbs.RunnerSession{
-		ID:        current.ID,
-		EndDate:   &now,
-		UpdatedAt: now,
-	}
-	if err := s.runnerSessionDao.Finish(ctx, finish); err != nil {
+	if err := s.runnerSessionDao.UpdateStatus(ctx, current.ID, req.Status, []string{runnerSessionStatusWip, runnerSessionStatusInterrupted}, now); err != nil {
 		return nil, err
 	}
 	return s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)

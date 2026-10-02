@@ -5227,15 +5227,19 @@ paths:
     patch:
       consumes:
       - application/json
-      description: 'Pasa el estado a finished con end_date seteada por el servidor
-        (solo desde wip). Idempotente: ya finished responde 200 sin cambios.'
+      description: 'Aplica la transición de status sobre el estado de la sesión, con
+        end_date seteada por el servidor. Status admite "finished" (completar) o "interrupted"
+        (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e
+        interrupted→finished (re-setea end_date). Idempotente: ya finished con {"status":"finished"}
+        o ya interrupted con {"status":"interrupted"} responde 200 sin cambios. finished→interrupted
+        responde 400.'
       parameters:
       - description: ID de la sesión asignada
         in: path
         name: id
         required: true
         type: integer
-      - description: Status (finished)
+      - description: Status (finished|interrupted)
         in: body
         name: body
         required: true
@@ -5264,7 +5268,7 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Marcar la sesión del corredor como completada
+      summary: Marcar la sesión del corredor como completada o interrumpida
       tags:
       - runner-session
     post:

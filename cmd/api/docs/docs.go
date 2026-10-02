@@ -3776,7 +3776,7 @@ const docTemplate = `{
                 }
             },
             "patch": {
-                "description": "Pasa el estado a finished con end_date seteada por el servidor (solo desde wip). Idempotente: ya finished responde 200 sin cambios.",
+                "description": "Aplica la transición de status sobre el estado de la sesión, con end_date seteada por el servidor. Status admite \"finished\" (completar) o \"interrupted\" (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e interrupted→finished (re-setea end_date). Idempotente: ya finished con {\"status\":\"finished\"} o ya interrupted con {\"status\":\"interrupted\"} responde 200 sin cambios. finished→interrupted responde 400.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3786,7 +3786,7 @@ const docTemplate = `{
                 "tags": [
                     "runner-session"
                 ],
-                "summary": "Marcar la sesión del corredor como completada",
+                "summary": "Marcar la sesión del corredor como completada o interrumpida",
                 "parameters": [
                     {
                         "type": "integer",
@@ -3796,7 +3796,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Status (finished)",
+                        "description": "Status (finished|interrupted)",
                         "name": "body",
                         "in": "body",
                         "required": true,

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
@@ -15,11 +16,11 @@ import (
 // mockRunnerSessionDao implementa RunnerSessionDAOInterface delegando a fns
 // opcionales; sin fn devuelve el default.
 type mockRunnerSessionDao struct {
-	sessionInstanceExistsFn func(ctx *gin.Context, sessionInstanceID int64) (bool, error)
-	createFn                func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error)
-	getBySessionAthleteFn   func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error)
-	finishFn                func(ctx *gin.Context, rs *dbs.RunnerSession) error
-	teamExistsFn            func(ctx *gin.Context, teamID int64) (bool, error)
+	sessionInstanceExistsFn   func(ctx *gin.Context, sessionInstanceID int64) (bool, error)
+	createFn                  func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error)
+	getBySessionAthleteFn     func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error)
+	updateStatusFn            func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error
+	teamExistsFn              func(ctx *gin.Context, teamID int64) (bool, error)
 	existsUserInTeamOwnedByFn func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error)
 }
 
@@ -44,9 +45,9 @@ func (m *mockRunnerSessionDao) GetBySessionAndAthlete(ctx *gin.Context, sessionI
 	return nil, nil
 }
 
-func (m *mockRunnerSessionDao) Finish(ctx *gin.Context, rs *dbs.RunnerSession) error {
-	if m.finishFn != nil {
-		return m.finishFn(ctx, rs)
+func (m *mockRunnerSessionDao) UpdateStatus(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+	if m.updateStatusFn != nil {
+		return m.updateStatusFn(ctx, runnerSessionID, to, fromStatuses, endDate)
 	}
 	return nil
 }
@@ -195,39 +196,253 @@ func TestRunnerSessionService_Create_InvalidStartDate(t *testing.T) {
 	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
 }
 
-func TestRunnerSessionService_Finish_Self(t *testing.T) {
+func TestRunnerSessionService_Finish_WipToFinished(t *testing.T) {
+	var gotID int64
+	var gotTo string
+	var gotFrom []string
+	var gotEnd time.Time
+	firstGet := true
 	mock := &mockRunnerSessionDao{
-		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) {
-			return true, nil
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			if firstGet {
+				firstGet = false
+				rs := fixtureRunnerSession()
+				rs.ID = 42
+				return rs, nil
+			}
+			rs := fixtureRunnerSession()
+			rs.ID = 42
+			rs.Status = "finished"
+			end := gotEnd
+			rs.EndDate = &end
+			return rs, nil
 		},
-		createFn: func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
-			return true, nil
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			gotID = runnerSessionID
+			gotTo = to
+			gotFrom = fromStatuses
+			gotEnd = endDate
+			return nil
 		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), gotID)
+	assert.Equal(t, "finished", gotTo)
+	assert.Equal(t, []string{"wip", "interrupted"}, gotFrom)
+	assert.WithinDuration(t, time.Now(), gotEnd, 2*time.Second)
+	assert.Equal(t, "finished", rs.Status)
+	require.NotNil(t, rs.EndDate)
+	assert.WithinDuration(t, time.Now(), *rs.EndDate, 2*time.Second)
+}
+
+func TestRunnerSessionService_Finish_WipToInterrupted(t *testing.T) {
+	var gotID int64
+	var gotTo string
+	var gotFrom []string
+	var gotEnd time.Time
+	firstGet := true
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			if firstGet {
+				firstGet = false
+				rs := fixtureRunnerSession()
+				rs.ID = 42
+				return rs, nil
+			}
+			rs := fixtureRunnerSession()
+			rs.ID = 42
+			rs.Status = "interrupted"
+			end := gotEnd
+			rs.EndDate = &end
+			return rs, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			gotID = runnerSessionID
+			gotTo = to
+			gotFrom = fromStatuses
+			gotEnd = endDate
+			return nil
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), gotID)
+	assert.Equal(t, "interrupted", gotTo)
+	assert.Equal(t, []string{"wip", "interrupted"}, gotFrom)
+	assert.WithinDuration(t, time.Now(), gotEnd, 2*time.Second)
+	assert.Equal(t, "interrupted", rs.Status)
+	require.NotNil(t, rs.EndDate)
+	assert.WithinDuration(t, time.Now(), *rs.EndDate, 2*time.Second)
+}
+
+func TestRunnerSessionService_Finish_InterruptedToFinished_ResetsEndDate(t *testing.T) {
+	oldEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	var gotEnd time.Time
+	firstGet := true
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSession()
+			rs.ID = 42
+			if firstGet {
+				firstGet = false
+				rs.Status = "interrupted"
+				rs.EndDate = &oldEnd
+				return rs, nil
+			}
+			rs.Status = "finished"
+			end := gotEnd
+			rs.EndDate = &end
+			return rs, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			assert.Equal(t, int64(42), runnerSessionID)
+			assert.Equal(t, "finished", to)
+			assert.Equal(t, []string{"wip", "interrupted"}, fromStatuses)
+			gotEnd = endDate
+			return nil
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), gotEnd, 2*time.Second)
+	assert.Equal(t, "finished", rs.Status)
+	require.NotNil(t, rs.EndDate)
+	assert.WithinDuration(t, time.Now(), *rs.EndDate, 2*time.Second)
+}
+
+func TestRunnerSessionService_Finish_AlreadyInterrupted_Idempotent(t *testing.T) {
+	oldEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	updateCalled := false
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSession()
+			rs.ID = 42
+			rs.Status = "interrupted"
+			end := oldEnd
+			rs.EndDate = &end
+			return rs, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
+
+	require.NoError(t, err)
+	assert.False(t, updateCalled, "idempotente: no debe llamar al DAO")
+	assert.Equal(t, "interrupted", rs.Status)
+	require.NotNil(t, rs.EndDate)
+	assert.WithinDuration(t, oldEnd, *rs.EndDate, 0)
+}
+
+func TestRunnerSessionService_Finish_AlreadyFinished_Idempotent(t *testing.T) {
+	updateCalled := false
+	mock := &mockRunnerSessionDao{
 		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
 			rs := fixtureRunnerSession()
 			rs.Status = "finished"
 			return rs, nil
 		},
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			updateCalled = true
+			return nil
+		},
 	}
 	svc := NewRunnerSessionService(mock)
 
-	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{
-		Status: "finished",
-	})
+	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
 
 	require.NoError(t, err)
+	assert.False(t, updateCalled, "idempotente: no debe llamar al DAO")
 	assert.Equal(t, "finished", rs.Status)
 }
 
+func TestRunnerSessionService_Finish_FinishedToInterrupted_Invalid(t *testing.T) {
+	updateCalled := false
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSession()
+			rs.Status = "finished"
+			return rs, nil
+		},
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
+
+	assert.False(t, updateCalled, "transición ilegal: no debe llamar al DAO")
+	assert.EqualError(t, err, "datos inválidos: no se puede interrumpir una sesión ya finalizada")
+	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
+}
+
 func TestRunnerSessionService_Finish_InvalidStatus(t *testing.T) {
-	mock := &mockRunnerSessionDao{}
+	updateCalled := false
+	mock := &mockRunnerSessionDao{
+		updateStatusFn: func(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
+			updateCalled = true
+			return nil
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "abandoned"})
+
+	assert.False(t, updateCalled)
+	assert.EqualError(t, err, "datos inválidos: status solo admite 'finished' o 'interrupted'")
+	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
+}
+
+func TestRunnerSessionService_Finish_NotFound(t *testing.T) {
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			return nil, daos.ErrRunnerSessionNotFound
+		},
+	}
+	svc := NewRunnerSessionService(mock)
+
+	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+
+	require.ErrorIs(t, err, daos.ErrRunnerSessionNotFound)
+}
+
+func TestRunnerSessionService_Finish_TrainerForAthleteInOwnedTeam(t *testing.T) {
+	athlete := int64(30)
+	var gotAthlete int64
+	mock := &mockRunnerSessionDao{
+		existsUserInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
+			return true, nil
+		},
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			gotAthlete = athleteUserID
+			return fixtureRunnerSession(), nil
+		},
+	}
 	svc := NewRunnerSessionService(mock)
 
 	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{
-		Status: "abandoned",
+		AthleteUserID: &athlete,
+		Status:        "finished",
 	})
 
-	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
+	require.NoError(t, err)
+	assert.Equal(t, athlete, gotAthlete)
 }
 
 func TestRunnerSessionService_Get_Self(t *testing.T) {

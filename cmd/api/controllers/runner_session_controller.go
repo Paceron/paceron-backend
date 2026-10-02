@@ -14,6 +14,9 @@ import (
 	"simple-arq-golang/cmd/api/utils"
 )
 
+// Valor de status que dispara el mensaje de interrupción en el PATCH.
+const runnersessionStatusInterruptedValue = "interrupted"
+
 // RunnerSessionController define los handlers HTTP del estado de sesión del
 // corredor (runner_session).
 type RunnerSessionController interface {
@@ -133,13 +136,13 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 }
 
 // Finish godoc
-// @Summary      Marcar la sesión del corredor como completada
-// @Description  Pasa el estado a finished con end_date seteada por el servidor (solo desde wip). Idempotente: ya finished responde 200 sin cambios.
+// @Summary      Marcar la sesión del corredor como completada o interrumpida
+// @Description  Aplica la transición de status sobre el estado de la sesión, con end_date seteada por el servidor. Status admite "finished" (completar) o "interrupted" (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e interrupted→finished (re-setea end_date). Idempotente: ya finished con {"status":"finished"} o ya interrupted con {"status":"interrupted"} responde 200 sin cambios. finished→interrupted responde 400.
 // @Tags         runner-session
 // @Accept       json
 // @Produce      json
 // @Param        id    path  int                                true  "ID de la sesión asignada"
-// @Param        body  body  runnersession.RunnerStatusRequest   true  "Status (finished)"
+// @Param        body  body  runnersession.RunnerStatusRequest   true  "Status (finished|interrupted)"
 // @Success      200  {object}  runnersession.MutationResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -184,8 +187,12 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 	}
 
 	response := toRunnerSessionResponse(rs)
+	message := runnersession.MsgRunnerSessionFinished
+	if rs.Status == runnersessionStatusInterruptedValue {
+		message = runnersession.MsgRunnerSessionInterrupted
+	}
 	c.JSON(http.StatusOK, runnersession.MutationResponse{
-		Message: runnersession.MsgRunnerSessionFinished,
+		Message: message,
 		Data:    &response,
 	})
 }

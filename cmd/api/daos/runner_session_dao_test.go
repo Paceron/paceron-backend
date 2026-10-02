@@ -142,17 +142,15 @@ func TestRunnerSessionDao_GetBySessionAndAthlete_OtherAthleteIsolated(t *testing
 	require.ErrorIs(t, err, ErrRunnerSessionNotFound)
 }
 
-func TestRunnerSessionDao_Finish_MarksFinished(t *testing.T) {
+func TestRunnerSessionDao_UpdateStatus_FromWip_ToFinished(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewRunnerSessionDao(db)
 	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "", nil)
 	end := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
-	rs.EndDate = &end
 
-	err := dao.Finish(nil, rs)
+	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, end)
 
 	require.NoError(t, err)
-
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
@@ -163,20 +161,50 @@ func TestRunnerSessionDao_Finish_MarksFinished(t *testing.T) {
 	assert.WithinDuration(t, end, *got.EndDate, 0)
 }
 
-func TestRunnerSessionDao_Finish_OnFinished_DoesNotRewrite(t *testing.T) {
+func TestRunnerSessionDao_UpdateStatus_FromWip_ToInterrupted(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewRunnerSessionDao(db)
-	// Se arranca ya finalizado con un end_date conocido.
+	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "", nil)
+	end := time.Date(2026, 9, 24, 10, 30, 0, 0, time.UTC)
+
+	err := dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, end)
+
+	require.NoError(t, err)
+	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
+	require.NoError(t, err)
+	assert.Equal(t, "interrupted", got.Status)
+	require.NotNil(t, got.EndDate)
+	assert.WithinDuration(t, end, *got.EndDate, 0)
+}
+
+func TestRunnerSessionDao_UpdateStatus_FromInterrupted_ToFinished(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewRunnerSessionDao(db)
+	interruptedEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "interrupted", &interruptedEnd)
+	newEnd := interruptedEnd.Add(time.Hour)
+
+	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, newEnd)
+
+	require.NoError(t, err)
+	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
+	require.NoError(t, err)
+	assert.Equal(t, "finished", got.Status)
+	require.NotNil(t, got.EndDate)
+	assert.WithinDuration(t, newEnd, *got.EndDate, 0)
+}
+
+func TestRunnerSessionDao_UpdateStatus_Finished_IsUntouchable(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewRunnerSessionDao(db)
 	originalEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
 	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "finished", &originalEnd)
 
-	// Segundo intento de finish con un end_date distinto: el WHERE status='wip'
-	// no matchea → no reescribe nada.
-	newEnd := originalEnd.Add(time.Hour)
-	rs.EndDate = &newEnd
-
-	err := dao.Finish(nil, rs)
-
+	// El WHERE status IN (...) no contiene 'finished': la fila finished no
+	// matchea y no se reescribe (ni con destino finished ni interrupted).
+	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
+	require.NoError(t, err)
+	err = dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
 	require.NoError(t, err)
 
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
@@ -60,8 +62,8 @@ func TestRunnerSessionController_Unauthorized(t *testing.T) {
 	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
 
 	for _, tc := range []struct {
-		name  string
-		call  func(c *gin.Context)
+		name string
+		call func(c *gin.Context)
 	}{
 		{"create", func(c *gin.Context) { controller.Create(c) }},
 		{"finish", func(c *gin.Context) { controller.Finish(c) }},
@@ -243,6 +245,103 @@ func TestRunnerSessionController_Finish_200(t *testing.T) {
 	require.NotNil(t, resp.Data)
 	assert.Equal(t, "finished", resp.Data.Status)
 	require.NotNil(t, resp.Data.EndDate)
+}
+
+func TestRunnerSessionController_Finish_Interrupted_200(t *testing.T) {
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSessionResponse()
+			rs.Status = "interrupted"
+			now := time.Now()
+			rs.EndDate = &now
+			return rs, nil
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var resp runnersession.MutationResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, runnersession.MsgRunnerSessionInterrupted, resp.Message)
+	require.NotNil(t, resp.Data)
+	assert.Equal(t, "interrupted", resp.Data.Status)
+	require.NotNil(t, resp.Data.EndDate)
+}
+
+func TestRunnerSessionController_Finish_FinishedToInterrupted_400(t *testing.T) {
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			return nil, fmt.Errorf("%w: no se puede interrumpir una sesión ya finalizada", services.ErrRunnerSessionInvalid)
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+
+	var resp apierror.APIError
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, "datos inválidos: no se puede interrumpir una sesión ya finalizada", resp.Message)
+}
+
+func TestRunnerSessionController_Finish_AlreadyInterrupted_200_Unchanged(t *testing.T) {
+	oldEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	gotStatus := ""
+	updateDenied := false
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			// El propio body ya trae "interrupted" (el controller lo manda
+			// tal cual al service); capturamos para afirmar el passthrough.
+			gotStatus = req.Status
+			if req.Status != "interrupted" {
+				updateDenied = true
+			}
+			rs := fixtureRunnerSessionResponse()
+			rs.Status = "interrupted"
+			rs.EndDate = &oldEnd
+			return rs, nil
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "interrupted", gotStatus)
+	assert.False(t, updateDenied)
+
+	var resp runnersession.MutationResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, runnersession.MsgRunnerSessionInterrupted, resp.Message)
+	require.NotNil(t, resp.Data)
+	assert.Equal(t, "interrupted", resp.Data.Status)
+	require.NotNil(t, resp.Data.EndDate)
+	assert.WithinDuration(t, oldEnd, *resp.Data.EndDate, 0)
 }
 
 func TestRunnerSessionController_Finish_BadStatusBody(t *testing.T) {

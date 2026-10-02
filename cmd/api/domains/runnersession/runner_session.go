@@ -4,9 +4,10 @@ import "time"
 
 // Mensajes de respuesta fijos del módulo de estado de sesión del corredor.
 const (
-	MsgRunnerSessionCreated = "estado de sesión creado"
-	MsgRunnerSessionExisted = "el estado de sesión ya existía"
-	MsgRunnerSessionFinished = "sesión marcada como completada"
+	MsgRunnerSessionCreated     = "estado de sesión creado"
+	MsgRunnerSessionExisted     = "el estado de sesión ya existía"
+	MsgRunnerSessionFinished    = "sesión marcada como completada"
+	MsgRunnerSessionInterrupted = "sesión marcada como interrumpida"
 )
 
 // CreateRunnerSessionRequest es el body de POST /api/v1/session-instances/:id/runner.
@@ -20,8 +21,9 @@ type CreateRunnerSessionRequest struct {
 }
 
 // RunnerStatusRequest es el body de PATCH /api/v1/session-instances/:id/runner.
-// Único estado válido en esta versión: "finished". athlete_user_id es opcional:
-// si no viene opera sobre el auth (self), si viene ajeno requiere trainer.
+// Status admite "finished" (completar) o "interrupted" (terminar temprano).
+// athlete_user_id es opcional: si no viene opera sobre el auth (self), si viene
+// ajeno requiere trainer.
 type RunnerStatusRequest struct {
 	AthleteUserID *int64 `json:"athlete_user_id"`
 	Status        string `json:"status" binding:"required"`
