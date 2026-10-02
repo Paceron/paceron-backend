@@ -1,6 +1,8 @@
 package realtime
 
 import (
+	"encoding/json"
+	"math"
 	"net/http"
 	"net/url"
 	"time"
@@ -127,7 +129,15 @@ func (g *Gateway) apply(sc *serveState, msg *clientMessage) {
 			sc.enqueue(MarshalOutbound(errOutbound(reason)))
 			return
 		}
-		g.hub.Broadcast(channel, MarshalOutbound(&outboundMessage{Type: msg.Type, From: sc.userID, Payload: msg.Payload}), sc.client)
+		frame := MarshalOutbound(&outboundMessage{Type: msg.Type, From: sc.userID, Payload: msg.Payload})
+		// D11: to numérico dentro del payload → solo las conexiones de ese
+		// user (incluye al emisor si se dirige a sí mismo). "all"/ausente/
+		// otro tipo → broadcast normal. El payload sale completo, sin tocar.
+		if to, ok := extractToUser(msg.Payload); ok {
+			g.hub.BroadcastToUser(channel, frame, to)
+			return
+		}
+		g.hub.Broadcast(channel, frame, sc.client)
 	case TypePing:
 		sc.enqueue(MarshalOutbound(&outboundMessage{Type: TypePong}))
 	default:
@@ -152,6 +162,29 @@ func relayChannel(msg *clientMessage, channels map[string]struct{}) (string, str
 		}
 	}
 	return "", "presence/control requieren un canal suscripto (channel o única suscripción)"
+}
+
+// extractToUser reporta el destino D11 de un payload objeto: solo un JSON
+// number entero >0 y dentro del rango int64 cuenta como userId dirigido;
+// "all", ausente y cualquier otro valor → false (entrega a todos). El decode
+// a float64 viene del unmarshal genérico de encoding/json. La cota superior
+// es el literal 2^63 (no math.MaxInt64: float64(MaxInt64) redondea a 2^63 y
+// dejaría pasar al valor que justo desborda).
+func extractToUser(payload json.RawMessage) (int64, bool) {
+	var obj struct {
+		To any `json:"to"`
+	}
+	if err := json.Unmarshal(payload, &obj); err != nil {
+		return 0, false
+	}
+	num, ok := obj.To.(float64)
+	if !ok {
+		return 0, false
+	}
+	if num != math.Trunc(num) || num < 1 || num >= 9223372036854775808.0 {
+		return 0, false
+	}
+	return int64(num), true
 }
 
 // handleSubscribe valida tope y autorización antes de suscribir. El resub de
