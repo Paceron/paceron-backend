@@ -16,18 +16,25 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/attendance"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
 
 type mockAttendanceService struct {
 	generateQRFn     func(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error)
-	registerFn       func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error)
+	registerFn       func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error)
 	searchFn         func(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error)
 	listSessionsFn   func(ctx *gin.Context, authUserID, teamID, groupID int64) (*attendance.SessionAttendanceListResponse, error)
 	getSessionGridFn func(ctx *gin.Context, authUserID, teamID, groupID, sessionInstanceID int64) (*attendance.SessionAttendanceResponse, error)
-	bulkSaveFn       func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error)
-	deleteFn         func(ctx *gin.Context, authUserID, teamID, attendanceID int64) error
+	bulkSaveFn       func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error)
+	deleteFn         func(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error)
+}
+
+// newAttendanceTestController arma el controller SIN notifier: los tests que no
+// prueban el hook de emisión no deben verse afectados por él.
+func newAttendanceTestController(svc services.AttendanceServiceInterface) AttendanceController {
+	return NewAttendanceController(svc, nil)
 }
 
 func (m *mockAttendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error) {
@@ -43,11 +50,11 @@ func sessionCtxFor(groupID, teamID int64, date time.Time) *daos.AttendanceSessio
 	return &daos.AttendanceSessionContext{SessionInstanceID: 9, GroupID: groupID, TeamID: teamID, Date: date, SessionName: "Sesión de prueba"}
 }
 
-func (m *mockAttendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+func (m *mockAttendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
 	if m.registerFn != nil {
 		return m.registerFn(ctx, userID, teamID, sessionID)
 	}
-	return false, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
+	return false, nil, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 }
 
 func (m *mockAttendanceService) Search(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error) {
@@ -71,18 +78,18 @@ func (m *mockAttendanceService) GetSessionAttendance(ctx *gin.Context, authUserI
 	return &attendance.SessionAttendanceResponse{}, nil
 }
 
-func (m *mockAttendanceService) BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
+func (m *mockAttendanceService) BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
 	if m.bulkSaveFn != nil {
 		return m.bulkSaveFn(ctx, authUserID, teamID, sessionInstanceID, userIDs)
 	}
-	return &attendance.BulkSaveResult{}, nil
+	return &attendance.BulkSaveResult{}, nil, nil
 }
 
-func (m *mockAttendanceService) DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) error {
+func (m *mockAttendanceService) DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error) {
 	if m.deleteFn != nil {
 		return m.deleteFn(ctx, authUserID, teamID, attendanceID)
 	}
-	return nil
+	return nil, nil
 }
 
 func TestAttendanceController_GenerateQR_Success(t *testing.T) {
@@ -93,7 +100,7 @@ func TestAttendanceController_GenerateQR_Success(t *testing.T) {
 			return &attendance.QRResponse{QRCodeBase64: "cG5n", URLEncoded: "http://localhost:8080/attendance/register?team_id=5&session_instance_id=9"}, nil
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/qr?team_id=5&training_session_id=9", nil)
@@ -106,7 +113,7 @@ func TestAttendanceController_GenerateQR_Success(t *testing.T) {
 }
 
 func TestAttendanceController_GenerateQR_MissingParams(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/qr", nil)
@@ -118,7 +125,7 @@ func TestAttendanceController_GenerateQR_MissingParams(t *testing.T) {
 }
 
 func TestAttendanceController_GenerateQR_InvalidParam(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/qr?team_id=0&training_session_id=9", nil)
@@ -130,7 +137,7 @@ func TestAttendanceController_GenerateQR_InvalidParam(t *testing.T) {
 }
 
 func TestAttendanceController_GenerateQR_Unauthorized(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/qr?team_id=5&training_session_id=9", nil)
@@ -142,14 +149,14 @@ func TestAttendanceController_GenerateQR_Unauthorized(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_Created(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
 			assert.Equal(t, int64(7), userID)
 			assert.Equal(t, int64(5), teamID)
 			assert.Equal(t, int64(9), sessionID)
-			return true, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
+			return true, nil, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
@@ -164,11 +171,11 @@ func TestAttendanceController_RegisterAttendance_Created(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_AlreadyExists(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
-			return false, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return false, nil, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
@@ -182,7 +189,7 @@ func TestAttendanceController_RegisterAttendance_AlreadyExists(t *testing.T) {
 }
 
 func TestAttendanceController_RegisterAttendance_InvalidPathParam(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/abc/session/9", strings.NewReader(""))
@@ -195,7 +202,7 @@ func TestAttendanceController_RegisterAttendance_InvalidPathParam(t *testing.T) 
 }
 
 func TestAttendanceController_RegisterAttendance_Unauthorized(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
@@ -208,11 +215,11 @@ func TestAttendanceController_RegisterAttendance_Unauthorized(t *testing.T) {
 
 func TestAttendanceController_RegisterAttendance_InternalError(t *testing.T) {
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
-			return false, nil, errors.New("db caída")
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return false, nil, nil, errors.New("db caída")
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
@@ -225,7 +232,7 @@ func TestAttendanceController_RegisterAttendance_InternalError(t *testing.T) {
 }
 
 func TestAttendanceController_Search_MandatoryParam(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search", nil)
@@ -237,7 +244,7 @@ func TestAttendanceController_Search_MandatoryParam(t *testing.T) {
 }
 
 func TestAttendanceController_Search_MissingTeamID(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?training_session_id=9", nil)
@@ -255,7 +262,7 @@ func TestAttendanceController_Search_Success(t *testing.T) {
 			return []dbs.Attendance{{ID: 1, TeamID: 5, TrainingSessionID: 9, UserID: 1}}, nil
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=5", nil)
@@ -268,7 +275,7 @@ func TestAttendanceController_Search_Success(t *testing.T) {
 }
 
 func TestAttendanceController_Search_InvalidParam(t *testing.T) {
-	controller := NewAttendanceController(&mockAttendanceService{})
+	controller := newAttendanceTestController(&mockAttendanceService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=-1", nil)
@@ -285,7 +292,7 @@ func TestAttendanceController_Search_Forbidden(t *testing.T) {
 			return nil, services.ErrForbiddenAttendance
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=5&user_id=99", nil)
@@ -302,7 +309,7 @@ func TestAttendanceController_Search_NotFound(t *testing.T) {
 			return nil, services.ErrTeamNotFound
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/attendance/search?team_id=999", nil)
@@ -377,7 +384,7 @@ func TestAttendanceController_ListAttendanceSessions_StatusMatrix(t *testing.T) 
 					return &attendance.SessionAttendanceListResponse{Sessions: []attendance.SessionAttendanceOption{}}, nil
 				},
 			}
-			ctrl := NewAttendanceController(mock)
+			ctrl := newAttendanceTestController(mock)
 
 			rec := attendanceRouteHelper(t, http.MethodGet, tt.path, "/api/v1/groups/:id/attendance-sessions", tt.authUserID, ctrl.ListAttendanceSessions)
 
@@ -453,7 +460,7 @@ func TestAttendanceController_GetSessionAttendance_StatusMatrix(t *testing.T) {
 					return &attendance.SessionAttendanceResponse{}, nil
 				},
 			}
-			ctrl := NewAttendanceController(mock)
+			ctrl := newAttendanceTestController(mock)
 
 			rec := attendanceRouteHelper(t, http.MethodGet, tt.path, target, tt.authUserID, ctrl.GetSessionAttendance)
 
@@ -468,7 +475,7 @@ func newBulkRouter(mock *mockAttendanceService) *gin.Engine {
 	r.POST("/api/v1/attendance/bulk", func(c *gin.Context) {
 		c.Set(utils.AuthUserIDKey, int64(3))
 		c.Next()
-	}, NewAttendanceController(mock).BulkSaveAttendance)
+	}, newAttendanceTestController(mock).BulkSaveAttendance)
 	return r
 }
 
@@ -476,8 +483,8 @@ func TestAttendanceController_BulkSaveAttendance(t *testing.T) {
 	post := func(t *testing.T, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		mock := &mockAttendanceService{
-			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
-				return &attendance.BulkSaveResult{Created: len(userIDs), Updated: 0}, nil
+			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
+				return &attendance.BulkSaveResult{Created: len(userIDs), Updated: 0}, nil, nil
 			},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(body))
@@ -525,8 +532,8 @@ func TestAttendanceController_BulkSaveAttendance(t *testing.T) {
 
 	t.Run("422 lista los user_id que no eran miembros", func(t *testing.T) {
 		mock := &mockAttendanceService{
-			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
-				return nil, &services.ErrBulkInvalidUsers{UserIDs: []int64{999}}
+			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
+				return nil, nil, &services.ErrBulkInvalidUsers{UserIDs: []int64{999}}
 			},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(`{"team_id":5,"training_session_id":42,"entries":[{"user_id":12},{"user_id":999}]}`))
@@ -543,8 +550,8 @@ func TestAttendanceController_BulkSaveAttendance(t *testing.T) {
 
 	t.Run("403 si no es entrenador", func(t *testing.T) {
 		mock := &mockAttendanceService{
-			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
-				return nil, services.ErrForbiddenAttendance
+			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
+				return nil, nil, services.ErrForbiddenAttendance
 			},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(`{"team_id":5,"training_session_id":42,"entries":[{"user_id":12}]}`))
@@ -557,8 +564,8 @@ func TestAttendanceController_BulkSaveAttendance(t *testing.T) {
 
 	t.Run("422 si la sesion no es presencial", func(t *testing.T) {
 		mock := &mockAttendanceService{
-			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
-				return nil, services.ErrAttendanceSessionNotPresencial
+			bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
+				return nil, nil, services.ErrAttendanceSessionNotPresencial
 			},
 		}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(`{"team_id":5,"training_session_id":42,"entries":[{"user_id":12}]}`))
@@ -577,15 +584,15 @@ func TestAttendanceController_DeleteAttendance(t *testing.T) {
 		r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
 			c.Set(utils.AuthUserIDKey, int64(3))
 			c.Next()
-		}, NewAttendanceController(mock).DeleteAttendance)
+		}, newAttendanceTestController(mock).DeleteAttendance)
 		return r
 	}
 
 	do := func(t *testing.T, url string, svcErr error) *httptest.ResponseRecorder {
 		t.Helper()
 		mock := &mockAttendanceService{
-			deleteFn: func(ctx *gin.Context, authUserID, teamID, attendanceID int64) error {
-				return svcErr
+			deleteFn: func(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error) {
+				return nil, svcErr
 			},
 		}
 		req := httptest.NewRequest(http.MethodDelete, url, nil)
@@ -641,8 +648,8 @@ func TestAttendanceController_DeleteAttendance(t *testing.T) {
 func TestAttendanceController_RegisterAttendance_ReturnsSessionContextForDeepLink(t *testing.T) {
 	sesion := time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)
 	mock := &mockAttendanceService{
-		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
-			return true, &daos.AttendanceSessionContext{
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return true, nil, &daos.AttendanceSessionContext{
 				SessionInstanceID: sessionID,
 				TeamID:            teamID,
 				GroupID:           7,
@@ -651,7 +658,7 @@ func TestAttendanceController_RegisterAttendance_ReturnsSessionContextForDeepLin
 			}, nil
 		},
 	}
-	controller := NewAttendanceController(mock)
+	controller := newAttendanceTestController(mock)
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
@@ -669,4 +676,212 @@ func TestAttendanceController_RegisterAttendance_ReturnsSessionContextForDeepLin
 	// ruta /calendar/[date] — no una ISO con hora, que no matchearía.
 	assert.Equal(t, "2026-09-28", body.SessionDate)
 	assert.Equal(t, "Jueves 19hs", body.SessionName)
+}
+
+// recordingNotifier captura los Emit del controller. El fan-out async es del
+// Hub, no de la interfaz: acá la captura es sincrónica y la aserción, determinista.
+type recordingNotifier struct {
+	channels []string
+	payloads [][]byte
+}
+
+func (n *recordingNotifier) Emit(channel string, payload []byte) {
+	n.channels = append(n.channels, channel)
+	n.payloads = append(n.payloads, payload)
+}
+
+// decodeAttendanceFrame decodifica el frame emitido y devuelve (type, data).
+func decodeAttendanceFrame(t *testing.T, payload []byte) (string, map[string]any) {
+	t.Helper()
+	var frame struct {
+		Type    string         `json:"type"`
+		Channel string         `json:"channel"`
+		Data    map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &frame))
+	return frame.Type, frame.Data
+}
+
+// registerRouteFor arma el router mínimo del POST de registro con el notifier
+// indicado (puede ser nil: es la inyección opcional del wiring).
+func registerRouteFor(mock *mockAttendanceService, notifier realtime.Notifier) AttendanceController {
+	gin.SetMode(gin.TestMode)
+	return NewAttendanceController(mock, notifier)
+}
+
+func TestAttendanceController_RegisterAttendance_EmitsEventOnCreate(t *testing.T) {
+	registeredAt := time.Date(2026, 10, 2, 18, 5, 0, 0, time.UTC)
+	mock := &mockAttendanceService{
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return true, &services.AttendanceEventRow{
+				UserID:            7,
+				AttendanceID:      101,
+				CreatedAt:         registeredAt,
+				TrainingSessionID: sessionID,
+			}, sessionCtxFor(3, 5, registeredAt), nil
+		},
+	}
+	notifier := &recordingNotifier{}
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
+	c.Params = []gin.Param{{Key: "team_id", Value: "5"}, {Key: "training_session_id", Value: "9"}}
+	setAuthUserID(c, 7)
+
+	registerRouteFor(mock, notifier).RegisterAttendance(c)
+
+	assert.Equal(t, http.StatusCreated, response.Code)
+	require.Len(t, notifier.channels, 1, "el alta real emite exactamente un evento")
+	assert.Equal(t, "session:9", notifier.channels[0])
+	frameType, data := decodeAttendanceFrame(t, notifier.payloads[0])
+	assert.Equal(t, realtime.UpdateAttendanceEventType, frameType)
+	assert.Equal(t, 7.0, data["user_id"])
+	assert.Equal(t, attendance.SessionAttendanceStatusAttended, data["status"])
+	assert.Equal(t, "qr", data["source"])
+	assert.Equal(t, 101.0, data["attendance_id"])
+	assert.Equal(t, registeredAt.Format(time.RFC3339Nano), data["registered_at"])
+}
+
+func TestAttendanceController_RegisterAttendance_IdempotentDoesNotEmit(t *testing.T) {
+	mock := &mockAttendanceService{
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return false, nil, sessionCtxFor(3, 5, time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)), nil
+		},
+	}
+	notifier := &recordingNotifier{}
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
+	c.Params = []gin.Param{{Key: "team_id", Value: "5"}, {Key: "training_session_id", Value: "9"}}
+	setAuthUserID(c, 7)
+
+	registerRouteFor(mock, notifier).RegisterAttendance(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Empty(t, notifier.channels, "el 200 idempotente no cambia estado: no emite")
+}
+
+func TestAttendanceController_BulkSaveAttendance_EmitsOneEventPerRow(t *testing.T) {
+	rows := []services.AttendanceEventRow{
+		{UserID: 12, AttendanceID: 121, TrainingSessionID: 42},
+		{UserID: 13, AttendanceID: 131, TrainingSessionID: 42},
+		{UserID: 14, AttendanceID: 141, TrainingSessionID: 42},
+	}
+	mock := &mockAttendanceService{
+		bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
+			return &attendance.BulkSaveResult{Created: 2, Updated: 1}, rows, nil
+		},
+	}
+	notifier := &recordingNotifier{}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/api/v1/attendance/bulk", func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(3))
+		c.Next()
+	}, NewAttendanceController(mock, notifier).BulkSaveAttendance)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(`{"team_id":5,"training_session_id":42,"entries":[{"user_id":12},{"user_id":13},{"user_id":14}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// La respuesta HTTP no cambia por el evento: siguen los contadores.
+	assert.JSONEq(t, `{"created":2,"updated":1}`, w.Body.String())
+	require.Len(t, notifier.channels, 3, "un evento por corredor afectado, created o updated")
+	for i, wantUserID := range []float64{12, 13, 14} {
+		assert.Equal(t, "session:42", notifier.channels[i])
+		frameType, data := decodeAttendanceFrame(t, notifier.payloads[i])
+		assert.Equal(t, realtime.UpdateAttendanceEventType, frameType)
+		assert.Equal(t, wantUserID, data["user_id"])
+		assert.Equal(t, attendance.SessionAttendanceStatusAttended, data["status"])
+		assert.Equal(t, "manual", data["source"])
+	}
+}
+
+func TestAttendanceController_DeleteAttendance_EmitsNotConfirmed(t *testing.T) {
+	mock := &mockAttendanceService{
+		deleteFn: func(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error) {
+			return &services.AttendanceEventRow{UserID: 21, AttendanceID: 88, TrainingSessionID: 42}, nil
+		},
+	}
+	notifier := &recordingNotifier{}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(3))
+		c.Next()
+	}, NewAttendanceController(mock, notifier).DeleteAttendance)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/attendance/88?team_id=5", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	require.Len(t, notifier.channels, 1, "el borrado exitoso emite la baja")
+	assert.Equal(t, "session:42", notifier.channels[0])
+	frameType, data := decodeAttendanceFrame(t, notifier.payloads[0])
+	assert.Equal(t, realtime.UpdateAttendanceEventType, frameType)
+	assert.Equal(t, 21.0, data["user_id"])
+	assert.Equal(t, attendance.SessionAttendanceStatusNotConfirmed, data["status"])
+	for _, key := range []string{"source", "registered_at", "attendance_id"} {
+		v, present := data[key]
+		require.True(t, present, "%s viaja null explícito en la baja", key)
+		assert.Nil(t, v)
+	}
+}
+
+func TestAttendanceController_DeleteAttendance_ErrorDoesNotEmit(t *testing.T) {
+	mock := &mockAttendanceService{
+		deleteFn: func(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error) {
+			return nil, services.ErrAttendanceNotFound
+		},
+	}
+	notifier := &recordingNotifier{}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(3))
+		c.Next()
+	}, NewAttendanceController(mock, notifier).DeleteAttendance)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/attendance/99999?team_id=5", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Empty(t, notifier.channels, "sin borrado no hay evento de baja")
+}
+
+// Sin notifier inyectado (wiring opcional) el flujo completo responde igual y
+// no hay pánico: es la condición de todos los tests previos al evento.
+func TestAttendanceController_NilNotifierDoesNotPanic(t *testing.T) {
+	mock := &mockAttendanceService{
+		registerFn: func(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *services.AttendanceEventRow, *daos.AttendanceSessionContext, error) {
+			return true, &services.AttendanceEventRow{UserID: 7, AttendanceID: 101, TrainingSessionID: sessionID}, sessionCtxFor(3, 5, time.Now()), nil
+		},
+		deleteFn: func(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*services.AttendanceEventRow, error) {
+			return &services.AttendanceEventRow{UserID: 21, TrainingSessionID: 42}, nil
+		},
+	}
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/attendance/team/5/session/9", strings.NewReader(""))
+	c.Params = []gin.Param{{Key: "team_id", Value: "5"}, {Key: "training_session_id", Value: "9"}}
+	setAuthUserID(c, 7)
+
+	registerRouteFor(mock, nil).RegisterAttendance(c)
+
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	r := gin.New()
+	r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(3))
+		c.Next()
+	}, newAttendanceTestController(mock).DeleteAttendance)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/attendance/88?team_id=5", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }

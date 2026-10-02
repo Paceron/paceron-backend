@@ -261,7 +261,7 @@ func TestSessionService_Clone_CopiesSessionAndExercises(t *testing.T) {
 
 func strPtrC(s string) *string { return &s }
 
-func TestSessionService_CloneInternal_NilPointerFields(t *testing.T) {
+func TestSessionService_CloneInternal_OverridesNonNil(t *testing.T) {
 	original := &dbs.Session{ID: 1, OwnerID: 7, Name: "Original", Description: strPtrC("desc")}
 	sessionDao := &mockSessionDao{}
 	sessionExerciseDao := &mockSessionExerciseDao{

@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 )
@@ -265,6 +267,29 @@ func TestUserService_Search_DaoError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al buscar usuarios")
 }
 
+func TestUserService_Search_PhotoURL(t *testing.T) {
+	photoUpdatedAt := time.Date(2026, time.October, 1, 12, 0, 0, 0, time.UTC)
+	photoKey := "avatars/user-1.jpg"
+	mockDao := mockUserDao{
+		mockSearchActive: func(ctx *gin.Context, query string, limit int) ([]*dbs.User, error) {
+			return []*dbs.User{
+				{ID: 1, Name: "Ana", Surname: "Gomez", Email: "ana@test.com", PhotoKey: &photoKey, PhotoUpdatedAt: &photoUpdatedAt},
+				{ID: 2, Name: "Bob", Surname: "Perez", Email: "bob@test.com"},
+			}, nil
+		},
+	}
+
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	result, err := service.Search(nil, "ana")
+
+	assert.NoError(t, err)
+	assert.Len(t, result.Results, 2)
+	require.NotNil(t, result.Results[0].PhotoURL)
+	assert.Contains(t, *result.Results[0].PhotoURL, photoKey)
+	assert.Contains(t, *result.Results[0].PhotoURL, fmt.Sprintf("?v=%d", photoUpdatedAt.Unix()))
+	assert.Nil(t, result.Results[1].PhotoURL)
+}
+
 func TestUserService_BatchLookup_Success(t *testing.T) {
 	mockDao := mockUserDao{
 		mockFindByIDs: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
@@ -318,4 +343,27 @@ func TestUserService_BatchLookup_DaoError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error al consultar usuarios")
+}
+
+func TestUserService_BatchLookup_PhotoURL(t *testing.T) {
+	photoUpdatedAt := time.Date(2026, time.October, 1, 12, 0, 0, 0, time.UTC)
+	photoKey := "avatars/user-2.webp"
+	mockDao := mockUserDao{
+		mockFindByIDs: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			return []*dbs.User{
+				{ID: 1, Name: "Ana", Surname: "Gomez", Email: "ana@test.com"},
+				{ID: 2, Name: "Bob", Surname: "Perez", Email: "bob@test.com", PhotoKey: &photoKey, PhotoUpdatedAt: &photoUpdatedAt},
+			}, nil
+		},
+	}
+
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	result, err := service.BatchLookup(nil, []int64{1, 2})
+
+	assert.NoError(t, err)
+	assert.Len(t, result.Results, 2)
+	assert.Nil(t, result.Results[0].PhotoURL)
+	require.NotNil(t, result.Results[1].PhotoURL)
+	assert.Contains(t, *result.Results[1].PhotoURL, photoKey)
+	assert.Contains(t, *result.Results[1].PhotoURL, fmt.Sprintf("?v=%d", photoUpdatedAt.Unix()))
 }

@@ -69,3 +69,55 @@ func TestNotifierEmitIsNonBlocking(t *testing.T) {
 	frames := waitFrames(c, sendBufferSize, 20)
 	require.LessOrEqual(t, len(frames), sendBufferSize)
 }
+
+// TestUpdateSessionStatePayloadShape: el frame update:session_state (Gap 26
+// D10) viaja con data = objeto de estado presencial post-write.
+func TestUpdateSessionStatePayloadShape(t *testing.T) {
+	raw := MarshalUpdateSessionState("session:11", map[string]any{"presencial_open": true, "closed_at": nil})
+	var frame map[string]any
+	require.NoError(t, json.Unmarshal(raw, &frame))
+	assert.Equal(t, UpdateSessionStateEventType, frame["type"])
+	assert.Equal(t, "session:11", frame["channel"])
+	data := frame["data"].(map[string]any)
+	assert.Equal(t, true, data["presencial_open"])
+	v, hasClosed := data["closed_at"]
+	require.True(t, hasClosed)
+	assert.Nil(t, v)
+}
+
+// TestUpdateAttendanceEventPayloadShape: el frame update:attendance_event
+// (Gap 28 D12) viaja con data = la fila del roster afectada, sin doble
+// wrapper: source y registered_at en null es el contrato del borrado.
+func TestUpdateAttendanceEventPayloadShape(t *testing.T) {
+	type row struct {
+		UserID       int64      `json:"user_id"`
+		Status       string     `json:"status"`
+		Source       *string    `json:"source"`
+		RegisteredAt *time.Time `json:"registered_at"`
+		AttendanceID *int64     `json:"attendance_id"`
+	}
+	registered := time.Date(2026, 10, 2, 18, 0, 0, 0, time.UTC)
+	source := "qr"
+	attID := int64(42)
+	raw := MarshalUpdateAttendanceEvent("session:9", row{UserID: 7, Status: "attended", Source: &source, RegisteredAt: &registered, AttendanceID: &attID})
+	var frame map[string]any
+	require.NoError(t, json.Unmarshal(raw, &frame))
+	assert.Equal(t, UpdateAttendanceEventType, frame["type"])
+	assert.Equal(t, "session:9", frame["channel"])
+	data := frame["data"].(map[string]any)
+	assert.Equal(t, 7.0, data["user_id"])
+	assert.Equal(t, "attended", data["status"])
+	assert.Equal(t, "qr", data["source"])
+	assert.Equal(t, 42.0, data["attendance_id"])
+
+	// Baja: not_confirmed con los tres campos en null explícito.
+	raw = MarshalUpdateAttendanceEvent("session:9", row{UserID: 7, Status: "not_confirmed"})
+	require.NoError(t, json.Unmarshal(raw, &frame))
+	data = frame["data"].(map[string]any)
+	assert.Equal(t, "not_confirmed", data["status"])
+	for _, key := range []string{"source", "registered_at", "attendance_id"} {
+		v, present := data[key]
+		require.True(t, present, "%s debe viajar aunque sea null", key)
+		assert.Nil(t, v)
+	}
+}

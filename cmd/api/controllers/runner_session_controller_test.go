@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,22 +14,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
 )
 
 type mockRunnerSessionControllerService struct {
-	createFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error)
+	createFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error)
 	finishFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error)
 	getFn    func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error)
 }
 
-func (m *mockRunnerSessionControllerService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
+func (m *mockRunnerSessionControllerService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
 	if m.createFn != nil {
 		return m.createFn(ctx, authUserID, sessionInstanceID, req)
 	}
-	return nil, false, nil
+	return nil, nil, false, nil
 }
 
 func (m *mockRunnerSessionControllerService) Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
@@ -57,11 +59,11 @@ func fixtureRunnerSessionResponse() *dbs.RunnerSession {
 }
 
 func TestRunnerSessionController_Unauthorized(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	for _, tc := range []struct {
-		name  string
-		call  func(c *gin.Context)
+		name string
+		call func(c *gin.Context)
 	}{
 		{"create", func(c *gin.Context) { controller.Create(c) }},
 		{"finish", func(c *gin.Context) { controller.Finish(c) }},
@@ -80,13 +82,13 @@ func TestRunnerSessionController_Unauthorized(t *testing.T) {
 func TestRunnerSessionController_Create_201(t *testing.T) {
 	var gotAuth, gotSession int64
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
 			gotAuth = authUserID
 			gotSession = sessionInstanceID
-			return fixtureRunnerSessionResponse(), true, nil
+			return fixtureRunnerSessionResponse(), nil, true, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -111,11 +113,11 @@ func TestRunnerSessionController_Create_201(t *testing.T) {
 
 func TestRunnerSessionController_Create_200_Existing(t *testing.T) {
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
-			return fixtureRunnerSessionResponse(), false, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, false, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -135,7 +137,7 @@ func TestRunnerSessionController_Create_200_Existing(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_BadPathParam(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -150,7 +152,7 @@ func TestRunnerSessionController_Create_BadPathParam(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_BadJSON(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -164,7 +166,7 @@ func TestRunnerSessionController_Create_BadJSON(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_MissingStartDate(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{}`
@@ -194,11 +196,11 @@ func TestRunnerSessionController_ErrorMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockSvc := &mockRunnerSessionControllerService{
-				createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
-					return nil, false, tc.serviceErr
+				createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+					return nil, nil, false, tc.serviceErr
 				},
 			}
-			controller := NewRunnerSessionController(mockSvc)
+			controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 			response := httptest.NewRecorder()
 			body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -224,7 +226,7 @@ func TestRunnerSessionController_Finish_200(t *testing.T) {
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":"finished"}`
@@ -245,8 +247,105 @@ func TestRunnerSessionController_Finish_200(t *testing.T) {
 	require.NotNil(t, resp.Data.EndDate)
 }
 
+func TestRunnerSessionController_Finish_Interrupted_200(t *testing.T) {
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSessionResponse()
+			rs.Status = "interrupted"
+			now := time.Now()
+			rs.EndDate = &now
+			return rs, nil
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var resp runnersession.MutationResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, runnersession.MsgRunnerSessionInterrupted, resp.Message)
+	require.NotNil(t, resp.Data)
+	assert.Equal(t, "interrupted", resp.Data.Status)
+	require.NotNil(t, resp.Data.EndDate)
+}
+
+func TestRunnerSessionController_Finish_FinishedToInterrupted_400(t *testing.T) {
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			return nil, fmt.Errorf("%w: no se puede interrumpir una sesión ya finalizada", services.ErrRunnerSessionInvalid)
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+
+	var resp apierror.APIError
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, "datos inválidos: no se puede interrumpir una sesión ya finalizada", resp.Message)
+}
+
+func TestRunnerSessionController_Finish_AlreadyInterrupted_200_Unchanged(t *testing.T) {
+	oldEnd := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	gotStatus := ""
+	updateDenied := false
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			// El propio body ya trae "interrupted" (el controller lo manda
+			// tal cual al service); capturamos para afirmar el passthrough.
+			gotStatus = req.Status
+			if req.Status != "interrupted" {
+				updateDenied = true
+			}
+			rs := fixtureRunnerSessionResponse()
+			rs.Status = "interrupted"
+			rs.EndDate = &oldEnd
+			return rs, nil
+		},
+	}
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
+
+	response := httptest.NewRecorder()
+	body := `{"status":"interrupted"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPatch, "/api/v1/session-instances/10/runner", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 7)
+	c.Params = []gin.Param{{Key: "id", Value: "10"}}
+	controller.Finish(c)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "interrupted", gotStatus)
+	assert.False(t, updateDenied)
+
+	var resp runnersession.MutationResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &resp))
+	assert.Equal(t, runnersession.MsgRunnerSessionInterrupted, resp.Message)
+	require.NotNil(t, resp.Data)
+	assert.Equal(t, "interrupted", resp.Data.Status)
+	require.NotNil(t, resp.Data.EndDate)
+	assert.Equal(t, oldEnd, *resp.Data.EndDate)
+}
+
 func TestRunnerSessionController_Finish_BadStatusBody(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":""}`
@@ -270,7 +369,7 @@ func TestRunnerSessionController_Get_200(t *testing.T) {
 			return fixtureRunnerSessionResponse(), nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -298,7 +397,7 @@ func TestRunnerSessionController_Get_WithAthleteQuery(t *testing.T) {
 			return fixtureRunnerSessionResponse(), nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -313,7 +412,7 @@ func TestRunnerSessionController_Get_WithAthleteQuery(t *testing.T) {
 }
 
 func TestRunnerSessionController_Get_InvalidQuery(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -331,7 +430,7 @@ func TestRunnerSessionController_Get_NotFound(t *testing.T) {
 			return nil, daos.ErrRunnerSessionNotFound
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

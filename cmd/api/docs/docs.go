@@ -3560,7 +3560,7 @@ const docTemplate = `{
         },
         "/api/v1/session-instances/{id}": {
             "get": {
-                "description": "Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella.",
+                "description": "Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella. Si la instancia es el día training+presencial de calendario, suma el estado presencial (Gap 26): presencial_open (bool real, false si cerrada o sin abrir), opened_at y closed_at (RFC3339 o null); en instancia huérfana o día no presencial los 3 campos no aparecen.",
                 "produces": [
                     "application/json"
                 ],
@@ -3772,11 +3772,17 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
+                    },
+                    "409": {
+                        "description": "code: session_closed | session_not_opened (sesión presencial)",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
                     }
                 }
             },
             "patch": {
-                "description": "Pasa el estado a finished con end_date seteada por el servidor (solo desde wip). Idempotente: ya finished responde 200 sin cambios.",
+                "description": "Aplica la transición de status sobre el estado de la sesión, con end_date seteada por el servidor. Status admite \"finished\" (completar) o \"interrupted\" (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e interrupted→finished (re-setea end_date). Idempotente: ya finished con {\"status\":\"finished\"} o ya interrupted con {\"status\":\"interrupted\"} responde 200 sin cambios. finished→interrupted responde 400.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3786,7 +3792,7 @@ const docTemplate = `{
                 "tags": [
                     "runner-session"
                 ],
-                "summary": "Marcar la sesión del corredor como completada",
+                "summary": "Marcar la sesión del corredor como completada o interrumpida",
                 "parameters": [
                     {
                         "type": "integer",
@@ -3796,7 +3802,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Status (finished)",
+                        "description": "Status (finished|interrupted)",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -8777,6 +8783,9 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse": {
             "type": "object",
             "properties": {
+                "closed_at": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -8794,6 +8803,13 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "opened_at": {
+                    "type": "string"
+                },
+                "presencial_open": {
+                    "description": "Campos de estado presencial (Gap 26 D8): SOLO el path de detalle los\nsetea (ApplyPresencialState); el DTO lo comparten GetRange/NextSession/\nmember-calendar, por eso omitempty — sin día presencial usados los 3\nquedan fuera del JSON.",
+                    "type": "boolean"
                 },
                 "session_id": {
                     "type": "integer"
@@ -10861,6 +10877,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "photo_url": {
+                    "description": "null explícito para usuarios sin foto: sin omitempty a propósito.",
                     "type": "string"
                 },
                 "surname": {

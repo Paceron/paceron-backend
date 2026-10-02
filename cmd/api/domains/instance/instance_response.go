@@ -39,7 +39,29 @@ type SessionInstanceResponse struct {
 	Description *string                    `json:"description"`
 	CreatedAt   time.Time                  `json:"created_at"`
 	Exercises   []InstanceExerciseResponse `json:"exercises"`
+	// Campos de estado presencial (Gap 26 D8): SOLO el path de detalle los
+	// setea (ApplyPresencialState); el DTO lo comparten GetRange/NextSession/
+	// member-calendar, por eso omitempty — sin día presencial usados los 3
+	// quedan fuera del JSON.
+	PresencialOpen     *bool      `json:"presencial_open,omitempty"`
+	PresencialOpenedAt *time.Time `json:"opened_at,omitempty"`
+	PresencialClosedAt *time.Time `json:"closed_at,omitempty"`
 }
+
+// ApplyPresencialState proyecta el estado presencial del día (Gap 26 D8):
+// presencial_open = opened != NULL && closed == NULL (bool real). Día
+// inexistente (instancia huérfana) o no presencial → sin setear (nada de
+// los 3 campos en el JSON).
+func ApplyPresencialState(resp *SessionInstanceResponse, day *dbs.GroupCalendarDay) {
+	if resp == nil || day == nil || !day.IsPresencial {
+		return
+	}
+	resp.PresencialOpen = boolPtrReal(day.PresencialOpenedAt != nil && day.PresencialClosedAt == nil)
+	resp.PresencialOpenedAt = day.PresencialOpenedAt
+	resp.PresencialClosedAt = day.PresencialClosedAt
+}
+
+func boolPtrReal(v bool) *bool { return &v }
 
 // NewExerciseResponse mapea una fila de SessionExerciseInstance junto a su
 // ExerciseInstance al shape embebido de D9. Los rows deben venir ordenados

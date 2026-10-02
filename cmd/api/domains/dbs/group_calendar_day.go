@@ -13,7 +13,7 @@ type GroupCalendarDay struct {
 	OtherName *string   `gorm:"column:other_name"`
 	// SessionInstanceID apunta a una copia inmutable de la Session del catálogo
 	// (design.md asignacion-por-instanciacion D1) — nunca al catálogo.
-	SessionInstanceID *int64  `gorm:"column:session_instance_id"`
+	SessionInstanceID *int64  `gorm:"column:session_instance_id;index"`
 	CancelledReason   *string `gorm:"column:cancelled_reason"`
 	IsPresencial      bool    `gorm:"column:is_presencial;not null;default:false"`
 	// PresencialTimeFrom/PresencialTimeTo son horarios sueltos (sin fecha real)
@@ -26,6 +26,13 @@ type GroupCalendarDay struct {
 	PresencialTimeFrom *time.Time `gorm:"column:presencial_time_from"`
 	PresencialTimeTo   *time.Time `gorm:"column:presencial_time_to"`
 	PresencialLocation *string    `gorm:"column:presencial_location;type:jsonb"`
+	// PresencialOpenedAt/PresencialClosedAt marcan la apertura/cierre del
+	// entrenamiento presencial (design.md Gap 26 D5): abierta = opened != NULL
+	// && closed == NULL; cerrada = closed != NULL (final, sin reopen). El
+	// estado muere con el día: si el día se reasigna a otra instancia,
+	// Upsert los limpia.
+	PresencialOpenedAt *time.Time `gorm:"column:presencial_opened_at"`
+	PresencialClosedAt *time.Time `gorm:"column:presencial_closed_at"`
 	SourcePlanID       *int64     `gorm:"column:source_plan_id"`
 	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at;autoUpdateTime"`

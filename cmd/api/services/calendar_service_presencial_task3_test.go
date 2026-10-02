@@ -37,9 +37,8 @@ func presencialPlan2Days(t *testing.T, db *gorm.DB, ownerID int64, tag string, s
 	return plan
 }
 
-// 3.4 — un día presencial cancelado superpuesto NO bloquea la escritura: la
-//
-//	query de días presenciales activos ya lo excluye.
+// 3.4 — un día presencial cancelado superpuesto NO bloquea la escritura
+// (la query de colisiones solo mira días con kind=training).
 func TestPresencialWiring_UpsertDay_CanceladoSuperpuestoNoBloquea(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwcx1")
@@ -61,9 +60,7 @@ func TestPresencialWiring_UpsertDay_CanceladoSuperpuestoNoBloquea(t *testing.T) 
 	assert.Empty(t, resp.SameTeamWarnings)
 }
 
-// 3.8 — regresión: escrituras no presenciales no pasan por la detección.
-//
-//	Un training async superpuesto con un presencial de otro equipo NO colisiona.
+// 3.8 — regresión: un training async nunca dispara la detección de colisiones.
 func TestPresencialWiring_UpsertDay_AsyncNoDetectaColisiones(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwcx2")
@@ -85,9 +82,8 @@ func TestPresencialWiring_UpsertDay_AsyncNoDetectaColisiones(t *testing.T) {
 	assert.False(t, written.IsPresencial)
 }
 
-// 3.5 — stamp con colisión cross en una fecha NO excluida → 409
-//
-//	all-or-nothing, aunque la otra fecha del plan esté excluida.
+// 3.5 — stamp con colisión cross en una fecha no excluida → 409, todo el lote
+// aborta aunque otra fecha del plan esté excluida.
 func TestPresencialWiring_Stamp_CrossEnFechaNoExcluidaRechaza(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwcx3")
@@ -122,9 +118,8 @@ func TestPresencialWiring_Stamp_CrossEnFechaNoExcluidaRechaza(t *testing.T) {
 	}
 }
 
-// 3.5 — colisión SOLO en una fecha excluida → stamp sin errores: la fecha
-//
-//	excluida no se estampa y no dispara detección; el resto del plan sigue.
+// 3.5 — colisión SOLO en una fecha excluida → stamp sin errores: la excluida
+// no se estampa ni dispara detección.
 func TestPresencialWiring_Stamp_ColisionSoloEnFechaExcluidaGuarda(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwcx4")
@@ -174,9 +169,8 @@ func TestPresencialWiring_Stamp_ColisionSoloEnFechaExcluidaGuarda(t *testing.T) 
 	assert.Equal(t, session.ID, *sessInst.SourceSessionID)
 }
 
-// Pendiente diferido de Task 1 — excludeGroupID: un día colisionante
-//
-//	perteneciente al grupo excluido no se reporta.
+// Pendiente diferido de Task 1 — excludeGroupID: el grupo excluido no se
+// reporta como colisionante.
 func TestFindPresencialCollisions_ExcludeGroupID_OmiteElGrupoExcluido(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwcx5")

@@ -825,6 +825,8 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_instance.SessionInstanceResponse:
     properties:
+      closed_at:
+        type: string
       created_at:
         type: string
       description:
@@ -837,6 +839,15 @@ definitions:
         type: integer
       name:
         type: string
+      opened_at:
+        type: string
+      presencial_open:
+        description: |-
+          Campos de estado presencial (Gap 26 D8): SOLO el path de detalle los
+          setea (ApplyPresencialState); el DTO lo comparten GetRange/NextSession/
+          member-calendar, por eso omitempty — sin día presencial usados los 3
+          quedan fuera del JSON.
+        type: boolean
       session_id:
         type: integer
     type: object
@@ -2244,6 +2255,9 @@ definitions:
       email:
         type: string
       name:
+        type: string
+      photo_url:
+        description: 'null explícito para usuarios sin foto: sin omitempty a propósito.'
         type: string
       surname:
         type: string
@@ -5122,10 +5136,13 @@ paths:
       - roles
   /api/v1/session-instances/{id}:
     get:
-      description: Devuelve la instancia completa (nombre, descripción, ejercicios
+      description: 'Devuelve la instancia completa (nombre, descripción, ejercicios
         con series) a partir de solo su id. Acceso si hay un día de calendario del
         grupo/equipo del caller con esta instancia, o un feedback activo del caller
-        (atleta/reportante/owner) sobre ella.
+        (atleta/reportante/owner) sobre ella. Si la instancia es el día training+presencial
+        de calendario, suma el estado presencial (Gap 26): presencial_open (bool real,
+        false si cerrada o sin abrir), opened_at y closed_at (RFC3339 o null); en
+        instancia huérfana o día no presencial los 3 campos no aparecen.'
       parameters:
       - description: Session Instance ID
         in: path
@@ -5227,15 +5244,19 @@ paths:
     patch:
       consumes:
       - application/json
-      description: 'Pasa el estado a finished con end_date seteada por el servidor
-        (solo desde wip). Idempotente: ya finished responde 200 sin cambios.'
+      description: 'Aplica la transición de status sobre el estado de la sesión, con
+        end_date seteada por el servidor. Status admite "finished" (completar) o "interrupted"
+        (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e
+        interrupted→finished (re-setea end_date). Idempotente: ya finished con {"status":"finished"}
+        o ya interrupted con {"status":"interrupted"} responde 200 sin cambios. finished→interrupted
+        responde 400.'
       parameters:
       - description: ID de la sesión asignada
         in: path
         name: id
         required: true
         type: integer
-      - description: Status (finished)
+      - description: Status (finished|interrupted)
         in: body
         name: body
         required: true
@@ -5264,7 +5285,7 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
-      summary: Marcar la sesión del corredor como completada
+      summary: Marcar la sesión del corredor como completada o interrumpida
       tags:
       - runner-session
     post:
@@ -5311,6 +5332,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: 'code: session_closed | session_not_opened (sesión presencial)'
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Registrar estado de sesión del corredor (wip)

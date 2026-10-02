@@ -117,11 +117,22 @@ func (h *Hub) Unsubscribe(channel string, c *client) {
 // no-bloqueante: descarta el frame para el cliente cuyo buffer está lleno
 // (feed best-effort); si el overflow persiste, dispara el drop del cliente.
 func (h *Hub) Broadcast(channel string, frame []byte, exclude *client) {
+	h.deliverTo(h.targets(channel, exclude), frame, nil)
+}
+
+// BroadcastToUser encola frame en TODAS las conexiones de userID suscriptas
+// a channel. Misma mecánica no-bloqueante que Broadcast.
+func (h *Hub) BroadcastToUser(channel string, frame []byte, userID int64) {
+	h.deliverTo(h.targets(channel, nil), frame, func(c *client) bool { return c.userID == userID })
+}
+
+// targets snapshottea bajo RLock el set de channel sin exclude.
+func (h *Hub) targets(channel string, exclude *client) []*client {
 	h.mu.RLock()
 	set, ok := h.rooms[channel]
 	if !ok || len(set) == 0 {
 		h.mu.RUnlock()
-		return
+		return nil
 	}
 	targets := make([]*client, 0, len(set))
 	for c := range set {
@@ -131,8 +142,15 @@ func (h *Hub) Broadcast(channel string, frame []byte, exclude *client) {
 		targets = append(targets, c)
 	}
 	h.mu.RUnlock()
+	return targets
+}
 
+// deliverTo encola frame en cada target que pasa el filtro (nil = todos).
+func (h *Hub) deliverTo(targets []*client, frame []byte, filter func(*client) bool) {
 	for _, c := range targets {
+		if filter != nil && !filter(c) {
+			continue
+		}
 		c.enqueue(frame)
 	}
 }

@@ -28,6 +28,9 @@ type mockGroupCalendarDao struct {
 	findNextPresencialFn      func(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	clearSourcePlanFn         func(ctx *gin.Context, planID int64) error
 	updateDatesForShiftFn     func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	findBySessionInstanceIDFn func(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error)
+	setPresencialOpenedAtFn   func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	setPresencialClosedAtFn   func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -97,6 +100,24 @@ func (m *mockGroupCalendarDao) UpdateDatesForShift(ctx *gin.Context, groupID int
 		return m.updateDatesForShiftFn(ctx, groupID, oldDate, newDate)
 	}
 	return nil
+}
+func (m *mockGroupCalendarDao) FindBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error) {
+	if m.findBySessionInstanceIDFn != nil {
+		return m.findBySessionInstanceIDFn(ctx, sessionInstanceID)
+	}
+	return nil, nil
+}
+func (m *mockGroupCalendarDao) SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	if m.setPresencialOpenedAtFn != nil {
+		return m.setPresencialOpenedAtFn(ctx, dayID, at)
+	}
+	return false, nil
+}
+func (m *mockGroupCalendarDao) SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	if m.setPresencialClosedAtFn != nil {
+		return m.setPresencialClosedAtFn(ctx, dayID, at)
+	}
+	return false, nil
 }
 
 // mockGroupDao and mockGroupUserDao are already declared in

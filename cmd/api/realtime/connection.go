@@ -1,8 +1,10 @@
 package realtime
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -127,7 +129,15 @@ func (g *Gateway) apply(sc *serveState, msg *clientMessage) {
 			sc.enqueue(MarshalOutbound(errOutbound(reason)))
 			return
 		}
-		g.hub.Broadcast(channel, MarshalOutbound(&outboundMessage{Type: msg.Type, From: sc.userID, Payload: msg.Payload}), sc.client)
+		frame := MarshalOutbound(&outboundMessage{Type: msg.Type, From: sc.userID, Payload: msg.Payload})
+		// D11: to numérico dentro del payload → solo las conexiones de ese
+		// user (incluye al emisor si se dirige a sí mismo). "all"/ausente/
+		// otro tipo → broadcast normal. El payload sale completo, sin tocar.
+		if to, ok := extractToUser(msg.Payload); ok {
+			g.hub.BroadcastToUser(channel, frame, to)
+			return
+		}
+		g.hub.Broadcast(channel, frame, sc.client)
 	case TypePing:
 		sc.enqueue(MarshalOutbound(&outboundMessage{Type: TypePong}))
 	default:
@@ -152,6 +162,31 @@ func relayChannel(msg *clientMessage, channels map[string]struct{}) (string, str
 		}
 	}
 	return "", "presence/control requieren un canal suscripto (channel o única suscripción)"
+}
+
+// extractToUser reporta el destino D11 de un payload objeto: solo un JSON
+// JSON number entero >0 y dentro del rango int64 cuenta como userId dirigido;
+// "all", ausente y cualquier otro valor → false (entrega a todos). El token
+// crudo de `to` ES su representación exacta: strconv lo parsea a int64 sin
+// la pérdida de precisión por la que float64 ya redondea desde 2^53. Solo
+// sintaxis de dígitos con signo dirige: `7e2`/`7.0` (mismo valor entero,
+// otra representación) y fuera de rango (9223372036854775809) caen en
+// broadcast — determinístico.
+func extractToUser(payload json.RawMessage) (int64, bool) {
+	var obj struct {
+		To json.RawMessage `json:"to"`
+	}
+	if err := json.Unmarshal(payload, &obj); err != nil {
+		return 0, false
+	}
+	if len(obj.To) == 0 {
+		return 0, false
+	}
+	to, err := strconv.ParseInt(string(obj.To), 10, 64)
+	if err != nil || to < 1 {
+		return 0, false
+	}
+	return to, true
 }
 
 // handleSubscribe valida tope y autorización antes de suscribir. El resub de

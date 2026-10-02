@@ -479,6 +479,65 @@ Decisions y detalles verificados contra `workout_feedback_dao.go` / `workout_fee
 - Es el complemento natural del historial (§8.9): la fila trae `session_instance_id`, esta lectura trae el objeto completo. `GET /session-instances/:id/runner` y `/:id/feedback` quedan intactos (subpaths compatibles con la ruta plana).
 - Shape y mapeo reutilizan `sessionInstanceResponse` de `calendar_service.go` (mismo builder que embebe el calendario); un link sin su ejercicio instancia es error interno, no respuesta incompleta silenciosa.
 
+### 8.11 Apertura/cierre de sesión presencial + estado `interrupted` (Gaps 19/25/26/27/28)
+
+Change `sesion-interrumpida-y-eventos-en-vivo`. Resuelve: *cómo se abre y cierra en vivo la sesión presencial, qué pasa si el corredor la termina temprano, y cómo se enteran los clientes en tiempo real*. El detalle de contrato frontend está en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §12 y en `docs/REALTIME_WS.md` §6/§7.
+
+#### Estado presencial del día (`presencial_opened_at`/`presencial_closed_at`)
+
+Dos columnas `*time.Time` nullable en `GroupCalendarDay`, **sin backfill** (días viejos quedan con `NULL` — semántica "nunca se abrió con este mecanismo"). Estado derivado: **abierta** = `opened != NULL && closed == NULL`; **cerrada** = `closed != NULL` — **final, sin reopen** (el update solo escribe con guard `IS NULL`, una vez cerrado nadie setea de nuevo). Distinto de "día cerrado" del guard de escritura (§8.3): ese es temporal (fecha/horario); este es el estado en vivo de la sesión puntual.
+
+Hooks en el controller de runner session, solo cuando el día resuelto es `training`+`is_presencial` (día resuelto vía `FindBySessionInstanceID`, 1:1 por diseño, `nil` si no hay):
+
+| Momento | Quién | Acción |
+|---|---|---|
+| `POST /session-instances/:id/runner` y re-Play (`Create`) | owner del team del grupo | setea `presencial_opened_at` si estaba `NULL`; re-Play idempotente no duplica el frame |
+| `PATCH .../runner` con `status=finished` | owner | setea `presencial_closed_at` si estaba `NULL` |
+| `PATCH .../runner` con `status=interrupted` | owner | **NO cierra** (día sigue abierto) |
+
+Falla del update del día sube el error (post-escritura del runner session). Tras cada apertura/cierre efectiva se emite `update:session_state` (§8.11 siguiente, D10) al canal `session:{id}` con el estado post-write; corredor no-owner nunca emite.
+
+#### Gate de escritura del corredor no-owner
+
+`POST /session-instances/:id/runner` de un corredor **que no es owner del team del grupo** sobre un día presencial:
+
+- día con `presencial_closed_at != NULL` → **`409` code `session_closed`**;
+- día con `presencial_opened_at == NULL` → **`409` code `session_not_opened`** (el entrenador no abrió la sesión en vivo todavía);
+- owner del team del grupo: **exento** de ambos gates;
+- días no presenciales: sin gate.
+
+Orden de errores `404` (instancia no existe) → `403` (atleta ajeno a la sesión) → gate `409`. Ambos 409 viajan como `apierror.APIError {status_code, code, message}`.
+
+#### Sesiones interrumpidas (Gap 19 — `status=interrupted`)
+
+`PATCH /session-instances/:id/runner` ahora también acepta `{"status": "interrupted"}` (terminar temprano). Transiciones (service `RunnerStatus`, guard SQL en DAO `UpdateStatus`):
+
+| Desde | A | Resultado |
+|---|---|---|
+| `wip` | `finished` | `200` (comportamiento previo) |
+| `wip` | `interrupted` | `200`, msg "sesión marcada como interrumpida" |
+| `interrupted` | `finished` | `200` — la completa después: re-setea `end_date = now` del server |
+| `interrupted` | `interrupted` | `200` idempotente (devuelve la fila sin cambios) |
+| `wip`→`finished` repetido | `finished` | `200` idempotente |
+| `finished` | `interrupted` (o cualquier otra) | **`400`** "no se puede interrumpir una sesión ya finalizada" — `finished` es inamovible |
+| status inválido (`cancelled`, etc.) | — | `400` status solo admite 'finished' o 'interrupted' |
+| fila inexistente | — | `404` |
+
+#### Detalle de instancia con estado presencial
+
+`GET /session-instances/{id}` (§8.10) suma 3 campos **`omitempty`** al `session_instance` embebido (y al standalone): `presencial_open` (bool), `opened_at`/`closed_at` (timestamps). **SOLO el path de detalle los resuelve** (via `ApplyPresencialState`); `GetRange`/`NextSession`/`member-calendar`/y demás paths de calendario NO los setean (el campo queda ausente del JSON). Se setean solo si el día es presencial; instancia huérfana (sin día) o día no presencial → ausentes.
+
+#### Eventos WS server-originados (Gaps 26/28)
+
+Dos eventos nuevos al canal `session:{id}` (contrato completo en `docs/REALTIME_WS.md` §6):
+
+- **`update:session_state`** — apertura por el owner o cierre (`finished`) del mismo. `data` = `{presencial_open, opened_at, closed_at}` (sin omitempty, los nulls son parte del contrato). Best-effort, sin exclusión de emisor.
+- **`update:attendance_event`** — fila afectada del roster: `{user_id, status, source, registered_at, attendance_id}` (sin omitempty). Alcance: registro QR (`source:"qr"`) solo si el alta es real; bulk manual (`source:"manual"`) un evento por corredor creado **o** actualizado; `DELETE` siempre emite el evento de baja (`status:"not_confirmed"`, `source`/`registered_at`/`attendance_id` en `null`). Sin exclusión de emisor.
+
+#### Fix de membresía por fecha (Gap 25)
+
+La ventana de membresía activa se compara **por fecha de calendario**, no por timestamp: `date_start::date <= fecha_sesión::date` y `date_end::date >= fecha_sesión::date` (en `activeGroupMemberWhere` del `group_user_dao.go` y en `findGroupRosterWithAttendanceSQL` del `attendance_dao.go`). Antes, un corredor con `date_start` fijado con hora del mismo día de la sesión quedaba excluido del roster/asistencia. No se normaliza la escritura de `date_start` (queda timestamptz); la comparación por `::date` es el mecanismo vigente en los dos lados.
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

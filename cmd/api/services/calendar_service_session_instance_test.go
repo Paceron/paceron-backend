@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -168,4 +169,81 @@ func TestCalendarService_SessionInstanceDetail_FeedbackAjeno(t *testing.T) {
 	resp, err := svc.SessionInstanceDetail(nil, orphan.ID, f.stranger.ID)
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, ErrCalendarForbidden)
+}
+
+// presencialDetailFixture reutiliza la infraestructura del detalle pero con
+// el día instanciado como training+presencial, y devuelve el día.
+func presencialDetailFixture(t *testing.T, db *gorm.DB, tag string) (*detailFixture, *gorm.DB, *dbs.GroupCalendarDay) {
+	t.Helper()
+	f := detailFixtureSetup(t, db, tag)
+	var day dbs.GroupCalendarDay
+	require.NoError(t, db.Where("group_id = ?", f.group.ID).First(&day).Error)
+	require.NoError(t, db.Model(&day).Updates(map[string]interface{}{"is_presencial": true}).Error)
+	return f, db, &day
+}
+
+func TestCalendarService_SessionInstanceDetail_PresencialAbierta(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f, _, day := presencialDetailFixture(t, db, "PA")
+	opened := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, db.Model(day).Updates(map[string]interface{}{"presencial_opened_at": opened}).Error)
+	svc := detailSvc(db)
+
+	resp, err := svc.SessionInstanceDetail(nil, f.instDay.ID, f.athlete.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp.PresencialOpen)
+	assert.True(t, *resp.PresencialOpen)
+	require.NotNil(t, resp.PresencialOpenedAt)
+	assert.Equal(t, opened.UTC(), resp.PresencialOpenedAt.UTC())
+	assert.Nil(t, resp.PresencialClosedAt)
+}
+
+func TestCalendarService_SessionInstanceDetail_PresencialCerrada(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f, _, day := presencialDetailFixture(t, db, "PC")
+	opened := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	closed := opened.Add(2 * time.Hour)
+	require.NoError(t, db.Model(day).Updates(map[string]interface{}{
+		"presencial_opened_at": opened, "presencial_closed_at": closed,
+	}).Error)
+	svc := detailSvc(db)
+
+	resp, err := svc.SessionInstanceDetail(nil, f.instDay.ID, f.owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp.PresencialOpen)
+	assert.False(t, *resp.PresencialOpen)
+	require.NotNil(t, resp.PresencialClosedAt)
+	assert.Equal(t, closed.UTC(), resp.PresencialClosedAt.UTC())
+}
+
+// Día NO presencial del fixture base: el detalle existe pero los 3 campos
+// quedan fuera (ApplyPresencialState no los setea).
+func TestCalendarService_SessionInstanceDetail_NoPresencial_SinCampo(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := detailFixtureSetup(t, db, "F")
+
+	resp, err := detailSvc(db).SessionInstanceDetail(nil, f.instDay.ID, f.owner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Nil(t, resp.PresencialOpen)
+	assert.Nil(t, resp.PresencialOpenedAt)
+	assert.Nil(t, resp.PresencialClosedAt)
+}
+
+// Los paths de calendario (que comparten el DTO) NO exponen los campos del
+// estado presencial — Sprint D8: solo el detalle los setea.
+func TestCalendarService_GetRange_NoExpondenEstadoPresencial(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f, db, _ := presencialDetailFixture(t, db, "GR")
+	opened := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	svc := detailSvc(db)
+	resp, err := svc.GetRange(nil, f.group.ID, f.owner.ID, opened.AddDate(0, 0, -1), opened.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "presencial_open")
+	assert.NotContains(t, string(raw), "opened_at")
+	assert.NotContains(t, string(raw), "closed_at")
 }

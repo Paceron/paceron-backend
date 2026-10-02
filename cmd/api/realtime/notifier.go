@@ -43,3 +43,26 @@ func MarshalUpdateSetEvent(channel string, data any) []byte {
 		Data:    data,
 	})
 }
+
+// MarshalUpdateSessionState arma el frame `update:session_state` (Gap 26
+// D10): data es el objeto de estado presencial post-write
+// {presencial_open, opened_at, closed_at}.
+func MarshalUpdateSessionState(channel string, data any) []byte {
+	return MarshalOutbound(&outboundMessage{
+		Type:    UpdateSessionStateEventType,
+		Channel: channel,
+		Data:    data,
+	})
+}
+
+// MarshalUpdateAttendanceEvent arma el frame `update:attendance_event` (Gap
+// 28 D12): data es la fila del roster afectada, tal como el endpoint de
+// grilla la devuelve menos name/email
+// {user_id, status, source, registered_at, attendance_id}.
+func MarshalUpdateAttendanceEvent(channel string, data any) []byte {
+	return MarshalOutbound(&outboundMessage{
+		Type:    UpdateAttendanceEventType,
+		Channel: channel,
+		Data:    data,
+	})
+}

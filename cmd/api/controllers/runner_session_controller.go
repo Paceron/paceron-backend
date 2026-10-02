@@ -3,6 +3,7 @@ package controllers
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -10,6 +11,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -24,13 +26,49 @@ type RunnerSessionController interface {
 
 type runnerSessionController struct {
 	runnerSessionService services.RunnerSessionServiceInterface
+	// presencial es opcional (nil en tests sin calendario): hooks D7 de
+	// apertura (Create) y cierre (PATCH finished) del día presencial.
+	presencial services.PresencialSessionServiceInterface
+	// notifier es opcional (nil): emite update:session_state a session:{id}
+	// al abrir/cerrar (D10, best-effort, patrón workout-feedback).
+	notifier realtime.Notifier
 }
 
 // NewRunnerSessionController crea una nueva instancia de RunnerSessionController.
-func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface) RunnerSessionController {
+func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier) RunnerSessionController {
 	return &runnerSessionController{
 		runnerSessionService: runnerSessionService,
+		presencial:           presencial,
+		notifier:             notifier,
 	}
+}
+
+// sessionStateEvent es el objeto data del frame update:session_state (D10,
+// Gap 26). Sin omitempty: los nulls explícitos de opened_at/closed_at son
+// parte del contrato del evento.
+type sessionStateEvent struct {
+	PresencialOpen bool       `json:"presencial_open"`
+	OpenedAt       *time.Time `json:"opened_at"`
+	ClosedAt       *time.Time `json:"closed_at"`
+}
+
+// toSessionStateData proyecta el día post-write al estado del evento (D10).
+func toSessionStateData(day *dbs.GroupCalendarDay) sessionStateEvent {
+	return sessionStateEvent{
+		PresencialOpen: day.PresencialOpenedAt != nil && day.PresencialClosedAt == nil,
+		OpenedAt:       day.PresencialOpenedAt,
+		ClosedAt:       day.PresencialClosedAt,
+	}
+}
+
+// emitSessionState emite el frame update:session_state (D10) al canal
+// canónico session:{id} con el estado post-write. nil-safe.
+func (rc *runnerSessionController) emitSessionState(sessionInstanceID int64, day *dbs.GroupCalendarDay) {
+	if rc.notifier == nil || day == nil {
+		return
+	}
+	channel := sessionChannel(sessionInstanceID)
+	rc.notifier.Emit(channel, realtime.MarshalUpdateSessionState(channel, toSessionStateData(day)))
 }
 
 // respondRunnerSessionError mapea los errores de negocio del service a status HTTP.
@@ -47,6 +85,12 @@ func respondRunnerSessionError(c *gin.Context, err error) {
 	case errors.Is(err, daos.ErrRunnerSessionNotFound), errors.Is(err, services.ErrSessionInstanceNotFound):
 		statusCode = http.StatusNotFound
 		code = "Not Found"
+	case errors.Is(err, services.ErrRunnerSessionClosed):
+		statusCode = http.StatusConflict
+		code = "session_closed"
+	case errors.Is(err, services.ErrRunnerSessionNotOpen):
+		statusCode = http.StatusConflict
+		code = "session_not_opened"
 	}
 	c.JSON(statusCode, apierror.APIError{
 		StatusCode: statusCode,
@@ -81,6 +125,7 @@ func toRunnerSessionResponse(rs *dbs.RunnerSession) runnersession.RunnerSessionR
 // @Failure      401  {object}  apierror.APIError
 // @Failure      403  {object}  apierror.APIError
 // @Failure      404  {object}  apierror.APIError
+// @Failure      409  {object}  apierror.APIError  "code: session_closed | session_not_opened (sesión presencial)"
 // @Router       /api/v1/session-instances/{id}/runner [post]
 func (rc *runnerSessionController) Create(c *gin.Context) {
 	authUserID, ok := utils.GetAuthUserID(c)
@@ -113,10 +158,26 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 		return
 	}
 
-	rs, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
+	rs, gateDay, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
 	if err != nil {
 		respondRunnerSessionError(c, err)
 		return
+	}
+
+	// Hook de apertura D7: después del éxito del write del estado (si el
+	// update del día falla, el error sube con el estado del corredor ya
+	// persistido — aceptado por diseño). El hook decide si aplica
+	// (día presencial + owner); idempotente y solo muta si estaba NULL.
+	// Reutiliza el día cargado por el gate del service (sin re-consulta).
+	if rc.presencial != nil {
+		day, mutated, hookErr := rc.presencial.OnRunnerCreated(c, sessionInstanceID, authUserID, gateDay)
+		if hookErr != nil {
+			respondRunnerSessionError(c, hookErr)
+			return
+		}
+		if mutated {
+			rc.emitSessionState(sessionInstanceID, day)
+		}
 	}
 
 	message := runnersession.MsgRunnerSessionCreated
@@ -133,13 +194,13 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 }
 
 // Finish godoc
-// @Summary      Marcar la sesión del corredor como completada
-// @Description  Pasa el estado a finished con end_date seteada por el servidor (solo desde wip). Idempotente: ya finished responde 200 sin cambios.
+// @Summary      Marcar la sesión del corredor como completada o interrumpida
+// @Description  Aplica la transición de status sobre el estado de la sesión, con end_date seteada por el servidor. Status admite "finished" (completar) o "interrupted" (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e interrupted→finished (re-setea end_date). Idempotente: ya finished con {"status":"finished"} o ya interrupted con {"status":"interrupted"} responde 200 sin cambios. finished→interrupted responde 400.
 // @Tags         runner-session
 // @Accept       json
 // @Produce      json
 // @Param        id    path  int                                true  "ID de la sesión asignada"
-// @Param        body  body  runnersession.RunnerStatusRequest   true  "Status (finished)"
+// @Param        body  body  runnersession.RunnerStatusRequest   true  "Status (finished|interrupted)"
 // @Success      200  {object}  runnersession.MutationResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -183,9 +244,26 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 		return
 	}
 
+	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;
+	// interrupted NO cierra. Idempotente vía guard SQL.
+	if rs.Status == runnersession.RunnerSessionStatusFinished && rc.presencial != nil {
+		day, mutated, hookErr := rc.presencial.OnRunnerFinished(c, sessionInstanceID, authUserID)
+		if hookErr != nil {
+			respondRunnerSessionError(c, hookErr)
+			return
+		}
+		if mutated {
+			rc.emitSessionState(sessionInstanceID, day)
+		}
+	}
+
 	response := toRunnerSessionResponse(rs)
+	message := runnersession.MsgRunnerSessionFinished
+	if rs.Status == runnersession.RunnerSessionStatusInterrupted {
+		message = runnersession.MsgRunnerSessionInterrupted
+	}
 	c.JSON(http.StatusOK, runnersession.MutationResponse{
-		Message: runnersession.MsgRunnerSessionFinished,
+		Message: message,
 		Data:    &response,
 	})
 }

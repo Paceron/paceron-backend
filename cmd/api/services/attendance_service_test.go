@@ -25,7 +25,7 @@ type mockAttendanceDao struct {
 	findSessionCtxFn    func(ctx *gin.Context, sessionInstanceID int64) (*daos.AttendanceSessionContext, error)
 	findPastSessionsFn  func(ctx *gin.Context, groupID, teamID int64) ([]daos.SessionAttendanceOption, error)
 	findRosterFn        func(ctx *gin.Context, groupID, teamID, sessionInstanceID int64, sessionDate time.Time) ([]daos.SessionAttendanceRow, *daos.SessionAttendanceAggregates, error)
-	bulkUpsertFn        func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error)
+	bulkUpsertFn        func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error)
 	findByIDFn          func(ctx *gin.Context, attendanceID int64) (*dbs.Attendance, error)
 	deleteByIDFn        func(ctx *gin.Context, attendanceID, teamID int64) (bool, error)
 	// called cuenta las invocaciones por método, para asentar que el refactor de
@@ -238,14 +238,22 @@ func TestAttendanceService_Register_Created(t *testing.T) {
 		assert.Equal(t, int64(7), a.UserID)
 		assert.Equal(t, int64(5), a.TeamID)
 		assert.Equal(t, int64(9), a.TrainingSessionID)
+		a.ID = 101
+		a.CreatedAt = time.Date(2026, 9, 28, 18, 5, 0, 0, time.UTC)
 		return nil
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
+	created, row, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.NoError(t, err)
 	assert.True(t, created)
+	// La fila creada viaja para el evento update:attendance_event (D14).
+	require.NotNil(t, row)
+	assert.Equal(t, int64(7), row.UserID)
+	assert.Equal(t, int64(101), row.AttendanceID)
+	assert.Equal(t, int64(9), row.TrainingSessionID)
+	assert.Equal(t, time.Date(2026, 9, 28, 18, 5, 0, 0, time.UTC), row.CreatedAt)
 	// El contexto se devuelve para que el front pueda armar el deep link de la
 	// sesión: sin grupo ni fecha no hay ruta a la que llevar al corredor.
 	require.NotNil(t, sessionCtx)
@@ -260,10 +268,12 @@ func TestAttendanceService_Register_AlreadyExists(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
+	created, row, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.NoError(t, err)
 	assert.False(t, created)
+	// Sin alta no hay fila para el evento: el 200 no emite (D13).
+	assert.Nil(t, row)
 	// Idempotencia con contexto: el 200 también tiene que poder llevar al
 	// corredor a la sesión, no solo el 201.
 	require.NotNil(t, sessionCtx)
@@ -276,10 +286,11 @@ func TestAttendanceService_Register_DAOError(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, sessionCtx, err := svc.Register(nil, 7, 5, 9)
+	created, row, sessionCtx, err := svc.Register(nil, 7, 5, 9)
 
 	require.Error(t, err)
 	assert.False(t, created)
+	assert.Nil(t, row)
 	// Con error no hay contexto: el front no tiene a dónde llevar al corredor.
 	assert.Nil(t, sessionCtx)
 }
@@ -300,10 +311,11 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		}
 		svc := NewAttendanceService(mock, nil, gu, nil, "http://x")
 
-		created, sessionCtx, err := svc.Register(nil, 77, 5, 9)
+		created, row, sessionCtx, err := svc.Register(nil, 77, 5, 9)
 
 		require.ErrorIs(t, err, ErrAttendanceNotGroupMember)
 		assert.False(t, created)
+		assert.Nil(t, row)
 		assert.Nil(t, sessionCtx)
 		assert.False(t, inserted, "sin membresía no se escribe ninguna fila")
 	})
@@ -319,7 +331,7 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		gu := &attendanceGroupUserStub{}
 		svc := NewAttendanceService(mock, nil, gu, nil, "http://x")
 
-		_, _, err := svc.Register(nil, 12, 5, 9)
+		_, _, _, err := svc.Register(nil, 12, 5, 9)
 
 		require.NoError(t, err)
 		assert.Equal(t, []int64{7}, gu.lastGroupIDs, "contra el grupo de la sesión, no contra el del request")
@@ -333,7 +345,7 @@ func TestAttendanceService_Register_RequiresGroupMembership(t *testing.T) {
 		}
 		svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://x")
 
-		_, _, err := svc.Register(nil, 12, 5, 999)
+		_, _, _, err := svc.Register(nil, 12, 5, 999)
 
 		// 404 confirmaría que ese id de sesión existe; no hay grupo al que
 		// pertenecer, así que la respuesta no filtra nada.
@@ -730,7 +742,7 @@ func TestAttendanceService_Register_SourceQR(t *testing.T) {
 	})
 	svc := NewAttendanceService(mock, nil, &attendanceGroupUserStub{}, nil, "http://localhost:8080")
 
-	created, _, err := svc.Register(nil, 12, 5, 42)
+	created, _, _, err := svc.Register(nil, 12, 5, 42)
 
 	require.NoError(t, err)
 	assert.True(t, created)
@@ -1075,11 +1087,15 @@ func (m *attendanceGroupUserStub) MissingGroupMembers(ctx *gin.Context, groupID 
 	return nil, nil
 }
 
-func (m *mockAttendanceDao) BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error) {
+func (m *mockAttendanceDao) BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error) {
 	if m.bulkUpsertFn != nil {
 		return m.bulkUpsertFn(ctx, teamID, sessionInstanceID, actorUserID, userIDs)
 	}
-	return len(userIDs), 0, nil
+	rows := make([]daos.AttendanceUpsertRow, 0, len(userIDs))
+	for _, id := range userIDs {
+		rows = append(rows, daos.AttendanceUpsertRow{UserID: id, AttendanceID: id * 10, Inserted: true})
+	}
+	return rows, nil
 }
 
 func (m *mockAttendanceDao) FindByID(ctx *gin.Context, attendanceID int64) (*dbs.Attendance, error) {
@@ -1117,7 +1133,7 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 	)
 	sessionDate := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
 
-	daoFor := func(bulk func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error)) *mockAttendanceDao {
+	daoFor := func(bulk func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error)) *mockAttendanceDao {
 		return &mockAttendanceDao{
 			teamExistsFn:      func(ctx *gin.Context, id int64) (bool, error) { return true, nil },
 			isTeamOwnerFn:     func(ctx *gin.Context, id, userID int64) (bool, error) { return userID == coachID, nil },
@@ -1129,30 +1145,59 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 		}
 	}
 
-	t.Run("lote valido devuelve los contadores del dao", func(t *testing.T) {
+	t.Run("lote valido devuelve contadores y filas por corredor", func(t *testing.T) {
 		var gotActor int64
 		var gotUserIDs []int64
-		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error) {
+		// 2 altas + 1 actualización, en el orden del lote.
+		returned := []daos.AttendanceUpsertRow{
+			{UserID: 12, AttendanceID: 120, Inserted: true},
+			{UserID: 13, AttendanceID: 130, Inserted: true},
+			{UserID: 14, AttendanceID: 140, Inserted: false},
+		}
+		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error) {
 			gotActor = actorUserID
 			gotUserIDs = userIDs
-			return 2, 1, nil
+			return returned, nil
 		})
 		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		got, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12, 13, 14})
+		got, rows, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12, 13, 14})
 
 		require.NoError(t, err)
 		assert.Equal(t, 2, got.Created)
 		assert.Equal(t, 1, got.Updated)
 		assert.Equal(t, coachID, gotActor, "registered_by_user_id es el entrenador que carga, no el corredor")
 		assert.Equal(t, []int64{12, 13, 14}, gotUserIDs)
+		// Filas para update:attendance_event (D13): una por corredor afectado,
+		// created y updated, con el canal resuelto (training_session_id).
+		require.Len(t, rows, 3)
+		assert.Equal(t, int64(12), rows[0].UserID)
+		assert.Equal(t, int64(120), rows[0].AttendanceID)
+		assert.Equal(t, int64(14), rows[2].UserID)
+		for _, r := range rows {
+			assert.Equal(t, sessionID, r.TrainingSessionID)
+		}
+	})
+
+	t.Run("lote vacio devuelve contadores en cero y sin filas", func(t *testing.T) {
+		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error) {
+			return nil, nil
+		})
+		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
+
+		got, rows, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, 0, got.Created)
+		assert.Equal(t, 0, got.Updated)
+		assert.Empty(t, rows)
 	})
 
 	t.Run("un user_id ajeno al grupo invalida todo el lote y no escribe", func(t *testing.T) {
 		wrote := false
-		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error) {
+		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error) {
 			wrote = true
-			return 0, 0, nil
+			return nil, nil
 		})
 		gu := &attendanceGroupUserStub{
 			missingFn: func(ctx *gin.Context, groupID int64, userIDs []int64, sessionDate time.Time) ([]int64, error) {
@@ -1161,10 +1206,11 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, gu, &attendanceUserStub{}, "http://x")
 
-		got, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12, 999})
+		got, rows, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12, 999})
 
 		require.Error(t, err)
 		assert.Nil(t, got, "no puede devolver contadores si rechazó el lote")
+		assert.Nil(t, rows)
 		assert.False(t, wrote, "todo-o-nada: con un invalido no se escribe NINGUNA fila, ni las validas")
 		assert.True(t, errors.Is(err, ErrAttendanceBulkInvalidUsers), "el controller mapea este error a 422")
 
@@ -1175,12 +1221,12 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 
 	t.Run("la membresia se evalua contra la fecha de la sesion, no contra hoy", func(t *testing.T) {
 		gu := &attendanceGroupUserStub{}
-		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (int, int, error) {
-			return 1, 0, nil
+		dao := daoFor(func(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]daos.AttendanceUpsertRow, error) {
+			return []daos.AttendanceUpsertRow{{UserID: 12, AttendanceID: 121, Inserted: true}}, nil
 		})
 		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, gu, &attendanceUserStub{}, "http://x")
 
-		_, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12})
+		_, _, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12})
 
 		require.NoError(t, err)
 		assert.Equal(t, sessionDate, gu.lastDate, "D7: la membresía se mira en el día de la sesión")
@@ -1195,7 +1241,7 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		_, err := svc.BulkSaveAttendance(nil, int64(77), teamID, sessionID, []int64{12})
+		_, _, err := svc.BulkSaveAttendance(nil, int64(77), teamID, sessionID, []int64{12})
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrForbiddenAttendance))
@@ -1214,7 +1260,7 @@ func TestAttendanceService_BulkSaveAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, &groupStub{group: &dbs.Group{ID: groupID, TeamID: teamID}}, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		_, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12})
+		_, _, err := svc.BulkSaveAttendance(nil, coachID, teamID, sessionID, []int64{12})
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrAttendanceSessionNotPresencial))
@@ -1228,14 +1274,14 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		attendanceID = int64(88)
 	)
 
-	t.Run("borra y devuelve nil", func(t *testing.T) {
+	t.Run("borra y devuelve la fila para el evento de baja", func(t *testing.T) {
 		var deletedID, deletedTeam int64
 		dao := &mockAttendanceDao{
 			teamExistsFn:      func(ctx *gin.Context, id int64) (bool, error) { return true, nil },
 			isTeamOwnerFn:     func(ctx *gin.Context, id, userID int64) (bool, error) { return userID == coachID, nil },
 			getTeamUserRoleFn: func(ctx *gin.Context, id, userID int64) (string, error) { return "", nil },
 			findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Attendance, error) {
-				return &dbs.Attendance{ID: attendanceID, TeamID: teamID}, nil
+				return &dbs.Attendance{ID: attendanceID, TeamID: teamID, UserID: 21, TrainingSessionID: 42}, nil
 			},
 			deleteByIDFn: func(ctx *gin.Context, id, team int64) (bool, error) {
 				deletedID, deletedTeam = id, team
@@ -1244,11 +1290,17 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, nil, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
+		row, err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
 
 		require.NoError(t, err)
 		assert.Equal(t, attendanceID, deletedID)
 		assert.Equal(t, teamID, deletedTeam)
+		// user_id + training_session_id son lo que el controller necesita para
+		// el evento update:attendance_event de baja (D14).
+		require.NotNil(t, row)
+		assert.Equal(t, int64(21), row.UserID)
+		assert.Equal(t, int64(42), row.TrainingSessionID)
+		assert.Equal(t, attendanceID, row.AttendanceID)
 	})
 
 	t.Run("asistencia inexistente es 404", func(t *testing.T) {
@@ -1257,9 +1309,10 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, nil, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
+		row, err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
 
 		require.Error(t, err)
+		assert.Nil(t, row)
 		assert.True(t, errors.Is(err, ErrAttendanceNotFound))
 	})
 
@@ -1274,9 +1327,10 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, nil, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
+		row, err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
 
 		require.Error(t, err)
+		assert.Nil(t, row)
 		assert.True(t, errors.Is(err, ErrAttendanceForbiddenTeam))
 		assert.False(t, roleChecked, "si ya sabemos que es de otro equipo, no hay nada que autorizar")
 	})
@@ -1294,9 +1348,10 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, nil, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		err := svc.DeleteAttendance(nil, int64(77), teamID, attendanceID)
+		row, err := svc.DeleteAttendance(nil, int64(77), teamID, attendanceID)
 
 		require.Error(t, err)
+		assert.Nil(t, row)
 		assert.True(t, errors.Is(err, ErrAttendanceForbiddenTeam))
 		assert.False(t, deleted, "un no-entrenador no borra nada")
 	})
@@ -1313,9 +1368,10 @@ func TestAttendanceService_DeleteAttendance(t *testing.T) {
 		}
 		svc := NewAttendanceService(dao, nil, &attendanceGroupUserStub{}, &attendanceUserStub{}, "http://x")
 
-		err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
+		row, err := svc.DeleteAttendance(nil, coachID, teamID, attendanceID)
 
 		require.Error(t, err)
+		assert.Nil(t, row, "sin borrado no hay fila para el evento de baja")
 		assert.True(t, errors.Is(err, ErrAttendanceNotFound))
 	})
 }

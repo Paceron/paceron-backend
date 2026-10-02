@@ -1,6 +1,6 @@
 # Gateway WebSocket en tiempo real (`/api/v1/ws`)
 
-Documento de referencia del gateway WebSocket (`cmd/api/realtime` + wiring en `cmd/api/app/realtime.go`). Cubre conexión, protocolo, autorización de canales, límites y el broadcast de feedback. Fuente de verdad: el código en `cmd/api/realtime/` (`hub.go`, `protocol.go`, `connection.go`, `notifier.go`) — este doc lo resume y explica, no lo reemplaza.
+Documento de referencia del gateway WebSocket (`cmd/api/realtime` + wiring en `cmd/api/app/realtime.go`). Cubre conexión, protocolo, autorización de canales, límites, el broadcast de feedback, los eventos en vivo de sesión (`update:session_state`/`update:attendance_event`) y el relay dirigido por `to`. Fuente de verdad: el código en `cmd/api/realtime/` (`hub.go`, `protocol.go`, `connection.go`, `notifier.go`) — este doc lo resume y explica, no lo reemplaza.
 
 Origen de la spec: `openspec/changes/ws-gateway-sesiones/` (`design.md` tiene el detalle de decisión con D1-D10; acá va la síntesis operativa).
 
@@ -58,6 +58,8 @@ Semántica por tipo:
 | `pong` | s→c | Respuesta al `ping`. |
 | `presence` / `control` | s→c | Reenvío del frame de otro usuario: `from` = userID del emisor, `payload` intacto (opaco — el backend no valida ni modifica su contenido). |
 | `update:set_event` | s→c | Evento server-originado: se creó feedback de la sesión (ver §5). El frame incluye `channel`. |
+| `update:session_state` | s→c | Evento server-originado: el owner abrió o cerró (`finished`) la sesión presencial (ver §6). |
+| `update:attendance_event` | s→c | Evento server-originado: fila del roster de asistencia afectada (ver §6). El frame incluye `channel`. |
 
 Reglas comunes:
 
@@ -111,7 +113,55 @@ El único evento server-originado: al crear feedback vía `POST /api/v1/workout-
 - **Best-effort, asíncrono:** la emisión sale del controller vía `realtime.Notifier` (`HubNotifier.Emit`) después de persistir y no bloquea ni altera la respuesta HTTP. Nadie suscripto al canal → no-op; buffer del receptor lleno → el frame se descarta para ese receptor (la HTTP es la fuente de verdad: el cliente siempre puede refetchear).
 - **Quién recibe qué:** cualquier conexión suscripta a `session:{assigned_session_id}` (atleta viendo su sesión, entrenador revisando, otro dispositivo del mismo usuario — todos los suscriptos al canal, sin exclusión).
 
-## 6. Notas Render / operación
+## 6. Eventos en vivo de sesión (`update:session_state`, `update:attendance_event`)
+
+Dos eventos server-originados nuevos (change `sesion-interrumpida-y-eventos-en-vivo`), al canal `session:{id}` con `{id}` = session instance id, best-effort asíncrono (mismo patrón de `update:set_event`: no bloquean ni alteran la HTTP; nadie suscripto = no-op; buffer lleno = frame descartado para ese receptor). **Sin exclusión de emisor** — el propio actor recibe su evento si está suscripto.
+
+### 6.1 `update:session_state` — apertura/cierre presencial (Gap 26 D10)
+
+Se emite solo cuando el frame de escritura **muta** el día presencial (no en re-play idempotente ni en `interrupted` del entrenador, que no cierra):
+
+- `POST /session-instances/:id/runner` del owner del team del grupo → abre (setea `presencial_opened_at`; solo si estaba `NULL`).
+- `PATCH .../runner` con `{"status":"finished"}` del owner → cierra (setea `presencial_closed_at`; solo si estaba `NULL` — el cierre es final, no hay reopen). `interrupted` del owner NO emite.
+
+```json
+{"type":"update:session_state","channel":"session:88","data":{"presencial_open":true,"opened_at":"2026-10-01T18:02:11Z","closed_at":null}}
+```
+
+`data` sin `omitempty`: los `null` explícitos (`opened_at`/`closed_at`) son parte del contrato; `presencial_open` es bool real (`opened != NULL && closed == NULL`).
+
+### 6.2 `update:attendance_event` — fila del roster de asistencia (Gap 28 D13)
+
+```json
+{"type":"update:attendance_event","channel":"session:88","data":{"user_id":5,"status":"attended","source":"qr","registered_at":"2026-10-01T18:05:00Z","attendance_id":42}}
+```
+
+`data` es exactamente **la fila afectada del roster** (igual que en la grilla de asistencia, sin name/email), sin `omitempty` — el borrado viaja con nulls. Alcance por operador:
+
+| Operación | Eventos emitidos |
+|---|---|
+| Registro QR del corredor | `{"user_id":N,"status":"attended","source":"qr","registered_at":<ts>,"attendance_id":N}` — **solo si el alta es real** (`201`); el `200` idempotente no emite |
+| Asistencia manual por lote (bulk) | **un evento por corredor creado O actualizado** (todas las filas del import), `source:"manual"` |
+| `DELETE /attendances/:id` | SIEMPRE emite: `{"user_id":N,"status":"not_confirmed","source":null,"registered_at":null,"attendance_id":null}` |
+
+Nota: el `training_session_id` del attendance **es el session instance id** de la FK opaca con el calendario — por eso el canal es el mismo que WS y feedback.
+
+## 7. Relay dirigido por `to` en presence/control (Gap 27 D11)
+
+El payload de `presence`/`control` sigue siendo opaco para el backend, pero el campo `to` adentro tiene semántica de entrega:
+
+```json
+{"type":"control","payload":{"action":"pace-alert","value":12.5,"to":5}}
+```
+
+- **`to` numérico entero en `[1, MaxInt64]`** → entrega **solo a las conexiones de ese user en el canal** (todas sus conexiones; si no está suscripto al canal, nadie lo recibe y la conexión del emisor sigue viva). `to` = propio userID → el emisor **sí se recibe a sí mismo con eco** (única vía de auto-eco: sin `to` el emisor siempre queda excluido).
+- **`to` ausente o `"all"`** → comportamiento actual: todos los suscriptos del canal **menos el emisor**.
+- **Cualquier otro valor** (`"to":"5"` string, decimal `5.5`, valor > `MaxInt64`, arreglo, booleano…) → broadcast normal (menos emisor) — el parser es estricto: solo el JSON number entero positivo dirige.
+- El frame entregado lleva el **payload completo sin mutar**, con `to` adentro — el receptor puede leer a quién apuntaba el mensaje.
+
+Aplica solo a presence/control; los frames `update:*` server-originados no llevan `to`. Cambio no-breaking: sin `to`, el protocolo es idéntico al previo.
+
+## 8. Notas Render / operación
 
 - **Deploy corta conexiones WS:** cada deploy de Render mata las conexiones abiertas → el cliente debe reconectar (con backoff) y re-suscribirse. Las suscripciones no sobreviven a la desconexión.
 - **Plan free y spin-down:** un service con mensajes WS activos no spinea down (el tráfico cuenta como actividad). El cold-start habitual post-inactividad (~20-25 s, ver `AGENTS.md` §6) aplica igual: si nadie conectó por un rato, la primera conexión espera al arranque.

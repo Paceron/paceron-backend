@@ -39,6 +39,18 @@ type GroupCalendarDaoInterface interface {
 	FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	// FindBySessionInstanceID devuelve el día de calendario que referencia
+	// esa session instance (design.md Gap 26 D6, relación 1:1 por diseño):
+	// nil si no hay día — instancia huérfana o id inexistente.
+	FindBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error)
+	// SetPresencialOpenedAt marca la apertura presencial del día solo si
+	// presencial_opened_at está NULL (guard SQL idempotente, D5 sin reopen).
+	// Devuelve true si esta llamada hizo la apertura real.
+	SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	// SetPresencialClosedAt marca el cierre presencial del día solo si
+	// presencial_closed_at está NULL (final, sin reopen). true si esta
+	// llamada hizo el cierre real.
+	SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
 }
 
 type groupCalendarDayDao struct {
@@ -61,7 +73,7 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 		return d.DB.Create(day).Error
 	}
 	day.ID = existing.ID
-	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id = ?", existing.ID).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"kind":                 day.Kind,
 		"other_name":           day.OtherName,
 		"session_instance_id":  day.SessionInstanceID,
@@ -71,7 +83,20 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 		"presencial_time_to":   day.PresencialTimeTo,
 		"presencial_location":  day.PresencialLocation,
 		"source_plan_id":       day.SourcePlanID,
-	}).Error
+	}
+	// Gap 26 D5: el estado presencial existe solo mientras el día lo declare.
+	// Si la escritura apaga is_presencial (o la reasignación cambia la
+	// instancia), opened/closed se limpian: re-activar presencial arranca sin
+	// apertura (gate 409 hasta que el owner vuelva a abrir).
+	if !sameNullableInt(existing.SessionInstanceID, day.SessionInstanceID) || !day.IsPresencial {
+		updates["presencial_opened_at"] = nil
+		updates["presencial_closed_at"] = nil
+	}
+	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("id = ?", existing.ID).Updates(updates).Error
+}
+
+func sameNullableInt(a, b *int64) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
 func (d *groupCalendarDayDao) FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
@@ -193,4 +218,46 @@ func (d *groupCalendarDayDao) ClearSourcePlan(ctx *gin.Context, planID int64) er
 
 func (d *groupCalendarDayDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("group_id = ? AND date = ?", groupID, oldDate).Update("date", newDate).Error
+}
+
+// FindBySessionInstanceID resuelve el día que referencia la instancia (D6).
+// Con 1:1 por diseño First() alcanza; si una instancia quedara referenciada
+// por más de un día (Estado inconsistente fuera del diseño) devuelve el
+// primero por id.
+func (d *groupCalendarDayDao) FindBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error) {
+	var day dbs.GroupCalendarDay
+	err := d.DB.Where("session_instance_id = ?", sessionInstanceID).Order("id").First(&day).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding calendar day by session instance: %w", err)
+	}
+	return &day, nil
+}
+
+// SetPresencialOpenedAt marca la apertura presencial: la query solo impacta
+// si presencial_opened_at está NULL (idempotente a nivel SQL). true = esta
+// llamada hizo la apertura.
+func (d *groupCalendarDayDao) SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	res := d.DB.Model(&dbs.GroupCalendarDay{}).
+		Where("id = ? AND presencial_opened_at IS NULL", dayID).
+		Updates(map[string]interface{}{"presencial_opened_at": at})
+	if res.Error != nil {
+		return false, fmt.Errorf("error setting presencial opened at: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// SetPresencialClosedAt marca el cierre presencial: guard sobre
+// presencial_closed_at NULL (el cierre es final, D5). true = esta llamada
+// hizo el cierre.
+func (d *groupCalendarDayDao) SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	res := d.DB.Model(&dbs.GroupCalendarDay{}).
+		Where("id = ? AND presencial_closed_at IS NULL", dayID).
+		Updates(map[string]interface{}{"presencial_closed_at": at})
+	if res.Error != nil {
+		return false, fmt.Errorf("error setting presencial closed at: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
 }

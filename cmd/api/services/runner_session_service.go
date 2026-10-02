@@ -25,12 +25,15 @@ var (
 // un entrenador autorizado (owner de un equipo al que pertenezca ese atleta) lo
 // indique explícitamente; la creación es idempotente.
 type RunnerSessionServiceInterface interface {
-	// Create crea el estado en wip (start_date provista por el cliente) o, si ya
-	// existía la fila (idempotencia), devuelve la actual. second return: true si
-	// se creó, false si ya existía.
-	Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error)
-	// Finish pasa la fila a finished con end_date = now() del servidor. Si ya
-	// estaba finished devuelve la fila sin cambios (idempotente).
+	// Create crea el estado en wip (start_date provista por el cliente) o, si
+	// ya existía la fila (idempotencia), devuelve la actual. created es true
+	// solo si se creó. calendarDay es el día cargado por el gate presencial
+	// (nil si no hay gate, día inexistente o no presencial): el controller lo
+	// pasa al hook de apertura para evitar re-consultarlo.
+	Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error)
+	// Finish aplica la transición de status pedida (finished|interrupted) con
+	// end_date = now() del servidor. Idempotente si la fila ya está en el
+	// status destino; finished→interrupted es rechazada (400).
 	Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error)
 	// Get devuelve el estado actual (404 si no existe la fila).
 	Get(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error)
@@ -38,61 +41,83 @@ type RunnerSessionServiceInterface interface {
 
 type runnerSessionService struct {
 	runnerSessionDao daos.RunnerSessionDAOInterface
+	// presencial es opcional (nil en tests = sin gate ni hooks calendario):
+	// el gate D9 del día presencial corre dentro de Create para respetar el
+	// orden 404 instancia → 403 atleta ajeno → 409 del gate.
+	presencial PresencialSessionServiceInterface
 }
 
 // NewRunnerSessionService crea una nueva instancia de RunnerSessionService.
-func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface) RunnerSessionServiceInterface {
+func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, presencial PresencialSessionServiceInterface) RunnerSessionServiceInterface {
 	return &runnerSessionService{
 		runnerSessionDao: runnerSessionDao,
+		presencial:       presencial,
 	}
 }
 
 // Create valida la sesión, resuelve el atleta y crea el estado en wip de forma
 // idempotente: si la fila ya existía devuelve la actual (created=false), sin
-// pisar start_date ni bajar de finished a wip.
-func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
+// pisar start_date ni bajar de finished a wip. Devuelve además el día cargado
+// por el gate presencial (nil si no se cargó) para el hook de apertura.
+func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
 	exists, err := s.runnerSessionDao.SessionInstanceExists(ctx, sessionInstanceID)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	if !exists {
-		return nil, false, ErrSessionInstanceNotFound
+		return nil, nil, false, ErrSessionInstanceNotFound
 	}
 	if req.StartDate.IsZero() {
-		return nil, false, fmt.Errorf("%w: start_date es obligatorio", ErrRunnerSessionInvalid)
+		return nil, nil, false, fmt.Errorf("%w: start_date es obligatorio", ErrRunnerSessionInvalid)
 	}
 
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
+	}
+
+	// Gate presencial D9: después de resolveAthlete (403 precede al 409) y
+	// antes del write — un día cerrado/sin abrir no acepta entrada del
+	// corredor. Owner exento (CheckAthleteEntry lo resuelve). El día cargado
+	// viaja hacia arriba: el hook de apertura del controller lo reutiliza.
+	var calendarDay *dbs.GroupCalendarDay
+	if s.presencial != nil {
+		calendarDay, err = s.presencial.CheckAthleteEntry(ctx, sessionInstanceID, authUserID)
+		if err != nil {
+			return nil, nil, false, err
+		}
 	}
 
 	rs := &dbs.RunnerSession{
 		SessionInstanceID: sessionInstanceID,
 		AthleteUserID:     athleteUserID,
-		Status:            "wip",
+		Status:            runnersession.RunnerSessionStatusWip,
 		StartDate:         req.StartDate,
 	}
 	created, err := s.runnerSessionDao.Create(ctx, rs)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	if !created {
 		current, err := s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)
 		if err != nil {
-			return nil, false, err
+			return nil, nil, false, err
 		}
-		return current, false, nil
+		return current, calendarDay, false, nil
 	}
-	return rs, true, nil
+	return rs, calendarDay, true, nil
 }
 
-// Finish valida el estado pedido, resuelve el atleta y marca la sesión como
-// finished con end_date seteada por el servidor. Idempotente: una sesión ya
-// finished se devuelve sin cambios. Sin fila → ErrRunnerSessionNotFound (404).
+// Finish aplica la transición de status pedida (finished|interrupted) con
+// end_date seteada por el servidor. Idempotente: pedir el status que ya tiene
+// la fila la devuelve sin cambios. finished→interrupted es ilegal (400) y una
+// fila finished jamás cambia. Sin fila → ErrRunnerSessionNotFound (404).
+//
+// Legales: wip→finished, wip→interrupted, interrupted→finished (re-setea
+// end_date = now, momento del finish explícito).
 func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
-	if req.Status != "finished" {
-		return nil, fmt.Errorf("%w: status solo admite 'finished'", ErrRunnerSessionInvalid)
+	if req.Status != runnersession.RunnerSessionStatusFinished && req.Status != runnersession.RunnerSessionStatusInterrupted {
+		return nil, fmt.Errorf("%w: status solo admite 'finished' o 'interrupted'", ErrRunnerSessionInvalid)
 	}
 
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
@@ -104,17 +129,15 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 	if err != nil {
 		return nil, err
 	}
-	if current.Status == "finished" {
+	if current.Status == req.Status {
 		return current, nil
+	}
+	if current.Status == runnersession.RunnerSessionStatusFinished {
+		return nil, fmt.Errorf("%w: no se puede interrumpir una sesión ya finalizada", ErrRunnerSessionInvalid)
 	}
 
 	now := time.Now()
-	finish := &dbs.RunnerSession{
-		ID:        current.ID,
-		EndDate:   &now,
-		UpdatedAt: now,
-	}
-	if err := s.runnerSessionDao.Finish(ctx, finish); err != nil {
+	if err := s.runnerSessionDao.UpdateStatus(ctx, current.ID, req.Status, []string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, now); err != nil {
 		return nil, err
 	}
 	return s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)

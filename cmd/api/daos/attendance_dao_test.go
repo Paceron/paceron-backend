@@ -335,6 +335,19 @@ func TestAttendanceDao_UniqueIndexExists(t *testing.T) {
 			"ON attendances (team_id, training_session_id, user_id). Índices hallados: %v", defs)
 }
 
+// countUpsertRows deriva los contadores excluyentes del flag inserted, igual
+// que hace el service para BulkSaveResult.
+func countUpsertRows(rows []AttendanceUpsertRow) (created, updated int) {
+	for _, r := range rows {
+		if r.Inserted {
+			created++
+		} else {
+			updated++
+		}
+	}
+	return created, updated
+}
+
 // TestAttendanceDao_BulkUpsertManual_Idempotencia es el test de 3.7: los 3 casos
 // de contadores que pide la spec, más que no se acumulen duplicados.
 func TestAttendanceDao_BulkUpsertManual_Idempotencia(t *testing.T) {
@@ -347,42 +360,59 @@ func TestAttendanceDao_BulkUpsertManual_Idempotencia(t *testing.T) {
 	sessionID := testSessionInstance(db, "sesion-bulk")
 
 	t.Run("3 inserts nuevos dan created:3 updated:0", func(t *testing.T) {
-		created, updated, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{10, 11, 12})
-
+		rows, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{10, 11, 12})
 		require.NoError(t, err)
+		created, updated := countUpsertRows(rows)
 		assert.Equal(t, 3, created)
 		assert.Equal(t, 0, updated)
 
-		var rows int64
+		var rowCount int64
 		require.NoError(t, db.Model(&dbs.Attendance{}).
-			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rows).Error)
-		assert.Equal(t, int64(3), rows)
+			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rowCount).Error)
+		assert.Equal(t, int64(3), rowCount)
 	})
 
 	t.Run("el mismo lote de nuevo da created:0 updated:3 y no duplica", func(t *testing.T) {
-		created, updated, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{10, 11, 12})
-
+		rows, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{10, 11, 12})
 		require.NoError(t, err)
+		created, updated := countUpsertRows(rows)
 		assert.Equal(t, 0, created)
 		assert.Equal(t, 3, updated)
 
-		var rows int64
+		var rowCount int64
 		require.NoError(t, db.Model(&dbs.Attendance{}).
-			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rows).Error)
-		assert.Equal(t, int64(3), rows, "un upsert idempotente nunca acumula filas")
+			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rowCount).Error)
+		assert.Equal(t, int64(3), rowCount, "un upsert idempotente nunca acumula filas")
 	})
 
 	t.Run("lote mixto da created:1 updated:1", func(t *testing.T) {
-		created, updated, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{12, 13})
-
+		rows, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{12, 13})
 		require.NoError(t, err)
+		created, updated := countUpsertRows(rows)
 		assert.Equal(t, 1, created)
 		assert.Equal(t, 1, updated)
 
-		var rows int64
+		var rowCount int64
 		require.NoError(t, db.Model(&dbs.Attendance{}).
-			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rows).Error)
-		assert.Equal(t, int64(4), rows)
+			Where("team_id = ? AND training_session_id = ?", teamID, sessionID).Count(&rowCount).Error)
+		assert.Equal(t, int64(4), rowCount)
+	})
+
+	t.Run("cada fila del RETURNING trae user_id, attendance_id y created_at", func(t *testing.T) {
+		// Los datos de la fila son lo que el controller usa para armar el
+		// evento update:attendance_event (Gap 28): sin user_id/id/created_at
+		// por fila no hay payload posible.
+		rows, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{14})
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		assert.Equal(t, int64(14), rows[0].UserID)
+		assert.NotZero(t, rows[0].AttendanceID, "el id de la fila creada viaja en el RETURNING")
+		assert.False(t, rows[0].CreatedAt.IsZero(), "created_at viaja en el RETURNING")
+
+		var got dbs.Attendance
+		require.NoError(t, db.Where("id = ?", rows[0].AttendanceID).First(&got).Error)
+		assert.Equal(t, int64(14), got.UserID)
+		assert.Equal(t, sessionID, got.TrainingSessionID)
 	})
 
 	t.Run("escribe source y registered_by del actor", func(t *testing.T) {
@@ -396,11 +426,10 @@ func TestAttendanceDao_BulkUpsertManual_Idempotencia(t *testing.T) {
 	})
 
 	t.Run("un lote vacio es un no-op que no toca la DB", func(t *testing.T) {
-		created, updated, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{})
+		rows, err := dao.BulkUpsertManual(nil, teamID, sessionID, actorID, []int64{})
 
 		require.NoError(t, err)
-		assert.Equal(t, 0, created)
-		assert.Equal(t, 0, updated)
+		assert.Empty(t, rows)
 	})
 }
 

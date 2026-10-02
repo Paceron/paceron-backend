@@ -93,6 +93,9 @@ func (d *groupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error 
 // contra NOW(): la sesión que se está revisando ya ocurrió, así que la pregunta
 // correcta es "quién era miembro cuando la sesión pasó".
 //
+// La ventana se compara POR FECHA (cast ::date en ambos lados): date_start con
+// hora del mismo día de la sesión cuenta como dentro (Gap 25).
+//
 // Deliberadamente NO se usa el criterio de FindByGroupID/FindByGroupAndUser
 // (solo deleted_at IS NULL): esos responden "¿quién integra el grupo hoy?" y
 // alimentan el roster de la pantalla de equipo, que tiene otra semántica. La
@@ -100,8 +103,8 @@ func (d *groupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error 
 // sigue apareciendo en la grilla de esa sesión — es intencional.
 func activeGroupMemberWhere(query *gorm.DB, sessionDate time.Time) *gorm.DB {
 	return query.Where("deleted_at IS NULL").
-		Where("date_start <= ?", sessionDate).
-		Where("date_end IS NULL OR date_end >= ?", sessionDate)
+		Where("date_start::date <= ?::date", sessionDate).
+		Where("date_end IS NULL OR date_end::date >= ?::date", sessionDate)
 }
 
 // IsActiveGroupMember indica si userID era miembro activo de groupID en la fecha

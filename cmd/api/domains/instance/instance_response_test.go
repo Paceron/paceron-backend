@@ -1,7 +1,10 @@
 package instance
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -9,72 +12,52 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
-func TestNewSessionResponse_MapsExercisesByID(t *testing.T) {
-	sess := dbs.SessionInstance{ID: 1, Name: "Fartlek 5K"}
-	warmup := dbs.ExerciseInstance{ID: 10, Name: "Trote", Kind: "jogging"}
-	main := dbs.ExerciseInstance{ID: 20, Name: "Serie", Kind: "running"}
-	links := []dbs.SessionExerciseInstance{
-		{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 20, Role: "main", RepeatCount: 3, RestMinutes: 2},
-		{ID: 101, SessionInstanceID: 1, ExerciseInstanceID: 10, Role: "warmup"},
-	}
-	exercises := []dbs.ExerciseInstance{warmup, main}
-
-	resp, err := NewSessionResponse(sess, links, exercises)
-
-	require.NoError(t, err)
-	assert.Equal(t, sess.ID, resp.ID)
-	require.Len(t, resp.Exercises, 2)
-	assert.Equal(t, "main", resp.Exercises[0].Role)
-	assert.Equal(t, "Serie", resp.Exercises[0].Name)
-	assert.Equal(t, "warmup", resp.Exercises[1].Role)
-	assert.Equal(t, 0, resp.Exercises[1].RepeatCount)
-}
-
-func TestNewSessionResponse_MissingExercise_ReturnsError(t *testing.T) {
-	sess := dbs.SessionInstance{ID: 1, Name: "Fartlek 5K"}
-	link := dbs.SessionExerciseInstance{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 20, Role: "main"}
-
-	resp, err := NewSessionResponse(sess, []dbs.SessionExerciseInstance{link}, nil)
-
-	assert.Error(t, err)
-	assert.Empty(t, resp)
-}
-
-func TestNewSessionResponse_NoLinks_ReturnsEmptyExercises(t *testing.T) {
-	sess := dbs.SessionInstance{ID: 1, Name: "Descarga"}
-
+// El DTO de instancia es compartido por los paths de calendario (D9): los 3
+// campos del estado presencial (Gap 26 D8) solo aparecen cuando el detalle
+// los setea — nil ⇒ ausentes del JSON.
+func TestSessionInstanceResponse_PresencialFieldsOmittedByDefault(t *testing.T) {
+	sess := dbs.SessionInstance{ID: 1, Name: "Fartlek"}
 	resp, err := NewSessionResponse(sess, nil, nil)
-
 	require.NoError(t, err)
-	assert.NotNil(t, resp.Exercises)
-	assert.Empty(t, resp.Exercises)
+
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.False(t, strings.Contains(string(raw), "presencial_open"))
+	assert.False(t, strings.Contains(string(raw), "opened_at"))
+	assert.False(t, strings.Contains(string(raw), "closed_at"))
 }
 
-func TestNewSessionResponse_MapsCatalogSourceIDs(t *testing.T) {
-	sourceSessionID, sourceExerciseID := int64(7), int64(42)
-	sess := dbs.SessionInstance{ID: 1, Name: "Fartlek 5K", SourceSessionID: &sourceSessionID}
-	ex := dbs.ExerciseInstance{ID: 10, Name: "Trote", Kind: "jogging", SourceExerciseID: &sourceExerciseID}
-	link := dbs.SessionExerciseInstance{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 10, Role: "warmup"}
+func TestApplyPresencialState(t *testing.T) {
+	opened := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	closed := opened.Add(2 * time.Hour)
 
-	resp, err := NewSessionResponse(sess, []dbs.SessionExerciseInstance{link}, []dbs.ExerciseInstance{ex})
-
-	require.NoError(t, err)
-	require.NotNil(t, resp.SessionID)
-	assert.Equal(t, int64(7), *resp.SessionID)
-	require.Len(t, resp.Exercises, 1)
-	require.NotNil(t, resp.Exercises[0].ExerciseID)
-	assert.Equal(t, int64(42), *resp.Exercises[0].ExerciseID)
-}
-
-func TestNewSessionResponse_NullSourceIDs(t *testing.T) {
-	sess := dbs.SessionInstance{ID: 1, Name: "Legado"}
-	ex := dbs.ExerciseInstance{ID: 10, Name: "Trote", Kind: "jogging"}
-	link := dbs.SessionExerciseInstance{ID: 100, SessionInstanceID: 1, ExerciseInstanceID: 10, Role: "warmup"}
-
-	resp, err := NewSessionResponse(sess, []dbs.SessionExerciseInstance{link}, []dbs.ExerciseInstance{ex})
-
-	require.NoError(t, err)
-	assert.Nil(t, resp.SessionID)
-	require.Len(t, resp.Exercises, 1)
-	assert.Nil(t, resp.Exercises[0].ExerciseID)
+	t.Run("día presencial abierta", func(t *testing.T) {
+		resp := SessionInstanceResponse{}
+		ApplyPresencialState(&resp, &dbs.GroupCalendarDay{IsPresencial: true, PresencialOpenedAt: &opened})
+		require.NotNil(t, resp.PresencialOpen)
+		assert.True(t, *resp.PresencialOpen)
+		require.NotNil(t, resp.PresencialOpenedAt)
+		assert.Nil(t, resp.PresencialClosedAt)
+	})
+	t.Run("día presencial cerrada", func(t *testing.T) {
+		resp := SessionInstanceResponse{}
+		ApplyPresencialState(&resp, &dbs.GroupCalendarDay{IsPresencial: true, PresencialOpenedAt: &opened, PresencialClosedAt: &closed})
+		require.NotNil(t, resp.PresencialOpen)
+		assert.False(t, *resp.PresencialOpen)
+		require.NotNil(t, resp.PresencialClosedAt)
+	})
+	t.Run("día no presencial", func(t *testing.T) {
+		resp := SessionInstanceResponse{}
+		ApplyPresencialState(&resp, &dbs.GroupCalendarDay{})
+		assert.Nil(t, resp.PresencialOpen)
+		assert.Nil(t, resp.PresencialOpenedAt)
+		assert.Nil(t, resp.PresencialClosedAt)
+	})
+	t.Run("día inexistente", func(t *testing.T) {
+		resp := SessionInstanceResponse{}
+		ApplyPresencialState(&resp, nil)
+		assert.Nil(t, resp.PresencialOpen)
+		assert.Nil(t, resp.PresencialOpenedAt)
+		assert.Nil(t, resp.PresencialClosedAt)
+	})
 }

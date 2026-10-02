@@ -288,10 +288,11 @@ func NewApplication() *Application {
 	teamConfigurationService := services.NewTeamConfigurationService(roleDao, userRoleDao, tierSubscriptionDao, tierDao)
 	teamConfigurationController := controllers.NewTeamConfigurationController(teamConfigurationService)
 
-	// Attendance flow (asistencia por QR + gestión de asistencia del entrenador)
+	// Attendance DAO/service (asistencia por QR + gestión de asistencia del
+	// entrenador). El controller se construye después del notifier: emite
+	// update:attendance_event (Gap 28) con la misma instancia compartida.
 	attendanceDao := daos.NewAttendanceDao(db)
 	attendanceService := services.NewAttendanceService(attendanceDao, groupDao, groupUserDao, userDao, config.AttendanceBaseURL)
-	attendanceController := controllers.NewAttendanceController(attendanceService)
 
 	// Workout Feedback flow (feedback de entrenamiento)
 	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
@@ -306,11 +307,15 @@ func NewApplication() *Application {
 	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
+	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier)
 
-	// Runner Session flow (estado de sesión del corredor, wip -> finished)
+	// Runner Session flow (estado de sesión del corredor, wip -> finished).
+	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
+	// apertura/cierre del entrenador; el controller emite update:session_state.
+	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
-	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
-	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
+	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier)
 
 	return &Application{
 		pingController:              controllers.NewPingController(),

@@ -174,3 +174,41 @@ func TestSameFrameFanout(t *testing.T) {
 		assert.Equal(t, frame, frames[0])
 	}
 }
+
+func TestBroadcastToUserReachesAllConnsOfUser(t *testing.T) {
+	hub := NewHub()
+	// user 7 con dos conexiones; user 1 y user 2 en la misma sala.
+	u7a, u7b := newTestClient(7), newTestClient(7)
+	other1, other2 := newTestClient(1), newTestClient(2)
+	for _, c := range []*client{u7a, u7b, other1, other2} {
+		hub.Subscribe("session:11", c)
+	}
+
+	frame := []byte(`{"type":"control"}`)
+	hub.BroadcastToUser("session:11", frame, 7)
+
+	for _, c := range []*client{u7a, u7b} {
+		frames := waitFrames(c, 1, 50)
+		require.Len(t, frames, 1)
+		assert.Equal(t, frame, frames[0])
+	}
+	// El resto de la sala queda en silencio.
+	assert.Empty(t, other1.drain(8))
+	assert.Empty(t, other2.drain(8))
+}
+
+func TestBroadcastToUserMissingOrForeignChannelIsNoop(t *testing.T) {
+	hub := NewHub()
+	target := newTestClient(7)
+	hub.Subscribe("session:12", target)
+	other := newTestClient(1)
+	hub.Subscribe("session:12", other)
+
+	// Canal inexistente: no-op.
+	hub.BroadcastToUser("session:404", []byte(`{}`), 7)
+	// Usuario en el canal pero distinto del target: silencio para ambos.
+	hub.BroadcastToUser("session:12", []byte(`{}`), 99)
+
+	assert.Empty(t, target.drain(8))
+	assert.Empty(t, other.drain(8))
+}
