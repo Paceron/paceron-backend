@@ -43,3 +43,14 @@ func MarshalUpdateSetEvent(channel string, data any) []byte {
 		Data:    data,
 	})
 }
+
+// MarshalUpdateSessionState arma el frame `update:session_state` (Gap 26
+// D10): data es el objeto de estado presencial post-write
+// {presencial_open, opened_at, closed_at}.
+func MarshalUpdateSessionState(channel string, data any) []byte {
+	return MarshalOutbound(&outboundMessage{
+		Type:    UpdateSessionStateEventType,
+		Channel: channel,
+		Data:    data,
+	})
+}

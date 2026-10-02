@@ -59,7 +59,7 @@ func fixtureRunnerSessionResponse() *dbs.RunnerSession {
 }
 
 func TestRunnerSessionController_Unauthorized(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	for _, tc := range []struct {
 		name string
@@ -88,7 +88,7 @@ func TestRunnerSessionController_Create_201(t *testing.T) {
 			return fixtureRunnerSessionResponse(), true, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -117,7 +117,7 @@ func TestRunnerSessionController_Create_200_Existing(t *testing.T) {
 			return fixtureRunnerSessionResponse(), false, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -137,7 +137,7 @@ func TestRunnerSessionController_Create_200_Existing(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_BadPathParam(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -152,7 +152,7 @@ func TestRunnerSessionController_Create_BadPathParam(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_BadJSON(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -166,7 +166,7 @@ func TestRunnerSessionController_Create_BadJSON(t *testing.T) {
 }
 
 func TestRunnerSessionController_Create_MissingStartDate(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{}`
@@ -200,7 +200,7 @@ func TestRunnerSessionController_ErrorMapping(t *testing.T) {
 					return nil, false, tc.serviceErr
 				},
 			}
-			controller := NewRunnerSessionController(mockSvc)
+			controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 			response := httptest.NewRecorder()
 			body := `{"start_date":"2026-09-24T09:00:00Z"}`
@@ -226,7 +226,7 @@ func TestRunnerSessionController_Finish_200(t *testing.T) {
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":"finished"}`
@@ -257,7 +257,7 @@ func TestRunnerSessionController_Finish_Interrupted_200(t *testing.T) {
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":"interrupted"}`
@@ -284,7 +284,7 @@ func TestRunnerSessionController_Finish_FinishedToInterrupted_400(t *testing.T) 
 			return nil, fmt.Errorf("%w: no se puede interrumpir una sesión ya finalizada", services.ErrRunnerSessionInvalid)
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":"interrupted"}`
@@ -320,7 +320,7 @@ func TestRunnerSessionController_Finish_AlreadyInterrupted_200_Unchanged(t *test
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":"interrupted"}`
@@ -345,7 +345,7 @@ func TestRunnerSessionController_Finish_AlreadyInterrupted_200_Unchanged(t *test
 }
 
 func TestRunnerSessionController_Finish_BadStatusBody(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	body := `{"status":""}`
@@ -369,7 +369,7 @@ func TestRunnerSessionController_Get_200(t *testing.T) {
 			return fixtureRunnerSessionResponse(), nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -397,7 +397,7 @@ func TestRunnerSessionController_Get_WithAthleteQuery(t *testing.T) {
 			return fixtureRunnerSessionResponse(), nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -412,7 +412,7 @@ func TestRunnerSessionController_Get_WithAthleteQuery(t *testing.T) {
 }
 
 func TestRunnerSessionController_Get_InvalidQuery(t *testing.T) {
-	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{})
+	controller := NewRunnerSessionController(&mockRunnerSessionControllerService{}, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -430,7 +430,7 @@ func TestRunnerSessionController_Get_NotFound(t *testing.T) {
 			return nil, daos.ErrRunnerSessionNotFound
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc)
+	controller := NewRunnerSessionController(mockSvc, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

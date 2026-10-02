@@ -69,3 +69,18 @@ func TestNotifierEmitIsNonBlocking(t *testing.T) {
 	frames := waitFrames(c, sendBufferSize, 20)
 	require.LessOrEqual(t, len(frames), sendBufferSize)
 }
+
+// TestUpdateSessionStatePayloadShape: el frame update:session_state (Gap 26
+// D10) viaja con data = objeto de estado presencial post-write.
+func TestUpdateSessionStatePayloadShape(t *testing.T) {
+	raw := MarshalUpdateSessionState("session:11", map[string]any{"presencial_open": true, "closed_at": nil})
+	var frame map[string]any
+	require.NoError(t, json.Unmarshal(raw, &frame))
+	assert.Equal(t, UpdateSessionStateEventType, frame["type"])
+	assert.Equal(t, "session:11", frame["channel"])
+	data := frame["data"].(map[string]any)
+	assert.Equal(t, true, data["presencial_open"])
+	v, hasClosed := data["closed_at"]
+	require.True(t, hasClosed)
+	assert.Nil(t, v)
+}

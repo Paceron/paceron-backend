@@ -30,8 +30,15 @@ const (
 // (se compone como "update:<event>").
 const EventSetEvent = "set_event"
 
+// EventSessionState identifica el evento server-originado de apertura/cierre
+// de la sesión presencial (Gap 26 D10).
+const EventSessionState = "session_state"
+
 // UpdateSetEventType = "update:set_event" (diseño D4).
 const UpdateSetEventType = TypeUpdate + ":" + EventSetEvent
+
+// UpdateSessionStateEventType = "update:session_state" (Gap 26 D10).
+const UpdateSessionStateEventType = TypeUpdate + ":" + EventSessionState
 
 // clientMessage es el decode de todo frame cliente → servidor. payload de
 // presence/control viaja opaco pero debe ser un objeto JSON (ver ParseInbound).

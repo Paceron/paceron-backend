@@ -307,10 +307,13 @@ func NewApplication() *Application {
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
 
-	// Runner Session flow (estado de sesión del corredor, wip -> finished)
+	// Runner Session flow (estado de sesión del corredor, wip -> finished).
+	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
+	// apertura/cierre del entrenador; el controller emite update:session_state.
+	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
-	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao)
-	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService)
+	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier)
 
 	return &Application{
 		pingController:              controllers.NewPingController(),

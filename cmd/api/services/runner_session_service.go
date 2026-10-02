@@ -46,12 +46,17 @@ type RunnerSessionServiceInterface interface {
 
 type runnerSessionService struct {
 	runnerSessionDao daos.RunnerSessionDAOInterface
+	// presencial es opcional (nil en tests = sin gate ni hooks calendario):
+	// el gate D9 del día presencial corre dentro de Create para respetar el
+	// orden 404 instancia → 403 atleta ajeno → 409 del gate.
+	presencial PresencialSessionServiceInterface
 }
 
 // NewRunnerSessionService crea una nueva instancia de RunnerSessionService.
-func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface) RunnerSessionServiceInterface {
+func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, presencial PresencialSessionServiceInterface) RunnerSessionServiceInterface {
 	return &runnerSessionService{
 		runnerSessionDao: runnerSessionDao,
+		presencial:       presencial,
 	}
 }
 
@@ -73,6 +78,15 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
 	if err != nil {
 		return nil, false, err
+	}
+
+	// Gate presencial D9: después de resolveAthlete (403 precede al 409) y
+	// antes del write — un día cerrado/sin abrir no acepta entrada del
+	// corredor. Owner exento (CheckAthleteEntry lo resuelve).
+	if s.presencial != nil {
+		if err := s.presencial.CheckAthleteEntry(ctx, sessionInstanceID, authUserID); err != nil {
+			return nil, false, err
+		}
 	}
 
 	rs := &dbs.RunnerSession{
