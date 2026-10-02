@@ -155,8 +155,8 @@ func TestRunnerSessionDao_UpdateStatus_FromWip_ToFinished(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
 	require.NotNil(t, got.EndDate)
-	// El timestamptz vuelve en time.Local (así lo decodifica el driver): igual
-	//dad exacta vía assert.Equal sobre .UTC() de ambos lados, sin Location en juego.
+	// El timestamptz vuelve en time.Local (así lo decodifica el driver):
+	// igualdad exacta vía assert.Equal sobre .UTC() de ambos lados, sin Location en juego.
 	assert.Equal(t, end.UTC(), got.EndDate.UTC())
 }
 
