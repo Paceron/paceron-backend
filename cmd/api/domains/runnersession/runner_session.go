@@ -2,6 +2,13 @@ package runnersession
 
 import "time"
 
+// Estados de runner_session (string sin constraint en DB; el POST crea en wip).
+const (
+	RunnerSessionStatusWip         = "wip"
+	RunnerSessionStatusFinished    = "finished"
+	RunnerSessionStatusInterrupted = "interrupted"
+)
+
 // Mensajes de respuesta fijos del módulo de estado de sesión del corredor.
 const (
 	MsgRunnerSessionCreated     = "estado de sesión creado"

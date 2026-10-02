@@ -21,16 +21,16 @@ import (
 )
 
 type mockRunnerSessionControllerService struct {
-	createFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error)
+	createFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error)
 	finishFn func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error)
 	getFn    func(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error)
 }
 
-func (m *mockRunnerSessionControllerService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
+func (m *mockRunnerSessionControllerService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
 	if m.createFn != nil {
 		return m.createFn(ctx, authUserID, sessionInstanceID, req)
 	}
-	return nil, false, nil
+	return nil, nil, false, nil
 }
 
 func (m *mockRunnerSessionControllerService) Finish(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
@@ -82,10 +82,10 @@ func TestRunnerSessionController_Unauthorized(t *testing.T) {
 func TestRunnerSessionController_Create_201(t *testing.T) {
 	var gotAuth, gotSession int64
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
 			gotAuth = authUserID
 			gotSession = sessionInstanceID
-			return fixtureRunnerSessionResponse(), true, nil
+			return fixtureRunnerSessionResponse(), nil, true, nil
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil)
@@ -113,8 +113,8 @@ func TestRunnerSessionController_Create_201(t *testing.T) {
 
 func TestRunnerSessionController_Create_200_Existing(t *testing.T) {
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
-			return fixtureRunnerSessionResponse(), false, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, false, nil
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil)
@@ -196,8 +196,8 @@ func TestRunnerSessionController_ErrorMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockSvc := &mockRunnerSessionControllerService{
-				createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
-					return nil, false, tc.serviceErr
+				createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+					return nil, nil, false, tc.serviceErr
 				},
 			}
 			controller := NewRunnerSessionController(mockSvc, nil, nil)
@@ -341,7 +341,7 @@ func TestRunnerSessionController_Finish_AlreadyInterrupted_200_Unchanged(t *test
 	require.NotNil(t, resp.Data)
 	assert.Equal(t, "interrupted", resp.Data.Status)
 	require.NotNil(t, resp.Data.EndDate)
-	assert.WithinDuration(t, oldEnd, *resp.Data.EndDate, 0)
+	assert.Equal(t, oldEnd, *resp.Data.EndDate)
 }
 
 func TestRunnerSessionController_Finish_BadStatusBody(t *testing.T) {

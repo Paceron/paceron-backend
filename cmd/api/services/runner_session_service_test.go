@@ -89,7 +89,7 @@ func TestRunnerSessionService_Create_Self_Created(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	rs, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
 	})
 
@@ -106,7 +106,7 @@ func TestRunnerSessionService_Create_SessionMissing_NotFound(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
 	})
 	require.ErrorIs(t, err, ErrSessionInstanceNotFound)
@@ -126,7 +126,7 @@ func TestRunnerSessionService_Create_AlreadyExists_Idempotent(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	rs, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
 	})
 
@@ -153,7 +153,7 @@ func TestRunnerSessionService_Create_TrainerForAthleteInOwnedTeam(t *testing.T) 
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	rs, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete,
 		StartDate:     sessionDate,
 	})
@@ -175,7 +175,7 @@ func TestRunnerSessionService_Create_TrainerForOutsider_Forbidden(t *testing.T) 
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete,
 		StartDate:     sessionDate,
 	})
@@ -191,7 +191,7 @@ func TestRunnerSessionService_Create_InvalidStartDate(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{})
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{})
 
 	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
 }
@@ -345,7 +345,7 @@ func TestRunnerSessionService_Finish_AlreadyInterrupted_Idempotent(t *testing.T)
 	assert.False(t, updateCalled, "idempotente: no debe llamar al DAO")
 	assert.Equal(t, "interrupted", rs.Status)
 	require.NotNil(t, rs.EndDate)
-	assert.WithinDuration(t, oldEnd, *rs.EndDate, 0)
+	assert.Equal(t, oldEnd, *rs.EndDate)
 }
 
 func TestRunnerSessionService_Finish_AlreadyFinished_Idempotent(t *testing.T) {
@@ -464,25 +464,25 @@ func TestRunnerSessionService_Get_Self(t *testing.T) {
 // fns opcionales: nil en el constructor = sin gate ni hooks (comportamiento
 // previo, sin cambios).
 type mockPresencialGate struct {
-	checkFn          func(ctx *gin.Context, sessionInstanceID, authUserID int64) error
-	onCreatedFn      func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error)
+	checkFn          func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error)
+	onCreatedFn      func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error)
 	onFinishedFn     func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error)
 	checkInvoked     bool
 	onCreatedInvoked bool
 }
 
-func (m *mockPresencialGate) CheckAthleteEntry(ctx *gin.Context, sessionInstanceID, authUserID int64) error {
+func (m *mockPresencialGate) CheckAthleteEntry(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error) {
 	m.checkInvoked = true
 	if m.checkFn != nil {
 		return m.checkFn(ctx, sessionInstanceID, authUserID)
 	}
-	return nil
+	return nil, nil
 }
 
-func (m *mockPresencialGate) OnRunnerCreated(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error) {
+func (m *mockPresencialGate) OnRunnerCreated(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
 	m.onCreatedInvoked = true
 	if m.onCreatedFn != nil {
-		return m.onCreatedFn(ctx, sessionInstanceID, authUserID)
+		return m.onCreatedFn(ctx, sessionInstanceID, authUserID, gateDay)
 	}
 	return nil, false, nil
 }
@@ -503,7 +503,7 @@ func TestRunnerSessionService_Create_GatesAfterResolveAthlete(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, gate)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete, StartDate: sessionDate,
 	})
 
@@ -513,9 +513,9 @@ func TestRunnerSessionService_Create_GatesAfterResolveAthlete(t *testing.T) {
 
 func TestRunnerSessionService_Create_GateAfterResolveAthlete_BeforeWrite(t *testing.T) {
 	blockedAtGate := false
-	gate := &mockPresencialGate{checkFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) error {
+	gate := &mockPresencialGate{checkFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error) {
 		blockedAtGate = true
-		return ErrRunnerSessionClosed
+		return nil, ErrRunnerSessionClosed
 	}}
 	writeAttempted := false
 	mock := &mockRunnerSessionDao{
@@ -527,7 +527,7 @@ func TestRunnerSessionService_Create_GateAfterResolveAthlete_BeforeWrite(t *test
 	}
 	svc := NewRunnerSessionService(mock, gate)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
 	require.ErrorIs(t, err, ErrRunnerSessionClosed)
 	assert.True(t, blockedAtGate)
@@ -535,17 +535,22 @@ func TestRunnerSessionService_Create_GateAfterResolveAthlete_BeforeWrite(t *test
 }
 
 func TestRunnerSessionService_Create_GatePasses(t *testing.T) {
-	gate := &mockPresencialGate{}
+	gateDay := &dbs.GroupCalendarDay{ID: 9}
+	gate := &mockPresencialGate{checkFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error) {
+		return gateDay, nil
+	}}
 	mock := &mockRunnerSessionDao{
 		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
 		createFn:                func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) { return true, nil },
 	}
 	svc := NewRunnerSessionService(mock, gate)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	_, gotDay, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
 	require.NoError(t, err)
 	assert.True(t, gate.checkInvoked)
+	assert.True(t, created)
+	assert.Same(t, gateDay, gotDay, "el día del gate sale en la respuesta para el hook de apertura")
 }
 
 func TestRunnerSessionService_Create_NilGate_SinGate(t *testing.T) {
@@ -555,7 +560,7 @@ func TestRunnerSessionService_Create_NilGate_SinGate(t *testing.T) {
 	}
 	svc := NewRunnerSessionService(mock, nil)
 
-	_, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
 	require.NoError(t, err)
 }

@@ -76,8 +76,8 @@ func newRunnerBroadcastServer(t *testing.T, hub *realtime.Hub, presencial servic
 	})
 
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, bool, error) {
-			return fixtureRunnerSessionResponse(), true, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, true, nil
 		},
 		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
 			rs := fixtureRunnerSessionResponse()
@@ -203,7 +203,7 @@ func (w *runnerBroadcastClient) waitSilence(t *testing.T, d time.Duration) {
 
 func TestRunnerSession_Open_BroadcastsSessionStateToWS(t *testing.T) {
 	opened := time.Now().UTC()
-	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error) {
+	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
 		return presencialDayFixture(&opened, nil), true, nil
 	}}
 	// Hub real: el frame debe cruzar hub→WS (no solo el stub del channel).
@@ -241,7 +241,7 @@ func TestRunnerSession_Close_BroadcastsSessionStateToWS(t *testing.T) {
 
 func TestRunnerSession_NilNotifier_NoPanic(t *testing.T) {
 	opened := time.Now().UTC()
-	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error) {
+	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
 		return presencialDayFixture(&opened, nil), true, nil
 	}}
 	s := newRunnerBroadcastServer(t, realtime.NewHub(), presencial, nil)
@@ -252,7 +252,7 @@ func TestRunnerSession_NilNotifier_NoPanic(t *testing.T) {
 func TestRunnerSession_NonOwner_DoesNotEmit(t *testing.T) {
 	// Corredor no-owner: el hook resuelve sin mutación → sin frame para los
 	// suscriptos del canal.
-	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error) {
+	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
 		return nil, false, nil
 	}}
 	hub := realtime.NewHub()

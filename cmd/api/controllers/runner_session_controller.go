@@ -16,12 +16,6 @@ import (
 	"simple-arq-golang/cmd/api/utils"
 )
 
-// Valor de status que dispara el mensaje de interrupción en el PATCH.
-const runnersessionStatusInterruptedValue = "interrupted"
-
-// Valor de status finished: el único que dispara el hook de cierre (D7).
-const runnersessionStatusFinishedValue = "finished"
-
 // RunnerSessionController define los handlers HTTP del estado de sesión del
 // corredor (runner_session).
 type RunnerSessionController interface {
@@ -164,7 +158,7 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 		return
 	}
 
-	rs, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
+	rs, gateDay, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
 	if err != nil {
 		respondRunnerSessionError(c, err)
 		return
@@ -174,8 +168,9 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 	// update del día falla, el error sube con el estado del corredor ya
 	// persistido — aceptado por diseño). El hook decide si aplica
 	// (día presencial + owner); idempotente y solo muta si estaba NULL.
+	// Reutiliza el día cargado por el gate del service (sin re-consulta).
 	if rc.presencial != nil {
-		day, mutated, hookErr := rc.presencial.OnRunnerCreated(c, sessionInstanceID, authUserID)
+		day, mutated, hookErr := rc.presencial.OnRunnerCreated(c, sessionInstanceID, authUserID, gateDay)
 		if hookErr != nil {
 			respondRunnerSessionError(c, hookErr)
 			return
@@ -251,7 +246,7 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 
 	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;
 	// interrupted NO cierra. Idempotente vía guard SQL.
-	if rs.Status == runnersessionStatusFinishedValue && rc.presencial != nil {
+	if rs.Status == runnersession.RunnerSessionStatusFinished && rc.presencial != nil {
 		day, mutated, hookErr := rc.presencial.OnRunnerFinished(c, sessionInstanceID, authUserID)
 		if hookErr != nil {
 			respondRunnerSessionError(c, hookErr)
@@ -264,7 +259,7 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 
 	response := toRunnerSessionResponse(rs)
 	message := runnersession.MsgRunnerSessionFinished
-	if rs.Status == runnersessionStatusInterruptedValue {
+	if rs.Status == runnersession.RunnerSessionStatusInterrupted {
 		message = runnersession.MsgRunnerSessionInterrupted
 	}
 	c.JSON(http.StatusOK, runnersession.MutationResponse{
