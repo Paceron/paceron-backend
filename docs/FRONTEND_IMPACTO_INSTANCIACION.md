@@ -342,3 +342,71 @@ Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`**
 **Heartbeat JSON:** mandar `{"type":"ping"}` cada 20-30 s → responde `{"type":"pong"}`. Cualquier mensaje refresca el deadline de 45 s — sin tráfico en 45 s el servidor corta. Frames del cliente > 4 KB cortan la conexión (única excepción).
 
 **Reconexión:** los deploys cortan las conexiones — reconectar con backoff y re-suscribirse; las suscripciones no sobreviven a la desconexión. El servidor también puede cortar por **overflow sostenido** del buffer de salida (cliente que no drena su cola): es un caso más de reconexión, no de error.
+
+## 12. Sesión interrumpida y eventos en vivo (Gaps 19/23/25/26/27/28, change `sesion-interrumpida-y-eventos-en-vivo`)
+
+Cambios de contrato **confirmados en el código final** de la rama `feature/sesion-interrumpida-y-eventos-en-vivo` (HEAD `1a10595`). Referencias: `cmd/api/controllers/runner_session_controller.go`, `cmd/api/controllers/attendance_controller.go`, `cmd/api/controllers/calendar_controller.go`, `cmd/api/domains/instance/instance_response.go`, `cmd/api/domains/user/search_response.go`, `cmd/api/realtime/*.go`, `cmd/api/daos/group_user_dao.go`. Doc de dominio: `docs/CATALOGO_Y_CALENDARIO.md` §8.11; contrato WS completo: `docs/REALTIME_WS.md` §6–§7.
+
+**Marco general:** salvo Gap 25 (fix de elegibilidad, sin shape nuevo), todo es **aditivo o contrato nuevo** — `interrupted`, el gate 409, los 3 campos del detalle y los 2 eventos WS no pisan ningún shape existente. Nada de lo que hoy funciona cambia de significado.
+
+### 12.1 Gap 19 — `PATCH /session-instances/:id/runner` con `status="interrupted"`
+
+Nuevas transiciones (estado previo en columnas propias de runner session): `wip→interrupted` (`200`), `interrupted→finished` (`200`, re-setea `end_date` al now del server), `interrupted→interrupted` idempotente (`200`). `finished` segue siendo terminal: `finished→interrupted` → **`400`** (msg "no se puede interrumpir una sesión ya finalizada"), status inválido → `400`, fila inexistente → `404`.
+
+```json
+PATCH /api/v1/session-instances/88/runner
+{"status": "interrupted"}
+HTTP 200
+{"message": "sesión marcada como interrumpida", "data": {"id": 1, "session_instance_id": 88, "athlete_user_id": 5, "status": "interrupted", "start_date": "2026-10-01T18:00:00Z", "end_date": null}}
+```
+
+El shape de la fila (`RunnerSessionResponse`) no cambió — solo se agregó el valor del enum de `status`.
+
+### 12.2 Gap 26 — apertura/cierre presencial: gate 409 y detalle con 3 campos
+
+**Gate de escritura del corredor no-owner** sobre día presencial (owner del team del grupo exento): día cerrado → `409 {"status_code":409,"code":"session_closed","message":...}`; día presencial nunca abierto → `409 {"status_code":409,"code":"session_not_opened","message":...}`. Orden de errores: `404` instancia → `403` atleta ajeno → `409` gate. Días no presenciales sin gate. Acción frontend: refetch del detalle (o consumo de `update:session_state`) para distinguir los dos slugs.
+
+**Detalle de instancia** (`GET /session-instances/{id}`, §10): `session_instance` suma 3 campos `omitempty` — solo presentes en el path de detalle, solo para día presencial:
+
+```json
+"session_instance": {
+  "id": 123, "name": "Fartlek 5K", "…": "…",
+  "presencial_open": true,
+  "opened_at": "2026-10-01T18:02:11Z",
+  "closed_at": null
+}
+```
+
+Cerrada: `presencial_open: false` + `closed_at` poblado (el cierre es final, no hay reopen). Instancia huérfana, día no presencial o paths de calendario (GetRange/NextSession/member-calendar): los 3 ausentes del JSON. El objeto standalone del detalle los trae igual al nivel raíz.
+
+### 12.3 Gap 23 — `photo_url` en search y batch lookup
+
+Aditivo: `SearchResultItem` trae `photo_url` nullable **sin `omitempty`** (siempre presente en el JSON; `null` sin foto o foto nunca actualizada):
+
+```json
+{"user_id": 5, "name": "Ana Gómez", "email": null, "photo_url": "https://cdn/…?v=1690000000"}
+```
+
+Con foto: URL firmada de `buildMediaURL(key, photo_updated_at)` (`?v=<unix de photo_updated_at>`); `null` cuando `photo_key` es `NULL`. Igual en `Search` y `BatchLookup`.
+
+### 12.4 Gap 25 — roster/asistencia: elegibilidad por fecha
+
+Fix de comportamiento, sin shape nuevo: la membresía activa se evalúa por **fecha de calendario** (`date_start::date <= fecha de la sesión` y `date_end::date >=fecha de la sesión`). Corredor con membresía que empieza el mismo día (a cualquier hora) ya aparece en `FindGroupRosterWithAttendance` y es elegible para attendance. Si el frontend filtraba roster por membresía propia, ya no hace falta compensarlo.
+
+### 12.5 Gap 27 — relay dirigido por `to`
+
+Nuevo mandato en presence/control: indicar el destino con `"to": <userID entero>` **dentro del payload** → entrega **solo a las conexiones de ese user** en el canal (todas, no una específica). Semántica completa:
+
+- `to` entero en `[1, MaxInt64]` → dirigido. `to` = propio userID → el emisor **sí recibe con eco** (única forma de auto-eco en presence/control).
+- `to` ausente o `"all"` → actual: todos los suscriptos menos el emisor.
+- Otro tipo (`"to":"5"`, decimal `5.5`, overflow `> MaxInt64`, arreglo) → broadcast normal.
+- El frame entregado lleva el payload completo, `to` incluido adentro (el backend no lo muta ni lo remueve) — el receptor puede ver a quién apuntaba.
+- Nadie tiene ese userID suscripto → nadie lo recibe, la conexión del emisor sigue viva.
+
+Vía HTTP no cambia nada: es semántica de entrega del WS.
+
+### 12.6 Gap 28 — evento `update:attendance_event`
+
+Server-originado, al canal `session:{training_session_id}` (que es el session instance id de la fila de attendance). Frame: `{"type":"update:attendance_event","channel":"session:88","data":{"user_id":5,"status":"attended","source":"qr","registered_at":"2026-10-01T18:05:00Z","attendance_id":42}}` — `data` es la fila del roster afectada igual que en la grilla (sin name/email; días 200 idempotente no emiten; cache offline = refetch del roster). Ver detalle completo de alcance por operador en `docs/REALTIME_WS.md` §6.
+
+Eventos companion para el día: apertura/`finished` del entrenador → `update:session_state` con `{presencial_open, opened_at, closed_at}` (ver §6 de REALTIME_WS). El `interrupted` del entrenador no emite (no cierra).

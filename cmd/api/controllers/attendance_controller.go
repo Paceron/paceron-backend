@@ -703,9 +703,9 @@ func validateBulkSaveRequest(request *attendance.BulkSaveRequest) error {
 		return errors.New("training_session_id debe ser un número entero mayor a 0")
 	}
 	// Un `entries` vacío NO es un error: la spec lo define como no-op que
-	// responde 200 con los contadores en cero. El service y el DAO lo tratan
-	// como tal (BulkUpsertManual devuelve 0,0 sin tocar la DB), así que acá solo
-	// se valida la forma de cada entrada cuando hay alguna.
+	// responde 200 con los contadores en cero. El DAO devuelve `nil, nil`
+	// sin tocar la DB y el service lo traduce a `{created:0, updated:0}`,
+	// así que acá solo se valida la forma de cada entrada cuando hay alguna.
 	for i, entry := range request.Entries {
 		if entry.UserID <= 0 {
 			return fmt.Errorf("entries[%d].user_id debe ser un entero mayor a 0", i)
