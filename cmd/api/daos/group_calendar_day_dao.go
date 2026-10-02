@@ -84,9 +84,11 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 		"presencial_location":  day.PresencialLocation,
 		"source_plan_id":       day.SourcePlanID,
 	}
-	// Gap 26 D5: el estado presencial muere con el día — si la reasignación
-	// cambia la instancia (o la quita), el día arranca sin apertura/cierre.
-	if !sameNullableInt(existing.SessionInstanceID, day.SessionInstanceID) {
+	// Gap 26 D5: el estado presencial existe solo mientras el día lo declare.
+	// Si la escritura apaga is_presencial (o la reasignación cambia la
+	// instancia), opened/closed se limpian: re-activar presencial arranca sin
+	// apertura (gate 409 hasta que el owner vuelva a abrir).
+	if !sameNullableInt(existing.SessionInstanceID, day.SessionInstanceID) || !day.IsPresencial {
 		updates["presencial_opened_at"] = nil
 		updates["presencial_closed_at"] = nil
 	}

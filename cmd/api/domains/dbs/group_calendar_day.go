@@ -13,7 +13,7 @@ type GroupCalendarDay struct {
 	OtherName *string   `gorm:"column:other_name"`
 	// SessionInstanceID apunta a una copia inmutable de la Session del catálogo
 	// (design.md asignacion-por-instanciacion D1) — nunca al catálogo.
-	SessionInstanceID *int64  `gorm:"column:session_instance_id"`
+	SessionInstanceID *int64  `gorm:"column:session_instance_id;index"`
 	CancelledReason   *string `gorm:"column:cancelled_reason"`
 	IsPresencial      bool    `gorm:"column:is_presencial;not null;default:false"`
 	// PresencialTimeFrom/PresencialTimeTo son horarios sueltos (sin fecha real)
