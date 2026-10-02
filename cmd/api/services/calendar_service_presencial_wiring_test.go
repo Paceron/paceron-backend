@@ -235,7 +235,8 @@ func TestPresencialWiring_Bulk_SameTeamWarningsAgregados(t *testing.T) {
 	require.Len(t, resp.SameTeamWarnings, 2, "warnings agregados por cada fecha que superpone")
 }
 
-// 2.4 — shift: las filas movidas no colisionan consigo mismas en su fecha nueva.
+// 2.4 — shift: las filas movidas no colisionan consigo mismas en su fecha nueva
+// (el excludeDayIDs del propio shift las saca de la búsqueda).
 func TestPresencialWiring_Shift_FilasMovidasNoColisionanConsigoMismas(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, groupA := task3OwnerGroup(t, db, "pwsh1")

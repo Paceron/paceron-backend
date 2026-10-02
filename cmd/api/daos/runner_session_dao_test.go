@@ -155,10 +155,9 @@ func TestRunnerSessionDao_UpdateStatus_FromWip_ToFinished(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
 	require.NotNil(t, got.EndDate)
-	// El timestamptz vuelve en time.Local (así lo decodifica el driver), no en
-	// UTC: mismo instante, distinta Location, y assert.Equal compara la struct
-	// time.Time completa. Por eso se compara el instante, no la representation.
-	assert.WithinDuration(t, end, *got.EndDate, 0)
+	// El timestamptz vuelve en time.Local (así lo decodifica el driver): igual
+	//dad exacta vía assert.Equal sobre .UTC() de ambos lados, sin Location en juego.
+	assert.Equal(t, end.UTC(), got.EndDate.UTC())
 }
 
 func TestRunnerSessionDao_UpdateStatus_FromWip_ToInterrupted(t *testing.T) {
@@ -174,7 +173,7 @@ func TestRunnerSessionDao_UpdateStatus_FromWip_ToInterrupted(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "interrupted", got.Status)
 	require.NotNil(t, got.EndDate)
-	assert.WithinDuration(t, end, *got.EndDate, 0)
+	assert.Equal(t, end.UTC(), got.EndDate.UTC())
 }
 
 func TestRunnerSessionDao_UpdateStatus_FromInterrupted_ToFinished(t *testing.T) {
@@ -191,7 +190,7 @@ func TestRunnerSessionDao_UpdateStatus_FromInterrupted_ToFinished(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
 	require.NotNil(t, got.EndDate)
-	assert.WithinDuration(t, newEnd, *got.EndDate, 0)
+	assert.Equal(t, newEnd.UTC(), got.EndDate.UTC())
 }
 
 func TestRunnerSessionDao_UpdateStatus_Finished_IsUntouchable(t *testing.T) {
@@ -211,7 +210,7 @@ func TestRunnerSessionDao_UpdateStatus_Finished_IsUntouchable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
 	require.NotNil(t, got.EndDate)
-	assert.WithinDuration(t, originalEnd, *got.EndDate, 0)
+	assert.Equal(t, originalEnd.UTC(), got.EndDate.UTC())
 }
 
 func TestRunnerSessionDao_SessionInstanceExists(t *testing.T) {

@@ -194,7 +194,7 @@ func TestCalendarService_SessionInstanceDetail_PresencialAbierta(t *testing.T) {
 	require.NotNil(t, resp.PresencialOpen)
 	assert.True(t, *resp.PresencialOpen)
 	require.NotNil(t, resp.PresencialOpenedAt)
-	assert.WithinDuration(t, opened, *resp.PresencialOpenedAt, 0)
+	assert.Equal(t, opened.UTC(), resp.PresencialOpenedAt.UTC())
 	assert.Nil(t, resp.PresencialClosedAt)
 }
 
@@ -213,7 +213,7 @@ func TestCalendarService_SessionInstanceDetail_PresencialCerrada(t *testing.T) {
 	require.NotNil(t, resp.PresencialOpen)
 	assert.False(t, *resp.PresencialOpen)
 	require.NotNil(t, resp.PresencialClosedAt)
-	assert.WithinDuration(t, closed, *resp.PresencialClosedAt, 0)
+	assert.Equal(t, closed.UTC(), resp.PresencialClosedAt.UTC())
 }
 
 // Día NO presencial del fixture base: el detalle existe pero los 3 campos
