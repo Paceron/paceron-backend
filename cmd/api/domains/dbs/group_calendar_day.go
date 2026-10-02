@@ -26,6 +26,13 @@ type GroupCalendarDay struct {
 	PresencialTimeFrom *time.Time `gorm:"column:presencial_time_from"`
 	PresencialTimeTo   *time.Time `gorm:"column:presencial_time_to"`
 	PresencialLocation *string    `gorm:"column:presencial_location;type:jsonb"`
+	// PresencialOpenedAt/PresencialClosedAt marcan la apertura/cierre del
+	// entrenamiento presencial (design.md Gap 26 D5): abierta = opened != NULL
+	// && closed == NULL; cerrada = closed != NULL (final, sin reopen). El
+	// estado muere con el día: si el día se reasigna a otra instancia,
+	// Upsert los limpia.
+	PresencialOpenedAt *time.Time `gorm:"column:presencial_opened_at"`
+	PresencialClosedAt *time.Time `gorm:"column:presencial_closed_at"`
 	SourcePlanID       *int64     `gorm:"column:source_plan_id"`
 	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at;autoUpdateTime"`
