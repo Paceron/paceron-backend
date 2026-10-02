@@ -31,7 +31,7 @@ func TestGroupUserDao_MembershipWindowSameDay(t *testing.T) {
 
 	startedToday := persistUser(db, "gu-window-sameday-today@test.com", "54000002")
 	require.NoError(t, guDao.Create(nil, &dbs.GroupUser{
-		GroupID: group.ID, UserID: startedToday.ID, DateStart: time.Now(),
+		GroupID: group.ID, UserID: startedToday.ID, DateStart: sessionDate.Add(12 * time.Hour), // mediodía UTC del día de sesión: evita flake de timezone (review T1)
 	}))
 
 	startedYesterday := persistUser(db, "gu-window-sameday-yesterday@test.com", "54000003")
