@@ -560,7 +560,7 @@ func (cc *calendarController) CalendarSummary(c *gin.Context) {
 
 // SessionInstanceDetail godoc
 // @Summary      Detalle completo de una sesión instancia
-// @Description  Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella.
+// @Description  Devuelve la instancia completa (nombre, descripción, ejercicios con series) a partir de solo su id. Acceso si hay un día de calendario del grupo/equipo del caller con esta instancia, o un feedback activo del caller (atleta/reportante/owner) sobre ella. Si la instancia es el día training+presencial de calendario, suma el estado presencial (Gap 26): presencial_open (bool real, false si cerrada o sin abrir), opened_at y closed_at (RFC3339 o null); en instancia huérfana o día no presencial los 3 campos no aparecen.
 // @Tags         calendar
 // @Produce      json
 // @Param        id   path  int  true  "Session Instance ID"

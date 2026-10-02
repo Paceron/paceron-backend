@@ -615,7 +615,19 @@ func (s *calendarService) SessionInstanceDetail(ctx *gin.Context, id, callerID i
 	if !access {
 		return nil, ErrCalendarForbidden
 	}
-	return s.sessionInstanceResponse(ctx, s.db, &id)
+	response, err := s.sessionInstanceResponse(ctx, s.db, &id)
+	if err != nil {
+		return nil, err
+	}
+	// Gap 26 D8: el detalle resuelve el estado presencial vía D6 (día por
+	// instancia); los paths de calendario no lo setean (omitempty).
+	day, err := s.calendarDao.FindBySessionInstanceID(ctx, id)
+	if err != nil {
+		customlogger.Error(ctx, "error finding presencial day for detail", err, customlogger.TagMethod("SessionInstanceDetail"))
+		return nil, fmt.Errorf("error al buscar día presencial de la instancia: %w", err)
+	}
+	instance.ApplyPresencialState(response, day)
+	return response, nil
 }
 
 // deleteSupersededInstance follows D10 and keeps an instance orphaned when
