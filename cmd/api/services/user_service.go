@@ -170,10 +170,11 @@ func (s *userService) Search(ctx *gin.Context, query string) (*user.SearchRespon
 	results := make([]user.SearchResultItem, 0, len(usersDB))
 	for _, u := range usersDB {
 		results = append(results, user.SearchResultItem{
-			UserID:  u.ID,
-			Name:    u.Name,
-			Surname: u.Surname,
-			Email:   u.Email,
+			UserID:   u.ID,
+			Name:     u.Name,
+			Surname:  u.Surname,
+			Email:    u.Email,
+			PhotoURL: buildMediaURL(u.PhotoKey, u.PhotoUpdatedAt),
 		})
 	}
 
@@ -197,10 +198,11 @@ func (s *userService) BatchLookup(ctx *gin.Context, userIDs []int64) (*user.Batc
 	results := make([]user.SearchResultItem, 0, len(usersDB))
 	for _, u := range usersDB {
 		results = append(results, user.SearchResultItem{
-			UserID:  u.ID,
-			Name:    u.Name,
-			Surname: u.Surname,
-			Email:   u.Email,
+			UserID:   u.ID,
+			Name:     u.Name,
+			Surname:  u.Surname,
+			Email:    u.Email,
+			PhotoURL: buildMediaURL(u.PhotoKey, u.PhotoUpdatedAt),
 		})
 	}
 

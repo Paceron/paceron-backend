@@ -7,6 +7,8 @@ type SearchResultItem struct {
 	Name    string `json:"name"`
 	Surname string `json:"surname"`
 	Email   string `json:"email"`
+	// null explícito para usuarios sin foto: sin omitempty a propósito.
+	PhotoURL *string `json:"photo_url"`
 }
 
 type SearchResponse struct {
