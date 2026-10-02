@@ -55,15 +55,25 @@ const (
 	qrWebPathFmt = "/attendance/register?team_id=%d&session_instance_id=%d"
 )
 
+// AttendanceEventRow es la fila de asistencia que el controller necesita para
+// armar el evento update:attendance_event: identifica la fila del roster, el
+// canal (TrainingSessionID == session_instance_id) y cuándo se registró.
+type AttendanceEventRow struct {
+	UserID            int64
+	AttendanceID      int64
+	CreatedAt         time.Time
+	TrainingSessionID int64
+}
+
 // AttendanceServiceInterface define las operaciones de negocio de asistencias.
 type AttendanceServiceInterface interface {
 	GenerateQR(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error)
-	Register(ctx *gin.Context, userID, teamID, sessionID int64) (created bool, sessionCtx *daos.AttendanceSessionContext, err error)
+	Register(ctx *gin.Context, userID, teamID, sessionID int64) (created bool, row *AttendanceEventRow, sessionCtx *daos.AttendanceSessionContext, err error)
 	Search(ctx *gin.Context, authUserID int64, filters attendance.SearchFilters) ([]dbs.Attendance, error)
 	ListAttendanceSessions(ctx *gin.Context, authUserID, teamID, groupID int64) (*attendance.SessionAttendanceListResponse, error)
 	GetSessionAttendance(ctx *gin.Context, authUserID, teamID, groupID, sessionInstanceID int64) (*attendance.SessionAttendanceResponse, error)
-	BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error)
-	DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) error
+	BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []AttendanceEventRow, error)
+	DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*AttendanceEventRow, error)
 }
 
 type attendanceService struct {
@@ -160,31 +170,33 @@ func (s *attendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID, ses
 //
 // La idempotencia no cambia: la primera vez responde true (201) y si ya existía
 // responde false (200) sin insertar un duplicado.
-// Devuelve (created, sessionCtx, err). El contexto se agrega a la respuesta
+// Devuelve (created, row, sessionCtx, err). row es la fila creada — AttendanceID
+// y CreatedAt del insert — para el evento update:attendance_event; es nil si no
+// hubo alta (idempotente o error). El contexto se agrega a la respuesta
 // porque el corredor, después de registrarse, tiene que poder saltar a la sesión
 // que acaba de registrar: el deep link del día es /teams/:team/groups/:group/
 // calendar/:date, y sin el grupo y la fecha el front no puede armarlo — el QR
 // solo trae team_id y session_instance_id. El dato ya estaba cargado acá para
 // validar la membresía, así que no es una consulta extra.
-func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *daos.AttendanceSessionContext, error) {
+func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID int64) (bool, *AttendanceEventRow, *daos.AttendanceSessionContext, error) {
 	// Se resuelve el contexto de la sesión solo para saber su grupo y su fecha.
 	// NO se usa resolveAttendanceSession: esa función valida presencial y no
 	// cancelada, que son reglas del camino del entrenador. El escaneo del
 	// corredor se describe en la spec únicamente con la exigencia de membresía.
 	sessionCtx, err := s.attendanceDao.FindSessionContext(ctx, sessionID)
 	if err != nil {
-		return false, nil, err
+		return false, nil, nil, err
 	}
 	if sessionCtx == nil {
-		return false, nil, ErrAttendanceNotGroupMember
+		return false, nil, nil, ErrAttendanceNotGroupMember
 	}
 
 	isMember, err := s.groupUserDao.IsActiveGroupMember(ctx, sessionCtx.GroupID, userID, sessionCtx.Date)
 	if err != nil {
-		return false, nil, err
+		return false, nil, nil, err
 	}
 	if !isMember {
-		return false, nil, ErrAttendanceNotGroupMember
+		return false, nil, nil, ErrAttendanceNotGroupMember
 	}
 
 	attendance := &dbs.Attendance{
@@ -199,11 +211,19 @@ func (s *attendanceService) Register(ctx *gin.Context, userID, teamID, sessionID
 		if errors.Is(err, daos.ErrAttendanceAlreadyExists) {
 			// Idempotencia: ya estaba, y el contexto se devuelve igual para que el
 			// front pueda llevar al corredor a la misma sesión que en el 201.
-			return false, sessionCtx, nil
+			return false, nil, sessionCtx, nil
 		}
-		return false, nil, fmt.Errorf("error registrando la asistencia: %w", err)
+		return false, nil, nil, fmt.Errorf("error registrando la asistencia: %w", err)
 	}
-	return true, sessionCtx, nil
+	// CREATE de GORM llena ID y CreatedAt sobre el struct pasado: son los datos
+	// que arman la fila del evento de asistencia (D14).
+	row := &AttendanceEventRow{
+		UserID:            attendance.UserID,
+		AttendanceID:      attendance.ID,
+		CreatedAt:         attendance.CreatedAt,
+		TrainingSessionID: attendance.TrainingSessionID,
+	}
+	return true, row, sessionCtx, nil
 }
 
 // Search valida las restricciones de la búsqueda de asistencias y delega al DAO
@@ -613,34 +633,54 @@ var (
 // El orden de las validaciones es lo que hace segura la operación: se resuelve la
 // sesión y se validan los miembros del grupo ANTES de escribir nada, para que un
 // lote con un solo user_id ajeno no deje la asistencia de los demás a medias.
-func (s *attendanceService) BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, error) {
+//
+// Además del resultado HTTP (shape sin cambios, counts derivados en Go del flag
+// del RETURNING), devuelve las filas afectadas —created Y updated, una por
+// corredor del lote— para los eventos update:attendance_event (D13).
+func (s *attendanceService) BulkSaveAttendance(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []AttendanceEventRow, error) {
 	isCoach, err := s.resolveTrainerRole(ctx, teamID, authUserID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !isCoach {
-		return nil, ErrForbiddenAttendance
+		return nil, nil, ErrForbiddenAttendance
 	}
 
 	sessionCtx, err := s.resolveAttendanceSession(ctx, teamID, sessionInstanceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// La membresía se evalúa contra la fecha de la SESIÓN, no contra hoy (D7).
 	missing, err := s.groupUserDao.MissingGroupMembers(ctx, sessionCtx.GroupID, userIDs, sessionCtx.Date)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(missing) > 0 {
-		return nil, &ErrBulkInvalidUsers{UserIDs: missing}
+		return nil, nil, &ErrBulkInvalidUsers{UserIDs: missing}
 	}
 
-	created, updated, err := s.attendanceDao.BulkUpsertManual(ctx, teamID, sessionInstanceID, authUserID, userIDs)
+	rows, err := s.attendanceDao.BulkUpsertManual(ctx, teamID, sessionInstanceID, authUserID, userIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &attendance.BulkSaveResult{Created: created, Updated: updated}, nil
+
+	result := &attendance.BulkSaveResult{}
+	eventRows := make([]AttendanceEventRow, 0, len(rows))
+	for _, r := range rows {
+		if r.Inserted {
+			result.Created++
+		} else {
+			result.Updated++
+		}
+		eventRows = append(eventRows, AttendanceEventRow{
+			UserID:            r.UserID,
+			AttendanceID:      r.AttendanceID,
+			CreatedAt:         r.CreatedAt,
+			TrainingSessionID: sessionInstanceID,
+		})
+	}
+	return result, eventRows, nil
 }
 
 // ErrBulkInvalidUsers es el 422 de la carga masiva. Lleva adentro los user_id
@@ -663,38 +703,48 @@ func (e *ErrBulkInvalidUsers) Is(target error) bool {
 // DeleteAttendance borra una asistencia ya cargada. El borrado es físico: después
 // de un 204 el mismo corredor puede volver a ser marcado para la misma sesión.
 //
+// Devuelve la fila borrada —user_id, training_session_id, attendance_id— para
+// que el controller emita el evento de baja update:attendance_event; es nil si
+// el borrado no ocurrió (404/403/error).
+//
 // El orden importa para no filtrar existencia: primero se busca la fila (404 si
 // no está), recién después se compara su equipo (403) y se valida que el usuario
 // sea entrenador (403). Nunca se devuelve 403 para algo que no existe, ni 404
-// para algo que existe pero es de otro equipo.
-func (s *attendanceService) DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) error {
+// para algo que existe pero es de otro equipo. La fila se lee ANTES de borrar:
+// después del DELETE ya no hay de dónde sacar el user_id (D14).
+func (s *attendanceService) DeleteAttendance(ctx *gin.Context, authUserID, teamID, attendanceID int64) (*AttendanceEventRow, error) {
 	row, err := s.attendanceDao.FindByID(ctx, attendanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if row == nil {
-		return ErrAttendanceNotFound
+		return nil, ErrAttendanceNotFound
 	}
 	if row.TeamID != teamID {
-		return ErrAttendanceForbiddenTeam
+		return nil, ErrAttendanceForbiddenTeam
 	}
 
 	isCoach, err := s.resolveTrainerRole(ctx, teamID, authUserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !isCoach {
-		return ErrAttendanceForbiddenTeam
+		return nil, ErrAttendanceForbiddenTeam
 	}
 
 	deleted, err := s.attendanceDao.DeleteByID(ctx, attendanceID, teamID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !deleted {
 		// La fila cambió entre el FindByID y el DELETE (otro request la borró).
 		// Para el cliente el resultado observable es el mismo que ya estaba.
-		return ErrAttendanceNotFound
+		return nil, ErrAttendanceNotFound
 	}
-	return nil
+	return &AttendanceEventRow{
+		UserID:            row.UserID,
+		AttendanceID:      row.ID,
+		CreatedAt:         row.CreatedAt,
+		TrainingSessionID: row.TrainingSessionID,
+	}, nil
 }

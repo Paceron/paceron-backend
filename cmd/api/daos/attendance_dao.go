@@ -55,6 +55,16 @@ type AttendanceSearchFilters struct {
 	UserID            *int64
 }
 
+// AttendanceUpsertRow es una fila afectada por el upsert manual: los counts
+// de BulkSaveResult se derivan de la suma de Inserted, y el controller usa
+// UserID/AttendanceID/CreatedAt para armar el evento update:attendance_event.
+type AttendanceUpsertRow struct {
+	UserID       int64     `gorm:"column:user_id"`
+	AttendanceID int64     `gorm:"column:attendance_id"`
+	CreatedAt    time.Time `gorm:"column:created_at"`
+	Inserted     bool      `gorm:"column:inserted"`
+}
+
 // SessionAttendanceRow es una fila de la grilla de asistencia: un corredor del
 // grupo cruzado con el estado de su asistencia para la sesión. La compone el
 // service (no es una tabla): UserID y AttendanceID vienen del JOIN, Name/Email
@@ -91,7 +101,7 @@ type AttendanceDAOInterface interface {
 	FindSessionContext(ctx *gin.Context, sessionInstanceID int64) (*AttendanceSessionContext, error)
 	FindPastPresencialSessionsForGroup(ctx *gin.Context, groupID, teamID int64) ([]SessionAttendanceOption, error)
 	FindGroupRosterWithAttendance(ctx *gin.Context, groupID, teamID, sessionInstanceID int64, sessionDate time.Time) ([]SessionAttendanceRow, *SessionAttendanceAggregates, error)
-	BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (created int, updated int, err error)
+	BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]AttendanceUpsertRow, error)
 	FindByID(ctx *gin.Context, attendanceID int64) (*dbs.Attendance, error)
 	DeleteByID(ctx *gin.Context, attendanceID, teamID int64) (bool, error)
 }
@@ -387,10 +397,9 @@ func (d *attendanceDao) FindGroupRosterWithAttendance(ctx *gin.Context, groupID,
 // nombre/columnas, Postgres no fallaría con un error de constraint en runtime
 // —por eso la tarea 3.7 pide un test DAO que lo verifique ruidosamente (R1).
 //
-// `RETURNING (xmax = 0) AS inserted` es la forma idiomática de distinguir un
-// INSERT de un UPDATE en Postgres: en un INSERT recién hecho xmax vale 0, y en una
-// fila actualizada por otro comando vale el xid de esa transacción. Es lo que
-// permite contar created y updated sin una segunda consulta.
+// `RETURNING (xmax = 0) AS inserted` distingue el INSERT del UPDATE (xmax 0
+// solo en una fila recién insertada) y junto con user_id, id y created_at
+// devuelve la fila afectada completa para armar el evento de asistencia.
 const bulkUpsertManualSQL = `
 INSERT INTO attendances (team_id, training_session_id, user_id, source, registered_by_user_id, created_at, updated_at)
 SELECT $1, $2, u.user_id, $3, $4, NOW(), NOW()
@@ -400,40 +409,31 @@ DO UPDATE SET
 	updated_at = NOW(),
 	source = EXCLUDED.source,
 	registered_by_user_id = EXCLUDED.registered_by_user_id
-RETURNING (xmax = 0) AS inserted`
+RETURNING (xmax = 0) AS inserted, user_id, id AS attendance_id, created_at`
 
 // BulkUpsertManual da de alta la asistencia de varios corredores a una misma
 // sesión en una sola sentencia. Es idempotente: reenviar el mismo lote no crea
-// duplicados, refresca source y registered_by_user_id, y devuelve cuantos filas se
-// insertaron y cuantas se actualizaron (contadores excluyentes).
+// duplicados, refresca source y registered_by_user_id, y devuelve las filas
+// afectadas con su flag inserted/updated. Es una fila por corredor del lote
+// (creado o actualizado): cada una patchea su estado en la grilla.
 //
-// Un lote vacío devuelve (0, 0, nil) sin tocar la DB: es un no-op, no un error.
+// Un lote vacío devuelve (nil, nil) sin tocar la DB: es un no-op, no un error.
 //
 // La validación de que los userIDs son miembros del grupo NO se hace acá — es una
 // regla de negocio y vive en el service, que la ejecuta ANTES de llamar a este
 // método para poder rechazar el lote entero sin haber escrito nada.
-func (d *attendanceDao) BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) (created int, updated int, err error) {
+func (d *attendanceDao) BulkUpsertManual(ctx *gin.Context, teamID, sessionInstanceID, actorUserID int64, userIDs []int64) ([]AttendanceUpsertRow, error) {
 	if len(userIDs) == 0 {
-		return 0, 0, nil
+		return nil, nil
 	}
 
-	var results []struct {
-		Inserted bool `gorm:"column:inserted"`
-	}
+	var results []AttendanceUpsertRow
 	// El orden de los argumentos sigue la numeración $1..$5 del SQL de arriba.
 	row := d.DB.Raw(bulkUpsertManualSQL, teamID, sessionInstanceID, string(constants.AttendanceSourceManual), actorUserID, userIDs).Scan(&results)
 	if row.Error != nil {
-		return 0, 0, fmt.Errorf("error bulk upserting attendances: %w", explainBulkUpsertError(row.Error))
+		return nil, fmt.Errorf("error bulk upserting attendances: %w", explainBulkUpsertError(row.Error))
 	}
-
-	for _, r := range results {
-		if r.Inserted {
-			created++
-		} else {
-			updated++
-		}
-	}
-	return created, updated, nil
+	return results, nil
 }
 
 // FindByID devuelve la asistencia por id, o (nil, nil) si no existe.

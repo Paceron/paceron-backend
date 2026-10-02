@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/attendance"
+	"simple-arq-golang/cmd/api/domains/constants"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -27,13 +30,44 @@ type AttendanceController interface {
 
 type attendanceController struct {
 	attendanceService services.AttendanceServiceInterface
+	// notifier es opcional (nil en tests = sin eventos): emite
+	// update:attendance_event a session:{id} en altas y bajas (Gap 28 D13).
+	notifier realtime.Notifier
 }
 
 // NewAttendanceController crea una nueva instancia de AttendanceController.
-func NewAttendanceController(attendanceService services.AttendanceServiceInterface) AttendanceController {
+func NewAttendanceController(attendanceService services.AttendanceServiceInterface, notifier realtime.Notifier) AttendanceController {
 	return &attendanceController{
 		attendanceService: attendanceService,
+		notifier:          notifier,
 	}
+}
+
+// attendanceEvent es el data del frame update:attendance_event (Gap 28 D12):
+// la fila del roster afectada, igual que en la grilla pero sin name/email.
+// Sin omitempty: los nulls del borrado son parte del contrato del evento.
+type attendanceEvent struct {
+	UserID       int64      `json:"user_id"`
+	Status       string     `json:"status"`
+	Source       *string    `json:"source"`
+	RegisteredAt *time.Time `json:"registered_at"`
+	AttendanceID *int64     `json:"attendance_id"`
+}
+
+// attendanceSourcePtr evita que el puntero apunte al loop var del caller.
+func attendanceSourcePtr(source constants.AttendanceSource) *string {
+	s := string(source)
+	return &s
+}
+
+// emitAttendanceEvent emite update:attendance_event al canal canónico
+// session:{sessionInstanceID}. Best-effort y nil-safe (notifier opcional).
+func (ac *attendanceController) emitAttendanceEvent(sessionInstanceID int64, event *attendanceEvent) {
+	if ac.notifier == nil || event == nil {
+		return
+	}
+	channel := sessionChannel(sessionInstanceID)
+	ac.notifier.Emit(channel, realtime.MarshalUpdateAttendanceEvent(channel, event))
 }
 
 // parsePositiveQueryParam parsea un query param opcional como int64 estrictamente
@@ -169,7 +203,7 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 		return
 	}
 
-	created, sessionCtx, err := ac.attendanceService.Register(c, authUserID, teamID, sessionID)
+	created, row, sessionCtx, err := ac.attendanceService.Register(c, authUserID, teamID, sessionID)
 	if err != nil {
 		// 403 si el corredor no es miembro activo del grupo de la sesión. La
 		// idempotencia (200 en vez de 201) no pasa por acá: esa es la única
@@ -189,6 +223,17 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 			Message:    err.Error(),
 		})
 		return
+	}
+
+	// Solo el alta real emite (D13): el 200 idempotente no cambia estado.
+	if created && row != nil {
+		ac.emitAttendanceEvent(row.TrainingSessionID, &attendanceEvent{
+			UserID:       row.UserID,
+			Status:       attendance.SessionAttendanceStatusAttended,
+			Source:       attendanceSourcePtr(constants.AttendanceSourceQR),
+			RegisteredAt: &row.CreatedAt,
+			AttendanceID: &row.AttendanceID,
+		})
 	}
 
 	statusCode := http.StatusCreated
@@ -538,7 +583,7 @@ func (ac *attendanceController) BulkSaveAttendance(c *gin.Context) {
 		userIDs = append(userIDs, entry.UserID)
 	}
 
-	result, err := ac.attendanceService.BulkSaveAttendance(c, authUserID, request.TeamID, request.TrainingSessionID, userIDs)
+	result, rows, err := ac.attendanceService.BulkSaveAttendance(c, authUserID, request.TeamID, request.TrainingSessionID, userIDs)
 	if err != nil {
 		var bulkErr *services.ErrBulkInvalidUsers
 		if errors.As(err, &bulkErr) {
@@ -555,6 +600,18 @@ func (ac *attendanceController) BulkSaveAttendance(c *gin.Context) {
 		}
 		attendanceWriteError(c, err)
 		return
+	}
+
+	// Un evento por corredor afectado (created o updated, D13): cada uno
+	// patchea su fila del roster en el canal de la sesión.
+	for i := range rows {
+		ac.emitAttendanceEvent(rows[i].TrainingSessionID, &attendanceEvent{
+			UserID:       rows[i].UserID,
+			Status:       attendance.SessionAttendanceStatusAttended,
+			Source:       attendanceSourcePtr(constants.AttendanceSourceManual),
+			RegisteredAt: &rows[i].CreatedAt,
+			AttendanceID: &rows[i].AttendanceID,
+		})
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -617,9 +674,19 @@ func (ac *attendanceController) DeleteAttendance(c *gin.Context) {
 		return
 	}
 
-	if err := ac.attendanceService.DeleteAttendance(c, authUserID, *teamID, attendanceID); err != nil {
+	deletedRow, err := ac.attendanceService.DeleteAttendance(c, authUserID, *teamID, attendanceID)
+	if err != nil {
 		attendanceWriteError(c, err)
 		return
+	}
+
+	// Baja del roster (D13): status not_confirmed con source/registered_at/
+	// attendance_id en null, tal como la fila queda en la grilla.
+	if deletedRow != nil {
+		ac.emitAttendanceEvent(deletedRow.TrainingSessionID, &attendanceEvent{
+			UserID: deletedRow.UserID,
+			Status: attendance.SessionAttendanceStatusNotConfirmed,
+		})
 	}
 
 	c.Status(http.StatusNoContent)

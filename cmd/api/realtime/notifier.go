@@ -54,3 +54,15 @@ func MarshalUpdateSessionState(channel string, data any) []byte {
 		Data:    data,
 	})
 }
+
+// MarshalUpdateAttendanceEvent arma el frame `update:attendance_event` (Gap
+// 28 D12): data es la fila del roster afectada, tal como el endpoint de
+// grilla la devuelve menos name/email
+// {user_id, status, source, registered_at, attendance_id}.
+func MarshalUpdateAttendanceEvent(channel string, data any) []byte {
+	return MarshalOutbound(&outboundMessage{
+		Type:    UpdateAttendanceEventType,
+		Channel: channel,
+		Data:    data,
+	})
+}
