@@ -633,6 +633,40 @@ func TestDirectedToAllOrAbsentOrNonNumberKeepsBroadcast(t *testing.T) {
 	}
 }
 
+// TestDirectedHugeToExactAndOverflow: cerca del límite de precisión de
+// float64 (>2^53) un parseo inexacto redondearía `to` hacia otro user
+// (9007199254740993 → 2^53) o rechazaría MaxInt64; el parseo exacto dirige
+// al user real, y el overflow (MaxInt64+2) cae en broadcast normal.
+func TestDirectedHugeToExactAndOverflow(t *testing.T) {
+	setGatewayJWTConfig(t)
+	server := newWSUpgradeServer(t, lenientAuthorizer{})
+	sender := dialWS(t, server.wsURL+"?token="+tok(t, 1), http.Header{})
+	huge := dialWS(t, server.wsURL+"?token="+tok(t, 9223372036854775806), http.Header{})
+	other := dialWS(t, server.wsURL+"?token="+tok(t, 3), http.Header{})
+	for _, c := range []*wsTestClient{sender, huge, other} {
+		subscribe(c, t, "session:7")
+		c.waitFrame(t, TypeSubscribed)
+	}
+
+	// ...806: dirigido — SOLO el user del id gigante lo recibe (bajo float64
+	// el id redondeaba a 2^63 y salía broadcast).
+	sender.send(t, map[string]any{"type": TypeControl, "payload": map[string]any{"n": 1, "to": 9223372036854775806}})
+	frame := huge.waitFrame(t, TypeControl)
+	assert.Equal(t, int64(1), frame.From)
+	assert.Equal(t, `{"n":1,"to":9223372036854775806}`, string(frame.Payload))
+	other.waitSilence(t, 300*time.Millisecond)
+	sender.waitSilence(t, 300*time.Millisecond)
+
+	// ...809: overflow int64 → broadcast normal (alcanza al resto de la sala).
+	sender.sendRaw(t, []byte(`{"type":"control","payload":{"n":2,"to":9223372036854775809}}`))
+	broadcast := huge.waitFrame(t, TypeControl)
+	assert.Equal(t, int64(1), broadcast.From)
+	assert.Equal(t, `{"n":2,"to":9223372036854775809}`, string(broadcast.Payload))
+	assert.Equal(t, `{"n":2,"to":9223372036854775809}`, string(other.waitFrame(t, TypeControl).Payload))
+
+	pingPong(t, huge)
+}
+
 func TestDirectedToSelfReachesAllOwnConns(t *testing.T) {
 	setGatewayJWTConfig(t)
 	server := newWSUpgradeServer(t, lenientAuthorizer{})
@@ -660,10 +694,15 @@ func TestExtractToUser(t *testing.T) {
 		{"numero positivo", `{"to":7}`, 7, true},
 		{"uno", `{"to":1}`, 1, true},
 		{"cero", `{"to":0}`, 0, false},
-		{"exp", `{"to":7e2}`, 700, true},
+		{"exp", `{"to":7e2}`, 0, false},
+		{"decimal entero", `{"to":7.0}`, 0, false},
 		{"fraccional", `{"to":2.5}`, 0, false},
 		{"negativo", `{"to":-3}`, 0, false},
+		{"precision sobre 2^53", `{"to":9007199254740993}`, 9007199254740993, true},
+		{"max int64 menos uno", `{"to":9223372036854775806}`, 9223372036854775806, true},
+		{"max int64", `{"to":9223372036854775807}`, 9223372036854775807, true},
 		{"mas alla de int64", `{"to":9223372036854775808}`, 0, false},
+		{"max int64 mas dos", `{"to":9223372036854775809}`, 0, false},
 		{"string all", `{"to":"all"}`, 0, false},
 		{"string numero", `{"to":"7"}`, 0, false},
 		{"null", `{"to":null}`, 0, false},

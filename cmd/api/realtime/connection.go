@@ -2,9 +2,9 @@ package realtime
 
 import (
 	"encoding/json"
-	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -165,26 +165,28 @@ func relayChannel(msg *clientMessage, channels map[string]struct{}) (string, str
 }
 
 // extractToUser reporta el destino D11 de un payload objeto: solo un JSON
-// number entero >0 y dentro del rango int64 cuenta como userId dirigido;
-// "all", ausente y cualquier otro valor → false (entrega a todos). El decode
-// a float64 viene del unmarshal genérico de encoding/json. La cota superior
-// es el literal 2^63 (no math.MaxInt64: float64(MaxInt64) redondea a 2^63 y
-// dejaría pasar al valor que justo desborda).
+// JSON number entero >0 y dentro del rango int64 cuenta como userId dirigido;
+// "all", ausente y cualquier otro valor → false (entrega a todos). El token
+// crudo de `to` ES su representación exacta: strconv lo parsea a int64 sin
+// la pérdida de precisión por la que float64 ya redondea desde 2^53. Solo
+// sintaxis de dígitos con signo dirige: `7e2`/`7.0` (mismo valor entero,
+// otra representación) y fuera de rango (9223372036854775809) caen en
+// broadcast — determinístico.
 func extractToUser(payload json.RawMessage) (int64, bool) {
 	var obj struct {
-		To any `json:"to"`
+		To json.RawMessage `json:"to"`
 	}
 	if err := json.Unmarshal(payload, &obj); err != nil {
 		return 0, false
 	}
-	num, ok := obj.To.(float64)
-	if !ok {
+	if len(obj.To) == 0 {
 		return 0, false
 	}
-	if num != math.Trunc(num) || num < 1 || num >= 9223372036854775808.0 {
+	to, err := strconv.ParseInt(string(obj.To), 10, 64)
+	if err != nil || to < 1 {
 		return 0, false
 	}
-	return int64(num), true
+	return to, true
 }
 
 // handleSubscribe valida tope y autorización antes de suscribir. El resub de
