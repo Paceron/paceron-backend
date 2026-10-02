@@ -318,8 +318,8 @@ LEFT JOIN attendances a
 	AND a.team_id = ?
 WHERE gu.group_id = ?
   AND gu.deleted_at IS NULL
-  AND gu.date_start <= ?
-  AND (gu.date_end IS NULL OR gu.date_end >= ?)
+  AND gu.date_start::date <= ?::date
+  AND (gu.date_end IS NULL OR gu.date_end::date >= ?::date)
 ORDER BY gu.user_id`
 
 // countSessionAttendancesSQL cuenta las asistencias de la sesion sin filtrar por
