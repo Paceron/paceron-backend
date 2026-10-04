@@ -1,6 +1,7 @@
 {
   "version": "0.2.0",
   "configurations": [
+  
     {
       "name": "Start paceron backend",
       "type": "go",
@@ -9,7 +10,7 @@
       "program": "${workspaceFolder}/cmd/api",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "args": [],
+      "args": ["--stage=local"],
       "console": "integratedTerminal"
     }
   ]

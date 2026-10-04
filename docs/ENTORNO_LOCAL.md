@@ -35,6 +35,81 @@ Sin `--stage=local` el backend resuelve contra Supabase testing, exactamente com
 
 Para servirse el backend hot-reload: `air` (o el que uses) pasando los flags, `go run ./cmd/api --stage=local`.
 
+### `.env` y `.env.local`: por qué dos archivos
+
+`config.LoadValues()` hace, en este orden:
+
+```go
+godotenv.Load()                        // lee .env
+if IsLocalStage() {                    // --stage=local
+    godotenv.Overload(".env.local")    // .env.local PISA a .env
+}
+```
+
+`Load` no sobreescribe lo que ya está en el entorno; `Overload` sí. Por eso el orden importa: primero `.env`, después `.env.local` encima.
+
+| Comando | Lee | Gana |
+|---|---|---|
+| `go run ./cmd/api --stage=local` | `.env` + `.env.local` | `.env.local` → infra Docker |
+| `go run ./cmd/api` | `.env` | Supabase testing |
+| `go run ./cmd/api --stage=production` | `.env` | Supabase producción |
+
+`.env` conserva los valores reales de Supabase; `.env.local` los pisa solo cuando se pide el flag. **No renombres uno con el nombre del otro**: perderías el cloud para siempre y los dos se pisarían entre sí.
+
+Generar `.env.local` a partir de `.env` (copia literal + solo la infra reemplazada):
+
+```bash
+# .env.local.example es el template limpio; la variante "copia de .env" se hace a mano:
+cp .env .env.local
+# reemplazar en .env.local:
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/paceron_local
+#   y AGREGAR el bloque S3_* (ver abajo), que .env no trae
+```
+
+Ojo: `.env` solo tiene `SUPABASE_TESTING_S3_*` / `SUPABASE_PRODUCTION_S3_*`, que el backend lee con esos prefijos en cloud. Bajo `--stage=local` el prefijo es `S3_`, así que **hay que agregar** `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_ID`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_FORCE_PATH_STYLE` y `S3_PUBLIC_BASE_URL` — si no, el storage sigue yendo a Supabase.
+
+**Decisión de seguridad:** si en `.env.local` quedan los valores reales de `MERCADOPAGO_*`, los endpoints de MercadoPago desde local pegan contra la cuenta real y pueden generar pagos reales. Para probar pagos en local, poné credenciales de test. `.env.local` es gitignored, pero sigue siendo una copia más de los secretos: no lo comitees ni lo compartas.
+
+### Debug en VS Code (`.vscode/launch.json`)
+
+El flag va en `args`. Dos configuraciones para no editar el JSON al cambiar de ambiente:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "paceron backend (local: Docker)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/api",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "args": ["--stage=local"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "paceron backend (testing: Supabase)",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/api",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "args": [],
+      "console": "integratedTerminal"
+    }
+  ]
+}
+```
+
+**`envFile` se queda en `.env`, no en `.env.local`.** El debugger de Go lo inyecta en el entorno del proceso *antes* de que arranque el programa; después `Load()` no opa nada (ya está todo seteado) y `Overload(".env.local")` gana igual. Si lo apuntás a `.env.local`, también funciona, pero perdés poder debuggear contra testing con el mismo archivo y el comportamiento pasa a depender del orden de carga en vez de ser explícito por el flag.
+
+Los tests de `daos/` corren aparte (`make test-with-db`), así que el debug local no estorba.
+
+Si el log de arranque dice `stage resolved testing` en vez de `LOCAL`, falta el flag. Ese log es la única señal visible de a dónde pegó el proceso.
+
 ## Las 3 partes del flujo
 
 ### 1. Levantar / bajar el stack
@@ -107,6 +182,43 @@ Las dos últimas se leen **igual en los tres ambientes** (no son específicas de
 Las URLs de avatar e ícono de equipo salen de `localhost:9000`. El frontend tiene que permitir ese origin en las imágenes (CORS de `Image` no aplica igual que el de `fetch`, pero los hosts permitidos en plataforma sí importan: Android bloquea HTTP cleartext por defecto en `release`, y Expo necesita `localhost:9000` en la config de red).
 
 Coordinar con quien mantiene `paceron-frontend` (ver `AGENTS.md` §8).
+
+## Llevar el entorno a otra máquina
+
+La **infraestructura** es portable: `docker-compose.yml`, los scripts y el `.env.local.example` están en el repo, así que en otra notebook alcanza con clonar, `make local-up` y `make local-restore`. El compose fija `name: paceron` y las imágenes son las mismas para todos, así que los volúmenes se crean con los mismos nombres.
+
+Lo que **no** se transfiere:
+
+- **La VM de Docker Desktop** (en macOS no es exportable).
+- **Los volúmenes con datos**: `paceron_paceron-db-data` y `paceron_paceron-s3-data` atan a plataforma, major de Postgres y arquitectura. Se pueden respaldar con un `tar` del volumen, pero eso sirve para recuperar *esa* máquina, no para compartir el entorno.
+- **Los datos**: `backup/` está gitignored a propósito, porque son datos reales de usuarios. No viaja por git y no se comparte.
+- **`.env` y `.env.local`**: los secretos no viajan por git. Hay que pasarlos por un canal seguro.
+
+### Procedimiento en otra notebook
+
+1. Clonar el repo.
+2. Copiar `.env` (credenciales de Supabase) y armar `.env.local` — ver la sección de arriba.
+3. `make local-up`.
+4. Conseguir un dump y restaurarlo:
+
+```bash
+# En la máquina que ya tiene los datos:
+./scripts/dump_db.sh --out backup/paceron.dump     # ~260K
+```
+
+```bash
+# En la nueva notebook:
+cp /ruta/al/dump backup/paceron.dump
+make local-restore
+```
+
+El dump pesa ~260K, o sea que pasarlo por Drive/Slack/email es trivial. **Solo si es a alguien de confianza**: contiene emails, nombres y DNI de usuarios reales.
+
+Alternativa preferible si el destino es otra persona del equipo: que cada uno saque su propio dump con `make local-dump` en lugar de compartir el de otro. Los datos de Supabase testing son los mismos para todos, y nadie tiene que recibir datos reales de otra máquina.
+
+Si lo que se necesita es un entorno compartido sin datos reales, el camino es un **seed script con datos ficticios** (más `make local-reset` + seed en vez de restore). No existe todavía; es la deuda conocida de este setup.
+
+Ojo con un detalle de versión: la imagen de Postgres tiene que poder leer el formato del dump (hoy `postgres:17-alpine`). Si mañana Supabase sube de major, el restore local falla con `unsupported version (1.16) in file header` hasta que se cambie `POSTGRES_IMAGE`.
 
 ## Troubleshooting
 
