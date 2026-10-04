@@ -31,6 +31,11 @@ tmp/
 # Environment variables (credentials)
 .env
 
+# Dumps de la base para el entorno local (scripts/dump_db.sh). Contienen datos
+# reales de usuarios (emails, nombres) — nunca commitear ni compartir.
+backup/
+.env.local
+
 # Documentos con credenciales reales para soporte externo (no commitear)
 reporte_e2e_mercadopago.md
 reporte_e2e_mercadopago_formato_soporte.md

@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// StorageClientInterface es el contrato del storage S3-compatible de Supabase.
+// StorageClientInterface es el contrato del storage S3-compatible.
 // Sin lógica de negocio: no conoce usuarios, equipos, ni reglas de validación —
 // eso vive en el service que lo consume.
 type StorageClientInterface interface {
@@ -26,6 +26,15 @@ type Options struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	Bucket          string
+	// ForcePathStyle direcciona como host/bucket/key en vez de bucket.host/key.
+	// Ambos backends que usa el proyecto (Supabase Storage y el storage local del
+	// docker-compose) necesitan path-style. El default lo pone config
+	// (S3_FORCE_PATH_STYLE, default true); el zero value de Go es false, así que
+	// un New() armado a mano tiene que pasarlo explícitamente.
+	ForcePathStyle bool
+	// PublicBaseURL overridea la URL pública base del bucket. Vacío = se deriva
+	// del endpoint (ver PublicBaseURL).
+	PublicBaseURL string
 }
 
 type s3Client struct {
@@ -33,8 +42,9 @@ type s3Client struct {
 	bucket string
 }
 
-// New arma un cliente S3 apuntando al endpoint S3-compatible de Supabase Storage
-// (path-style, requerido por Supabase) con las credenciales de la stage resuelta.
+// New arma un cliente S3 apuntando al endpoint configurado para el stage
+// resuelto (Supabase Storage en testing/producción, el storage local del
+// docker-compose con --stage=local). Path-style por default.
 func New(ctx context.Context, opts Options) (StorageClientInterface, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion(opts.Region),
@@ -46,7 +56,7 @@ func New(ctx context.Context, opts Options) (StorageClientInterface, error) {
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(opts.Endpoint)
-		o.UsePathStyle = true
+		o.UsePathStyle = opts.ForcePathStyle
 	})
 
 	return &s3Client{client: client, bucket: opts.Bucket}, nil
@@ -76,13 +86,25 @@ func (c *s3Client) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// PublicBaseURL deriva la URL pública base del bucket a partir del endpoint S3
-// (formato `https://<project-ref>.storage.supabase.co/storage/v1/s3`) y el
-// nombre del bucket. Supabase sirve objetos públicos desde un dominio distinto
-// al del gateway S3 (`<project-ref>.supabase.co`, no `.storage.supabase.co`),
-// así que no alcanza con reusar el endpoint tal cual. No requiere una env var
-// extra: el project-ref ya está en el endpoint que se configura para el SDK S3.
-func PublicBaseURL(endpoint, bucket string) string {
+// PublicBaseURL devuelve la URL pública base del bucket a partir del endpoint S3
+// y el nombre del bucket, para armar las URLs que el frontend carga sin
+// credenciales (avatar, ícono de equipo).
+//
+// El override gana si viene seteado: el derivado de abajo es específico de
+// Supabase y no aplica a ningún otro S3, así que el stage local pasa su propia
+// base (S3_PUBLIC_BASE_URL, típicamente http://localhost:9000/<bucket>).
+//
+// Sin override, el derivado asume la forma de Supabase: de
+// `https://<project-ref>.storage.supabase.co/storage/v1/s3` sale
+// `https://<project-ref>.supabase.co/storage/v1/object/public/<bucket>`, porque
+// Supabase sirve los objetos públicos desde otro dominio que el gateway S3, así
+// que no alcanza con reusar el endpoint. No requiere env var extra: el
+// project-ref ya está en el endpoint que se configura para el SDK.
+func PublicBaseURL(endpoint, bucket, override string) string {
+	if override != "" {
+		return strings.TrimSuffix(override, "/")
+	}
+
 	projectRef := endpoint
 	projectRef = strings.TrimPrefix(projectRef, "https://")
 	projectRef = strings.TrimPrefix(projectRef, "http://")

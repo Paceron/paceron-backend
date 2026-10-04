@@ -22,11 +22,18 @@ func StartApp() {
 	customlogger.CustomConfig(customlogger.DebugLevel, true, true, true)
 	customlogger.SetShowURL(true)
 
+	// Loguear el stage resuelto no es un detalle: los tres se ven igual desde
+	// afuera (misma app, mismos endpoints) y confundirse produce síntomas que
+	// parecen bugs. El caso típico es haberse olvidado de --stage=local y estar
+	// pegados contra la base de Supabase cloud sin saberlo.
 	stage := "testing"
-	if config.IsProductionStage() {
+	switch {
+	case config.IsLocalStage():
+		stage = "LOCAL"
+	case config.IsProductionStage():
 		stage = "PRODUCTION"
 	}
-	customlogger.Info(nil, "supabase stage resolved", customlogger.Tag("stage", stage))
+	customlogger.Info(nil, "stage resolved", customlogger.Tag("stage", stage))
 
 	router := gin.New()
 	router.Use(gin.Recovery())
