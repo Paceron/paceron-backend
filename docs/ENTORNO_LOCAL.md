@@ -158,6 +158,75 @@ Imprime los conteos de filas de las tablas de la app y **falla con exit != 0** s
 
 `backup/` tiene datos reales de usuarios (emails, nombres). Está en `.gitignore` y no se comparte.
 
+## Demo: congelar la base y volver a ella
+
+Para cuando los datos se ensucian y hay que volver a la foto exacta: una demo con
+varias rondas donde los participantes tocan todo, pruebas manuales, etc.
+
+`make local-restore` **no sirve para esto**. Dos motivos concretos:
+
+- Sin `--file` elige el `.dump` más reciente de `backup/` por fecha. Si alguien
+  corre `make local-dump` durante la demo, restaura el estado roto y reporta éxito
+  igual, porque el chequeo de versión y la verificación dan el visto bueno igual.
+- Su verificación ("la tabla existe y tiene filas") no distingue 34 usuarios de
+  40. Un restore a medias se ve sano.
+
+`scripts/demo_db.sh` resuelve las dos cosas con un **baseline con nombre fijo**:
+
+| Comando | Qué hace | Cuándo |
+|---|---|---|
+| `make demo-baseline` | Congela el estado actual: `backup/baseline.dump` + `baseline.counts` + `baseline.sha256`. | **Una vez**, antes de empezar. |
+| `make demo-restore` | Vuelve al baseline en caliente, en ~3 s. | **Entre rondas.** |
+| `make demo-reset` | Vuelve al baseline en frío: `down -v` + compose completo. ~15 s. | Antes de empezar y al terminar. |
+| `make demo-verify` | Compara los conteos de las 33 tablas contra la huella. Sale ≠ 0 si difieren. | Cuando quieras saber en qué estado está. |
+| `make demo-status` | Estado del baseline, contenedores, y si la base difiere. | Diagnóstico. |
+
+```bash
+# una vez, antes de la demo
+make demo-baseline
+
+# entre rondas
+make demo-restore
+
+# al terminar
+make demo-reset
+go run ./cmd/api --stage=local      # el backend hay que relanzarlo después de reset
+```
+
+Lo que hace que sea confiable:
+
+- **El baseline no se pisa por accidente.** `demo-baseline` se niega a
+  sobrescribir el dump existente; hace falta `make demo-baseline-force`. Y
+  `restore`/`reset` chequean el sha256 antes de restaurar, así que un baseline
+  pisado a mano o corrupto aborta en vez de "restaurar otra cosa en silencio".
+- **`restore` es rápido porque no recrea nada.** Usa
+  `pg_restore --clean --if-exists` sobre el contenedor que ya está arriba: borra y
+  recrea cada objeto del dump. Su límite es que `--clean` sólo dropea lo que está
+  **en** el dump, así que una tabla que la demo haya creado sobreviviría. Para eso
+  está `demo-reset`, que borra los volúmenes y no tiene ese límite.
+- **`reset` levanta el compose completo, no sólo `db`.** Es la diferencia con
+  `restore_db.sh --reset`, que hace `down -v` (y `down -v` borra también
+  `paceron-s3-data`) pero después sólo levanta `up -d db`: el bucket no vuelve a
+  existir y **las fotos de perfil dan 404**. `demo-reset` levanta `db` + `storage`
+  + `storage-init`.
+- **El restore es atómico.** Va con `--single-transaction`: si falla a mitad,
+  queda la base que había antes del intento, no una a medias.
+- **`restore` se autoverifica.** Termina corriendo `demo-verify`, así que no
+  depende de que alguien se acuerde de mirarlo.
+
+Dos límites que conviene tener claros:
+
+- **`verify` compara conteos de filas, no el contenido.** Una ronda que sólo edite
+  filas (un `UPDATE`, sin alta ni baja) pasa la verificación aunque la base esté
+  distinta. El restore sí revierte esas ediciones — el dump va con los valores —
+  así que es una limitación de la verificación, no del restore.
+- **El backend hay que relanzarlo después de `demo-reset`** (`--stage=local`). Con
+  `demo-restore` no hace falta: la conexión sigue viva.
+
+El instructivo corto para quien opera la demo está en [`INSTRUCTIVO-DEMO.html`](../INSTRUCTIVO-DEMO.html).
+
+`backup/baseline.*` tiene datos reales de usuarios, como el resto de `backup/`.
+
 ## Configuración
 
 Todo el stage local se configura en **`.env.local`** (gitignored). El backend lo carga solo cuando corre con `--stage=local`, y el compose lo lee con `--env-file`.

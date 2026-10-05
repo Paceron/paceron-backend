@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paceron — Instructivo: demo con base local</title>
+<style>
+  :root {
+    --ink: #0d1013;
+    --surface: #111518;
+    --surface-2: #1d2125;
+    --surface-3: #282d31;
+    --paper: #f3efe4;
+    --primary: #8cc63e;
+    --primary-dim: #6ea32c;
+    --on-primary: #16240a;
+    --muted: #8b969e;
+    --danger: #e2705f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.25rem 5rem;
+    background: var(--ink);
+    color: var(--paper);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0 0 .35rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.15rem; margin: 2.75rem 0 .75rem; letter-spacing: -.01em; }
+  h3 { font-size: .95rem; margin: 1.5rem 0 .5rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: .6rem 0; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  .lede {
+    background: var(--surface); border: 1px solid var(--surface-3);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px; padding: 1rem 1.15rem; margin: 0 0 .5rem;
+  }
+  .lede p:first-child { margin-top: 0; }
+  .lede p:last-child { margin-bottom: 0; }
+  .card {
+    background: var(--surface); border: 1px solid var(--surface-3);
+    border-radius: 10px; padding: 1.15rem 1.25rem; margin: .9rem 0;
+  }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.6rem; height: 1.6rem; border-radius: 50%;
+    background: var(--primary); color: var(--on-primary);
+    font: 700 .85rem/1 var(--mono); margin-right: .5rem;
+  }
+  code { font-family: var(--mono); font-size: .875em; background: var(--surface-3); padding: .12em .38em; border-radius: 4px; }
+  pre {
+    background: var(--surface-2); border: 1px solid var(--surface-3); border-radius: 8px;
+    padding: .9rem 1rem; overflow-x: auto; margin: .75rem 0; position: relative;
+  }
+  pre code { background: none; padding: 0; font-size: .85rem; line-height: 1.6; }
+  .cmds { list-style: none; padding: 0; margin: .5rem 0; }
+  .cmds li {
+    display: grid; grid-template-columns: 13.5rem 1fr; gap: .75rem;
+    padding: .6rem 0; border-top: 1px solid var(--surface-3); align-items: baseline;
+  }
+  .cmds li:first-child { border-top: 0; }
+  .cmds code { white-space: nowrap; }
+  .cmds span { color: var(--muted); font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0; font-size: .9rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--surface-3); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  .warn { border-left-color: var(--danger); }
+  .warn strong { color: var(--danger); }
+  .ok { color: var(--primary); font-weight: 600; }
+  .dim { color: var(--muted); }
+  a { color: var(--primary); }
+  ul { padding-left: 1.2rem; }
+  li { margin: .3rem 0; }
+  footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--surface-3); color: var(--muted); font-size: .85rem; }
+  @media (max-width: 34rem) {
+    .cmds li { grid-template-columns: 1fr; gap: .15rem; }
+    .cmds code { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Demo con base local</h1>
+<p class="sub">Cómo usar la base de Docker durante la demo y volver a dejarla como está ahora.</p>
+
+<div class="lede">
+  <p><strong>La idea en una línea:</strong> antes de empezar se congela la base como <em>baseline</em>. Entre rondas, un comando la vuelve a esa foto en 3 segundos. Al terminar, otro la deja limpia de verdad.</p>
+  <p class="dim">Nada de esto toca Supabase. Todo pasa en el Postgres del Docker de tu máquina.</p>
+</div>
+
+<p>Todos los comandos se corren desde la raíz de <code>paceron-backend</code>.</p>
+
+<h2>Antes de empezar <span class="dim" style="font-weight:400">(una sola vez)</span></h2>
+
+<div class="card">
+  <p><span class="step-num">1</span> <strong>Levantá el stack</strong></p>
+  <pre><code>make local-up</code></pre>
+</div>
+
+<div class="card">
+  <p><span class="step-num">2</span> <strong>Levantá el backend contra la base local</strong></p>
+  <pre><code>go run ./cmd/api --stage=local</code></pre>
+  <p class="dim">El <code>--stage=local</code> es obligatorio. Sin él el backend se conecta a Supabase y la demo va a modificar datos reales.</p>
+</div>
+
+<div class="card">
+  <p><span class="step-num">3</span> <strong>Verificá que el frontend apunte al backend local</strong></p>
+  <p>En <code>paceron-frontend</code>, el <code>.env</code> tiene que tener:</p>
+  <pre><code>EXPO_PUBLIC_API_URL=http://localhost:8080/api/v1</code></pre>
+  <p class="dim">Y hay que <strong>reiniciar el dev server</strong> (<code>npx expo start -c</code>): Expo inyecta las variables al bundlear, no con hot reload.</p>
+</div>
+
+<div class="card">
+  <p><span class="step-num">4</span> <strong>Congelá el estado actual</strong></p>
+  <pre><code>make demo-baseline</code></pre>
+  <p>Guarda la foto en <code>backup/baseline.dump</code>. Imprime el tamaño y un checksum para que quede registrado.</p>
+  <p class="dim">No lo hace nadie más por vos: la primera vez que lo corras es la que congela la foto de esta demo.</p>
+</div>
+
+<div class="card">
+  <p><span class="step-num">5</span> <strong>Comprobalo</strong></p>
+  <pre><code>make demo-status</code></pre>
+  <p>Tiene que decir <span class="ok">✓ igual que el baseline</span>. Si dice que difiere, <strong>no arranques la demo todavía</strong>: primero corré <code>make demo-restore</code>.</p>
+</div>
+
+<h2>Entre rondas</h2>
+
+<div class="card">
+  <p>Cuando una ronda termina y la siguiente va a empezar de cero:</p>
+  <pre><code>make demo-restore</code></pre>
+  <p>Vuelve a la foto en ~3 segundos. No reinicia contenedores, no toca el bucket, no pide reiniciar el backend.</p>
+  <p>Pide confirmación; para responder sin prompt: <code>make demo-restore DEMO_FLAGS=--yes</code></p>
+</div>
+
+<h2>Al terminar</h2>
+
+<div class="card">
+  <p><span class="step-num">1</span> <strong>Reset en frío</strong> — borra los volúmenes y vuelve a armar todo desde el baseline:</p>
+  <pre><code>make demo-reset</code></pre>
+  <p class="dim">Tarda ~15 segundos. Es la versión en frío: borra también el bucket de fotos, así que, a diferencia de <code>demo-restore</code>, <strong>no</strong> deja fotos que se subieron durante la demo.</p>
+</div>
+
+<div class="card">
+  <p><span class="step-num">2</span> <strong>Relanzá el backend</strong> — <code>demo-reset</code> recreó los contenedores:</p>
+  <pre><code>go run ./cmd/api --stage=local</code></pre>
+</div>
+
+<div class="card">
+  <p><span class="step-num">3</span> <strong>Comprobalo</strong></p>
+  <pre><code>make demo-verify</code></pre>
+  <p>Tiene que decir <span class="ok">✓ la base está igual que el baseline</span>.</p>
+</div>
+
+<h2>Los comandos</h2>
+
+<ul class="cmds">
+  <li><code>make demo-baseline</code><span>Congela el estado actual. Una vez, antes de empezar.</span></li>
+  <li><code>make demo-restore</code><span>Vuelve al baseline. Rápido. Entre rondas.</span></li>
+  <li><code>make demo-reset</code><span>Vuelve al baseline. En frío: borra volúmenes. Antes y después.</span></li>
+  <li><code>make demo-verify</code><span>¿La base está igual que el baseline? Sale con error si no.</span></li>
+  <li><code>make demo-status</code><span>Estado del baseline, contenedores, y si difiere.</span></li>
+</ul>
+
+<h3>Flags</h3>
+<ul>
+  <li><code>DEMO_FLAGS=--yes</code> — sin pedir confirmación. Ej.: <code>make demo-restore DEMO_FLAGS=--yes</code></li>
+  <li><code>make demo-baseline-force</code> — reemplaza el baseline. Solo si querés cambiar la foto a propósito.</li>
+</ul>
+
+<h2>Si algo sale mal</h2>
+
+<table>
+  <tr><th>Lo que ves</th><th>Qué hacer</th></tr>
+  <tr>
+    <td>Postgres no responde</td>
+    <td><code>make local-ps</code> y <code>make local-logs</code>. Si no está levantado: <code>make local-up</code>.</td>
+  </tr>
+  <tr>
+    <td>Las fotos de perfil dan 404</td>
+    <td>Falta recrear el bucket: <code>make demo-reset</code>. <code>demo-restore</code> no lo hace y está bien que sea así.</td>
+  </tr>
+  <tr>
+    <td>El frontend no carga datos / error de red</td>
+    <td>El backend no está con <code>--stage=local</code>, o el <code>.env</code> del frontend no apunta a <code>localhost:8080</code>. Recordá reiniciar el dev server.</td>
+  </tr>
+  <tr>
+    <td>"el baseline no coincide con su checksum"</td>
+    <td>Se modificó o se corrompió. Si el cambio fue a propósito: <code>make demo-baseline-force</code>. Si no, recuperá el backup anterior.</td>
+  </tr>
+  <tr>
+    <td>"ya existe un baseline"</td>
+    <td>Es a propósito: no se pisa solo. <code>make demo-baseline-force</code> si de verdad querés cambiar la foto.</td>
+  </tr>
+  <tr>
+    <td>Todo raro después de una ronda</td>
+    <td><code>make demo-status</code> primero. Si dice que difiere, <code>make demo-restore</code>.</td>
+  </tr>
+</table>
+
+<h2>Cosas que conviene saber</h2>
+
+<div class="card warn">
+  <p><strong>Ojo con dos cosas:</strong></p>
+  <ul>
+    <li><strong>La base tiene datos reales</strong> — 34 usuarios con email, nombre y DNI. Es una demo interna, pero los datos son de personas reales: no los screenshots a la nada.</li>
+    <li><strong>Si el backend se levanta sin <code>--stage=local</code></strong>, escribe contra Supabase y la demo modifica la base de producción. Es el error más caro de todos los que hay acá.</li>
+  </ul>
+</div>
+
+<p><strong>Los participantes de la demo comparten la misma base.</strong> No hay aislamiento entre ellos: lo que toca uno, lo ven todos. Para varias rondas eso es justo lo que se quiere (cada ronda empieza del mismo estado), pero conviene que esté claro antes de empezar.</p>
+
+<p><strong>No uses <code>make local-restore</code> para esto.</strong> Elige el <code>.dump</code> más reciente de <code>backup/</code>, así que si alguien corre <code>make local-dump</code> durante la demo va a "restaurar" el estado roto y va a decir que salió bien.</p>
+
+<p><strong>La verificación mira cantidades de filas, no el contenido.</strong> Si una ronda sólo editó datos sin agregar ni borrar nada, <code>demo-verify</code> va a decir que todo bien. El restore sí los revierte igual.</p>
+
+<footer>
+  Detalle técnico completo en <code>docs/ENTORNO_LOCAL.md</code> → sección "Demo: congelar la base y volver a ella".<br>
+  Script: <code>scripts/demo_db.sh</code>. La base congelada queda en <code>backup/baseline.*</code> (gitignored, contiene datos reales).
+</footer>
+
+</main>
+</body>
+</html>

@@ -112,6 +112,18 @@ make local-restore        # clona los datos de Supabase (pide confirmación)
 go run ./cmd/api --stage=local
 ```
 
+Cuando los datos se ensucian y hay que volver a una foto conocida (demo con varias rondas, pruebas manuales), usar `scripts/demo_db.sh`, **no** `make local-restore`: este último elige el `.dump` más reciente de `backup/`, así que si alguien corrió `make local-dump` en el medio "restaura" el estado roto y reporta éxito igual.
+
+```bash
+make demo-baseline    # congela el estado actual como baseline (una vez)
+make demo-restore     # vuelve al baseline en ~3s — entre rondas de demo
+make demo-reset       # vuelve al baseline en frío (borra volúmenes, incluye el bucket)
+make demo-verify      # compara conteos contra la huella del baseline; sale ≠ 0 si difieren
+make demo-status      # estado del baseline y de la base
+```
+
+Instructivo corto para operar la demo: [`INSTRUCTIVO-DEMO.html`](INSTRUCTIVO-DEMO.html). Detalle: sección "Demo: congelar la base y volver a ella" de [`docs/ENTORNO_LOCAL.md`](docs/ENTORNO_LOCAL.md).
+
 Reglas que hay que respetar al tocar esto:
 
 - **`--stage=local` es opt-in.** Sin el flag, todo resuelve a testing cloud exactamente como antes — ni `render.yaml` ni `ci.yml` cambian. Si vienen `--stage=local` y `--stage=production`, gana `local`.
