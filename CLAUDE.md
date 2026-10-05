@@ -139,6 +139,27 @@ otro (son secuenciales), quedándose con los cobros de ese entrenador. Está doc
 
 Dos proyectos de Supabase separados — `master` en Render pega a producción, `develop`/local/todo lo demás pega a testing **por default**. Producción exige un flag explícito (`--stage=production`) al arrancar el binario; sin él, siempre es testing, a propósito (falla seguro). Detalle completo, variables de entorno, y checklist de Render: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md). No confundir con `ENVIRONMENT` (esa gobierna cómo se carga la config local/test/prod, no a qué proyecto de Supabase apunta — son ejes independientes).
 
+## Entorno local con Docker Compose
+
+Tercer ambiente, 100% local, que se activa solo con `--stage=local`: Postgres + storage S3-compatible por `docker compose up -d`, con la base clonada de Supabase via `pg_dump`/`pg_restore`. Es opt-in: sin el flag, todo resuelve a testing cloud exactamente como antes (ni `render.yaml` ni `ci.yml` cambian). Si vienen `--stage=local` y `--stage=production`, gana `local`.
+
+```bash
+make local-up
+make local-restore
+go run ./cmd/api --stage=local
+```
+
+Cosas que hay que saber antes de tocarlo:
+
+- Las variables del stage local salen de `.env.local` (gitignored), que el compose lee con `--env-file` y el backend carga solo bajo `--stage=local` con `godotenv.Overload` y no `Load`: si fuera `Load`, las vars de Supabase del `.env` compartido ganarian y el stage local seria inerte.
+- `S3_PUBLIC_BASE_URL` es obligatoria en local. Sin ella las URLs de avatar e icono se derivan con la forma de Supabase y dan 404. `S3_FORCE_PATH_STYLE` (default `true`) y `S3_PUBLIC_BASE_URL` se leen igual en los tres ambientes: no son especificas de un stage.
+- El storage local es RustFS (`rustfs/rustfs:latest`), no MinIO: las imagenes oficiales de MinIO ya no se pueden pulls (404 en Docker Hub). RustFS lee `RUSTFS_ACCESS_KEY` y `RUSTFS_SECRET_KEY`, no `RUSTFS_ROOT_USER` ni `MINIO_ROOT_USER`.
+- La imagen de Postgres tiene que coincidir con la del dump (hoy `postgres:17-alpine`, porque Supabase corre 17.6). Un `pg_restore` no puede leer un dump de version mayor: con 15 falla con `unsupported version (1.16) in file header`.
+- El `docker-compose.yml` de la raiz no es lo mismo que los targets `test-db-*` del `Makefile`: aquellos son una base de test descartable en `:5433` para los tests de `daos/`; este es el entorno de desarrollo en `:5432`.
+- `backup/` tiene datos reales de usuarios: gitignored, no compartir.
+
+Manual completo: `docs/ENTORNO_LOCAL.md`. Spec: `openspec/changes/entorno-local-docker/`.
+
 ## Frontend
 
 - Repo separado (Expo/React Native + React Native Web), no vive en este working directory, lo mantiene otro miembro del equipo.

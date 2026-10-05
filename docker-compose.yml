@@ -1,0 +1,134 @@
+# Entorno de desarrollo 100% local — Postgres + storage S3-compatible.
+#
+# Reemplaza las dependencias de Supabase (DB + Storage) para desarrollo local,
+# con los datos reales clonados desde Supabase vía scripts/dump_db.sh +
+# scripts/restore_db.sh. Ver docs/ENTORNO_LOCAL.md.
+#
+#   docker compose up -d      # Postgres :5432, API S3 :9000, consola :9001
+#   make local-dump           # clona la DB de Supabase a backup/
+#   make local-restore        # restaura el dump en el contenedor db
+#   go run . --stage=local    # backend contra este entorno
+#
+# Defaults pensados para no tener que configurar nada: sin .env, todo levanta
+# con postgres/postgres y el bucket paceron-media. Para cambiarlos, poné las
+# variables en un archivo y apuntá compose a él:
+#
+#   docker compose --env-file .env.local up -d
+#
+# Compose también lee .env del directorio por defecto, así que si definís ahí
+# POSTGRES_* / RUSTFS_* también los toma.
+
+name: paceron
+
+services:
+  db:
+    # Postgres vanilla, en la MISMA versión mayor que el proyecto de Supabase.
+    #
+    # No es un detalle menor: pg_restore no puede leer un archive más nuevo que
+    # él. Un dump de Supabase (que hoy corre 17.6) genera un archive con versión
+    # de formato 1.16, y `pg_restore` de postgres:15 aborta con
+    #   "pg_restore: error: unsupported version (1.16) in file header"
+    # El dump se genera con pg_dump de la versión que detects el server remoto
+    # (scripts/dump_db.sh), así que el contenedor local tiene que coincidir.
+    #
+    # Si Supabase cambia de versión mayor, o corrés contra un proyecto distinto
+    # al del .env: POSTGRES_IMAGE=postgres:18-alpine, sin editar este archivo.
+    # Para borrar el volumen y rehacerlo con otra versión: make local-reset.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    container_name: paceron-local-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-paceron_local}
+      # Locale explícito: el initdb por defecto depende de la locale del
+      # sistema, que en alpine no está y deja el container con encoding LATIN1
+      # — después los dumps de Supabase (UTF8) no entran.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - paceron-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-paceron_local}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Storage S3-compatible local.
+  #
+  # OJO: acá va RustFS y NO MinIO, aunque el plan original pidiera minio/minio.
+  # MinIO dejó de publicar imágenes de la edición community en oct/2025 (por un
+  # tema de CVE) y el 11/09/2026 borró los repos minio/minio y minio/mc de
+  # Docker Hub; los de quay.io también fueron removidos. Hoy `docker pull
+  # minio/minio` da "pull access denied ... repository does not exist" porque
+  # el repo ya no existe (404 en la API de Docker Hub), no por un problema de
+  # credenciales. RustFS es S3-compatible, Apache 2.0 y es a donde migró el
+  # ecosistema (Grafana Mimir, Milvus, DataHub y otros lo hicieron la misma
+  # semana). Solo sirve path-style salvo que se seteen dominios, que es
+  # justamente lo que necesita el backend (S3_FORCE_PATH_STYLE=true).
+  #
+  # TODO: pinear a un tag con versión en vez de latest, para que el entorno sea
+  # reproducible entre máquinas. Se dejó así porque un tag fijado queda viejo
+  # solo y nadie se acuerda de actualizarlo.
+  storage:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    container_name: paceron-local-storage
+    restart: unless-stopped
+    # --console-enable es obligatorio: sin ese flag la consola web no levanta,
+    # aunque se le pase --console-address.
+    command: server /data --console-address ":9001" --console-enable
+    environment:
+      # OJO con los nombres: RustFS NO lee RUSTFS_ROOT_USER ni MINIO_ROOT_USER
+      # (probados los dos, ambos caen a credenciales default con un warning).
+      # Los que sí toma son RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY.
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-minioadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${S3_API_PORT:-9000}:9000"
+      - "${S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - paceron-s3-data:/data
+    healthcheck:
+      # La imagen trae busybox + curl, así que el chequeo puede ser un GET real.
+      # /health es el endpoint nativo de RustFS; también sirve /minio/health/live.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Crea el bucket de media una vez por arranque, de forma idempotente. Sin
+  # esto habría que crearlo a mano después de cada `local-reset` (que borra los
+  # volúmenes), y el compose no sería auto-suficiente.
+  #
+  # Se usa la imagen oficial de aws-cli y no el cliente `mc` de MinIO porque
+  # minio/mc también fue borrado de Docker Hub. aws-cli habla S3 de primera y
+  # además es lo mismo que usa el backend (AWS SDK v2), así que si el SDK puede
+  # subir avatars, esto puede crear el bucket.
+  storage-init:
+    image: ${AWS_CLI_IMAGE:-amazon/aws-cli:latest}
+    container_name: paceron-local-storage-init
+    depends_on:
+      storage:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-minioadmin}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: http://storage:9000
+      S3_BUCKET: ${S3_BUCKET:-paceron-media}
+    volumes:
+      # Montado read-only desde el repo en vez de escribir el comando en el YAML:
+      # el comando original era una línea con dos niveles de quotes y una
+      # interpolación de variable adentro del JSON de la policy, que es
+      # justamente la combinación que se rompe sin avisar.
+      - ./scripts/storage_init.sh:/init/storage_init.sh:ro
+    entrypoint: ["/bin/sh", "/init/storage_init.sh"]
+    restart: "no"
+
+volumes:
+  paceron-db-data:
+  paceron-s3-data:

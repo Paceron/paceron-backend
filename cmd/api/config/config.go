@@ -34,11 +34,36 @@ const (
 // gobierna A CUÁL proyecto de Supabase apunta.
 const stageFlag = "--stage=production"
 
+// localStageFlag habilita el entorno 100% local del docker-compose (Postgres +
+// storage S3-compatible) en vez de Supabase. Opt-in explícito y no default por la
+// misma razón que stageFlag: invertirlos cambiaría el comportamiento de los dos
+// servicios de Render, que resuelven a testing/producción por el default.
+//
+// Si un dev se olvida del flag, cae en testing cloud a propósito (no se toca
+// producción) y el log de arranque dice "stage resolved: testing", que es la
+// señal visible de que faltaba el flag. Ver IsLocalStage.
+const localStageFlag = "--stage=local"
+
 // IsProductionStage indica si el proceso arrancó explícitamente con --stage=production.
 // Sin ese flag exacto, siempre es testing stage.
 func IsProductionStage() bool {
 	for _, arg := range os.Args[1:] {
 		if arg == stageFlag {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLocalStage indica si el proceso arrancó con --stage=local, es decir, si debe
+// resolver base y storage contra el entorno local del docker-compose.
+//
+// Precedencia sobre --stage=production si vienen los dos: local gana porque es el
+// ambiente con menos consecuencias si la resolución queda mal. Conectarse a la base
+// local es reversible (make local-reset); haber tocado producción, no.
+func IsLocalStage() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == localStageFlag {
 			return true
 		}
 	}
@@ -85,6 +110,17 @@ type StorageConfig struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	Bucket          string
+	// ForcePathStyle hace que el SDK S3 direccione como
+	// host/bucket/key en vez de bucket.host/key. Supabase Storage lo exige
+	// siempre; el storage local también (RustFS solo soporta path-style
+	// salvo que se le configuren dominios). Queda configurable igual para no
+	// dejar el comportamiento clavado en el código. Default true.
+	ForcePathStyle bool
+	// PublicBaseURL es la base de las URLs públicas de los objetos (avatar,
+	// ícono de equipo). Vacío = se deriva del endpoint, que es lo correcto
+	// para Supabase pero no para un S3 local (ver storageclient.PublicBaseURL).
+	// Solo el stage local la setea.
+	PublicBaseURL string
 }
 
 var (
@@ -140,6 +176,21 @@ func init() {
 
 func LoadValues() {
 	godotenv.Load()
+
+	// --stage=local lee su configuracion de .env.local. Sin esto el archivo
+	// seria inerte para el backend: `docker compose --env-file .env.local` si lo
+	// leeria, pero las vars que carga el proceso (S3_*, DATABASE_URL) nunca
+	// llegarian, y el unico modo de pasarlas seria exportandolas a mano.
+	//
+	// Overload y no Load a proposito: con Load, .env (que es el compartido con
+	// las credenciales de Supabase) ya habria definido S3_* y ganaria, que es
+	// justo lo contrario de lo que se quiere al pedir explicitamente --stage=local.
+	//
+	// Solo bajo el flag: sin el, .env.local se ignora por completo, asi que no
+	// hay forma de que contaminar testing o produccion por accidente.
+	if IsLocalStage() {
+		godotenv.Overload(".env.local")
+	}
 
 	if IsProduction() {
 		initProd()
@@ -205,9 +256,16 @@ func loadDBConfig() {
 	AttendanceBaseURL = getEnvOrDefault("ATTENDANCE_BASE_URL", "http://localhost:8081")
 }
 
-// stagedDatabaseURL resuelve qué proyecto de Supabase usar según IsProductionStage.
-// Default siempre testing — production exige el flag explícito.
+// stagedDatabaseURL resuelve a qué base apuntar según el stage. Default siempre
+// testing — production y local exigen su flag explícito.
 func stagedDatabaseURL() string {
+	if IsLocalStage() {
+		// El stage local lee DATABASE_URL "pelado" (no un SUPABASE_*_DATABASE_URL):
+		// no hay proyecto de Supabase detrás, hay un Postgres del docker-compose.
+		// El nombre viene de antes de la separación por stages, cuando esa era la
+		// única variable; se revive acá con el sentido acotado al stage local.
+		return os.Getenv("DATABASE_URL")
+	}
 	if IsProductionStage() {
 		return os.Getenv("SUPABASE_PRODUCTION_DATABASE_URL")
 	}
@@ -222,7 +280,7 @@ func getEnvOrDefault(key, fallback string) string {
 }
 
 // envBoolDefaultTrue lee una env var booleana con default true: solo un valor
-// explícito false/0/no (case-insensitive) la desactiva; si falta o es inválida,
+// explícito false/0/no (case-insensitive) la desactiva; si falta o no es válido,
 // queda true.
 func envBoolDefaultTrue(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
@@ -264,9 +322,15 @@ func loadMercadoPagoConfig() {
 	TokenEncryptionKey = os.Getenv("TOKEN_ENCRYPTION_KEY")
 }
 
-// stagedStorageEnvPrefix resuelve qué proyecto de storage de Supabase usar según
-// IsProductionStage, mismo mecanismo que stagedDatabaseURL — default siempre testing.
+// stagedStorageEnvPrefix resuelve el prefijo de las variables de storage según el
+// stage — mismo mecanismo que stagedDatabaseURL. Default siempre testing.
+//
+// Local usa el prefijo corto `S3_` (S3_ENDPOINT, S3_ACCESS_ID, …) porque no hay
+// proyecto de Supabase detrás: son las variables que usaría cualquier S3 compatible.
 func stagedStorageEnvPrefix() string {
+	if IsLocalStage() {
+		return "S3_"
+	}
 	if IsProductionStage() {
 		return "SUPABASE_PRODUCTION_S3_"
 	}
@@ -280,6 +344,19 @@ func loadStorageConfig() {
 	MyStorage.AccessKeyID = os.Getenv(prefix + "ACCESS_ID")
 	MyStorage.SecretAccessKey = os.Getenv(prefix + "SECRET_KEY")
 	MyStorage.Bucket = os.Getenv(prefix + "BUCKET")
+
+	// Estas dos no van con prefijo de stage: son genéricas de S3 y su default
+	// tiene que ser el mismo en los tres ambientes.
+	//
+	// ForcePathStyle: default true, que es lo que el código hardcodeaba antes de
+	// este cambio y lo que exigen tanto Supabase Storage como el storage local.
+	// S3_FORCE_PATH_STYLE=false lo desactiva para un S3 real con virtual-host-style.
+	MyStorage.ForcePathStyle = envBoolDefaultTrue("S3_FORCE_PATH_STYLE")
+
+	// PublicBaseURL: sin default a propósito. Vacío = se deriva del endpoint, el
+	// comportamiento de siempre contra Supabase. El stage local la setea porque el
+	// derivado es específico de Supabase y no aplica a otro S3.
+	MyStorage.PublicBaseURL = os.Getenv("S3_PUBLIC_BASE_URL")
 }
 
 func parseDatabaseURL(dbURL string) DB {

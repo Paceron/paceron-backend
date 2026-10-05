@@ -97,13 +97,16 @@ func NewApplication() *Application {
 	expoPushClient := expopushclient.New(expoPushHTTPClient)
 
 	// Storage: fotos de perfil de usuario e ícono de equipo, S3-compatible contra
-	// Supabase Storage (testing/producción resuelto por config.IsProductionStage()).
+	// Supabase Storage o contra el storage local del docker-compose, según el
+	// stage que resolvió config (testing/producción/local).
 	storageClientInstance, err := storageclient.New(context.Background(), storageclient.Options{
 		Endpoint:        config.MyStorage.Endpoint,
 		Region:          config.MyStorage.Region,
 		AccessKeyID:     config.MyStorage.AccessKeyID,
 		SecretAccessKey: config.MyStorage.SecretAccessKey,
 		Bucket:          config.MyStorage.Bucket,
+		ForcePathStyle:  config.MyStorage.ForcePathStyle,
+		PublicBaseURL:   config.MyStorage.PublicBaseURL,
 	})
 	if err != nil {
 		customlogger.Error(nil, "error initializing storage client", err)

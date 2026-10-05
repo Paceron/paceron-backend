@@ -23,7 +23,7 @@ func buildMediaURL(key *string, updatedAt *time.Time) *string {
 		version = updatedAt.Unix()
 	}
 
-	base := storageclient.PublicBaseURL(config.MyStorage.Endpoint, config.MyStorage.Bucket)
+	base := storageclient.PublicBaseURL(config.MyStorage.Endpoint, config.MyStorage.Bucket, config.MyStorage.PublicBaseURL)
 	url := fmt.Sprintf("%s/%s?v=%d", base, *key, version)
 	return &url
 }

@@ -22,6 +22,7 @@ Documentación técnica detallada:
 
 - [`docs/STATE_MACHINES.md`](docs/STATE_MACHINES.md) — estados/transiciones/invariantes por entidad. Fuente de verdad de los valores: `cmd/api/domains/constants/`.
 - [`docs/CATALOGO_Y_CALENDARIO.md`](docs/CATALOGO_Y_CALENDARIO.md) — modelo de datos, guards, endpoints del catálogo (`Exercise`/`Session`/`TrainingPlan`) y calendario de grupos (`GroupCalendarDay`), incluyendo el mecanismo de instanciación al asignar (§8). Actualizado al modelo de `asignacion-por-instanciacion`.
+- [`docs/ENTORNO_LOCAL.md`](docs/ENTORNO_LOCAL.md) — entorno 100% local con Docker Compose (Postgres + storage, base clonada de Supabase). Arrancar a trabajar acá: `make local-up && make local-restore && go run ./cmd/api --stage=local`.
 - [`docs/DEUDA_TECNICA_Y_PENDIENTES.md`](docs/DEUDA_TECNICA_Y_PENDIENTES.md) — **leer antes de arrancar**: bugs conocidos no arreglados, datos desactualizados en testing, features deferidas con diseño ya charlado, decisiones de "no tocar X". Conocimiento que vivía solo en memoria de sesiones previas de Claude Code, volcado acá para no perderlo al migrar a OpenCode.
 - [`.agentics/CONVENTIONS.md`](.agentics/CONVENTIONS.md) — convenciones de código y capas (qué no está permitido: service-to-service imports, DAO directo desde controller).
 - [`.agentics/STRUCTURE.md`](.agentics/STRUCTURE.md) / [`STRUCTURE_FOLDERS.md`](STRUCTURE_FOLDERS.md) / [`STRUCTURE_PACKAGE.md`](STRUCTURE_PACKAGE.md) — estructura de carpetas (hay 3 versiones con distinto nivel de detalle, se solapan a propósito — cualquiera de las 3 sirve, `.agentics/STRUCTURE.md` es la que referencia `CLAUDE.md`).
@@ -97,7 +98,29 @@ TEST_DB_HOST=localhost TEST_DB_PORT=5433 TEST_DB_USER=postgres TEST_DB_PASSWORD=
 - El toolchain de Go 1.26 vía `GOTOOLCHAIN=auto` no trae `covdata` — falla `go test -coverprofile` sobre paquetes sin `_test.go`. Por eso `make coverage`/`ci.yml` filtran a paquetes con `TestGoFiles` (`go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test ...`), no `./...` directo.
 - `attendances.training_session_id` y `workout_feedback.assigned_session_id`/`assigned_exercise_id` son FK **opacas** (BIGINT > 0, sin constraint de DB) — anticipan tablas/entidades que todavía no existen del todo. Ver §7: `asignacion-por-instanciacion` es la pieza a la que apuntaban las columnas de `workout_feedback` (el borrado de instancia superada ya las consulta), aunque la FK real sigue siendo deuda.
 - El deploy en Render tiene cold-start de ~20-25s en la primera request tras inactividad (plan free) — no es error real.
-- Dos proyectos de Supabase separados (testing/producción) — `master` en Render pega a producción, todo lo demás (`develop`/local) pega a testing por default, sin flag. Detalle: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+- Dos proyectos de Supabase separados (testing/producción) — `master` en Render pega a producción, todo lo demás (`develop`/todo lo demás) pega a testing por default, sin flag. Hay un tercer ambiente, `--stage=local`, que va al docker-compose y no a la nube (§6b). Detalle: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+
+## 6b. Entorno local con Docker Compose (implementado)
+
+Hay un tercer ambiente, 100% local, que se activa **solo** con `--stage=local`: Postgres + storage S3-compatible por `docker compose up -d`, con la base clonada de Supabase vía `pg_dump`/`pg_restore`. Manual completo: [`docs/ENTORNO_LOCAL.md`](docs/ENTORNO_LOCAL.md). Spec: `openspec/changes/entorno-local-docker/`.
+
+Lo mínimo para arrancar a trabajar:
+
+```bash
+make local-up
+make local-restore        # clona los datos de Supabase (pide confirmación)
+go run ./cmd/api --stage=local
+```
+
+Reglas que hay que respetar al tocar esto:
+
+- **`--stage=local` es opt-in.** Sin el flag, todo resuelve a testing cloud exactamente como antes — ni `render.yaml` ni `ci.yml` cambian. Si vienen `--stage=local` y `--stage=production`, gana `local`.
+- **Las variables del stage local salen de `.env.local`** (gitignored), que el compose lee con `--env-file` y el backend carga solo bajo `--stage=local`. El backend usa `godotenv.Overload` (no `Load`) para que `.env.local` pise a `.env`: si usara `Load`, las vars de Supabase del `.env` compartido ganarían y el stage local sería inerte.
+- **`S3_PUBLIC_BASE_URL` es obligatoria en local.** Sin ella las URLs de avatar/ícono se derivan con la forma de Supabase (`https://localhost.supabase.co/...`) y dan 404. `S3_FORCE_PATH_STYLE` (default `true`) y `S3_PUBLIC_BASE_URL` se leen igual en los tres ambientes: no son específicas de un stage.
+- **El dump es de PG 17.6 real**, así que la imagen local tiene que ser `postgres:17-alpine`. Un `pg_restore` no puede leer un archivo de una versión mayor: con 15 falla con `unsupported version (1.16) in file header`. Por eso `POSTGRES_IMAGE` queda parametrizado.
+- **MinIO no se puede usar**: sus imágenes oficiales ya no se pulls (404 en Docker Hub). El compose usa **RustFS** (`rustfs/rustfs:latest`), que lee `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY` — **no** `RUSTFS_ROOT_USER` ni `MINIO_ROOT_USER` (probados los dos, caen a defaults con un warning en el log).
+- **El `docker-compose.yml` de la raíz NO es lo mismo que los targets `test-db-*`**: aquellos son una base de test descartable en `:5433` para los tests de `daos/`; este es el entorno de desarrollo en `:5432`.
+- `backup/` contiene datos reales de usuarios y está gitignored. No compartirlo.
 
 ## 7. Rework de catálogo/calendario — instanciación (implementado)
 

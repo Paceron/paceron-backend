@@ -1,15 +1,26 @@
-# Stages de Supabase: testing vs. production
+# Ambientes: local, testing y production
 
-Dos proyectos de Supabase separados — DB y storage S3, mismo split. **Default siempre testing, producción exige un flag explícito** — a propósito, para que un deploy mal configurado nunca termine pegándole a datos reales por accidente.
+| Ambiente | Flag | Infra | Datos |
+|---|---|---|---|
+| **local** | `--stage=local` | Docker Compose (Postgres + storage S3-compatible) | clonados de Supabase, descartables |
+| **testing** | *(ninguno)* | Supabase testing | reales del proyecto de testing |
+| **production** | `--stage=production` | Supabase production | reales de producción |
+
+**Default siempre testing; production exige un flag explícito** — a propósito, para que un deploy mal configurado nunca termine pegándole a datos reales por accidente. `local` también es opt-in: un dev que se olvide del flag cae en testing cloud, que es el estado previo de siempre.
+
+El ambiente local tiene manual propio: [`ENTORNO_LOCAL.md`](ENTORNO_LOCAL.md). Esta doc es la tabla de los tres y lo que cambia entre ellos.
 
 ## Cómo se elige el stage
 
 ```bash
 ./main                    # testing stage (default)
 ./main --stage=production # production stage — el único disparador válido
+./main --stage=local      # entorno local de docker-compose
 ```
 
-`config.IsProductionStage()` escanea `os.Args` buscando exactamente `--stage=production`. Cualquier otra cosa (nada, un typo, otro flag) cae en testing. Se loguea al arrancar (`"supabase stage resolved"`), revisar los logs de Render/local para confirmar a qué stage pegó un arranque dado.
+`config.IsProductionStage()` y `config.IsLocalStage()` escanean `os.Args` buscando exactamente `--stage=production` y `--stage=local`. Cualquier otra cosa (nada, un typo, `--stage=local-debug`) cae en testing. Se loguea al arrancar (`"stage resolved"`, con valor `LOCAL`/`PRODUCTION`/`testing`), revisar los logs de Render/local para confirmar a qué stage pegó un arranque dado.
+
+Si vienen los dos flags, **gana `local`**: conectar a la base local es reversible, haber tocado producción no.
 
 **Importante — esto NO es lo mismo que `ENVIRONMENT`:** `ENVIRONMENT` (env var, `config.GetEnvironment()`) gobierna cómo se carga la config (local/test/production — hoy los tres hacen lo mismo, es un hook para diferenciarlos a futuro si hace falta). `--stage` gobierna a **cuál proyecto de Supabase** apunta. Son ejes independientes: los dos services de Render corren con `ENVIRONMENT=production` (son deploys reales, no local/test), pero se diferencian por el flag `--stage`.
 
@@ -17,10 +28,11 @@ Dos proyectos de Supabase separados — DB y storage S3, mismo split. **Default 
 
 | Variable | Stage | Reemplaza a |
 |---|---|---|
-| `SUPABASE_TESTING_DATABASE_URL` | testing (default) | el viejo `DATABASE_URL` genérico |
+| `SUPABASE_TESTING_DATABASE_URL` | testing (default) | — |
 | `SUPABASE_PRODUCTION_DATABASE_URL` | production (`--stage=production`) | — |
+| `DATABASE_URL` | local (`--stage=local`) | — |
 
-`DATABASE_URL` genérico ya no se lee — `loadDBConfig()` elige entre las dos de arriba según `IsProductionStage()`. Si ninguna está seteada, cae al fallback histórico de `db_host`/`db_port`/`db_user`/`db_password`/`db_name` (sin distinción de stage, legacy).
+`DATABASE_URL` sí se lee, pero **solo** bajo `--stage=local` (y con `.env.local` cargado, que pisa a `.env`). Sin el flag sigue sin leerse: es una variable del stage local, no un override global. Si en cloud ninguna de las dos de arriba está seteada, cae al fallback histórico de `db_host`/`db_port`/`db_user`/`db_password`/`db_name` (sin distinción de stage, legacy).
 
 | Variable | Descripción |
 |---|---|
@@ -51,14 +63,24 @@ Dos services (`render.yaml`), mismo repo:
 1. **`paceron-backend`** (master, producción): `SUPABASE_PRODUCTION_DATABASE_URL` con el valor de producción, más `JWT_SECRET`/`RESEND_API_KEY`/`RESEND_FROM_ADDRESS`.
 2. **`paceron-backend-develop`** (develop, testing): `SUPABASE_TESTING_DATABASE_URL` con el valor de testing, más los mismos `JWT_SECRET`/`RESEND_*` (compartidos, no dependen del stage — un proveedor de mail no maneja datos que requieran aislamiento como la DB) o propios si más adelante se prefiere aislar también el envío de mail — no resuelto acá, mismo criterio que se use hoy.
 
-## Storage (Supabase Buckets)
+## Storage (S3 buckets)
 
-Mismo split testing/producción que la DB — **buckets en proyectos separados** (`testing_stage_bucket` / `production_stage_bucket`), no un solo bucket con dos prefijos.
+Mismo split que la DB: en cloud son **buckets en proyectos separados** (`testing_stage_bucket` / `production_stage_bucket`), no un solo bucket con dos prefijos. En local es un bucket `paceron-media` en el storage del docker-compose.
 
 | Variable | Stage |
 |---|---|
 | `SUPABASE_TESTING_S3_*` | testing (default) — bucket `testing_stage_bucket` |
 | `SUPABASE_PRODUCTION_S3_*` | production (`--stage=production`) — bucket `production_stage_bucket` |
+| `S3_*` | local (`--stage=local`) — bucket `paceron-media` |
+
+### Variables de storage que no son por stage
+
+Estas dos son genéricas de S3 y se leen **igual en los tres ambientes**:
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `S3_FORCE_PATH_STYLE` | `true` | Path-style (`host/bucket/key`) vs. virtual-host-style. El default preserva el comportamiento de siempre contra Supabase, que lo exige; `false` queda para un S3 real. |
+| `S3_PUBLIC_BASE_URL` | *(vacío)* | Base de las URLs públicas de avatar/ícono. Vacío = se deriva del endpoint con la forma de Supabase (`https://<ref>.supabase.co/storage/v1/object/public/<bucket>`). En local hay que setearla sí o sí (`http://localhost:9000/paceron-media`), si no las fotos dan 404. |
 
 ### Bucket público (avatares e íconos de equipo)
 
@@ -76,5 +98,6 @@ El frontend consume las URLs públicas (`photo_url`/`icon_url`) directo contra S
 
 ## Local / CI
 
-- **Local**: `.env` con `SUPABASE_TESTING_DATABASE_URL` (nunca `SUPABASE_PRODUCTION_DATABASE_URL` salvo necesidad puntual explícita — y ahí sí, correr con `go run cmd/api/main.go --stage=production` a sabiendas).
-- **CI** (`ci.yml`): no usa ninguna de las dos — los tests de `daos` pegan contra el Postgres efímero del service container (`TEST_DB_*`, ver `docs/TESTING.md`), completamente separado de los stages de Supabase.
+- **Local cloud** (sin `--stage=local`): `.env` con `SUPABASE_TESTING_DATABASE_URL` (nunca `SUPABASE_PRODUCTION_DATABASE_URL` salvo necesidad puntual explícita — y ahí sí, correr con `go run ./cmd/api --stage=production` a sabiendas).
+- **Local stack** (`--stage=local`): todo contra el docker-compose, con `.env.local`. Es lo que se documenta en [`ENTORNO_LOCAL.md`](ENTORNO_LOCAL.md) y lo que corresponde usar para desarrollar.
+- **CI** (`ci.yml`): no usa ninguna — los tests de `daos` pegan contra el Postgres efímero del service container (`TEST_DB_*`, ver `docs/TESTING.md`), completamente separado de los tres ambientes. Los targets `test-db-*` del `Makefile` son eso, no el stack de desarrollo local.

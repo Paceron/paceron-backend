@@ -234,10 +234,13 @@ func TestCalendarService_SessionInstanceDetail_NoPresencial_SinCampo(t *testing.
 // estado presencial — Sprint D8: solo el detalle los setea.
 func TestCalendarService_GetRange_NoExpondenEstadoPresencial(t *testing.T) {
 	db := testutils.SetupTestDB(t)
-	f, db, _ := presencialDetailFixture(t, db, "GR")
-	opened := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)
+	f, db, day := presencialDetailFixture(t, db, "GR")
 	svc := detailSvc(db)
-	resp, err := svc.GetRange(nil, f.group.ID, f.owner.ID, opened.AddDate(0, 0, -1), opened.AddDate(0, 0, 1))
+	// El rango se ancla en la fecha del fixture (detailFixtureSetup la crea con
+	// time.Now()), no en una fecha fija: con una fecha hardcodeada el test pasaba
+	// solo durante la ventana de ±1 día alrededor de esa fecha, y empezó a fallar
+	// solo, el día que esa fecha quedó en el pasado.
+	resp, err := svc.GetRange(nil, f.group.ID, f.owner.ID, day.Date.AddDate(0, 0, -1), day.Date.AddDate(0, 0, 1))
 	require.NoError(t, err)
 	require.Len(t, resp, 1)
 
