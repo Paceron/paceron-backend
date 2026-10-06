@@ -1,5 +1,6 @@
 .PHONY: test coverage coverage-html test-db-up test-db-down test-db-restart test-with-db coverage-with-db
 .PHONY: local-up local-down local-ps local-logs local-dump local-restore local-reset local-shell
+.PHONY: demo-baseline demo-baseline-force demo-restore demo-reset demo-verify demo-status
 
 # =============================================================================
 # Entorno de desarrollo 100% local (Postgres + storage S3-compatible).
@@ -35,6 +36,33 @@ local-dump:    ## Clona la base de Supabase a backup/paceron-<timestamp>.dump
 
 local-restore: ## Restaura el último dump de backup/ en el Postgres local (pide confirmación)
 	./scripts/restore_db.sh
+
+# =============================================================================
+# Demo: congelar la base como baseline y volver a ella. Para cuando los datos se
+# ensucian (una demo con varias rondas, pruebas manuales). El instructivo corto
+# está en INSTRUCTIVO-DEMO.html, el detalle en docs/ENTORNO_LOCAL.md.
+# =============================================================================
+DEMO_FLAGS ?=
+
+demo-baseline: ## Congela el estado actual de la base como baseline (una vez, antes de empezar)
+	./scripts/demo_db.sh baseline $(DEMO_FLAGS)
+
+demo-restore:  ## Vuelve al baseline en caliente, rápido — para usar entre rondas
+	./scripts/demo_db.sh restore $(DEMO_FLAGS)
+
+demo-reset:    ## Vuelve al baseline en frío: borra volúmenes (base y bucket) y levanta de cero
+	./scripts/demo_db.sh reset $(DEMO_FLAGS)
+
+demo-verify:   ## Compara los conteos de la base contra el baseline (sale distinto de 0 si difieren)
+	./scripts/demo_db.sh verify $(DEMO_FLAGS)
+
+demo-status:   ## Estado del baseline, de los contenedores y de cuánto difiere la base
+	./scripts/demo_db.sh status $(DEMO_FLAGS)
+
+# Reemplazar el baseline es una decisión explícita, no un default: por eso el
+# flag va explícito acá y no en DEMO_FLAGS (que arrastraría a los otros targets).
+demo-baseline-force:
+	./scripts/demo_db.sh baseline --force
 
 # =============================================================================
 # Tests — abajo, la base de test descartable para los tests de daos/
