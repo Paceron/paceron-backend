@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -75,6 +76,25 @@ func NewPaymentService(
 		encryptor:     encryptor,
 	}
 }
+
+// Sentinels del flujo CreatePreference (design D4, Gap 16). El controller los
+// matchea con errors.Is para mapear status/code sin que el service conozca HTTP.
+var (
+	ErrPaymentInvalid             = errors.New("petición de pago inválida")
+	ErrPaymentInstallmentNotFound = errors.New("cuota no encontrada")
+	ErrPaymentTeamNotFound        = errors.New("equipo no encontrado")
+	ErrPaymentSellerNotConnected  = errors.New("el entrenador debe conectar su cuenta de Mercado Pago")
+)
+
+// paymentTypedError envuelve un sentinel preservando el mensaje de dominio
+// original para el usuario (Unwrap equivale a %w).
+type paymentTypedError struct {
+	kind error
+	msg  string
+}
+
+func (e *paymentTypedError) Error() string { return e.msg }
+func (e *paymentTypedError) Unwrap() error { return e.kind }
 
 func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePreferenceRequest) (*payment.CreatePreferenceResponse, error) {
 	customlogger.Info(ctx, "creating MP preference", customlogger.TagMethod("CreatePreference"))
@@ -743,7 +763,7 @@ func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResp
 // de tipo team_subscription.
 func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64) (accessToken string, marketplaceFee float64, sellerUserID int64, sellerPublicKey string, err error) {
 	if installmentID == nil {
-		return "", 0, 0, "", fmt.Errorf("installment_id requerido para team_subscription")
+		return "", 0, 0, "", &paymentTypedError{kind: ErrPaymentInvalid, msg: "installment_id requerido para team_subscription"}
 	}
 
 	installment, err := s.installDao.FindByID(ctx, *installmentID)
@@ -754,10 +774,10 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		return "", 0, 0, "", fmt.Errorf("error consultando cuota")
 	}
 	if installment == nil {
-		return "", 0, 0, "", fmt.Errorf("cuota no encontrada")
+		return "", 0, 0, "", ErrPaymentInstallmentNotFound
 	}
 	if installment.TeamID == nil {
-		return "", 0, 0, "", fmt.Errorf("la cuota no pertenece a un equipo")
+		return "", 0, 0, "", &paymentTypedError{kind: ErrPaymentInvalid, msg: "la cuota no pertenece a un equipo"}
 	}
 
 	team, err := s.teamDao.FindByID(ctx, *installment.TeamID)
@@ -768,7 +788,7 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 		return "", 0, 0, "", fmt.Errorf("error consultando equipo")
 	}
 	if team == nil {
-		return "", 0, 0, "", fmt.Errorf("equipo no encontrado")
+		return "", 0, 0, "", ErrPaymentTeamNotFound
 	}
 
 	ownerID := team.OwnerID
@@ -784,7 +804,7 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 			customlogger.Tag("team_id", fmt.Sprintf("%d", team.ID)),
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, "", fmt.Errorf("el entrenador debe conectar su cuenta de Mercado Pago")
+		return "", 0, 0, "", ErrPaymentSellerNotConnected
 	}
 
 	// La public_key se guarda al conectar la cuenta (OAuth). Sin ella no se puede
@@ -794,7 +814,7 @@ func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID 
 			customlogger.Tag("team_id", fmt.Sprintf("%d", team.ID)),
 			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
 			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, "", fmt.Errorf("el entrenador debe reconectar su cuenta de Mercado Pago")
+		return "", 0, 0, "", &paymentTypedError{kind: ErrPaymentSellerNotConnected, msg: "el entrenador debe reconectar su cuenta de Mercado Pago"}
 	}
 
 	// Descifrar access_token

@@ -14,6 +14,7 @@ import (
 type TierPermissionController interface {
 	Assign(c *gin.Context)
 	Unassign(c *gin.Context)
+	List(c *gin.Context)
 }
 
 type tierPermissionController struct {
@@ -128,6 +129,51 @@ func (tpc *tierPermissionController) Unassign(c *gin.Context) {
 		code := "Internal Server Error"
 
 		if errMsg == "asignación no encontrada" {
+			statusCode = http.StatusNotFound
+			code = "Not Found"
+		}
+
+		c.JSON(statusCode, apierror.APIError{
+			StatusCode: statusCode,
+			Code:       code,
+			Message:    errMsg,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// List godoc
+// @Summary      List permissions of a tier
+// @Description  Lists the active permissions assigned to a tier, with their resolved names
+// @Tags         tier-permissions
+// @Produce      json
+// @Param        id   path      int  true  "Tier ID"
+// @Success      200  {object}  tierpermission.ListTierPermissionsResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/tiers/{id}/permissions [get]
+func (tpc *tierPermissionController) List(c *gin.Context) {
+	tierIDStr := c.Param("id")
+	tierID, err := strconv.ParseInt(tierIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    "tier id debe ser un número válido",
+		})
+		return
+	}
+
+	response, err := tpc.tierPermissionService.List(c, tierID)
+	if err != nil {
+		errMsg := err.Error()
+		statusCode := http.StatusInternalServerError
+		code := "Internal Server Error"
+
+		if errMsg == "tier no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
 		}

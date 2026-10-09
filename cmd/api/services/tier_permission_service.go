@@ -15,6 +15,7 @@ import (
 type TierPermissionServiceInterface interface {
 	Assign(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error)
 	Unassign(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error)
+	List(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error)
 }
 
 type tierPermissionService struct {
@@ -126,4 +127,36 @@ func (s *tierPermissionService) Unassign(ctx *gin.Context, tierID, permissionID 
 	return &tierpermission.DeleteTierPermissionResponse{
 		Message: "Permiso desasignado del tier correctamente",
 	}, nil
+}
+
+func (s *tierPermissionService) List(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+	t, err := s.tierDao.FindByID(ctx, tierID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding tier for permission list", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al listar permisos")
+	}
+	if t == nil {
+		return nil, fmt.Errorf("tier no encontrado")
+	}
+
+	items, err := s.tierPermissionDao.ListPermissionNamesByTier(ctx, tierID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing permissions of tier", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al listar permisos")
+	}
+
+	// permisos soft-deleted y el orden ASC quedan resueltos en el JOIN del DAO
+	result := make([]tierpermission.TierPermissionListItem, len(items))
+	for i, it := range items {
+		result[i] = tierpermission.TierPermissionListItem{
+			PermissionID:   it.PermissionID,
+			PermissionName: it.PermissionName,
+		}
+	}
+
+	return &tierpermission.ListTierPermissionsResponse{Permissions: result}, nil
 }

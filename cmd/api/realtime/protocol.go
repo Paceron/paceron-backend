@@ -47,6 +47,11 @@ const UpdateSessionStateEventType = TypeUpdate + ":" + EventSessionState
 // UpdateAttendanceEventType = "update:attendance_event" (Gap 28 D12).
 const UpdateAttendanceEventType = TypeUpdate + ":" + EventAttendance
 
+// ControlMessageCreatedEventType es el único evento server-originado de hoy de
+// familia control: aviso de nuevo mensaje de sesión (Gap 27 D9). El contenido
+// del mensaje NO viaja en el frame — la privacidad la aplica el filtro del GET.
+const ControlMessageCreatedEventType = "control:message_created"
+
 // clientMessage es el decode de todo frame cliente → servidor. payload de
 // presence/control viaja opaco pero debe ser un objeto JSON (ver ParseInbound).
 type clientMessage struct {

@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/team"
@@ -151,7 +153,7 @@ func TestTeamService_Create_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -190,7 +192,7 @@ func TestTeamService_Create_ShowGroupsToRunners_True(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	showGroups := true
 	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:                "Equipo Alpha",
@@ -230,7 +232,7 @@ func TestTeamService_Create_TeamUserDaoCreateError_StillSucceeds(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, mockTeamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -247,7 +249,7 @@ func TestTeamService_Create_OwnerNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 999, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -274,7 +276,7 @@ func TestTeamService_Create_OwnerNoEntrenadorRole(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -291,7 +293,7 @@ func TestTeamService_Create_UserFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -323,7 +325,7 @@ func TestTeamService_Create_DAOError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -343,7 +345,7 @@ func TestTeamService_Update_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New Name"
 	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{
 		Name: &newName,
@@ -364,7 +366,7 @@ func TestTeamService_Update_ShowGroupsToRunners(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	showGroups := true
 	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{
 		ShowGroupsToRunners: &showGroups,
@@ -382,7 +384,7 @@ func TestTeamService_Update_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Update(nil, 999, 1, &team.UpdateTeamRequest{})
 
 	assert.Error(t, err)
@@ -401,7 +403,7 @@ func TestTeamService_Update_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New Name"
 	_, err := svc.Update(nil, 1, 2, &team.UpdateTeamRequest{Name: &newName})
 
@@ -421,7 +423,7 @@ func TestTeamService_UpdateAddress_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.UpdateAddress(nil, 1, 2, &team.UpdateTeamAddressRequest{Country: "Argentina"})
 
 	assert.Error(t, err)
@@ -475,7 +477,7 @@ func TestTeamService_Delete_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, mockGroup, mockGroupUser, mockInvitation, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, mockGroup, mockGroupUser, mockInvitation, nil, nil)
 	err := svc.Delete(nil, 1, 1)
 
 	assert.NoError(t, err)
@@ -522,7 +524,7 @@ func TestTeamService_Delete_CascadeErrors_StillSucceeds(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, mockGroup, mockGroupUser, mockInvitation, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, mockGroup, mockGroupUser, mockInvitation, nil, nil)
 	err := svc.Delete(nil, 1, 1)
 
 	assert.NoError(t, err)
@@ -535,7 +537,7 @@ func TestTeamService_Delete_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 999, 1)
 
 	assert.Error(t, err)
@@ -554,7 +556,7 @@ func TestTeamService_Delete_NotMember(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 1, 99)
 
 	assert.Error(t, err)
@@ -573,7 +575,7 @@ func TestTeamService_Delete_NotEntrenador(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 1, 2)
 
 	assert.Error(t, err)
@@ -595,7 +597,7 @@ func TestTeamService_Delete_HasMembers(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -609,7 +611,7 @@ func TestTeamService_GetByID_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.GetByID(nil, 1)
 
 	assert.NoError(t, err)
@@ -624,7 +626,7 @@ func TestTeamService_GetByID_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.GetByID(nil, 999)
 
 	assert.Error(t, err)
@@ -641,7 +643,7 @@ func TestTeamService_GetAll_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.GetAll(nil, nil, nil)
 
 	assert.NoError(t, err)
@@ -660,7 +662,7 @@ func TestTeamService_UpdateAddress_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{
 		Country:  "Argentina",
 		Province: "Córdoba",
@@ -682,7 +684,7 @@ func TestTeamService_UpdateAddress_TeamNotFound(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.UpdateAddress(nil, 999, 1, &team.UpdateTeamAddressRequest{})
 
 	assert.Error(t, err)
@@ -701,7 +703,7 @@ func TestTeamService_Create_UserRoleFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -718,7 +720,7 @@ func TestTeamService_Update_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New"
 	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
 
@@ -738,7 +740,7 @@ func TestTeamService_Update_CallerRoleCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New"
 	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
 
@@ -758,7 +760,7 @@ func TestTeamService_UpdateAddress_CallerRoleCheckError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "Argentina"})
 
 	assert.Error(t, err)
@@ -775,7 +777,7 @@ func TestTeamService_Update_DAOUpdateError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New"
 	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
 
@@ -790,7 +792,7 @@ func TestTeamService_Delete_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -815,7 +817,7 @@ func TestTeamService_Delete_SoftDeleteError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	err := svc.Delete(nil, 1, 1)
 
 	assert.Error(t, err)
@@ -829,7 +831,7 @@ func TestTeamService_GetByID_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.GetByID(nil, 1)
 
 	assert.Error(t, err)
@@ -843,7 +845,7 @@ func TestTeamService_GetAll_GetAllError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.GetAll(nil, nil, nil)
 
 	assert.Error(t, err)
@@ -858,7 +860,7 @@ func TestTeamService_GetAll_ByOwnerID(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	ownerID := int64(5)
 	resp, err := svc.GetAll(nil, &ownerID, nil)
 
@@ -875,7 +877,7 @@ func TestTeamService_GetAll_ByMemberID(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	memberID := int64(7)
 	resp, err := svc.GetAll(nil, nil, &memberID)
 
@@ -899,7 +901,7 @@ func TestTeamService_GetAll_ByOwnerIDAndMemberID_FiltersInMemory(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	ownerID := int64(5)
 	memberID := int64(7)
 	resp, err := svc.GetAll(nil, &ownerID, &memberID)
@@ -916,7 +918,7 @@ func TestTeamService_GetAll_ByMemberID_DaoError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	memberID := int64(7)
 	_, err := svc.GetAll(nil, nil, &memberID)
 
@@ -931,7 +933,7 @@ func TestTeamService_UpdateAddress_FindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{})
 
 	assert.Error(t, err)
@@ -948,7 +950,7 @@ func TestTeamService_UpdateAddress_DAOUpdateError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{
 		Country: "Argentina",
 	})
@@ -974,7 +976,7 @@ func TestTeamService_Create_RoleFindByIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -1001,7 +1003,7 @@ func TestTeamService_Create_RoleNil(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{
 		Name:       "Equipo Alpha",
 		MaxMembers: 20,
@@ -1021,7 +1023,7 @@ func TestTeamService_Update_AllOptionalFields(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "New Name"
 	newDesc := "New Desc"
 	newLevel := "high"
@@ -1055,7 +1057,7 @@ func nonEntrenadorMockTeamUserDao() *mockTeamUserDao {
 }
 
 func TestTeamService_UploadIcon_NilStorageClient_NoPanic(t *testing.T) {
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 
 	var url *string
 	var err error
@@ -1068,7 +1070,7 @@ func TestTeamService_UploadIcon_NilStorageClient_NoPanic(t *testing.T) {
 }
 
 func TestTeamService_DeleteIcon_NilStorageClient_NoPanic(t *testing.T) {
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 
 	var err error
 	assert.NotPanics(t, func() {
@@ -1089,7 +1091,7 @@ func TestTeamService_UploadIcon_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 	url, err := svc.UploadIcon(nil, 1, 1, validPNGContent)
 
 	require.NoError(t, err)
@@ -1101,7 +1103,7 @@ func TestTeamService_UploadIcon_Success(t *testing.T) {
 
 func TestTeamService_UploadIcon_NotOwner_Forbidden(t *testing.T) {
 	storage := &mockStorageClient{}
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, nonEntrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, nonEntrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 
 	url, err := svc.UploadIcon(nil, 1, 2, validPNGContent)
 
@@ -1113,7 +1115,7 @@ func TestTeamService_UploadIcon_NotOwner_Forbidden(t *testing.T) {
 
 func TestTeamService_UploadIcon_InvalidType(t *testing.T) {
 	storage := &mockStorageClient{}
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 
 	url, err := svc.UploadIcon(nil, 1, 1, []byte("not an image"))
 
@@ -1136,7 +1138,7 @@ func TestTeamService_DeleteIcon_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 	err := svc.DeleteIcon(nil, 1, 1)
 
 	require.NoError(t, err)
@@ -1146,7 +1148,7 @@ func TestTeamService_DeleteIcon_Success(t *testing.T) {
 
 func TestTeamService_DeleteIcon_NotOwner_Forbidden(t *testing.T) {
 	storage := &mockStorageClient{}
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, nonEntrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, nonEntrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 
 	err := svc.DeleteIcon(nil, 1, 2)
 
@@ -1163,7 +1165,7 @@ func TestTeamService_DeleteIcon_NoIcon_Idempotent(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, storage, nil)
 	err := svc.DeleteIcon(nil, 1, 1)
 
 	require.NoError(t, err)
@@ -1178,7 +1180,7 @@ func TestTeamService_Search_Success(t *testing.T) {
 		return &dbs.User{ID: id, Name: "Ana", Surname: "Gómez"}, nil
 	}}
 	teamUserDao := &mockTeamUserDao{countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) { return 3, nil }}
-	svc := NewTeamService(teamDao, userDao, &mockUserRoleDao{}, &mockRoleDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(teamDao, userDao, &mockUserRoleDao{}, &mockRoleDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 
 	resp, err := svc.Search(nil, 99, team.SearchFilters{}, 1)
 
@@ -1190,7 +1192,7 @@ func TestTeamService_Search_Success(t *testing.T) {
 }
 
 func TestTeamService_Search_InvalidPage(t *testing.T) {
-	svc := NewTeamService(&mockTeamDao{}, &mockUserDao{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(&mockTeamDao{}, &mockUserDao{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 
 	_, err := svc.Search(nil, 99, team.SearchFilters{}, 0)
 
@@ -1219,7 +1221,7 @@ func newMembershipFeeCreateService() TeamServiceInterface {
 			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
-	return NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	return NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 }
 
 func TestTeamService_Create_MembershipFee(t *testing.T) {
@@ -1260,7 +1262,7 @@ func TestTeamService_Update_MembershipFee(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	fee := float64(8000)
 	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{MembershipFee: &fee})
 
@@ -1280,7 +1282,7 @@ func TestTeamService_Update_MembershipFee_NotSent(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	newName := "renombrado"
 
 	resp, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
@@ -1296,7 +1298,7 @@ func TestTeamService_Update_MembershipFee_Negative(t *testing.T) {
 			return &dbs.Team{ID: 1, Name: "Equipo", Status: "active"}, nil
 		},
 	}
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	negative := float64(-5)
 	_, err := svc.Update(nil, 1, 1, &team.UpdateTeamRequest{MembershipFee: &negative})
 
@@ -1310,10 +1312,305 @@ func TestTeamService_GetByID_IncludesMembershipFee(t *testing.T) {
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	resp, err := svc.GetByID(nil, 1)
 
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, float64(1500), resp.MembershipFee)
+}
+
+func TestTeamService_Search_CanReceivePaymentsMixed(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	teams := []dbs.Team{
+		{ID: 1, Name: "FeeGratis", OwnerID: 5, MembershipFee: 0},
+		{ID: 2, Name: "FeePagado", OwnerID: 6, MembershipFee: 5000},
+		{ID: 3, Name: "SinConexion", OwnerID: 7, MembershipFee: 2500},
+	}
+	mockTeamDao := &mockTeamDao{
+		searchPublicFn: func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
+			return teams, false, nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Name: "Coach", Surname: strconv.FormatInt(userID, 10)}, nil
+		},
+	}
+	mockTU := &mockTeamUserDao{
+		countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) {
+			return 3, nil
+		},
+	}
+
+	var gotUserIDs []int64
+	var gotClientID string
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			gotUserIDs = userIDs
+			gotClientID = clientID
+			// owner 5 authorized+pk; owner 6 authorized pero SIN public_key
+			return []dbs.SellerConnection{
+				{UserID: 5, Status: "authorized", PublicKey: "pk-5"},
+				{UserID: 6, Status: "authorized", PublicKey: ""},
+			}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.Search(nil, 0, team.SearchFilters{}, 1)
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []int64{5, 6, 7}, gotUserIDs)
+	assert.Equal(t, "APP-X", gotClientID)
+	require.Len(t, resp.Teams, 3)
+	assert.Equal(t, float64(0), resp.Teams[0].MembershipFee)
+	assert.Equal(t, float64(5000), resp.Teams[1].MembershipFee)
+	assert.Equal(t, float64(2500), resp.Teams[2].MembershipFee)
+	assert.True(t, resp.Teams[0].CanReceivePayments)
+	assert.False(t, resp.Teams[1].CanReceivePayments) // authorized sin public_key
+	assert.False(t, resp.Teams[2].CanReceivePayments) // sin conexión
+}
+
+func TestTeamService_Search_SellerConnLookupError_AllFlagsFalse(t *testing.T) {
+	teams := []dbs.Team{
+		{ID: 1, Name: "A", OwnerID: 5, MembershipFee: 1000},
+		{ID: 2, Name: "B", OwnerID: 6, MembershipFee: 2000},
+	}
+	mockTeamDao := &mockTeamDao{
+		searchPublicFn: func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
+			return teams, false, nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Name: "Coach"}, nil
+		},
+	}
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, mockUserDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.Search(nil, 0, team.SearchFilters{}, 1)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Teams, 2)
+	assert.False(t, resp.Teams[0].CanReceivePayments)
+	assert.False(t, resp.Teams[1].CanReceivePayments)
+	assert.Equal(t, float64(1000), resp.Teams[0].MembershipFee)
+	assert.Equal(t, float64(2000), resp.Teams[1].MembershipFee)
+}
+
+func TestTeamService_GetByID_CanReceivePayments(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	tests := []struct {
+		name     string
+		connFn   func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+		expected bool
+	}{
+		{
+			name: "authorized con public_key",
+			connFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+				assert.Equal(t, "APP-X", clientID)
+				return &dbs.SellerConnection{UserID: userID, Status: "authorized", PublicKey: "pk"}, nil
+			},
+			expected: true,
+		},
+		{
+			name: "deauthorized",
+			connFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+				return &dbs.SellerConnection{UserID: userID, Status: "deauthorized", PublicKey: "pk"}, nil
+			},
+			expected: false,
+		},
+		{
+			name: "authorized sin public_key",
+			connFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+				return &dbs.SellerConnection{UserID: userID, Status: "authorized"}, nil
+			},
+			expected: false,
+		},
+		{
+			name: "lookup error",
+			connFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+				return nil, errors.New("db error")
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockTeamDao := &mockTeamDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+					return &dbs.Team{ID: 1, OwnerID: 9, MembershipFee: 777}, nil
+				},
+			}
+			sellerDao := &mockSellerConnectionDao{findByUserAndClFn: tc.connFn}
+			svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+
+			resp, err := svc.GetByID(nil, 1)
+			require.NoError(t, err)
+			assert.Equal(t, float64(777), resp.MembershipFee)
+			assert.Equal(t, tc.expected, resp.CanReceivePayments)
+		})
+	}
+}
+
+func TestTeamService_GetAll_CanReceivePaymentsMixed(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	teams := []dbs.Team{
+		{ID: 1, Name: "A", OwnerID: 5, MembershipFee: 0},
+		{ID: 2, Name: "B", OwnerID: 5, MembershipFee: 1000},
+		{ID: 3, Name: "C", OwnerID: 6, MembershipFee: 2000},
+	}
+	mockTeamDao := &mockTeamDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Team, error) {
+			return teams, nil
+		},
+	}
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			assert.Equal(t, "APP-X", clientID)
+			assert.Equal(t, []int64{5, 6}, userIDs)
+			return []dbs.SellerConnection{{UserID: 5, Status: "authorized", PublicKey: "pk-5"}}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetAll(nil, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 3)
+	for _, r := range resp {
+		if r.OwnerID == 5 {
+			assert.True(t, r.CanReceivePayments, "team %d con owner autorizado", r.ID)
+		} else {
+			assert.False(t, r.CanReceivePayments, "team %d sin conexión", r.ID)
+		}
+	}
+}
+
+func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	sellerDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+			assert.Equal(t, "APP-X", clientID)
+			assert.Equal(t, int64(1), userID)
+			return &dbs.SellerConnection{UserID: userID, Status: "authorized", PublicKey: "pk"}, nil
+		},
+	}
+
+	createMockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	updateMockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Old", OwnerID: 1, Status: "active"}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error { return nil },
+	}
+
+	newSvc := func(teamDao daos.TeamDaoInterface) TeamServiceInterface {
+		return NewTeamService(teamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	}
+
+	createSvc := NewTeamService(
+		createMockTeamDao,
+		&mockUserDaoForUserRole{
+			findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+				return &dbs.User{ID: userID, Name: "Coach"}, nil
+			},
+		},
+		&mockUserRoleDao{
+			findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+				return []dbs.UserRole{{RoleID: 1}}, nil
+			},
+		},
+		&mockRoleDao{
+			findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+				return &dbs.Role{ID: id, Name: "entrenador"}, nil
+			},
+		},
+		entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+
+	respCreate, err := createSvc.Create(nil, 1, &team.CreateTeamRequest{Name: "Alpha", MaxMembers: 20})
+	require.NoError(t, err)
+	assert.True(t, respCreate.CanReceivePayments, "Create debe derivar el flag, no mandarlo hardcodeado en false")
+
+	newName := "New"
+	respUpdate, err := newSvc(updateMockTeamDao).Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
+	require.NoError(t, err)
+	assert.True(t, respUpdate.CanReceivePayments, "Update debe derivar el flag")
+
+	respAddr, err := newSvc(updateMockTeamDao).UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "Argentina"})
+	require.NoError(t, err)
+	assert.True(t, respAddr.CanReceivePayments, "UpdateAddress debe derivar el flag")
+}
+
+// Fallo del lookup batch en GetAll: todas las filas salen con el flag en false
+// y la respuesta OK (el error no escala a HTTP 500).
+func TestTeamService_GetAll_BatchLookupError_AllFlagsFalseOkay(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Team, error) {
+			return []dbs.Team{
+				{ID: 1, Name: "A", OwnerID: 5},
+				{ID: 2, Name: "B", OwnerID: 6},
+			}, nil
+		},
+	}
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetAll(nil, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 2)
+	assert.False(t, resp[0].CanReceivePayments)
+	assert.False(t, resp[1].CanReceivePayments)
+}
+
+// Variante single con fallo del lookup del owner: el flag sale false (capacidad
+// desconocida ≉ no puede cobrar) y la respuesta OK.
+func TestTeamService_GetByID_SellerConnLookupError_FlagFalseOkay(t *testing.T) {
+	sellerDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha", OwnerID: 9}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetByID(nil, 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "Alpha", resp.Name)
+	assert.False(t, resp.CanReceivePayments)
 }

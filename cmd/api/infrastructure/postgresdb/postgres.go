@@ -106,6 +106,10 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		&dbs.ExerciseInstance{},
 		&dbs.SessionInstance{},
 		&dbs.SessionExerciseInstance{},
+		// Mensajería de sesión (design.md D5): FK opaca al patrón del repo,
+		// sin constraint física.
+		&dbs.SessionMessage{},
+		&dbs.SessionMessageRecipient{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)

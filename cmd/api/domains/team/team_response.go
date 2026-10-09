@@ -22,6 +22,7 @@ type TeamResponse struct {
 	IsPublic            bool      `json:"is_public"`              // Si acepta solicitudes de ingreso
 	IconURL             *string   `json:"icon_url"`               // URL pública del ícono del equipo (nil = sin ícono)
 	MembershipFee       float64   `json:"membership_fee"`         // Mensualidad que paga cada corredor al entrenador (0 = gratis)
+	CanReceivePayments  bool      `json:"can_receive_payments"`   // Si el entrenador puede cobrar (cuenta MP conectada Authorized + public_key)
 	CreatedAt           time.Time `json:"created_at"`             // Fecha de creación
 	UpdatedAt           time.Time `json:"updated_at"`             // Fecha de última actualización
 }

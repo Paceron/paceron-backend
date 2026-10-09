@@ -1,5 +1,7 @@
 package realtime
 
+import "encoding/json"
+
 // Notifier es el emisor genérico de eventos server→client: quien decide el
 // nombre del canal es el caller (el paquete no conoce ningún patrón de canal).
 // Emit debe ser no-bloqueante y async-safe; el payload no debe mutarse
@@ -64,5 +66,17 @@ func MarshalUpdateAttendanceEvent(channel string, data any) []byte {
 		Type:    UpdateAttendanceEventType,
 		Channel: channel,
 		Data:    data,
+	})
+}
+
+// MarshalControlMessageCreated arma el frame `control:message_created` (Gap 27
+// D9): payload mínimo {sessionMessageId}, sin contenido del mensaje. El canal
+// viaja en el frame para que el cliente rutée igual que en update:*.
+func MarshalControlMessageCreated(channel string, sessionMessageID int64) []byte {
+	payload, _ := json.Marshal(map[string]int64{"sessionMessageId": sessionMessageID})
+	return MarshalOutbound(&outboundMessage{
+		Type:    ControlMessageCreatedEventType,
+		Channel: channel,
+		Payload: payload,
 	})
 }

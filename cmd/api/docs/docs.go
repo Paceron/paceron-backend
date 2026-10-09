@@ -2640,6 +2640,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3645,6 +3657,128 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/session-instances/{id}/messages": {
+            "get": {
+                "description": "Devuelve los mensajes de la sesión que el consultante ve (emisor, recipient_mode all o destinatario), ordenados cronológicamente. El query param since cursa el historial: mensajes con id mayor al valor (ausente/0 = todo).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session-messages"
+                ],
+                "summary": "Historial de mensajes de la sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión instanciada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cursor: mensajes con id mayor a este (default: todos)",
+                        "name": "since",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Crea un mensaje de sesión (type info/aviso/alerta) dirigido a todos los participantes (recipient_mode all) o a uno (direct) o varios (multiple) destinatarios concretos. El emisor debe tener acceso a la instancia; sender_role se deriva del owner del equipo. Tras crear, emite el aviso WS control:message_created en session:{id}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session-messages"
+                ],
+                "summary": "Enviar un mensaje al chat de la sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión instanciada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del mensaje",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -5350,6 +5484,51 @@ const docTemplate = `{
             }
         },
         "/api/v1/tiers/{id}/permissions": {
+            "get": {
+                "description": "Lists the active permissions assigned to a tier, with their resolved names",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tier-permissions"
+                ],
+                "summary": "List permissions of a tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Assigns a permission to a tier",
                 "consumes": [
@@ -8819,6 +8998,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_invitation.InvitationResponse": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada)",
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -8845,6 +9028,10 @@ const docTemplate = `{
                 },
                 "inviter_name": {
                     "type": "string"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad vigente del equipo al consultar (no congelada)",
+                    "type": "number"
                 },
                 "status": {
                     "type": "string"
@@ -9986,6 +10173,83 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest": {
+            "type": "object",
+            "required": [
+                "body",
+                "recipient_mode",
+                "type"
+            ],
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "recipient_mode": {
+                    "type": "string"
+                },
+                "recipient_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "reply_to_message_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "recipient_mode": {
+                    "type": "string"
+                },
+                "recipient_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "reply_to_message_id": {
+                    "type": "integer"
+                },
+                "sender_role": {
+                    "type": "string"
+                },
+                "sender_user_id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_team.CreateTeamRequest": {
             "type": "object",
             "required": [
@@ -10039,6 +10303,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_team.TeamResponse": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada Authorized + public_key)",
+                    "type": "boolean"
+                },
                 "city": {
                     "description": "Dirección: ciudad",
                     "type": "string"
@@ -10138,6 +10406,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_team.TeamSearchResult": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada)",
+                    "type": "boolean"
+                },
                 "city": {
                     "type": "string"
                 },
@@ -10161,6 +10433,10 @@ const docTemplate = `{
                 },
                 "member_count": {
                     "type": "integer"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad vigente del equipo (0 = gratis)",
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
@@ -10511,6 +10787,30 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse": {
+            "type": "object",
+            "properties": {
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem": {
+            "type": "object",
+            "properties": {
+                "permission_id": {
+                    "description": "ID del permiso",
+                    "type": "integer"
+                },
+                "permission_name": {
+                    "description": "Nombre del permiso",
                     "type": "string"
                 }
             }

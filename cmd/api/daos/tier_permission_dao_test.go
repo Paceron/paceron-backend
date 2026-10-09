@@ -107,6 +107,68 @@ func TestTierPermissionDao_FindByTierID_ExcludesSoftDeleted(t *testing.T) {
 	assert.NotContains(t, ids, deleted.ID)
 }
 
+func TestTierPermissionDao_ListPermissionNamesByTier_JoinedNamesOrdered(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierPermissionDao(db)
+	role := testRole(db, "role_for_lp_join")
+	tier := testTier(db, "tier_for_lp_join", role.ID)
+	permLow := testPermission(db, "perm_lp_a")
+	permHigh := testPermission(db, "perm_lp_b")
+	otherTier := testTier(db, "other_tier_for_lp", role.ID)
+	permOther := testPermission(db, "perm_lp_c")
+
+	tpHigh := &dbs.TierPermission{TierID: tier.ID, PermissionID: permHigh.ID, AsignationDate: time.Now()}
+	tpLow := &dbs.TierPermission{TierID: tier.ID, PermissionID: permLow.ID, AsignationDate: time.Now()}
+	tpOther := &dbs.TierPermission{TierID: otherTier.ID, PermissionID: permOther.ID, AsignationDate: time.Now()}
+	require.NoError(t, dao.Create(nil, tpHigh))
+	require.NoError(t, dao.Create(nil, tpLow))
+	require.NoError(t, dao.Create(nil, tpOther))
+
+	found, err := dao.ListPermissionNamesByTier(nil, tier.ID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 2)
+	assert.Equal(t, permLow.ID, found[0].PermissionID)
+	assert.Equal(t, "perm_lp_a", found[0].PermissionName)
+	assert.Equal(t, permHigh.ID, found[1].PermissionID)
+	assert.Equal(t, "perm_lp_b", found[1].PermissionName)
+}
+
+func TestTierPermissionDao_ListPermissionNamesByTier_ExcludesDeletedRowsAndPermissions(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierPermissionDao(db)
+	role := testRole(db, "role_for_lp_deleted")
+	tier := testTier(db, "tier_for_lp_deleted", role.ID)
+	permActive := testPermission(db, "perm_lp_active")
+	permDeleted := testPermission(db, "perm_lp_perm_deleted")
+
+	active := &dbs.TierPermission{TierID: tier.ID, PermissionID: permActive.ID, AsignationDate: time.Now()}
+	deletedTp := &dbs.TierPermission{TierID: tier.ID, PermissionID: permDeleted.ID, AsignationDate: time.Now()}
+	stale := &dbs.TierPermission{TierID: tier.ID, PermissionID: permDeleted.ID, AsignationDate: time.Now()}
+	require.NoError(t, dao.Create(nil, active))
+	require.NoError(t, dao.Create(nil, deletedTp))
+	require.NoError(t, dao.Create(nil, stale))
+	require.NoError(t, dao.SoftDelete(nil, deletedTp.ID))
+	require.NoError(t, db.Delete(permDeleted).Error)
+
+	found, err := dao.ListPermissionNamesByTier(nil, tier.ID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, permActive.ID, found[0].PermissionID)
+	assert.Equal(t, "perm_lp_active", found[0].PermissionName)
+}
+
+func TestTierPermissionDao_ListPermissionNamesByTier_Empty(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierPermissionDao(db)
+
+	found, err := dao.ListPermissionNamesByTier(nil, 999999)
+
+	require.NoError(t, err)
+	assert.Empty(t, found)
+}
+
 func TestTierPermissionDao_SoftDelete_Success(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTierPermissionDao(db)

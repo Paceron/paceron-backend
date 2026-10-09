@@ -81,6 +81,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PUT("/api/v1/tiers/:id", app.tierController.Update)
 	r.DELETE("/api/v1/tiers/:id", app.tierController.Delete)
 	r.POST("/api/v1/tiers/:id/permissions", app.tierPermissionController.Assign)
+	r.GET("/api/v1/tiers/:id/permissions", app.tierPermissionController.List)
 	r.DELETE("/api/v1/tiers/:id/permissions/:permission_id", app.tierPermissionController.Unassign)
 	r.GET("/api/v1/roles", app.roleController.GetAll)
 	r.GET("/api/v1/roles/by-name", app.roleController.GetByName)
@@ -232,5 +233,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PATCH("/api/v1/session-instances/:id/runner", app.runnerSessionController.Finish)
 	r.GET("/api/v1/session-instances/:id/runner", app.runnerSessionController.Get)
 	r.GET("/api/v1/session-instances/:id/feedback", app.workoutFeedbackController.GetBySession)
+	// Mensajería de sesión (Gap 27), el chat de una instancia del calendario.
+	r.POST("/api/v1/session-instances/:id/messages", app.sessionMessageController.Create)
+	r.GET("/api/v1/session-instances/:id/messages", app.sessionMessageController.List)
 	r.GET("/api/v1/session-instances/:id", app.calendarController.SessionInstanceDetail)
 }

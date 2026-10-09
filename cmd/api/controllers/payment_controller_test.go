@@ -11,10 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/payment"
+	"simple-arq-golang/cmd/api/services"
 )
 
 type mockPaymentService struct {
@@ -166,6 +168,95 @@ func TestCreatePreference_MissingDescription(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	service.AssertNotCalled(t, "CreatePreference")
+}
+
+// Matriz de mapeo de errores de CreatePreference (design D4, Gap 16): 409 con
+// code SELLER_NOT_CONNECTED (el front lee error.data.code), 404, 400 y 500
+// residual con mensaje genérico (sin 502).
+func TestCreatePreference_ErrorMapping(t *testing.T) {
+	reqBody := payment.CreatePreferenceRequest{
+		Concept:     string(constants.PaymentConceptTeamSubscription),
+		Description: "Cuota equipo",
+		Items: []payment.PreferenceItem{
+			{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	tests := []struct {
+		name        string
+		serviceErr  error
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "seller no conectado",
+			serviceErr:  services.ErrPaymentSellerNotConnected,
+			wantStatus:  http.StatusConflict,
+			wantCode:    constants.ErrorCodeSellerNotConnected,
+			wantMessage: "el entrenador debe conectar su cuenta de Mercado Pago",
+		},
+		{
+			name:        "seller no conectado (error wrapped, errors.Is a través del %w)",
+			serviceErr:  fmt.Errorf("resolviendo contexto del entrenador: %w", services.ErrPaymentSellerNotConnected),
+			wantStatus:  http.StatusConflict,
+			wantCode:    constants.ErrorCodeSellerNotConnected,
+			wantMessage: "resolviendo contexto del entrenador: el entrenador debe conectar su cuenta de Mercado Pago",
+		},
+		{
+			name:        "cuota no encontrada",
+			serviceErr:  services.ErrPaymentInstallmentNotFound,
+			wantStatus:  http.StatusNotFound,
+			wantCode:    "Not found",
+			wantMessage: "cuota no encontrada",
+		},
+		{
+			name:        "equipo no encontrado",
+			serviceErr:  services.ErrPaymentTeamNotFound,
+			wantStatus:  http.StatusNotFound,
+			wantCode:    "Not found",
+			wantMessage: "equipo no encontrado",
+		},
+		{
+			name:        "pago inválido (sentinel 400)",
+			serviceErr:  services.ErrPaymentInvalid,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    "Bad request",
+			wantMessage: "petición de pago inválida",
+		},
+		{
+			name:        "error residual sigue 500 genérico",
+			serviceErr:  fmt.Errorf("error creating MP preference: db boom"),
+			wantStatus:  http.StatusInternalServerError,
+			wantCode:    "Internal server error",
+			wantMessage: "Error al crear la preferencia",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := new(mockPaymentService)
+			controller := NewPaymentController(service)
+
+			router := setupRouter()
+			router.POST("/api/v1/payments/preference", controller.CreatePreference)
+
+			service.On("CreatePreference", mock.AnythingOfType("*gin.Context"), mock.Anything).Return(nil, tt.serviceErr)
+
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("POST", "/api/v1/payments/preference", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			var apiErr apierror.APIError
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &apiErr))
+			assert.Equal(t, tt.wantStatus, apiErr.StatusCode)
+			assert.Equal(t, tt.wantCode, apiErr.Code)
+			assert.Equal(t, tt.wantMessage, apiErr.Message)
+		})
+	}
 }
 
 func TestProcessPayment_Success(t *testing.T) {

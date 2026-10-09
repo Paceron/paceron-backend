@@ -21,6 +21,7 @@ type SellerConnectionDaoInterface interface {
 	SetStatus(ctx *gin.Context, userID int64, clientID string, status string) error
 	SetStatusByMPUser(ctx *gin.Context, mpUserID int64, status string) error
 	FindAuthorizedByUserAndClient(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+	FindAuthorizedByUserIDs(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error)
 }
 
 type sellerConnectionDao struct {
@@ -104,4 +105,22 @@ func (d *sellerConnectionDao) FindAuthorizedByUserAndClient(ctx *gin.Context, us
 		return nil, fmt.Errorf("error finding authorized seller connection: %w", err)
 	}
 	return &conn, nil
+}
+
+// FindAuthorizedByUsers devuelve las conexiones authorized de varios usuarios
+// para una app (batch de can_receive_payments en el search de equipos). Sin
+// filas para un user_id es que ese owner no puede cobrar.
+func (d *sellerConnectionDao) FindAuthorizedByUserIDs(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+	if len(userIDs) == 0 {
+		return []dbs.SellerConnection{}, nil
+	}
+
+	var conns []dbs.SellerConnection
+	err := d.DB.
+		Where("user_id IN (?) AND client_id = ? AND status = ?", userIDs, clientID, string(constants.SellerConnectionStatusAuthorized)).
+		Find(&conns).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding authorized seller connections by users: %w", err)
+	}
+	return conns, nil
 }

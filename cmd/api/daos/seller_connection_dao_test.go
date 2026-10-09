@@ -251,6 +251,31 @@ func TestSellerConnectionDao_SetStatusByMPUser(t *testing.T) {
 	assert.Equal(t, string(constants.SellerConnectionStatusDeauthorized), found.Status)
 }
 
+func TestSellerConnectionDao_FindAuthorizedByUserIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewSellerConnectionDao(db)
+
+	authorized := &dbs.SellerConnection{UserID: 998001, ClientID: "app-a", Status: string(constants.SellerConnectionStatusAuthorized), PublicKey: "pk-a"}
+	authorizedOtherApp := &dbs.SellerConnection{UserID: 998002, ClientID: "app-b", Status: string(constants.SellerConnectionStatusAuthorized), PublicKey: "pk-b"}
+	deauthorized := &dbs.SellerConnection{UserID: 998003, ClientID: "app-a", Status: string(constants.SellerConnectionStatusDeauthorized), PublicKey: "pk-c"}
+
+	for _, c := range []*dbs.SellerConnection{authorized, authorizedOtherApp, deauthorized} {
+		_, err := dao.Upsert(nil, c)
+		require.NoError(t, err)
+	}
+
+	conns, err := dao.FindAuthorizedByUserIDs(nil, []int64{998001, 998002, 998003}, "app-a")
+	require.NoError(t, err)
+	assert.Len(t, conns, 1)
+	assert.Equal(t, int64(998001), conns[0].UserID)
+	assert.Equal(t, "pk-a", conns[0].PublicKey)
+
+	// Sin filas para ningún owner: lista vacía, sin error.
+	empty, err := dao.FindAuthorizedByUserIDs(nil, []int64{998099}, "app-a")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
 func TestSellerConnectionDao_SetStatus_NoRows(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewSellerConnectionDao(db)

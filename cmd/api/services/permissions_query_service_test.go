@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -171,6 +172,10 @@ func (m *mockTierPermissionDaoForQuery) FindByTierID(ctx *gin.Context, tierID in
 	if m.findByTierIDFn != nil {
 		return m.findByTierIDFn(ctx, tierID)
 	}
+	return nil, nil
+}
+
+func (m *mockTierPermissionDaoForQuery) ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
 	return nil, nil
 }
 

@@ -7,7 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/team"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
@@ -49,6 +51,7 @@ type teamService struct {
 	groupUserDao  daos.GroupUserDaoInterface
 	invitationDao daos.InvitationDaoInterface
 	storageClient storageclient.StorageClientInterface
+	sellerConnDao daos.SellerConnectionDaoInterface
 }
 
 // NewTeamService crea una nueva instancia de TeamService.
@@ -62,6 +65,7 @@ func NewTeamService(
 	groupUserDao daos.GroupUserDaoInterface,
 	invitationDao daos.InvitationDaoInterface,
 	storageClient storageclient.StorageClientInterface,
+	sellerConnDao daos.SellerConnectionDaoInterface,
 ) TeamServiceInterface {
 	return &teamService{
 		teamDao:       teamDao,
@@ -73,7 +77,61 @@ func NewTeamService(
 		groupUserDao:  groupUserDao,
 		invitationDao: invitationDao,
 		storageClient: storageClient,
+		sellerConnDao: sellerConnDao,
 	}
+}
+
+// ownerCanReceivePayments resuelve el flag Gap 17 para UN owner: misma regla que
+// resolveTeamSplitConfig (conexión authorized + public_key). Sin conexión o con
+// fallo de lookup → false (capacidad desconocida se trata como no poder cobrar).
+func (s *teamService) ownerCanReceivePayments(ctx *gin.Context, ownerID int64) bool {
+	if s.sellerConnDao == nil {
+		return false
+	}
+	conn, err := s.sellerConnDao.FindByUserAndClient(ctx, ownerID, config.MyMP.OAuthClientID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking seller connection for can_receive_payments", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("ownerCanReceivePayments"))
+		return false
+	}
+	return conn != nil &&
+		conn.Status == string(constants.SellerConnectionStatusAuthorized) &&
+		conn.PublicKey != ""
+}
+
+// ownersCanReceive devuelve el mapa ownerID→can_receivePayments a partir de las
+// conexiones authorized del batch (sin public_key no cuenta: no se puede
+// tokenizar la tarjeta).
+func batchCanReceiveMap(conns []dbs.SellerConnection) map[int64]bool {
+	res := make(map[int64]bool, len(conns))
+	for i := range conns {
+		if conns[i].PublicKey != "" {
+			res[conns[i].UserID] = true
+		}
+	}
+	return res
+}
+
+// batchCanReceive llama al DAO batch para los owners y devuelve el mapa por owner.
+// Un fallo de lookup devuelve mapa vacío (todos false) sin romper la response.
+func (s *teamService) batchCanReceive(ctx *gin.Context, ownerIDs []int64) map[int64]bool {
+	res := make(map[int64]bool, len(ownerIDs))
+	if len(ownerIDs) == 0 || s.sellerConnDao == nil {
+		return res
+	}
+
+	conns, err := s.sellerConnDao.FindAuthorizedByUserIDs(ctx, ownerIDs, config.MyMP.OAuthClientID)
+	if err != nil {
+		customlogger.Error(ctx, "error batch-checking seller connections for can_receive_payments", err,
+			customlogger.TagMethod("batchCanReceive"))
+		return res
+	}
+	byOwner := batchCanReceiveMap(conns)
+	for _, id := range ownerIDs {
+		res[id] = byOwner[id]
+	}
+	return res
 }
 
 // UploadIcon valida y sube el ícono del equipo. Solo el entrenador dueño del
@@ -249,7 +307,7 @@ func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTe
 			customlogger.TagMethod("Create"))
 	}
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // isEntrenadorOfTeam valida que userID sea miembro con rol "entrenador" del equipo.
@@ -327,7 +385,7 @@ func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *te
 		customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 		customlogger.TagMethod("Update"))
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // Delete elimina lógicamente un equipo. Solo el entrenador puede hacerlo y el equipo no debe tener miembros.
@@ -422,7 +480,7 @@ func (s *teamService) GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, e
 		return nil, fmt.Errorf("equipo no encontrado")
 	}
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // GetAll obtiene los equipos activos. Sin filtros, devuelve todos. Con owner_id
@@ -454,8 +512,19 @@ func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) 
 	}
 
 	responses := make([]team.TeamResponse, len(teams))
+	ownerIDs := make([]int64, 0, len(teams))
+	seenOwners := make(map[int64]bool, len(teams))
+	for _, t := range teams {
+		if !seenOwners[t.OwnerID] {
+			seenOwners[t.OwnerID] = true
+			ownerIDs = append(ownerIDs, t.OwnerID)
+		}
+	}
+	canReceive := s.batchCanReceive(ctx, ownerIDs)
+
 	for i, t := range teams {
 		responses[i] = *s.toResponse(&t)
+		responses[i].CanReceivePayments = canReceive[t.OwnerID]
 	}
 
 	return responses, nil
@@ -517,7 +586,7 @@ func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, 
 		customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 		customlogger.TagMethod("UpdateAddress"))
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // toResponse convierte un modelo DB a un DTO de respuesta.
@@ -546,6 +615,14 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 	}
 }
 
+// toResponseWithFlag compone el DTO y deriva can_receive_payments del owner
+// (rutas single: fallo de lookup → false, mismo criterio que los helpers de arriba).
+func (s *teamService) toResponseWithFlag(ctx *gin.Context, t *dbs.Team) *team.TeamResponse {
+	resp := s.toResponse(t)
+	resp.CanReceivePayments = s.ownerCanReceivePayments(ctx, t.OwnerID)
+	return resp
+}
+
 // Search busca equipos visible=true con filtros opcionales, paginado por
 // página fija de teamSearchPageSize, excluyendo equipos donde callerID ya es
 // miembro.
@@ -569,6 +646,12 @@ func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.Sear
 	}
 
 	results := make([]team.TeamSearchResult, len(teams))
+	ownerIDs := make([]int64, 0, len(teams))
+	for _, t := range teams {
+		ownerIDs = append(ownerIDs, t.OwnerID)
+	}
+	canReceive := s.batchCanReceive(ctx, ownerIDs)
+
 	for i, t := range teams {
 		ownerName := ""
 		if owner, err := s.userDao.FindByID(ctx, t.OwnerID); err == nil && owner != nil {
@@ -581,17 +664,19 @@ func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.Sear
 		}
 
 		results[i] = team.TeamSearchResult{
-			ID:          t.ID,
-			Name:        t.Name,
-			Level:       t.Level,
-			Country:     t.Country,
-			Province:    t.Province,
-			City:        t.City,
-			MaxMembers:  t.MaxMembers,
-			MemberCount: memberCount,
-			OwnerName:   ownerName,
-			IconURL:     buildMediaURL(t.IconKey, t.IconUpdatedAt),
-			IsPublic:    t.IsPublic,
+			ID:                 t.ID,
+			Name:               t.Name,
+			Level:              t.Level,
+			Country:            t.Country,
+			Province:           t.Province,
+			City:               t.City,
+			MaxMembers:         t.MaxMembers,
+			MemberCount:        memberCount,
+			OwnerName:          ownerName,
+			IconURL:            buildMediaURL(t.IconKey, t.IconUpdatedAt),
+			IsPublic:           t.IsPublic,
+			MembershipFee:      t.MembershipFee,
+			CanReceivePayments: canReceive[t.OwnerID],
 		}
 	}
 

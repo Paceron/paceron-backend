@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -1086,6 +1087,175 @@ func TestCreatePreference_TeamSubscription_SellerPublicKey(t *testing.T) {
 	assert.Equal(t, "TEST-seller-public-key", resp.PublicKey)
 	dao.AssertExpectations(t)
 	client.AssertExpectations(t)
+}
+
+// Matriz de sentinels del flujo CreatePreference (design D4, Gap 16) sobre
+// resolveTeamSplitConfig: el mensaje original se preserva y cada falla
+// matchea su sentinel con errors.Is. resolveTeamSplitConfig corre ANTES de
+// paymentDao.Create, así que en ninguna de estas fallas se crea la fila payment.
+func TestCreatePreference_TeamSubscription_ErrorMatrix(t *testing.T) {
+	fullInstallment := func() *dbs.Installment {
+		teamID := int64(20)
+		return &dbs.Installment{ID: 5, TeamID: &teamID, Amount: 1500}
+	}
+
+	tests := []struct {
+		name         string
+		installmentID *int64
+		installDao   *mockInstallmentDao
+		teamDao      *mockTeamDao
+		connDao      *mockSellerConnectionDao
+		wantErr      error
+		wantMessage  string
+	}{
+		{
+			name: "installment_id requerido",
+			installDao: &mockInstallmentDao{},
+			teamDao:    &mockTeamDao{},
+			connDao:    &mockSellerConnectionDao{},
+			wantErr:    ErrPaymentInvalid,
+			wantMessage: "installment_id requerido para team_subscription",
+		},
+		{
+			name:         "cuota no encontrada",
+			installmentID: int64Ptr(5),
+			installDao:   &mockInstallmentDao{},
+			teamDao:      &mockTeamDao{},
+			connDao:      &mockSellerConnectionDao{},
+			wantErr:      ErrPaymentInstallmentNotFound,
+			wantMessage:  "cuota no encontrada",
+		},
+		{
+			name:         "cuota de tier (sin team)",
+			installmentID: int64Ptr(5),
+			installDao: &mockInstallmentDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+					return &dbs.Installment{ID: id, Amount: 1500}, nil
+				},
+			},
+			teamDao:     &mockTeamDao{},
+			connDao:     &mockSellerConnectionDao{},
+			wantErr:     ErrPaymentInvalid,
+			wantMessage: "la cuota no pertenece a un equipo",
+		},
+		{
+			name:         "equipo no encontrado",
+			installmentID: int64Ptr(5),
+			installDao: &mockInstallmentDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+					return fullInstallment(), nil
+				},
+			},
+			teamDao:     &mockTeamDao{},
+			connDao:     &mockSellerConnectionDao{},
+			wantErr:     ErrPaymentTeamNotFound,
+			wantMessage: "equipo no encontrado",
+		},
+		{
+			name:         "dueño sin conexión MP",
+			installmentID: int64Ptr(5),
+			installDao: &mockInstallmentDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+					return fullInstallment(), nil
+				},
+			},
+			teamDao: &mockTeamDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+					return &dbs.Team{ID: id, OwnerID: 3}, nil
+				},
+			},
+			connDao:     &mockSellerConnectionDao{},
+			wantErr:     ErrPaymentSellerNotConnected,
+			wantMessage: "el entrenador debe conectar su cuenta de Mercado Pago",
+		},
+		{
+			name:         "dueño conectado sin public_key",
+			installmentID: int64Ptr(5),
+			installDao: &mockInstallmentDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+					return fullInstallment(), nil
+				},
+			},
+			teamDao: &mockTeamDao{
+				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+					return &dbs.Team{ID: id, OwnerID: 3}, nil
+				},
+			},
+			connDao: &mockSellerConnectionDao{
+				findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
+					return &dbs.SellerConnection{
+						UserID:      userID,
+						AccessToken: "enc(seller-access)",
+						Status:      string(constants.SellerConnectionStatusAuthorized),
+					}, nil
+				},
+			},
+			wantErr:     ErrPaymentSellerNotConnected,
+			wantMessage: "el entrenador debe reconectar su cuenta de Mercado Pago",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dao := new(mockPaymentDao)
+			client := new(mockMercadoPagoClient)
+			enc := &mockEncryptor{}
+			settingDao := &mockPlatformSettingDao{}
+			svc := NewPaymentService(dao, client, nil, tt.connDao, tt.teamDao, nil, settingDao, tt.installDao, enc)
+
+			ctx := config.GetTestContext()
+			req := payment.CreatePreferenceRequest{
+				Concept:       string(constants.PaymentConceptTeamSubscription),
+				Description:   "Cuota equipo",
+				InstallmentID: tt.installmentID,
+				Items: []payment.PreferenceItem{
+					{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500},
+				},
+			}
+
+			resp, err := svc.CreatePreference(ctx, req)
+
+			require.Error(t, err)
+			assert.Nil(t, resp)
+			assert.True(t, errors.Is(err, tt.wantErr), "esperaba errors.Is(err, %v), tuve: %v", tt.wantErr, err)
+			assert.Equal(t, tt.wantMessage, err.Error())
+			dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// Las fallas de DAO en resolveTeamSplitConfig NO son tipificadas: quedan como
+// 500 residual en el controller (sin sentinel).
+func TestCreatePreference_TeamSubscription_DaoErrorNotTyped(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	enc := &mockEncryptor{}
+	settingDao := &mockPlatformSettingDao{}
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			return nil, fmt.Errorf("db down")
+		},
+	}
+	svc := NewPaymentService(dao, client, nil, &mockSellerConnectionDao{}, &mockTeamDao{}, nil, settingDao, installDao, enc)
+
+	ctx := config.GetTestContext()
+	insID := int64(5)
+	req := payment.CreatePreferenceRequest{
+		Concept:       string(constants.PaymentConceptTeamSubscription),
+		Description:   "Cuota equipo",
+		InstallmentID: &insID,
+		Items: []payment.PreferenceItem{
+			{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500},
+		},
+	}
+
+	_, err := svc.CreatePreference(ctx, req)
+
+	require.Error(t, err)
+	assert.Equal(t, "error consultando cuota", err.Error())
+	assert.False(t, errors.Is(err, ErrPaymentInstallmentNotFound))
+	assert.False(t, errors.Is(err, ErrPaymentInvalid))
+	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
 }
 
 func TestGenerateTestCardToken_Success_IntegratorPublicKey(t *testing.T) {

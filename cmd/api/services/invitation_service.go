@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
@@ -45,6 +46,8 @@ type invitationService struct {
 	pushClient    expopushclient.ExpoPushClientInterface
 	installDao    daos.InstallmentDaoInterface
 	db            *gorm.DB // para la transacción del gate de membresía (D2)
+
+	sellerConnDao daos.SellerConnectionDaoInterface
 }
 
 // NewInvitationService crea una nueva instancia de InvitationService.
@@ -60,6 +63,7 @@ func NewInvitationService(
 	pushClient expopushclient.ExpoPushClientInterface,
 	installDao daos.InstallmentDaoInterface,
 	db *gorm.DB,
+	sellerConnDao daos.SellerConnectionDaoInterface,
 ) InvitationServiceInterface {
 	return &invitationService{
 		userDao:       userDao,
@@ -73,6 +77,8 @@ func NewInvitationService(
 		pushClient:    pushClient,
 		installDao:    installDao,
 		db:            db,
+
+		sellerConnDao: sellerConnDao,
 	}
 }
 
@@ -338,19 +344,52 @@ func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invit
 	}
 
 	return invitation.InvitationResponse{
-		ID:           inv.ID,
-		TeamID:       inv.TeamID,
-		TeamName:     teamName,
-		GroupID:      inv.GroupID,
-		InviterID:    inv.InviterID,
-		InviterName:  inviterName,
-		InviteeID:    inv.InviteeID,
-		InviteeName:  inviteeName,
-		InviteeEmail: inviteeEmail,
-		Status:       inv.Status,
-		ExpiresAt:    inv.ExpiresAt,
-		CreatedAt:    inv.CreatedAt,
+		ID:                 inv.ID,
+		TeamID:             inv.TeamID,
+		TeamName:           teamName,
+		GroupID:            inv.GroupID,
+		InviterID:          inv.InviterID,
+		InviterName:        inviterName,
+		InviteeID:          inv.InviteeID,
+		InviteeName:        inviteeName,
+		InviteeEmail:       inviteeEmail,
+		Status:             inv.Status,
+		MembershipFee:      teamMembershipFee(teamDB),
+		CanReceivePayments: s.teamOwnerCanReceivePayments(ctx, teamDB, method),
+		ExpiresAt:          inv.ExpiresAt,
+		CreatedAt:          inv.CreatedAt,
 	}
+}
+
+// teamMembershipFee devuelve la mensualidad VIGENTE del equipo (no congelada en
+// la invitación). teamDB nil → 0 (equipo no resolvible).
+func teamMembershipFee(teamDB *dbs.Team) float64 {
+	if teamDB == nil {
+		return 0
+	}
+	return teamDB.MembershipFee
+}
+
+// teamOwnerCanReceivePayments resuelve el flag Gap 17 con la MISMA regla que
+// team_service (conexión authorized + public_key del owner). teamDB nil o fallo
+// de lookup → false.
+func (s *invitationService) teamOwnerCanReceivePayments(ctx *gin.Context, teamDB *dbs.Team, method string) bool {
+	if teamDB == nil {
+		return false
+	}
+	if s.sellerConnDao == nil {
+		return false
+	}
+	conn, err := s.sellerConnDao.FindByUserAndClient(ctx, teamDB.OwnerID, config.MyMP.OAuthClientID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking seller connection for can_receive_payments", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", teamDB.OwnerID)),
+			customlogger.TagMethod(method))
+		return false
+	}
+	return conn != nil &&
+		conn.Status == string(constants.SellerConnectionStatusAuthorized) &&
+		conn.PublicKey != ""
 }
 
 // AcceptInvitation acepta una invitación pendiente: da de alta al invitado como corredor

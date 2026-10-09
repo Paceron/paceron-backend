@@ -853,6 +853,9 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_invitation.InvitationResponse:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada)
+        type: boolean
       created_at:
         type: string
       expires_at:
@@ -871,6 +874,9 @@ definitions:
         type: integer
       inviter_name:
         type: string
+      membership_fee:
+        description: Mensualidad vigente del equipo al consultar (no congelada)
+        type: number
       status:
         type: string
       team_id:
@@ -1641,6 +1647,57 @@ definitions:
       updated_at:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest:
+    properties:
+      body:
+        type: string
+      recipient_mode:
+        type: string
+      recipient_user_ids:
+        items:
+          type: integer
+        type: array
+      reply_to_message_id:
+        type: integer
+      type:
+        type: string
+    required:
+    - body
+    - recipient_mode
+    - type
+    type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse:
+    properties:
+      body:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      recipient_mode:
+        type: string
+      recipient_user_ids:
+        items:
+          type: integer
+        type: array
+      reply_to_message_id:
+        type: integer
+      sender_role:
+        type: string
+      sender_user_id:
+        type: integer
+      session_instance_id:
+        type: integer
+      type:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
     properties:
       create_default_group:
@@ -1682,6 +1739,10 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_team.TeamResponse:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada Authorized
+          + public_key)
+        type: boolean
       city:
         description: 'Dirección: ciudad'
         type: string
@@ -1754,6 +1815,9 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_team.TeamSearchResult:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada)
+        type: boolean
       city:
         type: string
       country:
@@ -1770,6 +1834,9 @@ definitions:
         type: integer
       member_count:
         type: integer
+      membership_fee:
+        description: Mensualidad vigente del equipo (0 = gratis)
+        type: number
       name:
         type: string
       owner_name:
@@ -2014,6 +2081,22 @@ definitions:
     properties:
       message:
         description: Mensaje de confirmación
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse:
+    properties:
+      permissions:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem:
+    properties:
+      permission_id:
+        description: ID del permiso
+        type: integer
+      permission_name:
+        description: Nombre del permiso
         type: string
     type: object
   simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse:
@@ -4550,6 +4633,14 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":
           description: Internal Server Error
           schema:
@@ -5204,6 +5295,93 @@ paths:
       summary: Listar feedbacks de una sesión asignada
       tags:
       - workout-feedback
+  /api/v1/session-instances/{id}/messages:
+    get:
+      description: 'Devuelve los mensajes de la sesión que el consultante ve (emisor,
+        recipient_mode all o destinatario), ordenados cronológicamente. El query param
+        since cursa el historial: mensajes con id mayor al valor (ausente/0 = todo).'
+      parameters:
+      - description: ID de la sesión instanciada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'Cursor: mensajes con id mayor a este (default: todos)'
+        in: query
+        name: since
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de mensajes de la sesión
+      tags:
+      - session-messages
+    post:
+      consumes:
+      - application/json
+      description: Crea un mensaje de sesión (type info/aviso/alerta) dirigido a todos
+        los participantes (recipient_mode all) o a uno (direct) o varios (multiple)
+        destinatarios concretos. El emisor debe tener acceso a la instancia; sender_role
+        se deriva del owner del equipo. Tras crear, emite el aviso WS control:message_created
+        en session:{id}.
+      parameters:
+      - description: ID de la sesión instanciada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del mensaje
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Enviar un mensaje al chat de la sesión
+      tags:
+      - session-messages
   /api/v1/session-instances/{id}/runner:
     get:
       consumes:
@@ -6323,6 +6501,37 @@ paths:
       tags:
       - tiers
   /api/v1/tiers/{id}/permissions:
+    get:
+      description: Lists the active permissions assigned to a tier, with their resolved
+        names
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: List permissions of a tier
+      tags:
+      - tier-permissions
     post:
       consumes:
       - application/json
