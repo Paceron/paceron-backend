@@ -538,6 +538,37 @@ Dos eventos nuevos al canal `session:{id}` (contrato completo en `docs/REALTIME_
 
 La ventana de membresía activa se compara **por fecha de calendario**, no por timestamp: `date_start::date <= fecha_sesión::date` y `date_end::date >= fecha_sesión::date` (en `activeGroupMemberWhere` del `group_user_dao.go` y en `findGroupRosterWithAttendanceSQL` del `attendance_dao.go`). Antes, un corredor con `date_start` fijado con hora del mismo día de la sesión quedaba excluido del roster/asistencia. No se normaliza la escritura de `date_start` (queda timestamptz); la comparación por `::date` es el mecanismo vigente en los dos lados.
 
+### 8.12 Mensajería de sesión en vivo (Gap 27 — change `permisos-tier-fees-y-mensajeria-sesion`)
+
+Chat por instancia de sesión: `POST /api/v1/session-instances/{id}/messages` y `GET /api/v1/session-instances/{id}/messages` (rutas en `app/url_mappings.go`, handlers en `session_message_controller.go`, negocio en `services/session_message_service.go`). Contrato frontend: `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §13; el frame WS complementario (`control:message_created`) está documentado en `docs/REALTIME_WS.md` — acá van endpoints, autorización, visibilidad y validaciones.
+
+- **Destino y tablas:** mensajes sobre `session_instances` (la copia congelada del calendario, §8). Dos tablas propias: `session_messages` (mensaje) y `session_message_recipients` (destinatarios individuales), sin `deleted_at` — los mensajes no se borran; las FKs son opacas (patrón del repo, sin constraint físico).
+- **Autorización (misma regla dual de §8.10):** `404` si la instancia no existe; `403` (`apierror.APIError`, message "no autorizado") si no hay día de calendario con acceso / feedback activo que vincule al caller (`HasInstanceAccess`). Se aplica por igual a POST y GET.
+- **Request del POST** (`SendMessageRequest`): `type` ∈ `info`/`aviso`/`alerta`, `recipient_mode` ∈ `all`/`multiple`/`direct`, `recipient_user_ids` (solo para `multiple`: ≥2 / `direct`: exactamente 1; con `all` debe ir vacío), `body` (obligatorio, se trimea: no vacío, tope 2000 caracteres), `reply_to_message_id` opcional. Todo fallo de validación es `400` `apierror.APIError` code "Bad request" con message específico.
+- **Validaciones cruzadas (400):** cada destinatario debe **participar de la sesión** (misma regla dual del emisor — usuario accesible por acceso a instancia); el `reply_to_message_id` debe referir un mensaje existente, de la **misma sesión** y **visible para el emisor** (emisor, mode `all` o incluido entre sus destinatarios). `reply_to_message_id <= 0` → 400.
+- **`sender_role` derivado al persistir** (no viaja en el request): `trainer` si el emisor es el owner del team del grupo del día de la instancia; `runner` en cualquier otro caso. Día/grupo/team ausentes (instancia huérfana) → `runner` (el rol es descriptivo, no otorga permisos).
+- **Persistencia:** mensaje + destinatarios en la misma transacción (`session_message_dao.go` Create). Con `mode=all` no se crean filas de recipients; con `multiple`/`direct` una fila por destinatario.
+- **Response 201** (`SessionMessageResponse`, shape plano confirmado D8, sin `omitempty` — `recipient_user_ids` va `[]` con `all`, `reply_to_message_id` `null` si no hay reply):
+
+  ```json
+  {
+    "id": 42,
+    "session_instance_id": 88,
+    "sender_user_id": 5,
+    "sender_role": "trainer",
+    "type": "aviso",
+    "recipient_mode": "multiple",
+    "recipient_user_ids": [7, 9],
+    "body": "Nos juntamos en la entrada principal",
+    "reply_to_message_id": null,
+    "created_at": "2026-10-09T18:05:00Z"
+  }
+  ```
+
+- **GET — visibilidad y catch-up:** `200 {"messages": [...]}` con los mensajes que el caller ve: los que **emitió**, los de `recipient_mode=all` **visibles para todos**, y los que lo tienen en su lista de destinatarios (`direct`/`multiple`). Orden cronológico por `id` ASC, **sin paginación** (el catch-up incremental lo da el query param `since`): `since=<id>` devuelve solo mensajes con `id > since` (cursor sobre el `id` del último mensaje recibido); ausente o `0` = historial completo. `since` negativo o no numérico → `400`.
+- **Aviso WS:** tras cada POST exitoso el backend emite best-effort `control:message_created` al canal `session:{id}` (payload mínimo `{sessionMessageId}`, sin contenido — el contenido se recupera por REST con `since`; el aviso es idempotente de refetchear). Sin exclusión de emisor: el propio actor recibe el aviso.
+- No hay edición ni borrado de mensajes (sin `deleted_at`): lo escrito queda escrito.
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

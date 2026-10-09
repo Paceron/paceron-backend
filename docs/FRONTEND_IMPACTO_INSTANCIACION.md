@@ -410,3 +410,90 @@ Vía HTTP no cambia nada: es semántica de entrega del WS.
 Server-originado, al canal `session:{training_session_id}` (que es el session instance id de la fila de attendance). Frame: `{"type":"update:attendance_event","channel":"session:88","data":{"user_id":5,"status":"attended","source":"qr","registered_at":"2026-10-01T18:05:00Z","attendance_id":42}}` — `data` es la fila del roster afectada igual que en la grilla (sin name/email; días 200 idempotente no emiten; cache offline = refetch del roster). Ver detalle completo de alcance por operador en `docs/REALTIME_WS.md` §6.
 
 Eventos companion para el día: apertura/`finished` del entrenador → `update:session_state` con `{presencial_open, opened_at, closed_at}` (ver §6 de REALTIME_WS). El `interrupted` del entrenador no emite (no cierra).
+
+## 13. Tiers/fees/pagos y mensajería de sesión (Gaps 5/15/16/17/27, change `permisos-tier-fees-y-mensajeria-sesion`)
+
+Cambios de contrato **confirmados en el código final** de la rama `feature/tiers-fees-pagos-y-mensajeria` (HEAD `399dd1b`). Referencias: `cmd/api/controllers/tier_permission_controller.go`, `cmd/api/domains/team/team_search.go`/`team_response.go`, `cmd/api/domains/invitation/invitation_response.go`, `cmd/api/domains/sessionmessage/*.go`, `cmd/api/services/session_message_service.go`, `cmd/api/controllers/payment_controller.go`, `cmd/api/realtime/notifier.go`. Shapes verificados contra tags json de los DTOs.
+
+**Marco general: aditivo.** Gap 16 solo corrige códigos de error de `CreatePreference` (el 500 genérico sigue existiendo para causas no identificables) y Gaps 15/17 agregan campos a responses existentes — ningún shape anterior pierde campos ni cambia de nombre; lo que hoy funciona sigue funcionando. Gap 5 y Gap 27 son endpoints/eventos nuevos.
+
+### 13.1 Gap 5 — `GET /tiers/{id}/permissions`
+
+Cualquier usuario autenticado (sin ownership). `404` si el tier no existe (message "tier no encontrado"); `500` ante error interno. `200` si existe — el shape:
+
+```json
+{"permissions": [{"permission_id": 3, "permission_name": "ver_asistencias"}]}
+```
+
+- Orden por `permission_id` ASC (siempre); sin permisos asignados → `{"permissions": []}` (array vacío, nunca `null`).
+- Un permiso **soft-deleted** que aún tiene asignación activa (la asignación no se limpia) **se omite** del listado: el array expone solo permisos activos.
+
+### 13.2 Gaps 15+17 — `membership_fee` y `can_receive_payments` en team/invitaciones
+
+Campos **aditivos** (aparecen a la cola del objeto, sin `omitempty` — viajan siempre, `membership_fee` `0` = gratis):
+
+- **`TeamSearchResult`** (`GET /teams/search`, también {teams, has_more}): `membership_fee` (float) + `can_receive_payments` (bool).
+- **`InvitationResponse`** (listado/detalle de invitaciones): ambos. El fee es el **vigente del team al consultar** (no congelado al momento de invitar — puede diferir del fee que la invitación tenía al crearse).
+- **`TeamResponse`**: `can_receive_payments` (bool). Fee ya existía en este shape. Derivado en **todas sus rutas**: GetAll (batch), GetByID, Create, Update, UpdateAddress.
+
+**Criterio de `can_receive_payments`:** owner del team con `seller_connections` del app actual (`client_id` = config OAuth MP) en estado `authorized` **y** `public_key != ""` (el desconectado del pseudo-shape o conectado sin public_key da `false`). Fallo del lookup (error de DB) → `false` (nunca rompe la respuesta).
+
+El frontend usa: cards de search que ocultan el botón de suscripción si `can_receive_payments = false`; detalle/invitación muestran la mensualidad real.
+
+### 13.3 Gap 16 — códigos de error reales en `CreatePreference`
+
+`POST /recommenders/pagos` (flujo team_subscription) hoy respondía 500 para todo. Ahora `mapPreferenceError` mapea (body siempre `apierror.APIError {status_code, code, message}`):
+
+| Caso | HTTP | `code` | `message` |
+|---|---|---|---|
+| Owner desconectado de MP | `409` | `SELLER_NOT_CONNECTED` | "el entrenador debe conectar su cuenta de Mercado Pago" |
+| Owner con conexión sin `public_key` (conectado antes de que se guardara) | `409` | `SELLER_NOT_CONNECTED` | "el entrenador debe **reconectar** su cuenta de Mercado Pago" |
+| Cuota de suscripción inexistente / no es de equipo | `404` | `Not found` | message del sentinel ("cuota no encontrada" / "la cuota no pertenece a un equipo") |
+| Equipo inexistente | `404` | `Not found` | "equipo no encontrado" |
+| Request inválido (`installment_id` faltante para team_subscription, etc.) | `400` | `Bad request` | message del sentinel |
+| Cualquier otro error (upstream MP, DAO, descifrado…) | `500` | `Internal server error` | "Error al crear la preferencia" (genérico, **sin exponer el error interno**) |
+
+- El `409 SELLER_NOT_CONNECTED` **sustituye** el 500 previo para ese caso; el 500 sigue existiendo para causas no identificables — no es breaking de shapes.
+- El chequeo de resolución del split corre **antes** de crear la fila de pago — un error tipado no deja fila huérfana.
+- Acción frontend: el 409 mostrar el modal "conectá tu cuenta" (y si el message dice "reconectar", pedirla de vuelta y no solo conectar — la conexión previa quedó sin datos necesarios).
+
+### 13.4 Gap 27 — mensajería de sesión (chat en vivo) + aviso WS
+
+Chat por instancia de sesión, sobre `session-instances`. Doc de dominio completo: `docs/CATALOGO_Y_CALENDARIO.md` §8.12; frame WS: `docs/REALTIME_WS.md` (nuevo evento de tabla).
+
+- **`POST /api/v1/session-instances/{id}/messages`** — `201` con:
+
+  ```json
+  {
+    "id": 42,
+    "session_instance_id": 88,
+    "sender_user_id": 5,
+    "sender_role": "trainer",
+    "type": "aviso",
+    "recipient_mode": "multiple",
+    "recipient_user_ids": [7, 9],
+    "body": "Nos juntamos en la entrada principal",
+    "reply_to_message_id": null,
+    "created_at": "2026-10-09T18:05:00Z"
+  }
+  ```
+
+  Todos los campos sin `omitempty` — `recipient_user_ids` va **`[]`** con `recipient_mode="all"`, `reply_to_message_id` `null` si no es respuesta a otro.
+- `sender_role` **deriva el backend** (el request no lo acepta): `trainer` si el emisor es owner del team del grupo del día; `runner` en cualquier otro caso.
+- **Request:** `{type, recipient_mode, recipient_user_ids?, body, reply_to_message_id?}` con bindings required en `type`/`recipient_mode`/`body`.
+- **Códigos:** `404` instancia inexistente (message "sesión instancia no encontrada"); `403` sin acceso a la instancia (message "no autorizado"); `400` validaciones (ver §8.12 de CATALOGO_Y_CALENDARIO — `type` ∈ {info/aviso/alerta}, `recipient_mode` ∈ {all/multiple/direct} con `recipient_user_ids` vacío / 1 / ≥2 respectivamente; `body` no vacío tras trim, tope 2000; destinatarios deben **participar de la sesión**; reply válido: existe + misma sesión + visible para el emisor).
+- **`GET /api/v1/session-instances/{id}/messages?since=<id>`** — `200`:
+
+  ```json
+  {"messages": [ { "id": 42, "session_instance_id": 88, "sender_user_id": 5, "sender_role": "trainer", "type": "aviso", "recipient_mode": "multiple", "recipient_user_ids": [7, 9], "body": "…", "reply_to_message_id": null, "created_at": "2026-10-09T18:05:00Z" } ]}
+  ```
+
+  Visibilidad (por mensaje): lo que emitió, todo `recipient_mode=all`, y los que lo tienen como destinatario. Orden por `id` ASC, sin paginación server-side. `since` es el cursor de catch-up: mensajes con `id > since`; ausente/`0` = historial completo; negativo o no numérico → `400`.
+- **Aviso WS:** tras cada POST exitoso, a todos los suscriptos de `session:{id}` (sin exclusión de emisor):
+
+  ```json
+  {"type":"control:message_created","channel":"session:88","payload":{"sessionMessageId":42}}
+  ```
+
+  Payload mínimo, **sin contenido** del mensaje: es un "algo llegó" — el contenido se recupera por REST con `since` (fijar `since` al último `id` visto). Best-effort: nadie suscripto → no-op. Usar `payload.sessionMessageId` solo junto al refetch (ej. conteo de no-leídos).
+- Acción frontend: al recibir el frame refetchear `?since=<último id>`, push a la lista; mantener el último `id` procesado por sesión.

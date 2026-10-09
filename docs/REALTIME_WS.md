@@ -60,6 +60,7 @@ Semántica por tipo:
 | `update:set_event` | s→c | Evento server-originado: se creó feedback de la sesión (ver §5). El frame incluye `channel`. |
 | `update:session_state` | s→c | Evento server-originado: el owner abrió o cerró (`finished`) la sesión presencial (ver §6). |
 | `update:attendance_event` | s→c | Evento server-originado: fila del roster de asistencia afectada (ver §6). El frame incluye `channel`. |
+| `control:message_created` | s→c | Evento server-originado: un mensaje nuevo en el chat de la sesión (ver §6.3). Payload mínimo, sin contenido; el contenido se recupera por REST con `since`. El frame incluye `channel`. |
 
 Reglas comunes:
 
@@ -145,6 +146,19 @@ Se emite solo cuando el frame de escritura **muta** el día presencial (no en re
 | `DELETE /attendances/:id` | SIEMPRE emite: `{"user_id":N,"status":"not_confirmed","source":null,"registered_at":null,"attendance_id":null}` |
 
 Nota: el `training_session_id` del attendance **es el session instance id** de la FK opaca con el calendario — por eso el canal es el mismo que WS y feedback.
+
+### 6.3 `control:message_created` — mensaje nuevo en el chat de sesión (Gap 27, change `permisos-tier-fees-y-mensajeria-sesion`)
+
+Al crear un mensaje vía `POST /session-instances/:id/messages`, el backend emite a todos los suscriptos de `session:{id}` (sin exclusión de emisor — el propio actor recibe su aviso):
+
+```json
+{"type":"control:message_created","channel":"session:88","payload":{"sessionMessageId":42}}
+```
+
+- **Payload mínimo {sessionMessageId}, sin contenido:** el frame es un "algo llegó" — el contenido del mensaje (y cualquier otro que se haya perdidido offline) se recupera por REST con `GET /session-instances/:id/messages?since=<último id>` (cursado por `id`; el historial completo y su visibilidad por usuario están en `docs/CATALOGO_Y_CALENDARIO.md` §8.12 y `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §13.4).
+- **Best-effort, asíncrono** (mismo patrón de los `update:*`): la emisión sale del controller vía `realtime.Notifier` después de persistir y no bloquea ni altera la respuesta HTTP; nadie suscripto → no-op; buffer lleno → frame descartado para ese receptor. No hay replay ni cola.
+- Server originado: no lleva `from` ni `to` (regla del §7 aplica solo a presence/control de usuarios).
+- Helper: `realtime.MarshalControlMessageCreated` (`realtime/notifier.go`) — el único productor del frame.
 
 ## 7. Relay dirigido por `to` en presence/control (Gap 27 D11)
 
