@@ -206,8 +206,12 @@ func NewApplication() *Application {
 	// Join Request DAO
 	joinRequestDao := daos.NewJoinRequestDao(db)
 
+	// DAO de conexiones MP (lo necesitan teamService/invitationService para el
+	// flag can_receive_payments, además de mp_connect y el split de pagos)
+	sellerConnDao := daos.NewSellerConnectionDao(db)
+
 	// Team flow
-	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao, storageClientInstance)
+	teamService := services.NewTeamService(teamDao, userDao, userRoleDao, roleDao, teamUserDao, groupDao, groupUserDao, invitationDao, storageClientInstance, sellerConnDao)
 
 	// Team Delegate (coordina team + group)
 	teamDelegate := delegates.NewTeamDelegate(teamService, groupService)
@@ -222,7 +226,7 @@ func NewApplication() *Application {
 	groupUserController := controllers.NewGroupUserController(groupUserService)
 
 	// Invitation flow
-	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient, installmentDao, db)
+	invitationService := services.NewInvitationService(userDao, teamDao, invitationDao, teamUserDao, groupDao, groupUserDao, mailerClient, pushTokenDao, expoPushClient, installmentDao, db, sellerConnDao)
 	invitationController := controllers.NewInvitationController(invitationService)
 
 	// Join Request flow
@@ -253,7 +257,6 @@ func NewApplication() *Application {
 	pushTokenController := controllers.NewPushTokenController(pushTokenService)
 
 	// DAOs para split de equipos
-	sellerConnDao := daos.NewSellerConnectionDao(db)
 	settingDao := daos.NewPlatformSettingDao(db)
 	encryptor := crypto.NewAESGCMEncryptor(config.TokenEncryptionKey)
 	mpClient := mercadopagoclient.New()

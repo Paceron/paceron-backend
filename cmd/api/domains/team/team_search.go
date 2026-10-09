@@ -22,6 +22,9 @@ type TeamSearchResult struct {
 	OwnerName   string  `json:"owner_name"`
 	IconURL     *string `json:"icon_url"`
 	IsPublic    bool    `json:"is_public"`
+
+	MembershipFee      float64 `json:"membership_fee"`       // Mensualidad vigente del equipo (0 = gratis)
+	CanReceivePayments bool    `json:"can_receive_payments"` // Si el entrenador puede cobrar (cuenta MP conectada)
 }
 
 // TeamSearchResponse es la respuesta paginada de GET /api/v1/teams/search.

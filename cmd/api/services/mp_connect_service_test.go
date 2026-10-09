@@ -19,11 +19,12 @@ import (
 )
 
 type mockSellerConnectionDao struct {
-	upsertFn            func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error)
-	findByUserAndClFn   func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
-	setStatusFn         func(ctx *gin.Context, userID int64, clientID string, status string) error
-	setStatusByMPUserFn func(ctx *gin.Context, mpUserID int64, status string) error
-	findAuthorizedFn    func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+	upsertFn              func(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error)
+	findByUserAndClFn     func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+	setStatusFn           func(ctx *gin.Context, userID int64, clientID string, status string) error
+	setStatusByMPUserFn   func(ctx *gin.Context, mpUserID int64, status string) error
+	findAuthorizedFn      func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error)
+	findAuthorizedByIDsFn func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error)
 }
 
 func (m *mockSellerConnectionDao) Upsert(ctx *gin.Context, conn *dbs.SellerConnection) (*dbs.SellerConnection, error) {
@@ -57,6 +58,13 @@ func (m *mockSellerConnectionDao) SetStatusByMPUser(ctx *gin.Context, mpUserID i
 func (m *mockSellerConnectionDao) FindAuthorizedByUserAndClient(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
 	if m.findAuthorizedFn != nil {
 		return m.findAuthorizedFn(ctx, userID, clientID)
+	}
+	return nil, nil
+}
+
+func (m *mockSellerConnectionDao) FindAuthorizedByUserIDs(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+	if m.findAuthorizedByIDsFn != nil {
+		return m.findAuthorizedByIDsFn(ctx, userIDs, clientID)
 	}
 	return nil, nil
 }

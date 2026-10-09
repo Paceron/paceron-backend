@@ -8864,6 +8864,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_invitation.InvitationResponse": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada)",
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -8890,6 +8894,10 @@ const docTemplate = `{
                 },
                 "inviter_name": {
                     "type": "string"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad vigente del equipo al consultar (no congelada)",
+                    "type": "number"
                 },
                 "status": {
                     "type": "string"
@@ -10084,6 +10092,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_team.TeamResponse": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada Authorized + public_key)",
+                    "type": "boolean"
+                },
                 "city": {
                     "description": "Dirección: ciudad",
                     "type": "string"
@@ -10183,6 +10195,10 @@ const docTemplate = `{
         "simple-arq-golang_cmd_api_domains_team.TeamSearchResult": {
             "type": "object",
             "properties": {
+                "can_receive_payments": {
+                    "description": "Si el entrenador puede cobrar (cuenta MP conectada)",
+                    "type": "boolean"
+                },
                 "city": {
                     "type": "string"
                 },
@@ -10206,6 +10222,10 @@ const docTemplate = `{
                 },
                 "member_count": {
                     "type": "integer"
+                },
+                "membership_fee": {
+                    "description": "Mensualidad vigente del equipo (0 = gratis)",
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"

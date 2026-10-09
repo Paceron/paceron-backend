@@ -853,6 +853,9 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_invitation.InvitationResponse:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada)
+        type: boolean
       created_at:
         type: string
       expires_at:
@@ -871,6 +874,9 @@ definitions:
         type: integer
       inviter_name:
         type: string
+      membership_fee:
+        description: Mensualidad vigente del equipo al consultar (no congelada)
+        type: number
       status:
         type: string
       team_id:
@@ -1682,6 +1688,10 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_team.TeamResponse:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada Authorized
+          + public_key)
+        type: boolean
       city:
         description: 'Dirección: ciudad'
         type: string
@@ -1754,6 +1764,9 @@ definitions:
     type: object
   simple-arq-golang_cmd_api_domains_team.TeamSearchResult:
     properties:
+      can_receive_payments:
+        description: Si el entrenador puede cobrar (cuenta MP conectada)
+        type: boolean
       city:
         type: string
       country:
@@ -1770,6 +1783,9 @@ definitions:
         type: integer
       member_count:
         type: integer
+      membership_fee:
+        description: Mensualidad vigente del equipo (0 = gratis)
+        type: number
       name:
         type: string
       owner_name:
