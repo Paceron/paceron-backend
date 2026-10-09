@@ -97,3 +97,31 @@ func TestSessionExerciseInstanceDao_Delete_Single(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, found)
 }
+
+func TestSessionExerciseInstanceDao_FindBySessionInstances(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	linkDao := NewSessionExerciseInstanceDao(db)
+	sessionDao := NewSessionInstanceDao(db)
+	exerciseDao := NewExerciseInstanceDao(db)
+	sessA := &dbs.SessionInstance{Name: "Sesion A"}
+	sessB := &dbs.SessionInstance{Name: "Sesion B"}
+	require.NoError(t, sessionDao.Create(nil, sessA))
+	require.NoError(t, sessionDao.Create(nil, sessB))
+	ej := &dbs.ExerciseInstance{Name: "Trote", Kind: "jogging"}
+	require.NoError(t, exerciseDao.Create(nil, ej))
+	linkA := &dbs.SessionExerciseInstance{SessionInstanceID: sessA.ID, ExerciseInstanceID: ej.ID, Role: "warmup", RepeatCount: 1, RestMinutes: 0}
+	linkB := &dbs.SessionExerciseInstance{SessionInstanceID: sessB.ID, ExerciseInstanceID: ej.ID, Role: "main", RepeatCount: 1, RestMinutes: 1}
+	require.NoError(t, linkDao.Create(nil, linkA))
+	require.NoError(t, linkDao.Create(nil, linkB))
+
+	rows, err := linkDao.FindBySessionInstances(nil, []int64{sessB.ID, sessA.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, linkA.ID, rows[0].ID)
+	assert.Equal(t, linkB.ID, rows[1].ID)
+
+	rows, err = linkDao.FindBySessionInstances(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}

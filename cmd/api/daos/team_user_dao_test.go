@@ -203,3 +203,33 @@ func TestTeamUserDao_SoftDeleteByTeamID_Success(t *testing.T) {
 	require.NoError(t, findErr)
 	assert.Empty(t, found)
 }
+
+func TestTeamUserDao_CountActiveByTeams(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamUserDao(db)
+	ownerA := persistUser(db, "tu-counts-ownerA@test.com", "30000010")
+	memberA := persistUser(db, "tu-counts-memberA@test.com", "30000011")
+	ownerB := persistUser(db, "tu-counts-ownerB@test.com", "30000012")
+	teamA := testTeam(db, "equipo_tu_counts_a", ownerA.ID)
+	teamB := testTeam(db, "equipo_tu_counts_b", ownerB.ID)
+
+	require.NoError(t, dao.Create(nil, &dbs.TeamUser{TeamID: teamA.ID, UserID: ownerA.ID, RoleInTeam: "entrenador", AssignmentDate: time.Now()}))
+	require.NoError(t, dao.Create(nil, &dbs.TeamUser{TeamID: teamA.ID, UserID: memberA.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}))
+	require.NoError(t, dao.Create(nil, &dbs.TeamUser{TeamID: teamB.ID, UserID: ownerB.ID, RoleInTeam: "entrenador", AssignmentDate: time.Now()}))
+	deleted := &dbs.TeamUser{TeamID: teamA.ID, UserID: ownerB.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}
+	require.NoError(t, dao.Create(nil, deleted))
+	require.NoError(t, dao.SoftDelete(nil, deleted.ID))
+
+	counts, err := dao.CountActiveByTeams(nil, []int64{teamB.ID, teamA.ID})
+
+	require.NoError(t, err)
+	require.Len(t, counts, 2)
+	assert.Equal(t, teamA.ID, counts[0].TeamID)
+	assert.Equal(t, int64(2), counts[0].Count)
+	assert.Equal(t, teamB.ID, counts[1].TeamID)
+	assert.Equal(t, int64(1), counts[1].Count)
+
+	counts, err = dao.CountActiveByTeams(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, counts)
+}

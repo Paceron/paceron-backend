@@ -23,6 +23,7 @@ type mockTeamUserDao struct {
 	findByTeamIDFn                   func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
 	findByUserIDFn                   func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
 	countActiveByTeamFn              func(ctx *gin.Context, teamID int64) (int64, error)
+	countActiveByTeamsFn             func(ctx *gin.Context, teamIDs []int64) ([]dbs.TeamMemberCount, error)
 	countActiveByTeamExcludingUserFn func(ctx *gin.Context, teamID, excludeUserID int64) (int64, error)
 	hasOwnerByTeamFn                 func(ctx *gin.Context, teamID int64) (bool, error)
 	softDeleteFn                     func(ctx *gin.Context, id int64) error
@@ -64,6 +65,13 @@ func (m *mockTeamUserDao) CountActiveByTeam(ctx *gin.Context, teamID int64) (int
 	return 0, nil
 }
 
+func (m *mockTeamUserDao) CountActiveByTeams(ctx *gin.Context, teamIDs []int64) ([]dbs.TeamMemberCount, error) {
+	if m.countActiveByTeamsFn != nil {
+		return m.countActiveByTeamsFn(ctx, teamIDs)
+	}
+	return nil, nil
+}
+
 func (m *mockTeamUserDao) CountActiveByTeamExcludingUser(ctx *gin.Context, teamID, excludeUserID int64) (int64, error) {
 	if m.countActiveByTeamExcludingUserFn != nil {
 		return m.countActiveByTeamExcludingUserFn(ctx, teamID, excludeUserID)
@@ -92,8 +100,10 @@ func (m *mockTeamUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) err
 	return nil
 }
 
-func (m *mockTeamUserDao) IncrementPaidInstallments(ctx *gin.Context, teamUserID int64) error { return nil }
-func (m *mockTeamUserDao) ActivateSubscription(ctx *gin.Context, teamUserID int64) error     { return nil }
+func (m *mockTeamUserDao) IncrementPaidInstallments(ctx *gin.Context, teamUserID int64) error {
+	return nil
+}
+func (m *mockTeamUserDao) ActivateSubscription(ctx *gin.Context, teamUserID int64) error { return nil }
 func (m *mockTeamUserDao) SetSubscriptionStatus(ctx *gin.Context, teamUserID int64, status string) error {
 	return nil
 }

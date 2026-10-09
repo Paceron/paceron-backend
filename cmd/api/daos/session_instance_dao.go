@@ -14,6 +14,9 @@ import (
 type SessionInstanceDaoInterface interface {
 	Create(ctx *gin.Context, s *dbs.SessionInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
+	// FindByIDs trae varias instancias en una sola consulta — evita el N+1
+	// al armar la vista de calendario por lotes.
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.SessionInstance, error)
 	Delete(ctx *gin.Context, id int64) error
 	// HasFeedback reporta si algún workout_feedback activo referencia esta
 	// instancia vía assigned_session_id (FK opaca, design.md D3).
@@ -50,6 +53,18 @@ func (d *sessionInstanceDao) FindByID(ctx *gin.Context, id int64) (*dbs.SessionI
 		return nil, fmt.Errorf("error finding session instance: %w", err)
 	}
 	return &s, nil
+}
+
+func (d *sessionInstanceDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.SessionInstance, error) {
+	var rows []dbs.SessionInstance
+	if len(ids) == 0 {
+		return rows, nil
+	}
+	err := d.DB.Where("id IN ?", ids).Order("id").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding session instances by ids: %w", err)
+	}
+	return rows, nil
 }
 
 func (d *sessionInstanceDao) Delete(ctx *gin.Context, id int64) error {
