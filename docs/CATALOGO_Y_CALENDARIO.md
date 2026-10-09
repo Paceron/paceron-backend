@@ -577,6 +577,7 @@ Chat por instancia de sesión: `POST /api/v1/session-instances/{id}/messages` y 
 - **`Location{lat,lng,label?}`** (paquete `trainingplan`) es compartida entre `PlanDay.default_location` y `GroupCalendarDay.presencial_location` — se persiste como `jsonb` vía marshal/unmarshal manual en el service, no hay tipo custom de GORM.
 - **Transacciones:** siempre se instancian DAOs *nuevos* atados al `*gorm.DB` de la transacción (`daos.NewXDao(tx)`) — nunca se pasa `tx` a una instancia de DAO ya creada, este patrón de DAO no lo soporta.
 - **`Stamp`/`Bulk`/`Shift`** escriben múltiples filas dentro de una única transacción — si falla la fila N, ninguna de las N-1 anteriores queda aplicada.
+- **Vistas de calendario en batch (change `optimizaciones-calendario-y-indices`):** GetRange/Stamp/Bulk/Shift/MemberCalendar/AdministeredCalendar construyen sus respuestas con `toCalendarDayResponses`, que resuelve las instancias embebidas en 3 queries batch (`FindByIDs` de instancias + links + ejercicios) en vez de una query por fila; team Search y CalendarSummary resuelven owners/miembros/nombres de grupo en queries por colección. Índices en las tablas calientes (`group_users.group_id`/`user_id`, `team_users.team_id`/`user_id`, `session_exercise_instances.session_instance_id`/`exercise_instance_id`, `workout_feedback_points.feedback_id`). Sin cambio de contrato ni de shapes — `UpsertDay` y callers de fila única siguen su mapping original.
 
 ## 10. Tabla de errores por dominio
 

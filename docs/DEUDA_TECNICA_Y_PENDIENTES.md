@@ -127,3 +127,11 @@ La meta de esta etapa cubrió calendario/recientes; el resto del repo (paquetes 
 ## Decisiones de "no tocar"
 
 - **`utils.StringToInt64`/`Int64ToString`/`Contains`/`IsPositiveInteger`/`ParseInt64`** (`cmd/api/utils/`): cero call sites en todo el repo, confirmado por grep + `git log --diff-filter=A` (vienen del scaffold inicial). Decisión explícita del usuario: **no borrar**, se guardan para trabajo futuro de métricas/pagos que probablemente los necesite. No re-flaguearlos como dead code en una futura limpieza de coverage.
+
+## Resueltos (change `optimizaciones-calendario-y-indices`, 2026-10-09)
+
+Estos ítems se resolvieron antes de quedar registrados en esta lista — quedan acá como registro del veredicto. Detalle: `docs/CATALOGO_Y_CALENDARIO.md` §9.
+
+- **GetRange N+1 del calendario** (y las demás vistas de colección): el builder batch `toCalendarDayResponses` resuelve las instancias embebidas en 3 queries por colección, sin una query por día. Resuelto en `077d395`.
+- **`workout_feedback_points.feedback_id` sin índice**: índice agregado, junto a 6 más sobre `group_users`/`team_users`/`session_exercise_instances`. Resuelto en `fcb64c5`.
+- **Team search 2N+1** (owners N + miembros N + resto): `Search` de equipos y `CalendarSummary` resuelven owners/miembros/nombres en queries por colección. Resuelto en `d147b1f`.
