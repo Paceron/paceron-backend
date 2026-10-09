@@ -686,15 +686,7 @@ func (s *calendarService) GetRange(ctx *gin.Context, groupID, callerID int64, fr
 		customlogger.Error(ctx, "error listing calendar range", err, customlogger.TagMethod("GetRange"))
 		return nil, fmt.Errorf("error al listar calendario")
 	}
-	responses := make([]calendar.CalendarDayResponse, len(days))
-	for i, d := range days {
-		response, err := s.toCalendarDayResponse(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		responses[i] = response
-	}
-	return responses, nil
+	return s.toCalendarDayResponses(ctx, days)
 }
 
 func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, date time.Time, req calendar.CalendarDayRequest) (*calendar.CalendarDayResponse, error) {
@@ -875,6 +867,18 @@ func (s *calendarService) DeleteDay(ctx *gin.Context, groupID, callerID int64, d
 }
 
 func (s *calendarService) toCalendarDayResponse(ctx *gin.Context, d dbs.GroupCalendarDay) (calendar.CalendarDayResponse, error) {
+	inst, err := s.sessionInstanceResponse(ctx, s.db, d.SessionInstanceID)
+	if err != nil {
+		return calendar.CalendarDayResponse{}, err
+	}
+	return buildDayResponse(d, inst), nil
+}
+
+// buildDayResponse arma el shape de CalendarDayResponse sin tocar la DB: el
+// mapping embebido de la fila es exactamente el de siempre; el detalle de
+// instancia llega ya resuelto (nil cuando el día no tiene instancia o la DB
+// no está disponible).
+func buildDayResponse(d dbs.GroupCalendarDay, inst *instance.SessionInstanceResponse) calendar.CalendarDayResponse {
 	resp := calendar.CalendarDayResponse{
 		ID: d.ID, GroupID: d.GroupID, Date: d.Date.Format("2006-01-02"), Kind: d.Kind,
 		OtherName: d.OtherName, CancelledReason: d.CancelledReason,
@@ -894,12 +898,93 @@ func (s *calendarService) toCalendarDayResponse(ctx *gin.Context, d dbs.GroupCal
 			resp.PresencialLocation = loc
 		}
 	}
-	var err error
-	resp.SessionInstance, err = s.sessionInstanceResponse(ctx, s.db, d.SessionInstanceID)
-	if err != nil {
-		return calendar.CalendarDayResponse{}, err
+	resp.SessionInstance = inst
+	return resp
+}
+
+// toCalendarDayResponses arma las respuestas de un rango/lista de días con
+// un solo batch de instancias (3 queries) en vez de una por día; el path
+// por fila (toCalendarDayResponse) queda intacto para callers de fila única.
+func (s *calendarService) toCalendarDayResponses(ctx *gin.Context, days []dbs.GroupCalendarDay) ([]calendar.CalendarDayResponse, error) {
+	responses := make([]calendar.CalendarDayResponse, len(days))
+	if len(days) == 0 {
+		return responses, nil
 	}
-	return resp, nil
+	if s.db == nil {
+		// Camino de mocks: igual que sessionInstanceResponse por fila, el
+		// detalle sale nil sin tocar la DB (tests existentes fijan esto).
+		for i, d := range days {
+			responses[i] = buildDayResponse(d, nil)
+		}
+		return responses, nil
+	}
+	ids := make([]int64, 0, len(days))
+	seen := make(map[int64]struct{}, len(days))
+	for _, d := range days {
+		if d.SessionInstanceID != nil {
+			if _, dup := seen[*d.SessionInstanceID]; !dup {
+				seen[*d.SessionInstanceID] = struct{}{}
+				ids = append(ids, *d.SessionInstanceID)
+			}
+		}
+	}
+	byID, err := s.sessionInstanceResponsesByIds(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i, d := range days {
+		if d.SessionInstanceID == nil {
+			responses[i] = buildDayResponse(d, nil)
+			continue
+		}
+		inst, ok := byID[*d.SessionInstanceID]
+		if !ok {
+			return nil, fmt.Errorf("sesión instancia %d no encontrada", *d.SessionInstanceID)
+		}
+		responses[i] = buildDayResponse(d, inst)
+	}
+	return responses, nil
+}
+
+// sessionInstanceResponsesByIds carga instancias + links + ejercicios en
+// batch y devuelve las mismas respuestas que sessionInstanceResponse por
+// fila, agrupadas por id.
+func (s *calendarService) sessionInstanceResponsesByIds(ctx *gin.Context, ids []int64) (map[int64]*instance.SessionInstanceResponse, error) {
+	if len(ids) == 0 {
+		return map[int64]*instance.SessionInstanceResponse{}, nil
+	}
+	sessionDao := daos.NewSessionInstanceDao(s.db)
+	linkDao := daos.NewSessionExerciseInstanceDao(s.db)
+	exerciseDao := daos.NewExerciseInstanceDao(s.db)
+	sessions, err := sessionDao.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	links, err := linkDao.FindBySessionInstances(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	exerciseIDs := make([]int64, len(links))
+	for i, link := range links {
+		exerciseIDs[i] = link.ExerciseInstanceID
+	}
+	exercises, err := exerciseDao.FindByIDs(ctx, exerciseIDs)
+	if err != nil {
+		return nil, err
+	}
+	linksByInstance := make(map[int64][]dbs.SessionExerciseInstance, len(sessions))
+	for _, link := range links {
+		linksByInstance[link.SessionInstanceID] = append(linksByInstance[link.SessionInstanceID], link)
+	}
+	result := make(map[int64]*instance.SessionInstanceResponse, len(sessions))
+	for i := range sessions {
+		response, err := instance.NewSessionResponse(sessions[i], linksByInstance[sessions[i].ID], exercises)
+		if err != nil {
+			return nil, err
+		}
+		result[sessions[i].ID] = &response
+	}
+	return result, nil
 }
 
 func jsonMarshalLocation(loc *trainingplan.Location) (*string, error) {
@@ -1107,12 +1192,9 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		customlogger.Error(ctx, "error stamping calendar day", err, customlogger.TagMethod("Stamp"))
 		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al estampar plan")
 	}
-	responses := make([]calendar.CalendarDayResponse, len(rows))
-	for i := range rows {
-		responses[i], err = s.toCalendarDayResponse(ctx, rows[i])
-		if err != nil {
-			return calendar.CalendarMutationResponse{}, err
-		}
+	responses, err := s.toCalendarDayResponses(ctx, rows)
+	if err != nil {
+		return calendar.CalendarMutationResponse{}, err
 	}
 	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
@@ -1285,12 +1367,9 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		customlogger.Error(ctx, "error bulk-upserting calendar day", err, customlogger.TagMethod("Bulk"))
 		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al aplicar bulk")
 	}
-	responses := make([]calendar.CalendarDayResponse, len(rows))
-	for i := range rows {
-		responses[i], err = s.toCalendarDayResponse(ctx, rows[i])
-		if err != nil {
-			return calendar.CalendarMutationResponse{}, err
-		}
+	responses, err := s.toCalendarDayResponses(ctx, rows)
+	if err != nil {
+		return calendar.CalendarMutationResponse{}, err
 	}
 	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
@@ -1474,14 +1553,12 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		customlogger.Error(ctx, "error shifting calendar day", err, customlogger.TagMethod("Shift"))
 		return calendar.CalendarMutationResponse{}, fmt.Errorf("error al correr fechas")
 	}
-	responses := make([]calendar.CalendarDayResponse, len(affected))
 	for i := range affected {
-		a := affected[i]
-		a.Date = a.Date.AddDate(0, 0, req.Days)
-		responses[i], err = s.toCalendarDayResponse(ctx, a)
-		if err != nil {
-			return calendar.CalendarMutationResponse{}, err
-		}
+		affected[i].Date = affected[i].Date.AddDate(0, 0, req.Days)
+	}
+	responses, err := s.toCalendarDayResponses(ctx, affected)
+	if err != nil {
+		return calendar.CalendarMutationResponse{}, err
 	}
 	return calendar.CalendarMutationResponse{Days: responses, SameTeamWarnings: sameWarnings}, nil
 }
@@ -1754,14 +1831,15 @@ func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, t
 	// La DAO ordena por fecha; el merge multi-grupo conserva ese orden (los
 	// días de la misma fecha quedan adyacentes, agrupados por grupo). Los
 	// items van con los campos de CalendarDayResponse + nombres embebidos
-	// planos; el session_instance embebido se resuelve por día como en
-	// toCalendarDayResponse.
+	// planos; el session_instance embebido sale del batch de
+	// toCalendarDayResponses (mismo shape que toCalendarDayResponse).
+	bases, err := s.toCalendarDayResponses(ctx, days)
+	if err != nil {
+		return nil, err
+	}
 	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
-	for i, d := range days {
-		base, err := s.toCalendarDayResponse(ctx, d)
-		if err != nil {
-			return nil, err
-		}
+	for i, base := range bases {
+		d := days[i]
 		group := groupByID[d.GroupID]
 		responses[i] = calendar.AggregateCalendarDayResponse{
 			CalendarDayResponse: base,
@@ -1901,12 +1979,13 @@ func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, f
 	// Mismo merge que member-calendar: la DAO ordena por fecha; el item lleva
 	// los campos de CalendarDayResponse + nombres embebidos planos, y el
 	// presencial_collision solo cuando el día colisiona.
+	bases, err := s.toCalendarDayResponses(ctx, days)
+	if err != nil {
+		return nil, err
+	}
 	responses := make([]calendar.AggregateCalendarDayResponse, len(days))
-	for i, d := range days {
-		base, err := s.toCalendarDayResponse(ctx, d)
-		if err != nil {
-			return nil, err
-		}
+	for i, base := range bases {
+		d := days[i]
 		group := groupByID[d.GroupID]
 		responses[i] = calendar.AggregateCalendarDayResponse{
 			CalendarDayResponse: base,
