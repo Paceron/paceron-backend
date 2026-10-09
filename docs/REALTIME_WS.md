@@ -155,7 +155,7 @@ Al crear un mensaje vía `POST /session-instances/:id/messages`, el backend emit
 {"type":"control:message_created","channel":"session:88","payload":{"sessionMessageId":42}}
 ```
 
-- **Payload mínimo {sessionMessageId}, sin contenido:** el frame es un "algo llegó" — el contenido del mensaje (y cualquier otro que se haya perdidido offline) se recupera por REST con `GET /session-instances/:id/messages?since=<último id>` (cursado por `id`; el historial completo y su visibilidad por usuario están en `docs/CATALOGO_Y_CALENDARIO.md` §8.12 y `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §13.4).
+- **Payload mínimo {sessionMessageId}, sin contenido:** el frame es un "algo llegó" — el contenido del mensaje (y cualquier otro que se haya perdido offline) se recupera por REST con `GET /session-instances/:id/messages?since=<último id>` (cursado por `id`; el historial completo y su visibilidad por usuario están en `docs/CATALOGO_Y_CALENDARIO.md` §8.12 y `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §13.4).
 - **Best-effort, asíncrono** (mismo patrón de los `update:*`): la emisión sale del controller vía `realtime.Notifier` después de persistir y no bloquea ni altera la respuesta HTTP; nadie suscripto → no-op; buffer lleno → frame descartado para ese receptor. No hay replay ni cola.
 - Server originado: no lleva `from` ni `to` (regla del §7 aplica solo a presence/control de usuarios).
 - Helper: `realtime.MarshalControlMessageCreated` (`realtime/notifier.go`) — el único productor del frame.
