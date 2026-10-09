@@ -204,7 +204,8 @@ func TestSessionMessageDao_FindVisibleSince_DMRunnerToCoach(t *testing.T) {
 	require.Len(t, otherRunnerView, 0)
 }
 
-func TestSessionMessageDao_FindVisibleSince_MultipleIsolatedBetweenSessions(t *testing.T) {	db := testutils.SetupTestDB(t)
+func TestSessionMessageDao_FindVisibleSince_MultipleIsolatedBetweenSessions(t *testing.T) {
+	db := testutils.SetupTestDB(t)
 	dao := NewSessionMessageDao(db)
 	instA := &dbs.SessionInstance{Name: "Inst A"}
 	instB := &dbs.SessionInstance{Name: "Inst B"}

@@ -1503,7 +1503,8 @@ func TestTeamService_GetAll_CanReceivePaymentsMixed(t *testing.T) {
 	}
 }
 
-func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {	original := config.MyMP.OAuthClientID
+func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {
+	original := config.MyMP.OAuthClientID
 	config.MyMP.OAuthClientID = "APP-X"
 	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
 
