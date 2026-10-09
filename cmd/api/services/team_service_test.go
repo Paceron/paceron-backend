@@ -1503,8 +1503,7 @@ func TestTeamService_GetAll_CanReceivePaymentsMixed(t *testing.T) {
 	}
 }
 
-func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {
-	original := config.MyMP.OAuthClientID
+func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {	original := config.MyMP.OAuthClientID
 	config.MyMP.OAuthClientID = "APP-X"
 	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
 
@@ -1564,4 +1563,53 @@ func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *te
 	respAddr, err := newSvc(updateMockTeamDao).UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "Argentina"})
 	require.NoError(t, err)
 	assert.True(t, respAddr.CanReceivePayments, "UpdateAddress debe derivar el flag")
+}
+
+// Fallo del lookup batch en GetAll: todas las filas salen con el flag en false
+// y la respuesta OK (el error no escala a HTTP 500).
+func TestTeamService_GetAll_BatchLookupError_AllFlagsFalseOkay(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Team, error) {
+			return []dbs.Team{
+				{ID: 1, Name: "A", OwnerID: 5},
+				{ID: 2, Name: "B", OwnerID: 6},
+			}, nil
+		},
+	}
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetAll(nil, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 2)
+	assert.False(t, resp[0].CanReceivePayments)
+	assert.False(t, resp[1].CanReceivePayments)
+}
+
+// Variante single con fallo del lookup del owner: el flag sale false (capacidad
+// desconocida ≉ no puede cobrar) y la respuesta OK.
+func TestTeamService_GetByID_SellerConnLookupError_FlagFalseOkay(t *testing.T) {
+	sellerDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha", OwnerID: 9}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetByID(nil, 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "Alpha", resp.Name)
+	assert.False(t, resp.CanReceivePayments)
 }

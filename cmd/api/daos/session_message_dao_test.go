@@ -172,8 +172,39 @@ func TestSessionMessageDao_FindVisibleSince_Visibility(t *testing.T) {
 	assert.Equal(t, allMsg.ID, outsiderView[0].ID)
 }
 
-func TestSessionMessageDao_FindVisibleSince_MultipleIsolatedBetweenSessions(t *testing.T) {
+// DM en el sentido runner→entrenador: el corredor envía un direct al entrenador;
+// el entrenador (destinatario) lo ve, otro corredor del contexto NO.
+func TestSessionMessageDao_FindVisibleSince_DMRunnerToCoach(t *testing.T) {
 	db := testutils.SetupTestDB(t)
+	dao := NewSessionMessageDao(db)
+	inst := &dbs.SessionInstance{Name: "Inst dm runner a coach"}
+	require.NoError(t, db.Create(inst).Error)
+	runner := persistUser(db, "msg-dm-runner@test.com", "20100040")
+	trainer := persistUser(db, "msg-dm-trainer@test.com", "20100041")
+	otherRunner := persistUser(db, "msg-dm-runner-2@test.com", "20100042")
+
+	dmMsg := &dbs.SessionMessage{SessionInstanceID: inst.ID, SenderUserID: runner.ID, SenderRole: "runner", Type: "aviso", RecipientMode: "direct", Body: "coach, duda con la serie"}
+	require.NoError(t, dao.Create(nil, dmMsg, []int64{trainer.ID}))
+
+	// sender ve su propio mensaje
+	runnerView, _, err := dao.FindVisibleSince(nil, inst.ID, runner.ID, 0)
+	require.NoError(t, err)
+	require.Len(t, runnerView, 1)
+	assert.Equal(t, dmMsg.ID, runnerView[0].ID)
+
+	// el destinatario entrenador lo ve
+	trainerView, _, err := dao.FindVisibleSince(nil, inst.ID, trainer.ID, 0)
+	require.NoError(t, err)
+	require.Len(t, trainerView, 1)
+	assert.Equal(t, dmMsg.ID, trainerView[0].ID)
+
+	// otro corredor NO lo ve (privacidad DM)
+	otherRunnerView, _, err := dao.FindVisibleSince(nil, inst.ID, otherRunner.ID, 0)
+	require.NoError(t, err)
+	require.Len(t, otherRunnerView, 0)
+}
+
+func TestSessionMessageDao_FindVisibleSince_MultipleIsolatedBetweenSessions(t *testing.T) {	db := testutils.SetupTestDB(t)
 	dao := NewSessionMessageDao(db)
 	instA := &dbs.SessionInstance{Name: "Inst A"}
 	instB := &dbs.SessionInstance{Name: "Inst B"}

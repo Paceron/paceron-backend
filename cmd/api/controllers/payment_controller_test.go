@@ -198,6 +198,13 @@ func TestCreatePreference_ErrorMapping(t *testing.T) {
 			wantMessage: "el entrenador debe conectar su cuenta de Mercado Pago",
 		},
 		{
+			name:        "seller no conectado (error wrapped, errors.Is a través del %w)",
+			serviceErr:  fmt.Errorf("resolviendo contexto del entrenador: %w", services.ErrPaymentSellerNotConnected),
+			wantStatus:  http.StatusConflict,
+			wantCode:    constants.ErrorCodeSellerNotConnected,
+			wantMessage: "resolviendo contexto del entrenador: el entrenador debe conectar su cuenta de Mercado Pago",
+		},
+		{
 			name:        "cuota no encontrada",
 			serviceErr:  services.ErrPaymentInstallmentNotFound,
 			wantStatus:  http.StatusNotFound,
