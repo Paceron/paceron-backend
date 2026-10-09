@@ -930,8 +930,12 @@ func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
 	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 		return []dbs.GroupUser{{GroupID: 1, UserID: userID}, {GroupID: 2, UserID: userID}}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)}, nil
+	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+		groups := make([]dbs.Group, 0, len(ids))
+		for _, id := range ids {
+			groups = append(groups, dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)})
+		}
+		return groups, nil
 	}}
 	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 

@@ -647,22 +647,30 @@ func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.Sear
 
 	results := make([]team.TeamSearchResult, len(teams))
 	ownerIDs := make([]int64, 0, len(teams))
+	teamIDs := make([]int64, 0, len(teams))
 	for _, t := range teams {
 		ownerIDs = append(ownerIDs, t.OwnerID)
+		teamIDs = append(teamIDs, t.ID)
 	}
 	canReceive := s.batchCanReceive(ctx, ownerIDs)
 
+	ownerNameByID := make(map[int64]string, len(ownerIDs))
+	users, err := s.userDao.FindByIDs(ctx, ownerIDs)
+	if err == nil {
+		for _, u := range users {
+			ownerNameByID[u.ID] = u.Name + " " + u.Surname
+		}
+	}
+
+	memberCountByID := make(map[int64]int64, len(teamIDs))
+	counts, err := s.teamUserDao.CountActiveByTeams(ctx, teamIDs)
+	if err == nil {
+		for _, c := range counts {
+			memberCountByID[c.TeamID] = c.Count
+		}
+	}
+
 	for i, t := range teams {
-		ownerName := ""
-		if owner, err := s.userDao.FindByID(ctx, t.OwnerID); err == nil && owner != nil {
-			ownerName = owner.Name + " " + owner.Surname
-		}
-
-		memberCount, err := s.teamUserDao.CountActiveByTeam(ctx, t.ID)
-		if err != nil {
-			memberCount = 0
-		}
-
 		results[i] = team.TeamSearchResult{
 			ID:                 t.ID,
 			Name:               t.Name,
@@ -671,8 +679,8 @@ func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.Sear
 			Province:           t.Province,
 			City:               t.City,
 			MaxMembers:         t.MaxMembers,
-			MemberCount:        memberCount,
-			OwnerName:          ownerName,
+			MemberCount:        memberCountByID[t.ID],
+			OwnerName:          ownerNameByID[t.OwnerID],
 			IconURL:            buildMediaURL(t.IconKey, t.IconUpdatedAt),
 			IsPublic:           t.IsPublic,
 			MembershipFee:      t.MembershipFee,

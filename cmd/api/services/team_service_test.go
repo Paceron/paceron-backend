@@ -1176,10 +1176,12 @@ func TestTeamService_Search_Success(t *testing.T) {
 	teamDao := &mockTeamDao{searchPublicFn: func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error) {
 		return []dbs.Team{{ID: 1, Name: "equipo test", OwnerID: 2, MaxMembers: 10}}, false, nil
 	}}
-	userDao := &mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
-		return &dbs.User{ID: id, Name: "Ana", Surname: "Gómez"}, nil
+	userDao := &mockUserDao{mockFindByIDs: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+		return []*dbs.User{{ID: 2, Name: "Ana", Surname: "Gómez"}}, nil
 	}}
-	teamUserDao := &mockTeamUserDao{countActiveByTeamFn: func(ctx *gin.Context, teamID int64) (int64, error) { return 3, nil }}
+	teamUserDao := &mockTeamUserDao{countActiveByTeamsFn: func(ctx *gin.Context, teamIDs []int64) ([]dbs.TeamMemberCount, error) {
+		return []dbs.TeamMemberCount{{TeamID: 1, Count: 3}}, nil
+	}}
 	svc := NewTeamService(teamDao, userDao, &mockUserRoleDao{}, &mockRoleDao{}, teamUserDao, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 
 	resp, err := svc.Search(nil, 99, team.SearchFilters{}, 1)

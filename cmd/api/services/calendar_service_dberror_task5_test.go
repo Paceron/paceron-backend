@@ -576,11 +576,11 @@ func TestDBError_CalendarSummary_DaoErrors(t *testing.T) {
 	_, err := svc.CalendarSummary(nil, 1)
 	require.EqualError(t, err, "error al buscar grupos del usuario")
 
-	// group nil (deleted) → item skipped sin error.
+	// grupo ausente en el batch (deleted) → item skipped sin error.
 	groupUserDao = &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
 		return nil, nil
 	}}
 	svc = NewCalendarService(nil, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)

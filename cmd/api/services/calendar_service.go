@@ -2004,13 +2004,23 @@ func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]cal
 	if err != nil {
 		return nil, fmt.Errorf("error al buscar grupos del usuario")
 	}
+	groupIDs := make([]int64, 0, len(memberships))
+	for _, m := range memberships {
+		groupIDs = append(groupIDs, m.GroupID)
+	}
+	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	if err != nil {
+		groups = nil
+	}
+	groupByID := make(map[int64]dbs.Group, len(groups))
+	for _, g := range groups {
+		groupByID[g.ID] = g
+	}
 	items := make([]calendar.CalendarSummaryItem, 0, len(memberships))
 	for _, m := range memberships {
-		group, err := s.groupDao.FindByID(ctx, m.GroupID)
-		if err != nil || group == nil {
-			continue
+		if group, ok := groupByID[m.GroupID]; ok {
+			items = append(items, calendar.CalendarSummaryItem{GroupID: group.ID, GroupName: group.Name})
 		}
-		items = append(items, calendar.CalendarSummaryItem{GroupID: group.ID, GroupName: group.Name})
 	}
 	return items, nil
 }

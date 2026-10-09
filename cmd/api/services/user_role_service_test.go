@@ -71,8 +71,9 @@ func (m *mockUserRoleDao) UpdateTier(ctx *gin.Context, userID, roleID, tierID in
 }
 
 type mockUserDaoForUserRole struct {
-	findByIDFn func(ctx *gin.Context, userID int64) (*dbs.User, error)
-	updateFn   func(ctx *gin.Context, user *dbs.User) error
+	findByIDFn  func(ctx *gin.Context, userID int64) (*dbs.User, error)
+	findByIDsFn func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	updateFn    func(ctx *gin.Context, user *dbs.User) error
 }
 
 func (m *mockUserDaoForUserRole) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -106,6 +107,9 @@ func (m *mockUserDaoForUserRole) SearchActive(ctx *gin.Context, query string, li
 }
 
 func (m *mockUserDaoForUserRole) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, userIDs)
+	}
 	return nil, nil
 }
 
