@@ -307,7 +307,7 @@ func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTe
 			customlogger.TagMethod("Create"))
 	}
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // isEntrenadorOfTeam valida que userID sea miembro con rol "entrenador" del equipo.
@@ -385,7 +385,7 @@ func (s *teamService) Update(ctx *gin.Context, id int64, callerID int64, req *te
 		customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 		customlogger.TagMethod("Update"))
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // Delete elimina lógicamente un equipo. Solo el entrenador puede hacerlo y el equipo no debe tener miembros.
@@ -480,9 +480,7 @@ func (s *teamService) GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, e
 		return nil, fmt.Errorf("equipo no encontrado")
 	}
 
-	resp := s.toResponse(teamDB)
-	resp.CanReceivePayments = s.ownerCanReceivePayments(ctx, teamDB.OwnerID)
-	return resp, nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // GetAll obtiene los equipos activos. Sin filtros, devuelve todos. Con owner_id
@@ -514,8 +512,19 @@ func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) 
 	}
 
 	responses := make([]team.TeamResponse, len(teams))
+	ownerIDs := make([]int64, 0, len(teams))
+	seenOwners := make(map[int64]bool, len(teams))
+	for _, t := range teams {
+		if !seenOwners[t.OwnerID] {
+			seenOwners[t.OwnerID] = true
+			ownerIDs = append(ownerIDs, t.OwnerID)
+		}
+	}
+	canReceive := s.batchCanReceive(ctx, ownerIDs)
+
 	for i, t := range teams {
 		responses[i] = *s.toResponse(&t)
+		responses[i].CanReceivePayments = canReceive[t.OwnerID]
 	}
 
 	return responses, nil
@@ -577,7 +586,7 @@ func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, 
 		customlogger.Tag("team_id", fmt.Sprintf("%d", id)),
 		customlogger.TagMethod("UpdateAddress"))
 
-	return s.toResponse(teamDB), nil
+	return s.toResponseWithFlag(ctx, teamDB), nil
 }
 
 // toResponse convierte un modelo DB a un DTO de respuesta.
@@ -604,6 +613,14 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,
 	}
+}
+
+// toResponseWithFlag compone el DTO y deriva can_receive_payments del owner
+// (rutas single: fallo de lookup → false, mismo criterio que los helpers de arriba).
+func (s *teamService) toResponseWithFlag(ctx *gin.Context, t *dbs.Team) *team.TeamResponse {
+	resp := s.toResponse(t)
+	resp.CanReceivePayments = s.ownerCanReceivePayments(ctx, t.OwnerID)
+	return resp
 }
 
 // Search busca equipos visible=true con filtros opcionales, paginado por

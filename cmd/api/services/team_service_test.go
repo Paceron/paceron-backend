@@ -1465,3 +1465,103 @@ func TestTeamService_GetByID_CanReceivePayments(t *testing.T) {
 		})
 	}
 }
+
+func TestTeamService_GetAll_CanReceivePaymentsMixed(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	teams := []dbs.Team{
+		{ID: 1, Name: "A", OwnerID: 5, MembershipFee: 0},
+		{ID: 2, Name: "B", OwnerID: 5, MembershipFee: 1000},
+		{ID: 3, Name: "C", OwnerID: 6, MembershipFee: 2000},
+	}
+	mockTeamDao := &mockTeamDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Team, error) {
+			return teams, nil
+		},
+	}
+	sellerDao := &mockSellerConnectionDao{
+		findAuthorizedByIDsFn: func(ctx *gin.Context, userIDs []int64, clientID string) ([]dbs.SellerConnection, error) {
+			assert.Equal(t, "APP-X", clientID)
+			assert.Equal(t, []int64{5, 6}, userIDs)
+			return []dbs.SellerConnection{{UserID: 5, Status: "authorized", PublicKey: "pk-5"}}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	resp, err := svc.GetAll(nil, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, resp, 3)
+	for _, r := range resp {
+		if r.OwnerID == 5 {
+			assert.True(t, r.CanReceivePayments, "team %d con owner autorizado", r.ID)
+		} else {
+			assert.False(t, r.CanReceivePayments, "team %d sin conexión", r.ID)
+		}
+	}
+}
+
+func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *testing.T) {
+	original := config.MyMP.OAuthClientID
+	config.MyMP.OAuthClientID = "APP-X"
+	t.Cleanup(func() { config.MyMP.OAuthClientID = original })
+
+	sellerDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, clientID string) (*dbs.SellerConnection, error) {
+			assert.Equal(t, "APP-X", clientID)
+			assert.Equal(t, int64(1), userID)
+			return &dbs.SellerConnection{UserID: userID, Status: "authorized", PublicKey: "pk"}, nil
+		},
+	}
+
+	createMockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	updateMockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Old", OwnerID: 1, Status: "active"}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error { return nil },
+	}
+
+	newSvc := func(teamDao daos.TeamDaoInterface) TeamServiceInterface {
+		return NewTeamService(teamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+	}
+
+	createSvc := NewTeamService(
+		createMockTeamDao,
+		&mockUserDaoForUserRole{
+			findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+				return &dbs.User{ID: userID, Name: "Coach"}, nil
+			},
+		},
+		&mockUserRoleDao{
+			findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+				return []dbs.UserRole{{RoleID: 1}}, nil
+			},
+		},
+		&mockRoleDao{
+			findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+				return &dbs.Role{ID: id, Name: "entrenador"}, nil
+			},
+		},
+		entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
+
+	respCreate, err := createSvc.Create(nil, 1, &team.CreateTeamRequest{Name: "Alpha", MaxMembers: 20})
+	require.NoError(t, err)
+	assert.True(t, respCreate.CanReceivePayments, "Create debe derivar el flag, no mandarlo hardcodeado en false")
+
+	newName := "New"
+	respUpdate, err := newSvc(updateMockTeamDao).Update(nil, 1, 1, &team.UpdateTeamRequest{Name: &newName})
+	require.NoError(t, err)
+	assert.True(t, respUpdate.CanReceivePayments, "Update debe derivar el flag")
+
+	respAddr, err := newSvc(updateMockTeamDao).UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "Argentina"})
+	require.NoError(t, err)
+	assert.True(t, respAddr.CanReceivePayments, "UpdateAddress debe derivar el flag")
+}
