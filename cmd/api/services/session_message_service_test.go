@@ -232,6 +232,14 @@ func TestSessionMessageService_Create_ValidationErrors(t *testing.T) {
 			r.RecipientMode = sessionmessage.RecipientModeMultiple
 			r.RecipientUserIDs = []int64{7}
 		}},
+		{"multiple con duplicados", func(r *sessionmessage.SendMessageRequest) {
+			r.RecipientMode = sessionmessage.RecipientModeMultiple
+			r.RecipientUserIDs = []int64{7, 7}
+		}},
+		{"multiple con duplicado intercalado", func(r *sessionmessage.SendMessageRequest) {
+			r.RecipientMode = sessionmessage.RecipientModeMultiple
+			r.RecipientUserIDs = []int64{7, 12, 7}
+		}},
 		{"body vacio tras trim", func(r *sessionmessage.SendMessageRequest) { r.Body = "   " }},
 		{"body demasiado largo", func(r *sessionmessage.SendMessageRequest) { r.Body = strings.Repeat("a", maxBodyLen+1) }},
 	}
@@ -265,6 +273,26 @@ func TestSessionMessageService_Create_RecipientWithoutAccess(t *testing.T) {
 	_, err := svc.Create(nil, 7, 88, req)
 
 	require.ErrorIs(t, err, ErrSessionMessageInvalid)
+}
+
+func TestSessionMessageService_Create_DuplicateRecipientsNotPersisted(t *testing.T) {
+	persisted := false
+	messageDao := &mockSessionMessageDao{createFn: func(ctx *gin.Context, message *dbs.SessionMessage, recipientUserIDs []int64) error {
+		persisted = true
+		message.ID = 9
+		return nil
+	}}
+	dayDao, groupDao, teamDao := dayForOwner(99)
+	svc := sessionMessageSvcWith(messageDao, baseInstanceDao(true), dayDao, groupDao, teamDao)
+	req := validMessageRequest()
+	req.RecipientMode = sessionmessage.RecipientModeMultiple
+	req.RecipientUserIDs = []int64{7, 7}
+
+	_, err := svc.Create(nil, 7, 88, req)
+
+	require.ErrorIs(t, err, ErrSessionMessageInvalid)
+	assert.Contains(t, err.Error(), "duplicados")
+	assert.False(t, persisted)
 }
 
 func TestSessionMessageService_Create_DirectSuccess(t *testing.T) {

@@ -170,6 +170,14 @@ func validateSendMessage(req sessionmessage.SendMessageRequest) (string, []int64
 		return "", nil, fmt.Errorf("%w: recipient_mode debe ser all, multiple o direct", ErrSessionMessageInvalid)
 	}
 
+	seen := make(map[int64]struct{}, len(req.RecipientUserIDs))
+	for _, userID := range req.RecipientUserIDs {
+		if _, dup := seen[userID]; dup {
+			return "", nil, fmt.Errorf("%w: recipient_user_ids no puede contener ids duplicados", ErrSessionMessageInvalid)
+		}
+		seen[userID] = struct{}{}
+	}
+
 	body := strings.TrimSpace(req.Body)
 	if body == "" {
 		return "", nil, fmt.Errorf("%w: body es obligatorio", ErrSessionMessageInvalid)
