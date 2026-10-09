@@ -13,7 +13,14 @@ type TierPermissionDaoInterface interface {
 	Create(ctx *gin.Context, tierPermission *dbs.TierPermission) error
 	FindByTierAndPermission(ctx *gin.Context, tierID, permissionID int64) (*dbs.TierPermission, error)
 	FindByTierID(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
+	ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]TierPermissionName, error)
 	SoftDelete(ctx *gin.Context, id int64) error
+}
+
+// TierPermissionName es la proyección (permission_id, name) del listado de un tier.
+type TierPermissionName struct {
+	PermissionID   int64
+	PermissionName string
 }
 
 type tierPermissionDao struct {
@@ -49,6 +56,21 @@ func (d *tierPermissionDao) FindByTierID(ctx *gin.Context, tierID int64) ([]dbs.
 		return nil, fmt.Errorf("error finding tier permissions: %w", err)
 	}
 	return tierPermissions, nil
+}
+
+func (d *tierPermissionDao) ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]TierPermissionName, error) {
+	var names []TierPermissionName
+	err := d.DB.
+		Table("tier_permissions AS tp").
+		Select("tp.permission_id AS permission_id, p.name AS permission_name").
+		Joins("JOIN permissions p ON p.id = tp.permission_id").
+		Where("tp.tier_id = ? AND tp.deleted_at IS NULL AND p.deleted_at IS NULL", tierID).
+		Order("p.id ASC").
+		Scan(&names).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing permission names of tier: %w", err)
+	}
+	return names, nil
 }
 
 func (d *tierPermissionDao) SoftDelete(ctx *gin.Context, id int64) error {

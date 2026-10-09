@@ -8,15 +8,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/tierpermission"
 )
 
 type mockTierPermissionDao struct {
-	createFn                  func(ctx *gin.Context, tp *dbs.TierPermission) error
-	findByTierAndPermissionFn func(ctx *gin.Context, tierID, permissionID int64) (*dbs.TierPermission, error)
-	findByTierIDFn            func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
-	softDeleteFn              func(ctx *gin.Context, id int64) error
+	createFn                   func(ctx *gin.Context, tp *dbs.TierPermission) error
+	findByTierAndPermissionFn  func(ctx *gin.Context, tierID, permissionID int64) (*dbs.TierPermission, error)
+	findByTierIDFn             func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
+	listPermissionNamesByTierFn func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error)
+	softDeleteFn               func(ctx *gin.Context, id int64) error
 }
 
 func (m *mockTierPermissionDao) Create(ctx *gin.Context, tp *dbs.TierPermission) error {
@@ -36,6 +38,13 @@ func (m *mockTierPermissionDao) FindByTierAndPermission(ctx *gin.Context, tierID
 func (m *mockTierPermissionDao) FindByTierID(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
 	if m.findByTierIDFn != nil {
 		return m.findByTierIDFn(ctx, tierID)
+	}
+	return nil, nil
+}
+
+func (m *mockTierPermissionDao) ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+	if m.listPermissionNamesByTierFn != nil {
+		return m.listPermissionNamesByTierFn(ctx, tierID)
 	}
 	return nil, nil
 }
@@ -301,11 +310,10 @@ func TestTierPermissionService_Unassign_FindByTierAndPermissionError(t *testing.
 
 func TestTierPermissionService_List_Success(t *testing.T) {
 	mockTierPermDao := &mockTierPermissionDao{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			// desordenado a propósito: List debe ordenar por permission_id ASC
-			return []dbs.TierPermission{
-				{ID: 2, TierID: tierID, PermissionID: 7},
-				{ID: 1, TierID: tierID, PermissionID: 3},
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+			return []daos.TierPermissionName{
+				{PermissionID: 3, PermissionName: "perm_c"},
+				{PermissionID: 7, PermissionName: "perm_g"},
 			}, nil
 		},
 	}
@@ -314,16 +322,8 @@ func TestTierPermissionService_List_Success(t *testing.T) {
 			return &dbs.Tier{ID: 1, Name: "base"}, nil
 		},
 	}
-	mockPermDao := &mockPermissionDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
-			if id == 3 {
-				return &dbs.Permission{ID: 3, Name: "perm_c"}, nil
-			}
-			return &dbs.Permission{ID: 7, Name: "perm_g"}, nil
-		},
-	}
 
-	svc := NewTierPermissionService(mockTierPermDao, mockTierDao, mockPermDao)
+	svc := NewTierPermissionService(mockTierPermDao, mockTierDao, &mockPermissionDao{})
 	resp, err := svc.List(nil, 1)
 
 	assert.NoError(t, err)
@@ -351,8 +351,8 @@ func TestTierPermissionService_List_TierNotFound(t *testing.T) {
 
 func TestTierPermissionService_List_Empty(t *testing.T) {
 	mockTierPermDao := &mockTierPermissionDao{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			return []dbs.TierPermission{}, nil
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+			return []daos.TierPermissionName{}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -370,12 +370,14 @@ func TestTierPermissionService_List_Empty(t *testing.T) {
 	assert.Empty(t, resp.Permissions)
 }
 
+// El filtro de permiso soft-deleted ahora vive en el JOIN del DAO; a nivel
+// service basta verificar que el shape de la respuesta no incluye la fila
+// excluida (el caso real lo cubre el test del DAO con DB).
 func TestTierPermissionService_List_SkipsDeletedPermission(t *testing.T) {
 	mockTierPermDao := &mockTierPermissionDao{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			return []dbs.TierPermission{
-				{ID: 1, TierID: tierID, PermissionID: 3},
-				{ID: 2, TierID: tierID, PermissionID: 9},
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+			return []daos.TierPermissionName{
+				{PermissionID: 3, PermissionName: "perm_c"},
 			}, nil
 		},
 	}
@@ -384,16 +386,8 @@ func TestTierPermissionService_List_SkipsDeletedPermission(t *testing.T) {
 			return &dbs.Tier{ID: 1, Name: "base"}, nil
 		},
 	}
-	mockPermDao := &mockPermissionDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
-			if id == 9 {
-				return nil, nil // soft-deleted
-			}
-			return &dbs.Permission{ID: 3, Name: "perm_c"}, nil
-		},
-	}
 
-	svc := NewTierPermissionService(mockTierPermDao, mockTierDao, mockPermDao)
+	svc := NewTierPermissionService(mockTierPermDao, mockTierDao, &mockPermissionDao{})
 	resp, err := svc.List(nil, 1)
 
 	assert.NoError(t, err)
@@ -401,9 +395,9 @@ func TestTierPermissionService_List_SkipsDeletedPermission(t *testing.T) {
 	assert.Equal(t, int64(3), resp.Permissions[0].PermissionID)
 }
 
-func TestTierPermissionService_List_FindByTierIDError(t *testing.T) {
+func TestTierPermissionService_List_QueryError(t *testing.T) {
 	mockTierPermDao := &mockTierPermissionDao{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -428,30 +422,6 @@ func TestTierPermissionService_List_TierFindByIDError(t *testing.T) {
 	}
 
 	svc := NewTierPermissionService(&mockTierPermissionDao{}, mockTierDao, &mockPermissionDao{})
-	_, err := svc.List(nil, 1)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error al listar permisos")
-}
-
-func TestTierPermissionService_List_PermissionFindByIDError(t *testing.T) {
-	mockTierPermDao := &mockTierPermissionDao{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			return []dbs.TierPermission{{ID: 1, TierID: tierID, PermissionID: 3}}, nil
-		},
-	}
-	mockTierDao := &mockTierDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base"}, nil
-		},
-	}
-	mockPermDao := &mockPermissionDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
-			return nil, errors.New("db error")
-		},
-	}
-
-	svc := NewTierPermissionService(mockTierPermDao, mockTierDao, mockPermDao)
 	_, err := svc.List(nil, 1)
 
 	assert.Error(t, err)

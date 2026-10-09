@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -142,36 +141,22 @@ func (s *tierPermissionService) List(ctx *gin.Context, tierID int64) (*tierpermi
 		return nil, fmt.Errorf("tier no encontrado")
 	}
 
-	assignments, err := s.tierPermissionDao.FindByTierID(ctx, tierID)
+	items, err := s.tierPermissionDao.ListPermissionNamesByTier(ctx, tierID)
 	if err != nil {
-		customlogger.Error(ctx, "error finding permissions of tier", err,
+		customlogger.Error(ctx, "error listing permissions of tier", err,
 			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
 			customlogger.TagMethod("List"))
 		return nil, fmt.Errorf("error al listar permisos")
 	}
 
-	items := make([]tierpermission.TierPermissionListItem, 0, len(assignments))
-	for _, a := range assignments {
-		perm, err := s.permissionDao.FindByID(ctx, a.PermissionID)
-		if err != nil {
-			customlogger.Error(ctx, "error resolving permission name", err,
-				customlogger.Tag("permission_id", fmt.Sprintf("%d", a.PermissionID)),
-				customlogger.TagMethod("List"))
-			return nil, fmt.Errorf("error al listar permisos")
+	// permisos soft-deleted y el orden ASC quedan resueltos en el JOIN del DAO
+	result := make([]tierpermission.TierPermissionListItem, len(items))
+	for i, it := range items {
+		result[i] = tierpermission.TierPermissionListItem{
+			PermissionID:   it.PermissionID,
+			PermissionName: it.PermissionName,
 		}
-		// un permiso soft-deleted dejó de estar activo: se omite
-		if perm == nil {
-			continue
-		}
-		items = append(items, tierpermission.TierPermissionListItem{
-			PermissionID:   a.PermissionID,
-			PermissionName: perm.Name,
-		})
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].PermissionID < items[j].PermissionID
-	})
-
-	return &tierpermission.ListTierPermissionsResponse{Permissions: items}, nil
+	return &tierpermission.ListTierPermissionsResponse{Permissions: result}, nil
 }
