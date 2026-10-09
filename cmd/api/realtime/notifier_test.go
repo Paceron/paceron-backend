@@ -121,3 +121,21 @@ func TestUpdateAttendanceEventPayloadShape(t *testing.T) {
 		assert.Nil(t, v)
 	}
 }
+
+// TestControlMessageCreatedPayloadShape: el frame `control:message_created`
+// (Gap 27 D9) viaja con channel y un payload mínimo {sessionMessageId} — sin
+// contenido del mensaje, la privacidad la aplica el filtro del GET.
+func TestControlMessageCreatedPayloadShape(t *testing.T) {
+	raw := MarshalControlMessageCreated("session:88", 9)
+	var frame struct {
+		Type    string `json:"type"`
+		Channel string `json:"channel"`
+		Payload struct {
+			SessionMessageID float64 `json:"sessionMessageId"`
+		} `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &frame))
+	assert.Equal(t, "control:message_created", frame.Type)
+	assert.Equal(t, "session:88", frame.Channel)
+	assert.Equal(t, 9.0, frame.Payload.SessionMessageID)
+}

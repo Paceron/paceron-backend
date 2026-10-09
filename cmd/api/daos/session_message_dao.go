@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/sessionmessage"
 )
 
 type SessionMessageDaoInterface interface {
@@ -76,7 +77,8 @@ func (d *sessionMessageDao) FindVisibleSince(ctx *gin.Context, sessionInstanceID
 	var messages []dbs.SessionMessage
 	err := d.DB.
 		Where("session_instance_id = ? AND id > ?", sessionInstanceID, sinceID).
-		Where("sender_user_id = ? OR recipient_mode = 'all' OR id IN (?)", viewerUserID,
+		Where("sender_user_id = ? OR recipient_mode = ? OR id IN (?)", viewerUserID,
+			sessionmessage.RecipientModeAll,
 			d.DB.Model(&dbs.SessionMessageRecipient{}).Select("message_id").Where("user_id = ?", viewerUserID)).
 		Order("id ASC").
 		Find(&messages).Error

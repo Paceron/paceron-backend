@@ -1647,6 +1647,57 @@ definitions:
       updated_at:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse:
+    properties:
+      messages:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest:
+    properties:
+      body:
+        type: string
+      recipient_mode:
+        type: string
+      recipient_user_ids:
+        items:
+          type: integer
+        type: array
+      reply_to_message_id:
+        type: integer
+      type:
+        type: string
+    required:
+    - body
+    - recipient_mode
+    - type
+    type: object
+  simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse:
+    properties:
+      body:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      recipient_mode:
+        type: string
+      recipient_user_ids:
+        items:
+          type: integer
+        type: array
+      reply_to_message_id:
+        type: integer
+      sender_role:
+        type: string
+      sender_user_id:
+        type: integer
+      session_instance_id:
+        type: integer
+      type:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_team.CreateTeamRequest:
     properties:
       create_default_group:
@@ -5244,6 +5295,93 @@ paths:
       summary: Listar feedbacks de una sesión asignada
       tags:
       - workout-feedback
+  /api/v1/session-instances/{id}/messages:
+    get:
+      description: 'Devuelve los mensajes de la sesión que el consultante ve (emisor,
+        recipient_mode all o destinatario), ordenados cronológicamente. El query param
+        since cursa el historial: mensajes con id mayor al valor (ausente/0 = todo).'
+      parameters:
+      - description: ID de la sesión instanciada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'Cursor: mensajes con id mayor a este (default: todos)'
+        in: query
+        name: since
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Historial de mensajes de la sesión
+      tags:
+      - session-messages
+    post:
+      consumes:
+      - application/json
+      description: Crea un mensaje de sesión (type info/aviso/alerta) dirigido a todos
+        los participantes (recipient_mode all) o a uno (direct) o varios (multiple)
+        destinatarios concretos. El emisor debe tener acceso a la instancia; sender_role
+        se deriva del owner del equipo. Tras crear, emite el aviso WS control:message_created
+        en session:{id}.
+      parameters:
+      - description: ID de la sesión instanciada
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos del mensaje
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Enviar un mensaje al chat de la sesión
+      tags:
+      - session-messages
   /api/v1/session-instances/{id}/runner:
     get:
       consumes:

@@ -3658,6 +3658,128 @@
                 }
             }
         },
+        "/api/v1/session-instances/{id}/messages": {
+            "get": {
+                "description": "Devuelve los mensajes de la sesión que el consultante ve (emisor, recipient_mode all o destinatario), ordenados cronológicamente. El query param since cursa el historial: mensajes con id mayor al valor (ausente/0 = todo).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session-messages"
+                ],
+                "summary": "Historial de mensajes de la sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión instanciada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cursor: mensajes con id mayor a este (default: todos)",
+                        "name": "since",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Crea un mensaje de sesión (type info/aviso/alerta) dirigido a todos los participantes (recipient_mode all) o a uno (direct) o varios (multiple) destinatarios concretos. El emisor debe tener acceso a la instancia; sender_role se deriva del owner del equipo. Tras crear, emite el aviso WS control:message_created en session:{id}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session-messages"
+                ],
+                "summary": "Enviar un mensaje al chat de la sesión",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la sesión instanciada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos del mensaje",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/session-instances/{id}/runner": {
             "get": {
                 "description": "Devuelve el estado actual de la sesión para el atleta (self por default o el indicado si el auth es entrenador del equipo).",
@@ -10041,6 +10163,83 @@
                     "type": "integer"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.MessagesListResponse": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.SendMessageRequest": {
+            "type": "object",
+            "required": [
+                "body",
+                "recipient_mode",
+                "type"
+            ],
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "recipient_mode": {
+                    "type": "string"
+                },
+                "recipient_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "reply_to_message_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_sessionmessage.SessionMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "recipient_mode": {
+                    "type": "string"
+                },
+                "recipient_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "reply_to_message_id": {
+                    "type": "integer"
+                },
+                "sender_role": {
+                    "type": "string"
+                },
+                "sender_user_id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "type": {
                     "type": "string"
                 }
             }

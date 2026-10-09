@@ -56,6 +56,7 @@ type Application struct {
 	teamConfigurationController controllers.TeamConfigurationControllerInterface
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
+	sessionMessageController    controllers.SessionMessageController
 	runnerSessionController     controllers.RunnerSessionController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
@@ -315,6 +316,12 @@ func NewApplication() *Application {
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
 	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier)
 
+	// Session messages (chat de sesión instanciada, Gap 27). El controller emite
+	// control:message_created con la misma instancia compartida del notifier.
+	sessionMessageDao := daos.NewSessionMessageDao(db)
+	sessionMessageService := services.NewSessionMessageService(sessionMessageDao, sessionInstanceDao, groupCalendarDayDao, groupDao, teamDao)
+	sessionMessageController := controllers.NewSessionMessageController(sessionMessageService, realtimeNotifier)
+
 	// Runner Session flow (estado de sesión del corredor, wip -> finished).
 	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
 	// apertura/cierre del entrenador; el controller emite update:session_state.
@@ -356,6 +363,7 @@ func NewApplication() *Application {
 		teamConfigurationController: teamConfigurationController,
 		attendanceController:        attendanceController,
 		workoutFeedbackController:   workoutFeedbackController,
+		sessionMessageController:    sessionMessageController,
 		runnerSessionController:     runnerSessionController,
 		realtimeGateway:             realtimeGateway,
 	}
