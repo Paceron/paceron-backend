@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ import (
 type TierPermissionServiceInterface interface {
 	Assign(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error)
 	Unassign(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error)
+	List(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error)
 }
 
 type tierPermissionService struct {
@@ -126,4 +128,50 @@ func (s *tierPermissionService) Unassign(ctx *gin.Context, tierID, permissionID 
 	return &tierpermission.DeleteTierPermissionResponse{
 		Message: "Permiso desasignado del tier correctamente",
 	}, nil
+}
+
+func (s *tierPermissionService) List(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+	t, err := s.tierDao.FindByID(ctx, tierID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding tier for permission list", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al listar permisos")
+	}
+	if t == nil {
+		return nil, fmt.Errorf("tier no encontrado")
+	}
+
+	assignments, err := s.tierPermissionDao.FindByTierID(ctx, tierID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding permissions of tier", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al listar permisos")
+	}
+
+	items := make([]tierpermission.TierPermissionListItem, 0, len(assignments))
+	for _, a := range assignments {
+		perm, err := s.permissionDao.FindByID(ctx, a.PermissionID)
+		if err != nil {
+			customlogger.Error(ctx, "error resolving permission name", err,
+				customlogger.Tag("permission_id", fmt.Sprintf("%d", a.PermissionID)),
+				customlogger.TagMethod("List"))
+			return nil, fmt.Errorf("error al listar permisos")
+		}
+		// un permiso soft-deleted dejó de estar activo: se omite
+		if perm == nil {
+			continue
+		}
+		items = append(items, tierpermission.TierPermissionListItem{
+			PermissionID:   a.PermissionID,
+			PermissionName: perm.Name,
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].PermissionID < items[j].PermissionID
+	})
+
+	return &tierpermission.ListTierPermissionsResponse{Permissions: items}, nil
 }

@@ -18,6 +18,7 @@ import (
 type mockTierPermissionService struct {
 	assignFn   func(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error)
 	unassignFn func(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error)
+	listFn     func(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error)
 }
 
 func (m *mockTierPermissionService) Assign(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error) {
@@ -32,6 +33,105 @@ func (m *mockTierPermissionService) Unassign(ctx *gin.Context, tierID, permissio
 		return m.unassignFn(ctx, tierID, permissionID)
 	}
 	return nil, nil
+}
+
+func (m *mockTierPermissionService) List(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, tierID)
+	}
+	return nil, nil
+}
+
+func TestTierPermissionController_List_Success(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		listFn: func(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+			return &tierpermission.ListTierPermissionsResponse{
+				Permissions: []tierpermission.TierPermissionListItem{
+					{PermissionID: 3, PermissionName: "perm_c"},
+					{PermissionID: 7, PermissionName: "perm_g"},
+				},
+			}, nil
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers/1/permissions", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.List(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+
+	var result tierpermission.ListTierPermissionsResponse
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Len(t, result.Permissions, 2)
+	assert.Equal(t, int64(3), result.Permissions[0].PermissionID)
+	assert.Equal(t, "perm_c", result.Permissions[0].PermissionName)
+	assert.Equal(t, int64(7), result.Permissions[1].PermissionID)
+	assert.Equal(t, "perm_g", result.Permissions[1].PermissionName)
+}
+
+func TestTierPermissionController_List_TierNotFound(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		listFn: func(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+			return nil, errors.New("tier no encontrado")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers/999/permissions", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "999"}}
+
+	controller.List(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Not Found", result.Code)
+	assert.Equal(t, "tier no encontrado", result.Message)
+}
+
+func TestTierPermissionController_List_InvalidTierID(t *testing.T) {
+	controller := NewTierPermissionController(&mockTierPermissionService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers/abc/permissions", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "abc"}}
+
+	controller.List(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "tier id debe ser un número válido", result.Message)
+}
+
+func TestTierPermissionController_List_InternalError(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		listFn: func(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+			return nil, errors.New("error al listar permisos")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers/1/permissions", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.List(c)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Internal Server Error", result.Code)
 }
 
 func TestTierPermissionController_Assign_Success(t *testing.T) {

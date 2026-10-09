@@ -2016,6 +2016,22 @@ definitions:
         description: Mensaje de confirmación
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse:
+    properties:
+      permissions:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem:
+    properties:
+      permission_id:
+        description: ID del permiso
+        type: integer
+      permission_name:
+        description: Nombre del permiso
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionResponse:
     properties:
       asignation_date:
@@ -6323,6 +6339,37 @@ paths:
       tags:
       - tiers
   /api/v1/tiers/{id}/permissions:
+    get:
+      description: Lists the active permissions assigned to a tier, with their resolved
+        names
+      parameters:
+      - description: Tier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: List permissions of a tier
+      tags:
+      - tier-permissions
     post:
       consumes:
       - application/json

@@ -5344,6 +5344,51 @@
             }
         },
         "/api/v1/tiers/{id}/permissions": {
+            "get": {
+                "description": "Lists the active permissions assigned to a tier, with their resolved names",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tier-permissions"
+                ],
+                "summary": "List permissions of a tier",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Tier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Assigns a permission to a tier",
                 "consumes": [
@@ -10505,6 +10550,30 @@
             "properties": {
                 "message": {
                     "description": "Mensaje de confirmación",
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.ListTierPermissionsResponse": {
+            "type": "object",
+            "properties": {
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_tierpermission.TierPermissionListItem": {
+            "type": "object",
+            "properties": {
+                "permission_id": {
+                    "description": "ID del permiso",
+                    "type": "integer"
+                },
+                "permission_name": {
+                    "description": "Nombre del permiso",
                     "type": "string"
                 }
             }
