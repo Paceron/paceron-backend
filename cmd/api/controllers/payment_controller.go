@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -42,6 +43,8 @@ func NewPaymentController(paymentService services.PaymentServiceInterface) Payme
 // @Param        body body      payment.CreatePreferenceRequest true "Preference data"
 // @Success      201  {object}  payment.CreatePreferenceResponse
 // @Failure      400  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Failure      409  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/payments/preference [post]
 func (pc *paymentController) CreatePreference(c *gin.Context) {
@@ -108,12 +111,11 @@ func (pc *paymentController) CreatePreference(c *gin.Context) {
 
 	resp, err := pc.paymentService.CreatePreference(c, req)
 	if err != nil {
-		customlogger.Error(c, "error creating preference", err)
-		c.JSON(http.StatusInternalServerError, apierror.APIError{
-			StatusCode: http.StatusInternalServerError,
-			Code:       "Internal server error",
-			Message:    "Error al crear la preferencia",
-		})
+		apiErr := mapPreferenceError(err)
+		if apiErr.StatusCode == http.StatusInternalServerError {
+			customlogger.Error(c, "error creating preference", err)
+		}
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -393,6 +395,38 @@ func (pc *paymentController) GenerateTestCardToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// mapPreferenceError traduce los sentinels del flujo CreatePreference a
+// apierror.APIError (design D4, Gap 16). Lo no tipificado (upstream MP, DAO)
+// sigue siendo 500 genérico, sin exponer el error interno.
+func mapPreferenceError(err error) apierror.APIError {
+	switch {
+	case errors.Is(err, services.ErrPaymentSellerNotConnected):
+		return apierror.APIError{
+			StatusCode: http.StatusConflict,
+			Code:       constants.ErrorCodeSellerNotConnected,
+			Message:    err.Error(),
+		}
+	case errors.Is(err, services.ErrPaymentInstallmentNotFound), errors.Is(err, services.ErrPaymentTeamNotFound):
+		return apierror.APIError{
+			StatusCode: http.StatusNotFound,
+			Code:       "Not found",
+			Message:    err.Error(),
+		}
+	case errors.Is(err, services.ErrPaymentInvalid):
+		return apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		}
+	default:
+		return apierror.APIError{
+			StatusCode: http.StatusInternalServerError,
+			Code:       "Internal server error",
+			Message:    "Error al crear la preferencia",
+		}
+	}
 }
 
 // mapPaymentError traduce los errores de dominio del pago al status y custom
