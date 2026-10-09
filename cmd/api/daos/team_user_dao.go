@@ -17,6 +17,10 @@ type TeamUserDaoInterface interface {
 	FindByTeamID(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error)
 	CountActiveByTeam(ctx *gin.Context, teamID int64) (int64, error)
+	// CountActiveByTeams cuenta los miembros activos de varios equipos en
+	// una sola consulta (GROUP BY team_id) — evita el N+1 al armar la
+	// vista de calendario por lotes.
+	CountActiveByTeams(ctx *gin.Context, teamIDs []int64) ([]dbs.TeamMemberCount, error)
 	CountActiveByTeamExcludingUser(ctx *gin.Context, teamID, excludeUserID int64) (int64, error)
 	HasOwnerByTeam(ctx *gin.Context, teamID int64) (bool, error)
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
@@ -83,6 +87,26 @@ func (d *teamUserDao) CountActiveByTeam(ctx *gin.Context, teamID int64) (int64, 
 		return 0, fmt.Errorf("error counting team members: %w", err)
 	}
 	return count, nil
+}
+
+// CountActiveByTeams cuenta los miembros activos (deleted_at IS NULL) de
+// varios equipos en una sola consulta, agrupado por team_id. Los equipos
+// sin miembros activos no aparecen en el resultado.
+func (d *teamUserDao) CountActiveByTeams(ctx *gin.Context, teamIDs []int64) ([]dbs.TeamMemberCount, error) {
+	counts := []dbs.TeamMemberCount{}
+	if len(teamIDs) == 0 {
+		return counts, nil
+	}
+	err := d.DB.Model(&dbs.TeamUser{}).
+		Select("team_id, COUNT(*) AS count").
+		Where("deleted_at IS NULL AND team_id IN ?", teamIDs).
+		Group("team_id").
+		Order("team_id").
+		Find(&counts).Error
+	if err != nil {
+		return nil, fmt.Errorf("error counting team members by teams: %w", err)
+	}
+	return counts, nil
 }
 
 // CountActiveByTeamExcludingUser cuenta los miembros activos de un equipo, excluyendo

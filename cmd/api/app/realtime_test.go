@@ -62,6 +62,9 @@ func (s *channelAuthorizerStubDAO) Create(*gin.Context, *dbs.SessionInstance) er
 func (s *channelAuthorizerStubDAO) FindByID(*gin.Context, int64) (*dbs.SessionInstance, error) {
 	return nil, nil
 }
+func (s *channelAuthorizerStubDAO) FindByIDs(*gin.Context, []int64) ([]dbs.SessionInstance, error) {
+	return nil, nil
+}
 func (s *channelAuthorizerStubDAO) Delete(*gin.Context, int64) error { return nil }
 func (s *channelAuthorizerStubDAO) HasFeedback(*gin.Context, int64) (bool, error) {
 	return false, nil

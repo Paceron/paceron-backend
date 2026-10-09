@@ -88,3 +88,23 @@ func TestSessionInstanceDao_HasFeedback_IgnoresSoftDeletedFeedback(t *testing.T)
 	require.NoError(t, err)
 	assert.False(t, has)
 }
+
+func TestSessionInstanceDao_FindByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewSessionInstanceDao(db)
+	inst1 := &dbs.SessionInstance{Name: "Tempo A"}
+	inst2 := &dbs.SessionInstance{Name: "Tempo B"}
+	require.NoError(t, dao.Create(nil, inst1))
+	require.NoError(t, dao.Create(nil, inst2))
+
+	rows, err := dao.FindByIDs(nil, []int64{inst2.ID, inst1.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, inst1.ID, rows[0].ID)
+	assert.Equal(t, inst2.ID, rows[1].ID)
+
+	rows, err = dao.FindByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}

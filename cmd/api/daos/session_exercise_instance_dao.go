@@ -15,6 +15,9 @@ type SessionExerciseInstanceDaoInterface interface {
 	Create(ctx *gin.Context, se *dbs.SessionExerciseInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionExerciseInstance, error)
 	FindBySessionInstance(ctx *gin.Context, sessionInstanceID int64) ([]dbs.SessionExerciseInstance, error)
+	// FindBySessionInstances trae los links de varias instancias en una
+	// sola consulta — evita el N+1 al armar la vista de calendario por lotes.
+	FindBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) ([]dbs.SessionExerciseInstance, error)
 	Delete(ctx *gin.Context, id int64) error
 	// DeleteBySessionInstance borra físico todos los links de una
 	// SessionInstance — paso hijo-antes-que-padre del borrado de instancia
@@ -54,6 +57,18 @@ func (d *sessionExerciseInstanceDao) FindBySessionInstance(ctx *gin.Context, ses
 	err := d.DB.Where("session_instance_id = ?", sessionInstanceID).Order("id").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing session exercise instances: %w", err)
+	}
+	return rows, nil
+}
+
+func (d *sessionExerciseInstanceDao) FindBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) ([]dbs.SessionExerciseInstance, error) {
+	var rows []dbs.SessionExerciseInstance
+	if len(sessionInstanceIDs) == 0 {
+		return rows, nil
+	}
+	err := d.DB.Where("session_instance_id IN ?", sessionInstanceIDs).Order("id").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding session exercise instances by session instances: %w", err)
 	}
 	return rows, nil
 }

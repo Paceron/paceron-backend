@@ -38,6 +38,10 @@ func (m *mockSessionInstanceDao) FindByID(ctx *gin.Context, id int64) (*dbs.Sess
 	return nil, nil
 }
 
+func (m *mockSessionInstanceDao) FindByIDs(_ *gin.Context, _ []int64) ([]dbs.SessionInstance, error) {
+	return nil, nil
+}
+
 func (m *mockSessionInstanceDao) Delete(ctx *gin.Context, id int64) error {
 	if m.deleteFn != nil {
 		return m.deleteFn(ctx, id)
