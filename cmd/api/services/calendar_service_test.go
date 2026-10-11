@@ -40,6 +40,14 @@ func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDa
 	day.ID = 1
 	return nil
 }
+func (m *mockGroupCalendarDao) UpsertMany(_ *gin.Context, days []*dbs.GroupCalendarDay) ([]daos.GroupCalendarDayUpsertResult, error) {
+	results := make([]daos.GroupCalendarDayUpsertResult, 0, len(days))
+	for i, day := range days {
+		day.ID = int64(i + 1)
+		results = append(results, daos.GroupCalendarDayUpsertResult{ID: day.ID})
+	}
+	return results, nil
+}
 func (m *mockGroupCalendarDao) FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
 	if m.findByGroupAndDateFn != nil {
 		return m.findByGroupAndDateFn(ctx, groupID, date)

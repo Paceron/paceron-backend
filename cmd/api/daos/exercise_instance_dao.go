@@ -13,6 +13,10 @@ import (
 // solo Create/FindByID/Delete físico, sin Update ni SoftDelete.
 type ExerciseInstanceDaoInterface interface {
 	Create(ctx *gin.Context, e *dbs.ExerciseInstance) error
+	// CreateBatch inserta N ejercicios de instancia en un solo INSERT con
+	// RETURNING — gorm rellena cada row.ID por posición (design.md D6).
+	// Lote vacío no toca la DB.
+	CreateBatch(ctx *gin.Context, rows []*dbs.ExerciseInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.ExerciseInstance, error)
 	// FindByIDs trae varios ejercicios de instancia en una sola consulta —
 	// evita el N+1 al armar el detalle D9 de una SessionInstance (los links
@@ -35,6 +39,16 @@ func NewExerciseInstanceDao(db *gorm.DB) ExerciseInstanceDaoInterface {
 func (d *exerciseInstanceDao) Create(ctx *gin.Context, e *dbs.ExerciseInstance) error {
 	if err := d.DB.Create(e).Error; err != nil {
 		return fmt.Errorf("error creating exercise instance: %w", err)
+	}
+	return nil
+}
+
+func (d *exerciseInstanceDao) CreateBatch(ctx *gin.Context, rows []*dbs.ExerciseInstance) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := d.DB.Create(&rows).Error; err != nil {
+		return fmt.Errorf("error creating exercise instances batch: %w", err)
 	}
 	return nil
 }

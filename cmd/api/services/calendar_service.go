@@ -552,6 +552,132 @@ func (s *calendarService) instantiateSession(ctx *gin.Context, tx *gorm.DB, sess
 	return result, nil
 }
 
+// instantiateSessionsBatch es la versión multi-día de instantiateSession
+// (design.md D6): una consulta por tabla del catálogo y un INSERT por tabla
+// de instancia, alineados por posición. Cada día trae su copia completa (no
+// se deduplica); los nil del input corresponden a días que conservan su
+// instancia y quedan nil en el output.
+func (s *calendarService) instantiateSessionsBatch(ctx *gin.Context, tx *gorm.DB, sessionIDs []*int64) ([]*int64, error) {
+	requestedByInput := make([]int, len(sessionIDs))
+	requests := make([]int64, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		requestedByInput[i] = -1
+		if id != nil {
+			requestedByInput[i] = len(requests)
+			requests = append(requests, *id)
+		}
+	}
+	out := make([]*int64, len(sessionIDs))
+	if len(requests) == 0 {
+		return out, nil
+	}
+	sessionDao := daos.NewSessionDao(tx)
+	sessionExerciseDao := daos.NewSessionExerciseDao(tx)
+	exerciseDao := daos.NewExerciseDao(tx)
+	sessionInstanceDao := daos.NewSessionInstanceDao(tx)
+	exerciseInstanceDao := daos.NewExerciseInstanceDao(tx)
+	linkInstanceDao := daos.NewSessionExerciseInstanceDao(tx)
+
+	catalogSessions, err := sessionDao.FindByIDs(ctx, requests)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar sesión para instanciar: %w", err)
+	}
+	sessionsByID := make(map[int64]*dbs.Session, len(catalogSessions))
+	for i := range catalogSessions {
+		sessionsByID[catalogSessions[i].ID] = &catalogSessions[i]
+	}
+	for _, sessionID := range requests {
+		if _, ok := sessionsByID[sessionID]; !ok {
+			return nil, ErrCalendarSessionNotFound
+		}
+	}
+	catalogLinks, err := sessionExerciseDao.FindBySessions(ctx, requests)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar ejercicios para instanciar: %w", err)
+	}
+	linksBySession := make(map[int64][]dbs.SessionExercise, len(sessionsByID))
+	for _, link := range catalogLinks {
+		linksBySession[link.SessionID] = append(linksBySession[link.SessionID], link)
+	}
+	catalogExerciseIDs := make([]int64, 0, len(catalogLinks))
+	seenExercises := make(map[int64]struct{}, len(catalogLinks))
+	for _, link := range catalogLinks {
+		if _, dup := seenExercises[link.ExerciseID]; !dup {
+			seenExercises[link.ExerciseID] = struct{}{}
+			catalogExerciseIDs = append(catalogExerciseIDs, link.ExerciseID)
+		}
+	}
+	catalogExercises, err := exerciseDao.FindByIDs(ctx, catalogExerciseIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar ejercicio para instanciar: %w", err)
+	}
+	exercisesByID := make(map[int64]*dbs.Exercise, len(catalogExercises))
+	for i := range catalogExercises {
+		exercisesByID[catalogExercises[i].ID] = &catalogExercises[i]
+	}
+	for _, sessionID := range requests {
+		for _, link := range linksBySession[sessionID] {
+			if _, ok := exercisesByID[link.ExerciseID]; !ok {
+				return nil, fmt.Errorf("%w: %d", ErrSessionExerciseNotFound, link.ExerciseID)
+			}
+		}
+	}
+
+	instanceRows := make([]*dbs.SessionInstance, 0, len(requests))
+	for _, sessionID := range requests {
+		catalogSession := sessionsByID[sessionID]
+		sourceID := sessionID
+		instanceRows = append(instanceRows, &dbs.SessionInstance{
+			Name: catalogSession.Name, Description: catalogSession.Description,
+			SourceSessionID: &sourceID,
+		})
+	}
+	if err := sessionInstanceDao.CreateBatch(ctx, instanceRows); err != nil {
+		return nil, fmt.Errorf("error al crear sesión instancia: %w", err)
+	}
+
+	type linkSlot struct{ sessionIndex, linkIndex int }
+	exerciseRows := make([]*dbs.ExerciseInstance, 0, len(catalogLinks)*len(requests))
+	slots := make([]linkSlot, 0, len(catalogLinks)*len(requests))
+	for sessionIndex, sessionID := range requests {
+		for linkIndex, catalogLink := range linksBySession[sessionID] {
+			catalogExercise := exercisesByID[catalogLink.ExerciseID]
+			sourceID := catalogLink.ExerciseID
+			exerciseRows = append(exerciseRows, &dbs.ExerciseInstance{
+				Name: catalogExercise.Name, Description: catalogExercise.Description, Kind: catalogExercise.Kind,
+				Intensity: catalogExercise.Intensity, Minutes: catalogExercise.Minutes, DistanceM: catalogExercise.DistanceM,
+				SpeedKph: catalogExercise.SpeedKph, MuscleGroup: catalogExercise.MuscleGroup, VideoURL: catalogExercise.VideoURL,
+				SourceExerciseID: &sourceID,
+			})
+			slots = append(slots, linkSlot{sessionIndex: sessionIndex, linkIndex: linkIndex})
+		}
+	}
+	if err := exerciseInstanceDao.CreateBatch(ctx, exerciseRows); err != nil {
+		return nil, fmt.Errorf("error al crear ejercicio instancia: %w", err)
+	}
+
+	linkRows := make([]*dbs.SessionExerciseInstance, 0, len(exerciseRows))
+	for slotIndex, entry := range slots {
+		catalogLink := linksBySession[requests[entry.sessionIndex]][entry.linkIndex]
+		linkRows = append(linkRows, &dbs.SessionExerciseInstance{
+			SessionInstanceID:  instanceRows[entry.sessionIndex].ID,
+			ExerciseInstanceID: exerciseRows[slotIndex].ID,
+			Role:               catalogLink.Role, RepeatCount: catalogLink.RepeatCount, RestMinutes: catalogLink.RestMinutes,
+		})
+	}
+	if err := linkInstanceDao.CreateBatch(ctx, linkRows); err != nil {
+		return nil, fmt.Errorf("error al crear vínculo de ejercicio instancia: %w", err)
+	}
+
+	for i := range sessionIDs {
+		if requestedByInput[i] >= 0 {
+			id := instanceRows[requestedByInput[i]].ID
+			out[i] = &id
+		}
+	}
+	return out, nil
+}
+
 func (s *calendarService) sessionInstanceResponse(ctx *gin.Context, database *gorm.DB, id *int64) (*instance.SessionInstanceResponse, error) {
 	if id == nil {
 		return nil, nil
@@ -1165,18 +1291,42 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 		sameWarnings = same
 
+		// D6 (stamp): instanciación batch — 1 query por tabla del catálogo y
+		// 1 INSERT por tabla de instancia para todo el lote, alineado por
+		// posición al orden de rows.
+		sessionIDs := make([]*int64, len(rows))
 		for i := range rows {
-			planDay := planDays[idx[i]]
-			if planDay.Kind == string(constants.GroupCalendarDayKindTraining) {
-				newInstance, err := s.instantiateSession(ctx, tx, *planDay.SessionID)
-				if err != nil {
-					return err
-				}
-				rows[i].SessionInstanceID = &newInstance.ID
+			if planDays[idx[i]].Kind == string(constants.GroupCalendarDayKindTraining) {
+				sessionIDs[i] = planDays[idx[i]].SessionID
 			}
-			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
-				return err
+		}
+		newInstanceIDs, err := s.instantiateSessionsBatch(ctx, tx, sessionIDs)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if newInstanceIDs[i] != nil {
+				rows[i].SessionInstanceID = newInstanceIDs[i]
 			}
+		}
+		rowPointers := make([]*dbs.GroupCalendarDay, len(rows))
+		for i := range rows {
+			rowPointers[i] = &rows[i]
+		}
+		results, err := txCalendarDao.UpsertMany(ctx, rowPointers)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			created := existingByDate[rows[i].Date.Format("2006-01-02")] == nil
+			if !created {
+				// Igual que el Upsert de fila única (ruta UPDATE): la fila del
+				// caller mantiene sus timestamps en cero.
+				results[i].CreatedAt, results[i].UpdatedAt = time.Time{}, time.Time{}
+			}
+			rows[i].ID = results[i].ID
+			rows[i].CreatedAt = results[i].CreatedAt
+			rows[i].UpdatedAt = results[i].UpdatedAt
 			if existing := existingByDate[rows[i].Date.Format("2006-01-02")]; existing != nil && existing.SessionInstanceID != nil {
 				if err := s.deleteSupersededInstance(ctx, tx, *existing.SessionInstanceID); err != nil {
 					return err
@@ -1334,25 +1484,49 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			return newCalendarPresencialCollisionError(cross)
 		}
 		sameWarnings = same
+
+		// D6 (bulk): misma instanciación batch del stamp — una pasada por
+		// tabla del catálogo/instancia para el lote entero. La preservación
+		// de instancia (training sin SessionID) y el keep de cancelled se
+		// resuelven sin insertar nada nuevo.
+		sessionIDs := make([]*int64, len(rows))
+		preservada := make([]bool, len(rows))
 		for i := range rows {
-			preservada := false
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) {
 				if dayReq.SessionID == nil {
-					preservada = true
+					preservada[i] = true
 				} else {
-					newInstance, err := s.instantiateSession(ctx, tx, *dayReq.SessionID)
-					if err != nil {
-						return err
-					}
-					rows[i].SessionInstanceID = &newInstance.ID
+					sessionIDs[i] = dayReq.SessionID
 				}
 			} else if dayReq.Kind == string(constants.GroupCalendarDayKindCancelled) {
 				rows[i].SessionInstanceID = existing[i].SessionInstanceID
 			}
-			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
-				return err
+		}
+		newInstanceIDs, err := s.instantiateSessionsBatch(ctx, tx, sessionIDs)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if newInstanceIDs[i] != nil {
+				rows[i].SessionInstanceID = newInstanceIDs[i]
 			}
-			if !preservada && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
+		}
+		rowPointers := make([]*dbs.GroupCalendarDay, len(rows))
+		for i := range rows {
+			rowPointers[i] = &rows[i]
+		}
+		results, err := txCalendarDao.UpsertMany(ctx, rowPointers)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if existing[i] != nil {
+				results[i].CreatedAt, results[i].UpdatedAt = time.Time{}, time.Time{}
+			}
+			rows[i].ID = results[i].ID
+			rows[i].CreatedAt = results[i].CreatedAt
+			rows[i].UpdatedAt = results[i].UpdatedAt
+			if !preservada[i] && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
 				if err := s.deleteSupersededInstance(ctx, tx, *existing[i].SessionInstanceID); err != nil {
 					return err
 				}

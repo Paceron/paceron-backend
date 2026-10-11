@@ -59,6 +59,9 @@ func (s *channelAuthorizerStubDAO) HasInstanceAccess(_ *gin.Context, instanceID,
 }
 
 func (s *channelAuthorizerStubDAO) Create(*gin.Context, *dbs.SessionInstance) error { return nil }
+func (s *channelAuthorizerStubDAO) CreateBatch(*gin.Context, []*dbs.SessionInstance) error {
+	return nil
+}
 func (s *channelAuthorizerStubDAO) FindByID(*gin.Context, int64) (*dbs.SessionInstance, error) {
 	return nil, nil
 }

@@ -13,6 +13,10 @@ import (
 // solo Create/FindByID/Delete físico, sin Update ni SoftDelete.
 type SessionInstanceDaoInterface interface {
 	Create(ctx *gin.Context, s *dbs.SessionInstance) error
+	// CreateBatch inserta N instancias en un solo INSERT con RETURNING —
+	// gorm rellena cada row.ID por posición (instanciación batch, design.md
+	// D6). Lote vacío no toca la DB.
+	CreateBatch(ctx *gin.Context, rows []*dbs.SessionInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
 	// FindByIDs trae varias instancias en una sola consulta — evita el N+1
 	// al armar la vista de calendario por lotes.
@@ -39,6 +43,16 @@ func NewSessionInstanceDao(db *gorm.DB) SessionInstanceDaoInterface {
 func (d *sessionInstanceDao) Create(ctx *gin.Context, s *dbs.SessionInstance) error {
 	if err := d.DB.Create(s).Error; err != nil {
 		return fmt.Errorf("error creating session instance: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionInstanceDao) CreateBatch(ctx *gin.Context, rows []*dbs.SessionInstance) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := d.DB.Create(&rows).Error; err != nil {
+		return fmt.Errorf("error creating session instances batch: %w", err)
 	}
 	return nil
 }

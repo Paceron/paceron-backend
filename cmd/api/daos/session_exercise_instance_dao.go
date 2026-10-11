@@ -13,6 +13,10 @@ import (
 // y viven y mueren con su SessionInstance — sin Update ni SoftDelete.
 type SessionExerciseInstanceDaoInterface interface {
 	Create(ctx *gin.Context, se *dbs.SessionExerciseInstance) error
+	// CreateBatch inserta N links en un solo INSERT (instanciación batch,
+	// design.md D6; no hace RETURNING: los ids no se usan). Lote vacío no
+	// toca la DB.
+	CreateBatch(ctx *gin.Context, rows []*dbs.SessionExerciseInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionExerciseInstance, error)
 	FindBySessionInstance(ctx *gin.Context, sessionInstanceID int64) ([]dbs.SessionExerciseInstance, error)
 	// FindBySessionInstances trae los links de varias instancias en una
@@ -36,6 +40,16 @@ func NewSessionExerciseInstanceDao(db *gorm.DB) SessionExerciseInstanceDaoInterf
 func (d *sessionExerciseInstanceDao) Create(ctx *gin.Context, se *dbs.SessionExerciseInstance) error {
 	if err := d.DB.Create(se).Error; err != nil {
 		return fmt.Errorf("error creating session exercise instance: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionExerciseInstanceDao) CreateBatch(ctx *gin.Context, rows []*dbs.SessionExerciseInstance) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := d.DB.Create(&rows).Error; err != nil {
+		return fmt.Errorf("error creating session exercise instances batch: %w", err)
 	}
 	return nil
 }

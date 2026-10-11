@@ -391,9 +391,9 @@ func TestDBError_Bulk_RespuestaDetalleFails(t *testing.T) {
 	dao := daos.NewGroupCalendarDayDao(db)
 	d1 := time.Now().AddDate(0, 0, 19)
 	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: d1, Kind: "training", SessionInstanceID: &inst.ID}))
-	// SELECTs: #1 tx FindByGroupAndDate; #2 First del Upsert; (preservada).
-	// La lectura del detail falla luego de commitear (select #3).
-	failing := testutils.FailingDB(t, db, nthFail("select", 3))
+	// SELECTs: #1 tx FindByGroupAndDate. Con el upsert batch (D5) el Upsert
+	// ya no hace el First, así que la lectura del detalle falla en select #2.
+	failing := testutils.FailingDB(t, db, nthFail("select", 2))
 	svc := NewCalendarService(dao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, failing)
 
 	_, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{d1.Format("2006-01-02")}, Kind: "training"})
