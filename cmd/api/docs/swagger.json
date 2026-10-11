@@ -8111,6 +8111,12 @@
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -8194,6 +8200,12 @@
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
@@ -11223,6 +11235,12 @@
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -11272,6 +11290,12 @@
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"

@@ -144,7 +144,7 @@ func TestValidateRegisterRequest_InvalidCountry(t *testing.T) {
 		BirthDate: "01/01/2000",
 	}
 	msg := ValidateRegisterRequest(req)
-	assert.Equal(t, "country solo acepta letras y espacios", msg)
+	assert.Equal(t, "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas", msg)
 }
 
 func TestValidateRegisterRequest_InvalidCity(t *testing.T) {
@@ -157,7 +157,7 @@ func TestValidateRegisterRequest_InvalidCity(t *testing.T) {
 		BirthDate: "01/01/2000",
 	}
 	msg := ValidateRegisterRequest(req)
-	assert.Equal(t, "city solo acepta letras, números y espacios", msg)
+	assert.Equal(t, "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas", msg)
 }
 
 func TestValidateRegisterRequest_DniRequired(t *testing.T) {
@@ -193,7 +193,7 @@ func TestValidateRegisterRequest_InvalidStreet(t *testing.T) {
 		BirthDate: "01/01/2000",
 	}
 	msg := ValidateRegisterRequest(req)
-	assert.Equal(t, "street solo acepta letras, números y espacios", msg)
+	assert.Equal(t, "street solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas", msg)
 }
 
 func TestValidateRegisterRequest_InvalidNumber(t *testing.T) {
@@ -206,7 +206,92 @@ func TestValidateRegisterRequest_InvalidNumber(t *testing.T) {
 		BirthDate: "01/01/2000",
 	}
 	msg := ValidateRegisterRequest(req)
-	assert.Equal(t, "number solo acepta letras, números y espacios", msg)
+	assert.Equal(t, "number solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas", msg)
+}
+
+func TestValidateRegisterRequest_CharsetRelajado(t *testing.T) {
+	req := &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Country:   "Alto Bío-Bío, Chile",
+		City:      "Villa O'Higgins",
+		Street:    "Av. San Martin - Esq. 3",
+		Number:    "No. 742",
+		Dni:       "12345678",
+		BirthDate: "01/01/2000",
+	}
+	msg := ValidateRegisterRequest(req)
+	assert.Equal(t, "", msg)
+}
+
+func TestValidateRegisterRequest_CharsetPeligrosoRechazado(t *testing.T) {
+	payloads := []string{"'; DROP TABLE users;--", "<script>", "(ab)", "\"citada\""}
+	cases := []struct {
+		set func(*auth.RegisterRequest, string)
+	}{
+		{func(r *auth.RegisterRequest, v string) { r.Country = v }},
+		{func(r *auth.RegisterRequest, v string) { r.City = v }},
+		{func(r *auth.RegisterRequest, v string) { r.Street = v }},
+		{func(r *auth.RegisterRequest, v string) { r.Number = v }},
+	}
+	for _, field := range cases {
+		for _, payload := range payloads {
+			req := &auth.RegisterRequest{
+				Name:      "John",
+				Surname:   "Doe",
+				Email:     "john@test.com",
+				Dni:       "12345678",
+				BirthDate: "01/01/2000",
+			}
+			field.set(req, payload)
+			assert.NotEqual(t, "", ValidateRegisterRequest(req), "payload %q debe ser rechazado", payload)
+		}
+	}
+}
+
+func TestValidateRegisterRequest_LatFueraDeRango(t *testing.T) {
+	lat := 95.4
+	req := &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Lat:       &lat,
+		Dni:       "12345678",
+		BirthDate: "01/01/2000",
+	}
+	msg := ValidateRegisterRequest(req)
+	assert.Equal(t, "lat fuera de rango", msg)
+}
+
+func TestValidateRegisterRequest_LngFueraDeRango(t *testing.T) {
+	lng := -200.0
+	req := &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Lng:       &lng,
+		Dni:       "12345678",
+		BirthDate: "01/01/2000",
+	}
+	msg := ValidateRegisterRequest(req)
+	assert.Equal(t, "lng fuera de rango", msg)
+}
+
+func TestValidateRegisterRequest_LatLngLimitesValidos(t *testing.T) {
+	lat := -90.0
+	lng := 180.0
+	req := &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Lat:       &lat,
+		Lng:       &lng,
+		Dni:       "12345678",
+		BirthDate: "01/01/2000",
+	}
+	msg := ValidateRegisterRequest(req)
+	assert.Equal(t, "", msg)
 }
 
 func TestValidateRegisterRequest_EmptyBirthDate(t *testing.T) {
@@ -631,6 +716,60 @@ func TestToDBModel(t *testing.T) {
 	assert.Equal(t, "12345678", userDB.DNI)
 	assert.Equal(t, time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC), userDB.BirthDate)
 	assert.Equal(t, "hashedPassword", userDB.Password)
+}
+
+func TestToDBModel_LatLng(t *testing.T) {
+	lat := -34.6
+	lng := -58.4
+	req := &auth.RegisterRequest{
+		Name:      "John",
+		Surname:   "Doe",
+		Email:     "john@test.com",
+		Lat:       &lat,
+		Lng:       &lng,
+		Dni:       "12345678",
+		BirthDate: "15/04/1990",
+	}
+	userDB := toDBModel(req, "hashedPassword")
+	assert.Equal(t, &lat, userDB.Lat)
+	assert.Equal(t, &lng, userDB.Lng)
+
+	sinUbicacion := registerRequest()
+	assert.Nil(t, toDBModel(sinUbicacion, "hashedPassword").Lat)
+	assert.Nil(t, toDBModel(sinUbicacion, "hashedPassword").Lng)
+}
+
+func TestRegister_PersistsLatLng(t *testing.T) {
+	var savedUser *dbs.User
+	mockDao := registerMockDao()
+	mockDao.mockCreate = func(ctx *gin.Context, user *dbs.User) (*dbs.User, error) {
+		user.ID = 1
+		bankAlias := ""
+		user.BankAlias = &bankAlias
+		savedUser = user
+		return user, nil
+	}
+
+	lat := -33.5
+	lng := -70.6
+	req := registerRequest()
+	req.Lat = &lat
+	req.Lng = &lng
+
+	svc := NewAuthService(mockDao, &mockUserRoleDao{}, &mockRoleDao{}, &mockRefreshTokenDao{}, nil)
+	resp, err := svc.Register(nil, req, "securePass123")
+
+	assert.NoError(t, err)
+	assert.Equal(t, &lat, savedUser.Lat)
+	assert.Equal(t, &lng, savedUser.Lng)
+	assert.Equal(t, &lat, resp.Lat)
+	assert.Equal(t, &lng, resp.Lng)
+}
+
+func TestToResponse_LatLngNil(t *testing.T) {
+	resp := toResponse(&dbs.User{ID: 1})
+	assert.Nil(t, resp.Lat)
+	assert.Nil(t, resp.Lng)
 }
 
 func TestToResponse(t *testing.T) {

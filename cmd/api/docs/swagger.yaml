@@ -237,6 +237,10 @@ definitions:
         type: string
       email:
         type: string
+      lat:
+        type: number
+      lng:
+        type: number
       name:
         type: string
       number:
@@ -300,6 +304,10 @@ definitions:
         type: string
       email:
         type: string
+      lat:
+        type: number
+      lng:
+        type: number
       name:
         type: string
       number:
@@ -2372,6 +2380,10 @@ definitions:
         type: string
       email:
         type: string
+      lat:
+        type: number
+      lng:
+        type: number
       name:
         type: string
       number:
@@ -2405,6 +2417,10 @@ definitions:
         type: string
       email:
         type: string
+      lat:
+        type: number
+      lng:
+        type: number
       name:
         type: string
       number:

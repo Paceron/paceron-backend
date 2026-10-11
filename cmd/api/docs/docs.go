@@ -8117,6 +8117,12 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -8200,6 +8206,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
@@ -11229,6 +11241,12 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -11278,6 +11296,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"

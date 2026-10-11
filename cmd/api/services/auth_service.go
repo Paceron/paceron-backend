@@ -414,6 +414,8 @@ func toDBModel(req *auth.RegisterRequest, hashedPassword string) *dbs.User {
 		City:         strings.TrimSpace(req.City),
 		Street:       strings.TrimSpace(req.Street),
 		Number:       strings.TrimSpace(req.Number),
+		Lat:          req.Lat,
+		Lng:          req.Lng,
 		DNI:          strings.TrimSpace(req.Dni),
 		BirthDate:    birthDate,
 		Password:     hashedPassword,
@@ -435,6 +437,8 @@ func toResponse(userDB *dbs.User) *auth.UserResponse {
 		City:                 userDB.City,
 		Street:               userDB.Street,
 		Number:               userDB.Number,
+		Lat:                  userDB.Lat,
+		Lng:                  userDB.Lng,
 		Dni:                  userDB.DNI,
 		BirthDate:            userDB.BirthDate.Format("02/01/2006"),
 		Status:               userDB.Status,
@@ -468,28 +472,34 @@ func ValidateRegisterRequest(req *auth.RegisterRequest) string {
 		}
 	}
 	if req.Country != "" {
-		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ ]+$`, req.Country)
+		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Country)
 		if !match {
-			return "country solo acepta letras y espacios"
+			return "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.City != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, req.City)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.City)
 		if !match {
-			return "city solo acepta letras, números y espacios"
+			return "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Street != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, req.Street)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Street)
 		if !match {
-			return "street solo acepta letras, números y espacios"
+			return "street solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Number != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, req.Number)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Number)
 		if !match {
-			return "number solo acepta letras, números y espacios"
+			return "number solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
+	}
+	if req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90) {
+		return "lat fuera de rango"
+	}
+	if req.Lng != nil && (*req.Lng < -180 || *req.Lng > 180) {
+		return "lng fuera de rango"
 	}
 	if req.Dni == "" {
 		return "dni es requerido"
