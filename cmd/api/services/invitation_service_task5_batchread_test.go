@@ -47,13 +47,15 @@ func TestInvitationService_ListPendingInvitationsForUser_BatchQueries(t *testing
 
 	counter := 0
 	cdb := countingDB(t, db, &counter)
-	svc := NewInvitationService(daos.NewUserDao(cdb), daos.NewTeamDao(cdb), daos.NewInvitationDao(cdb), daos.NewTeamUserDao(cdb), nil, nil, nil, nil, nil, nil, cdb, &mockSellerConnectionDao{})
+	svc := NewInvitationService(daos.NewUserDao(cdb), daos.NewTeamDao(cdb), daos.NewInvitationDao(cdb), daos.NewTeamUserDao(cdb), nil, nil, nil, nil, nil, nil, cdb, daos.NewSellerConnectionDao(cdb))
 
 	resp, err := svc.ListPendingInvitationsForUser(nil, invitee.ID)
 
 	require.NoError(t, err)
 	require.Len(t, resp, 3)
-	assert.Equal(t, 3, counter, "pendientes + teams IN + users IN; la vencida no participa en queries")
+	// D9 + Task 8: pendientes + teams IN + users IN + 1 seller connections de
+	// owners (batch: constante, no +1 por invitación como el lookup puntual).
+	assert.Equal(t, 4, counter, "pendientes + teams IN + users IN + sellers de owners IN; la vencida no participa en queries")
 	assert.Equal(t, "Ivy", resp[0].InviteeName)
 	assert.Equal(t, "batchread-ivy@test.com", resp[0].InviteeEmail)
 	assert.Equal(t, inviter1.Name, resp[0].InviterName)
@@ -81,13 +83,13 @@ func TestInvitationService_ListPendingInvitations_BatchQueries(t *testing.T) {
 
 	counter := 0
 	cdb := countingDB(t, db, &counter)
-	svc := NewInvitationService(daos.NewUserDao(cdb), daos.NewTeamDao(cdb), daos.NewInvitationDao(cdb), daos.NewTeamUserDao(cdb), nil, nil, nil, nil, nil, nil, cdb, &mockSellerConnectionDao{})
+	svc := NewInvitationService(daos.NewUserDao(cdb), daos.NewTeamDao(cdb), daos.NewInvitationDao(cdb), daos.NewTeamUserDao(cdb), nil, nil, nil, nil, nil, nil, cdb, daos.NewSellerConnectionDao(cdb))
 
 	resp, err := svc.ListPendingInvitations(nil, team.ID, inviter.ID)
 
 	require.NoError(t, err)
 	require.Len(t, resp, 1)
-	assert.Equal(t, 4, counter, "equipo + rol caller + pendientes + users IN (antes: +2 users por invitación)")
+	assert.Equal(t, 5, counter, "equipo + rol caller + pendientes + users IN + 1 sellers de owners (batch, constante sin importar la cantidad de invitaciones)")
 	assert.Equal(t, "Nora", resp[0].InviteeName)
 	assert.Equal(t, "Omar", resp[0].InviterName)
 	assert.Equal(t, "Team batchread eq", resp[0].TeamName)
@@ -118,5 +120,5 @@ func TestInvitationService_ListPendingInvitationsForUser_TeamEInviterNoResueltos
 	assert.False(t, resp[0].CanReceivePayments)
 	assert.Equal(t, "Pia", resp[0].InviteeName)
 	assert.Equal(t, "batchread-pia@test.com", resp[0].InviteeEmail)
-	assert.Equal(t, 3, counter, "pendientes + teams IN + users IN team fantasma incluido")
+	assert.Equal(t, 3, counter, "pendientes + teams IN + users IN; team fantasma → sin owners, sin query de sellers")
 }

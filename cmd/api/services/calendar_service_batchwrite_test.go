@@ -73,13 +73,12 @@ func txCountingDB(t *testing.T, db *gorm.DB, counter *int) *gorm.DB {
 	return sess
 }
 
-// D6 (task 3): stamp de plan de 4 días training en calendario "fresco" con
-// round trips constantes en la tx del write path. Hoy (pre-batch) cada día
-// hacía 3+ inserts de instancias + upsert (select+insert/update); con el
-// batch queda fijo: 2 selects fuera de la tx (owner/plan etc) + 1
-// findByGroupAndDate por día (lectura de guard, task 4 la batch-ea) +
-// 3 selects del catálogo + 3 inserts de instancias + 1 insert UpsertMany +
-// 1 INSERT savepoint + commit + 3 selects post-commit del detalle batch.
+// D6 (task 3) + D7 (task 8): stamp de plan de 4 días training en calendario
+// "fresco" con round trips constantes en la tx del write path. Hoy queda
+// fijo: 2 selects fuera de la tx (owner/plan etc) + 1 planDays + 1 lectura
+// batch de guard (FindByGroupAndDates, task 8) + 3 selects del catálogo +
+// 3 inserts de instancias + 1 insert UpsertMany + 1 INSERT savepoint +
+// commit + 3 selects post-commit del detalle batch.
 // El conteo total ES INDEPENDIENTE del tamaño del plan (ver segunda mitad).
 func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 	db := testutils.SetupTestDB(t)
@@ -138,16 +137,15 @@ func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 	require.Len(t, resp.Days, 30)
 	t.Logf("stamp 30 días: %d queries", counter)
 
-	// El WRITE path es constante: los únicos +1/día son las lecturas
-	// per-day de guard (FindByGroupAndDate), que esta task deliberadamente
-	// mantiene (el orden de validación no cambia; su batch es deuda separada).
-	// Con k días: 11 fijos (owner+plan+planDays+savepoint+3 selects de
-	// catálogo batch + 3 inserts de instancias + 1 UpsertMany... ver abajo)
-	// + k lecturas por guard + 3 del detalle batch post-commit.
+	// El WRITE path es constante y ya sin lecturas per-day (D7, task 8): el
+	// guard de todas las fechas es una única SELECT IN dentro de la tx,
+	// evaluada en memoria con el mismo orden/mensajes que el loop por fecha.
 	//
-	// 19 fijo+4 días / 45 con 30 días = 19 + 26 (1 lectura guard por día).
-	assert.Equal(t, 19, dayQueries, "stamp 4 días: 2 (owner/plan) + 1 planDays + 1 savepoint + 4 guards + 3 catálogo + 3 inserts instancias + 1 UpsertMany + 3 detalle post-commit")
-	assert.Equal(t, dayQueries+26, counter, "stamp de 30 días = mismo write path + 1 lectura guard por día extra")
+	// 16 fijo: 2 (owner/plan) + 1 planDays + 1 savepoint + 1 lecturas de
+	// guard batch + 3 catálogo + 3 inserts instancias + 1 UpsertMany +
+	// 3 detalle post-commit + 1 commit.
+	assert.Equal(t, 16, dayQueries, "stamp 4 días: sin lectura guard +1/día")
+	assert.Equal(t, dayQueries, counter, "stamp de 30 días = exactamente el mismo write path (sin término lineal)")
 
 	// Contenido batch correcto: cada día tiene su propia instancia con links.
 	days := make([]dbs.GroupCalendarDay, 0)
@@ -166,4 +164,45 @@ func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 		require.NoError(t, db.Where("session_instance_id = ?", instance.ID).Find(&links).Error)
 		require.Len(t, links, 1)
 	}
+}
+
+// D7 (task 8): bulk de N días también queda constante — la lectura de guard
+// de todas las fechas es una única SELECT IN dentro de la tx, y los guards
+// (missing training sin instancia, cerrado, transición cancel) se evalúan en
+// memoria en el mismo orden que la lectura por fecha.
+func TestCalendarService_Bulk_BatchWriteQueriesConstantes(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "dbbulktime")
+	dao := daos.NewGroupCalendarDayDao(db)
+
+	counter := 0
+	counting := txCountingDB(t, db, &counter)
+	svc := NewCalendarService(dao, daos.NewGroupDao(counting), daos.NewTeamDao(counting),
+		daos.NewGroupUserDao(counting), nil, nil, nil, nil, counting)
+
+	base := time.Now().AddDate(0, 0, 210)
+	fechas := func(cantidad int) []string {
+		out := make([]string, 0, cantidad)
+		for i := 0; i < cantidad; i++ {
+			out = append(out, base.AddDate(0, 0, i).Format("2006-01-02"))
+		}
+		return out
+	}
+
+	resp, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: fechas(3), Kind: "rest"})
+	require.NoError(t, err)
+	require.Len(t, resp.Days, 3)
+	dayQueries := counter
+	t.Logf("bulk 3 días: %d queries", dayQueries)
+
+	counter = 0
+	resp, err = svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: fechas(10), Kind: "rest"})
+	require.NoError(t, err)
+	require.Len(t, resp.Days, 10)
+	t.Logf("bulk 10 días: %d queries", counter)
+	assert.Equal(t, dayQueries, counter, "bulk de 10 días = mismo write path constante (sin término lineal por fecha)")
+	// 5 fijo (el commit del pool de conteo se incrementa aparte): 2 selects
+	// del owner (grupo+equipo) + 1 savepoint + 1 lectura de guard batch +
+	// 1 UpsertMany; días rest sin instancia → el detalle post-commit no agrega.
+	assert.Equal(t, 5, dayQueries, "bulk 3 días: 2 owner + savepoint + guard batch + UpsertMany")
 }
