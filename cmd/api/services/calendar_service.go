@@ -1347,14 +1347,20 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 	var sameWarnings []calendar.PresencialConflict
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(idx))
+		// D7: 1 lectura para todas las fechas del lote; los guards de abajo
+		// se evalúan en memoria con el mismo orden y mensajes que la lectura
+		// por fecha.
+		existingDays, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, targetDates)
+		if err != nil {
+			return err
+		}
+		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(targetDates))
+		for i := range existingDays {
+			existingByDate[existingDays[i].Date.Format("2006-01-02")] = &existingDays[i]
+		}
 		for j, date := range targetDates {
 			i := idx[j]
-			existing, err := txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
-			existingByDate[date.Format("2006-01-02")] = existing
+			existing := existingByDate[date.Format("2006-01-02")]
 			planReq, err := calendarRequestFromPlanDay(planDays[i])
 			if err != nil {
 				return err
@@ -1548,14 +1554,23 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	var sameWarnings []calendar.PresencialConflict
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		// D7: 1 lectura para todas las fechas del lote; los guards de abajo
+		// se evalúan en memoria con el mismo orden y mensajes que la lectura
+		// por fecha.
+		existingDays, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, dates)
+		if err != nil {
+			return err
+		}
+		dayByDate := make(map[string]*dbs.GroupCalendarDay, len(existingDays))
+		for i := range existingDays {
+			dayByDate[existingDays[i].Date.Format("2006-01-02")] = &existingDays[i]
+		}
 		existing := make([]*dbs.GroupCalendarDay, len(dates))
+		for i, date := range dates {
+			existing[i] = dayByDate[date.Format("2006-01-02")]
+		}
 		missing := make([]string, 0)
 		for i, date := range dates {
-			var err error
-			existing[i], err = txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil &&
 				(existing[i] == nil || existing[i].SessionInstanceID == nil) {
 				missing = append(missing, date.Format("2006-01-02"))
