@@ -136,3 +136,77 @@ func TestGroupCalendarDayDao_UpsertMany_ApagaPresencialLimpiaEstado(t *testing.T
 	assert.Nil(t, found.PresencialOpenedAt)
 	assert.Nil(t, found.PresencialClosedAt)
 }
+
+func TestGroupCalendarDayDao_UpsertMany_TransicionesEstadoPresencial(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+
+	t.Run("día rest sin instancia pasa a presencial: estado NULL", func(t *testing.T) {
+		group := setupCalendarGroup(t, db, "umn6")
+		date := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+		require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: date, Kind: "rest"}))
+		inst := &dbs.SessionInstance{Name: "primera instancia"}
+		require.NoError(t, db.Create(inst).Error)
+
+		_, err := dao.UpsertMany(nil, []*dbs.GroupCalendarDay{{
+			GroupID: group.ID, Date: date, Kind: "training",
+			SessionInstanceID: &inst.ID, IsPresencial: true,
+		}})
+		require.NoError(t, err)
+
+		found, findErr := dao.FindBySessionInstanceID(nil, inst.ID)
+		require.NoError(t, findErr)
+		require.NotNil(t, found)
+		assert.True(t, found.IsPresencial)
+		assert.Nil(t, found.PresencialOpenedAt, "nunca hubo apertura: no debe heredar estado")
+		assert.Nil(t, found.PresencialClosedAt)
+	})
+
+	t.Run("misma instancia con apertura y cierre conserva ambos", func(t *testing.T) {
+		inst, day := presencialDaySeed(t, db, "umn7", true)
+		opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
+		closed := opened.Add(2 * time.Hour)
+		_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+		require.NoError(t, err)
+		_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+		require.NoError(t, err)
+
+		_, err = dao.UpsertMany(nil, []*dbs.GroupCalendarDay{{
+			GroupID: day.GroupID, Date: day.Date, Kind: day.Kind,
+			SessionInstanceID: day.SessionInstanceID, IsPresencial: true,
+		}})
+		require.NoError(t, err)
+
+		found, findErr := dao.FindBySessionInstanceID(nil, inst.ID)
+		require.NoError(t, findErr)
+		require.NotNil(t, found)
+		require.NotNil(t, found.PresencialOpenedAt, "misma instancia conserva la apertura")
+		assert.Equal(t, opened.UTC(), (*found.PresencialOpenedAt).UTC())
+		require.NotNil(t, found.PresencialClosedAt, "misma instancia conserva el cierre")
+		assert.Equal(t, closed.UTC(), (*found.PresencialClosedAt).UTC())
+	})
+
+	t.Run("instancia distinta con apertura y cierre previos limpia ambos", func(t *testing.T) {
+		_, day := presencialDaySeed(t, db, "umn8", true)
+		opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
+		closed := opened.Add(2 * time.Hour)
+		_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+		require.NoError(t, err)
+		_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+		require.NoError(t, err)
+		newInst := &dbs.SessionInstance{Name: "otra instancia distinta"}
+		require.NoError(t, db.Create(newInst).Error)
+
+		_, err = dao.UpsertMany(nil, []*dbs.GroupCalendarDay{{
+			GroupID: day.GroupID, Date: day.Date, Kind: day.Kind,
+			SessionInstanceID: &newInst.ID, IsPresencial: true,
+		}})
+		require.NoError(t, err)
+
+		found, findErr := dao.FindBySessionInstanceID(nil, newInst.ID)
+		require.NoError(t, findErr)
+		require.NotNil(t, found)
+		assert.Nil(t, found.PresencialOpenedAt, "cambia la instancia: el estado previo no aplica")
+		assert.Nil(t, found.PresencialClosedAt)
+	})
+}

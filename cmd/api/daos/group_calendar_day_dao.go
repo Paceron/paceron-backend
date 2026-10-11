@@ -140,13 +140,15 @@ func (d *groupCalendarDayDao) UpsertMany(ctx *gin.Context, days []*dbs.GroupCale
 			now, now,
 		)
 	}
-	query := strings.TrimSpace(fmt.Sprintf(`
-		INSERT INTO group_calendar_days (
-			group_id, date, kind, other_name, session_instance_id,
-			cancelled_reason, is_presencial, presencial_time_from,
-			presencial_time_to, presencial_location, source_plan_id,
-			created_at, updated_at
-		) VALUES %s
+	// El SQL tiene que empezar exactamente con "INSERT": testutils.opOfSQL
+	// clasifica la operación por prefijo del texto de la query.
+	insertPrefix := "INSERT INTO group_calendar_days (" +
+		"group_id, date, kind, other_name, session_instance_id, " +
+		"cancelled_reason, is_presencial, presencial_time_from, " +
+		"presencial_time_to, presencial_location, source_plan_id, " +
+		"created_at, updated_at" +
+		") VALUES "
+	query := insertPrefix + strings.Join(values, ", ") + `
 		ON CONFLICT (group_id, date) DO UPDATE SET
 			kind = EXCLUDED.kind,
 			other_name = EXCLUDED.other_name,
@@ -171,7 +173,7 @@ func (d *groupCalendarDayDao) UpsertMany(ctx *gin.Context, days []*dbs.GroupCale
 				ELSE group_calendar_days.presencial_closed_at
 			END
 	RETURNING id, group_id, TO_CHAR(date, 'YYYY-MM-DD') AS date_key, created_at, updated_at
-	`, strings.Join(values, ", ")))
+	`
 	var returned []struct {
 		ID      int64     `gorm:"column:id"`
 		GroupID int64     `gorm:"column:group_id"`
