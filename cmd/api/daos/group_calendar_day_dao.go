@@ -132,12 +132,31 @@ func (d *groupCalendarDayDao) UpsertMany(ctx *gin.Context, days []*dbs.GroupCale
 	if len(days) == 0 {
 		return nil, nil
 	}
-	values := make([]string, 0, len(days))
+	// Dedupe por (group_id, date): filas duplicadas en el input romperían
+	// Postgres con "ON CONFLICT DO UPDATE command cannot affect row a second
+	// time". Se escribe una sola fila por clave, ganando la ÚLTIMA ocurrencia
+	// (last-write-wins, como toleraba el loop secuencial). El slice de
+	// resultado conserva len(days): cada posición de input (incluyendo
+	// duplicados) se mapea a la fila física de su clave.
+	dayKey := func(day *dbs.GroupCalendarDay) string {
+		return fmt.Sprintf("%d|%s", day.GroupID, day.Date.Format("2006-01-02"))
+	}
+	lastForKey := make(map[string]*dbs.GroupCalendarDay, len(days))
+	orderedKeys := make([]string, 0, len(days))
+	for _, day := range days {
+		key := dayKey(day)
+		if _, ok := lastForKey[key]; !ok {
+			orderedKeys = append(orderedKeys, key)
+		}
+		lastForKey[key] = day
+	}
+	values := make([]string, 0, len(orderedKeys))
 	args := make([]interface{}, 0, len(days)*13)
 	// El insert físico no tiene defaults de DB: created_at/updated_at vienen
 	// de la app (igual que hace gorm en el Create de fila única).
 	now := time.Now()
-	for _, day := range days {
+	for _, key := range orderedKeys {
+		day := lastForKey[key]
 		values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		args = append(args,
 			day.GroupID, day.Date, day.Kind, day.OtherName, day.SessionInstanceID, day.CancelledReason,
@@ -189,18 +208,18 @@ func (d *groupCalendarDayDao) UpsertMany(ctx *gin.Context, days []*dbs.GroupCale
 	if err := d.DB.Raw(query, args...).Scan(&returned).Error; err != nil {
 		return nil, fmt.Errorf("error upserting calendar days batch: %w", err)
 	}
-	inputIndex := make(map[string]int, len(days))
-	for i, day := range days {
-		inputIndex[fmt.Sprintf("%d|%s", day.GroupID, day.Date.Format("2006-01-02"))] = i
-	}
-	results := make([]GroupCalendarDayUpsertResult, len(days))
+	resultsByKey := make(map[string]GroupCalendarDayUpsertResult, len(returned))
 	for i := range returned {
 		row := &returned[i]
-		index, ok := inputIndex[fmt.Sprintf("%d|%s", row.GroupID, row.DateKey)]
-		if !ok {
+		key := fmt.Sprintf("%d|%s", row.GroupID, row.DateKey)
+		if _, ok := lastForKey[key]; !ok {
 			return nil, fmt.Errorf("error upserting calendar days batch: RETURNING %d|%s fuera del lote", row.GroupID, row.DateKey)
 		}
-		results[index] = GroupCalendarDayUpsertResult{ID: row.ID, CreatedAt: row.Created, UpdatedAt: row.Updated}
+		resultsByKey[key] = GroupCalendarDayUpsertResult{ID: row.ID, CreatedAt: row.Created, UpdatedAt: row.Updated}
+	}
+	results := make([]GroupCalendarDayUpsertResult, len(days))
+	for i, day := range days {
+		results[i] = resultsByKey[dayKey(day)]
 	}
 	return results, nil
 }

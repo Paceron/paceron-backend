@@ -210,3 +210,36 @@ func TestGroupCalendarDayDao_UpsertMany_TransicionesEstadoPresencial(t *testing.
 		assert.Nil(t, found.PresencialClosedAt)
 	})
 }
+
+// TestGroupCalendarDayDao_UpsertMany_FechasDuplicadasUltimaGana: un lote con
+// la misma (group_id, date) dos veces no puede terminar en el ON CONFLICT
+// multi-fila (Postgres: "command cannot affect row a second time") — el DAO
+// deduplica y gana la ÚLTIMA ocurrencia (last-write-wins del loop secuencial).
+func TestGroupCalendarDayDao_UpsertMany_FechasDuplicadasUltimaGana(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "umn9")
+	duplicated := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	unique := time.Date(2026, 12, 2, 0, 0, 0, 0, time.UTC)
+	days := []*dbs.GroupCalendarDay{
+		{GroupID: group.ID, Date: duplicated, Kind: "rest"},
+		{GroupID: group.ID, Date: duplicated, Kind: "other", OtherName: strPtrCal("Ganadora")},
+		{GroupID: group.ID, Date: unique, Kind: "rest"},
+	}
+
+	results, err := dao.UpsertMany(nil, days)
+
+	require.NoError(t, err)
+	require.Len(t, results, len(days), "cada posición del input conserva su resultado por clave")
+	require.NotZero(t, results[0].ID)
+	assert.Equal(t, results[0].ID, results[1].ID, "ambas ocurrencias del duplicado resuelven a la misma fila física")
+	assert.NotZero(t, results[2].ID)
+	assert.NotEqual(t, results[0].ID, results[2].ID)
+
+	found, findErr := dao.FindByGroupAndDate(nil, group.ID, duplicated)
+	require.NoError(t, findErr)
+	require.NotNil(t, found)
+	assert.Equal(t, "other", found.Kind, "gana la última escritura del lote")
+	require.NotNil(t, found.OtherName)
+	assert.Equal(t, "Ganadora", *found.OtherName)
+}

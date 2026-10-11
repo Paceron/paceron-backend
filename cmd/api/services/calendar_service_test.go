@@ -336,6 +336,48 @@ func TestCalendarService_Bulk_Success(t *testing.T) {
 	assert.Len(t, rows, 2, "las 2 fechas del bulk deben haber quedado commiteadas por la transacción")
 }
 
+// TestCalendarService_Bulk_FechasDuplicadasGanaLaUltima: la misma fecha dos
+// veces en Dates no puede romper el upsert batch ("ON CONFLICT DO UPDATE
+// command cannot affect row a second time"). Con kind training las dos
+// ocurrencias instancian contenido distinto y gana la ÚLTIMA escritura.
+func TestCalendarService_Bulk_FechasDuplicadasGanaLaUltima(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	groupDao := daos.NewGroupDao(db)
+	teamDao := daos.NewTeamDao(db)
+	groupUserDao := daos.NewGroupUserDao(db)
+	calendarDao := daos.NewGroupCalendarDayDao(db)
+	svc := NewCalendarService(calendarDao, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, db)
+
+	owner := &dbs.User{Name: "Test", Surname: "Owner", Email: "calendar-bulk-dup-owner@test.com", DNI: "50000102", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	team := &dbs.Team{Name: "Equipo bulk dup", MaxMembers: 10, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo bulk dup", TeamID: team.ID, IsMain: true}
+	require.NoError(t, db.Create(group).Error)
+	exercise := &dbs.Exercise{OwnerID: owner.ID, Name: "Ejercicio bulk dup", Kind: "running"}
+	require.NoError(t, db.Create(exercise).Error)
+	session := &dbs.Session{OwnerID: owner.ID, Name: "Sesión bulk dup"}
+	require.NoError(t, db.Create(session).Error)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: session.ID, ExerciseID: exercise.ID, Role: "main"}).Error)
+
+	sessionID := session.ID
+	resp, err := svc.Bulk(nil, group.ID, owner.ID, calendar.BulkRequest{Dates: []string{"2099-11-01", "2099-11-01"}, Kind: "training", SessionID: &sessionID})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Days, 2)
+	require.NotNil(t, resp.Days[0].SessionInstance)
+	require.NotNil(t, resp.Days[1].SessionInstance)
+	assert.NotEqual(t, resp.Days[0].SessionInstance.ID, resp.Days[1].SessionInstance.ID, "cada ocurrencia instanció su propia sesión")
+	assert.Equal(t, "training", resp.Days[0].Kind)
+	assert.Equal(t, "training", resp.Days[1].Kind)
+
+	rows, err := calendarDao.FindByGroupAndRange(nil, group.ID, time.Date(2099, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2099, 11, 1, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "una fila física por fecha, no un 500 del ON CONFLICT")
+	require.NotNil(t, rows[0].SessionInstanceID)
+	assert.Equal(t, resp.Days[1].SessionInstance.ID, *rows[0].SessionInstanceID, "la fila quedó con la instancia de la última escritura")
+}
+
 func TestCalendarService_BulkClear_Success(t *testing.T) {
 	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
 		return &dbs.Group{ID: id, TeamID: 1}, nil
