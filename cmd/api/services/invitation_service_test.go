@@ -22,6 +22,7 @@ import (
 type mockUserDaoForInvitation struct {
 	findByEmailFn func(ctx *gin.Context, email string) (*dbs.User, error)
 	findByIDFn    func(ctx *gin.Context, userID int64) (*dbs.User, error)
+	findByIDsFn   func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
 }
 
 func (m *mockUserDaoForInvitation) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
@@ -55,6 +56,9 @@ func (m *mockUserDaoForInvitation) SearchActive(ctx *gin.Context, query string, 
 }
 
 func (m *mockUserDaoForInvitation) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, userIDs)
+	}
 	return nil, nil
 }
 
@@ -537,8 +541,8 @@ func TestInvitationService_ListPendingInvitations_Success(t *testing.T) {
 		},
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
-		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
-			return &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"}, nil
+		findByIDsFn: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			return []*dbs.User{{ID: 2, Name: "Pedro", Email: "pedro@test.com"}}, nil
 		},
 	}
 
@@ -565,11 +569,16 @@ func TestInvitationService_ListPendingInvitations_IncludesInviterInfo(t *testing
 		},
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
-		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
-			if userID == 5 {
-				return &dbs.User{ID: 5, Name: "Entrenador Juan"}, nil
+		findByIDsFn: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			users := make([]*dbs.User, 0, len(userIDs))
+			for _, id := range userIDs {
+				if id == 5 {
+					users = append(users, &dbs.User{ID: 5, Name: "Entrenador Juan"})
+					continue
+				}
+				users = append(users, &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"})
 			}
-			return &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"}, nil
+			return users, nil
 		},
 	}
 
@@ -684,13 +693,13 @@ func TestInvitationService_ListPendingInvitationsForUser_Success(t *testing.T) {
 		},
 	}
 	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+			return []dbs.Team{{ID: 1, Name: "Alpha"}}, nil
 		},
 	}
 	userDaoForInvitation := &mockUserDaoForInvitation{
-		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
-			return &dbs.User{ID: 2, Name: "Pedro", Email: "pedro@test.com"}, nil
+		findByIDsFn: func(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error) {
+			return []*dbs.User{{ID: 2, Name: "Pedro", Email: "pedro@test.com"}}, nil
 		},
 	}
 
@@ -1352,8 +1361,8 @@ func TestInvitationService_ListPendingInvitationsForUser_FeeVigente(t *testing.T
 	}
 	// Fee vigente (cambiado tras crear la invitación).
 	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: 1, Name: "Alpha", OwnerID: 5, MembershipFee: 4321}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+			return []dbs.Team{{ID: 1, Name: "Alpha", OwnerID: 5, MembershipFee: 4321}}, nil
 		},
 	}
 

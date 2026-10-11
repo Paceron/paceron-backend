@@ -240,15 +240,14 @@ func (s *invitationService) ListPendingInvitations(ctx *gin.Context, teamID int6
 	}
 
 	now := time.Now()
-	responses := make([]invitation.InvitationResponse, 0, len(invitations))
+	pending := make([]dbs.Invitation, 0, len(invitations))
 	for _, inv := range invitations {
 		if now.After(inv.ExpiresAt) {
 			continue
 		}
-		responses = append(responses, s.toInvitationResponse(ctx, inv, teamDB, "ListPendingInvitations"))
+		pending = append(pending, inv)
 	}
-
-	return responses, nil
+	return s.batchInvitationResponses(ctx, "ListPendingInvitations", pending, map[int64]*dbs.Team{teamID: teamDB}), nil
 }
 
 // ListPendingInvitationsForUser devuelve las invitaciones pendientes de un usuario,
@@ -263,23 +262,71 @@ func (s *invitationService) ListPendingInvitationsForUser(ctx *gin.Context, user
 	}
 
 	now := time.Now()
-	responses := make([]invitation.InvitationResponse, 0, len(invitations))
+	pending := make([]dbs.Invitation, 0, len(invitations))
 	for _, inv := range invitations {
 		if now.After(inv.ExpiresAt) {
 			continue
 		}
-
-		teamDB, err := s.teamDao.FindByID(ctx, inv.TeamID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding team for invitation listing", err,
-				customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
-				customlogger.Tag("team_id", fmt.Sprintf("%d", inv.TeamID)),
-				customlogger.TagMethod("ListPendingInvitationsForUser"))
-		}
-		responses = append(responses, s.toInvitationResponse(ctx, inv, teamDB, "ListPendingInvitationsForUser"))
+		pending = append(pending, inv)
 	}
+	// Teams en lote (D9): 1 query de todos los equipos de las invitaciones
+	// vigentes en vez de un FindByID por invitación. Los faltantes degradan
+	// igual que el FindByID puntual: team_name vacío, fee 0, can_receive false.
+	teamIDs := make([]int64, 0, len(pending))
+	seenTeam := make(map[int64]struct{}, len(pending))
+	for _, inv := range pending {
+		if _, dup := seenTeam[inv.TeamID]; !dup {
+			seenTeam[inv.TeamID] = struct{}{}
+			teamIDs = append(teamIDs, inv.TeamID)
+		}
+	}
+	teamByID := make(map[int64]*dbs.Team, len(teamIDs))
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for invitation listing", err,
+				customlogger.TagMethod("ListPendingInvitationsForUser"))
+		} else {
+			for i, t := range teams {
+				teamByID[t.ID] = &teams[i]
+			}
+		}
+	}
+	return s.batchInvitationResponses(ctx, "ListPendingInvitationsForUser", pending, teamByID), nil
+}
 
-	return responses, nil
+// batchInvitationResponses arma las respuestas de un listado de invitaciones
+// vigentes (D9): los equipos ya resueltos por el caller y los users (invitee +
+// inviter, dedupeados) en 1 query — en vez de 2N+1 lookups. team/user
+// faltantes degradan igual que el lookup puntual: nombres/email vacíos.
+func (s *invitationService) batchInvitationResponses(ctx *gin.Context, method string, invitations []dbs.Invitation, teamByID map[int64]*dbs.Team) []invitation.InvitationResponse {
+	userIDs := make([]int64, 0, 2*len(invitations))
+	seenUser := make(map[int64]struct{}, 2*len(invitations))
+	for _, inv := range invitations {
+		for _, uid := range []int64{inv.InviteeID, inv.InviterID} {
+			if _, dup := seenUser[uid]; !dup {
+				seenUser[uid] = struct{}{}
+				userIDs = append(userIDs, uid)
+			}
+		}
+	}
+	userByID := make(map[int64]*dbs.User, len(userIDs))
+	if len(userIDs) > 0 {
+		users, err := s.userDao.FindByIDs(ctx, userIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding users for invitation listing", err,
+				customlogger.TagMethod(method))
+		} else {
+			for _, u := range users {
+				userByID[u.ID] = u
+			}
+		}
+	}
+	responses := make([]invitation.InvitationResponse, 0, len(invitations))
+	for _, inv := range invitations {
+		responses = append(responses, s.invitationResponseFrom(ctx, inv, teamByID[inv.TeamID], userByID[inv.InviteeID], userByID[inv.InviterID], method))
+	}
+	return responses
 }
 
 // GetInvitationDetail devuelve el detalle de una invitación puntual, validando que
@@ -311,30 +358,41 @@ func (s *invitationService) GetInvitationDetail(ctx *gin.Context, invitationID, 
 	return &response, nil
 }
 
-// toInvitationResponse arma el DTO de respuesta compartido por listados y detalle.
-// teamDB puede ser nil (si falló resolverlo) — en ese caso team_name queda vacío,
-// no bloquea la respuesta.
+// toInvitationResponse arma el DTO de respuesta puntual (detalle). teamDB puede
+// ser nil (si falló resolverlo) — en ese caso team_name queda vacío, no bloquea
+// la respuesta. Los users van con lookup puntual: es un solo llamado, no listado.
 func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invitation, teamDB *dbs.Team, method string) invitation.InvitationResponse {
-	inviteeName, inviteeEmail := "", ""
 	inviteeUser, err := s.userDao.FindByID(ctx, inv.InviteeID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding invitee user for invitation response", err,
 			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
 			customlogger.Tag("invitee_id", fmt.Sprintf("%d", inv.InviteeID)),
 			customlogger.TagMethod(method))
-	} else if inviteeUser != nil {
-		inviteeName = inviteeUser.Name
-		inviteeEmail = inviteeUser.Email
 	}
 
-	inviterName := ""
 	inviterUser, err := s.userDao.FindByID(ctx, inv.InviterID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding inviter user for invitation response", err,
 			customlogger.Tag("invitation_id", fmt.Sprintf("%d", inv.ID)),
 			customlogger.Tag("inviter_id", fmt.Sprintf("%d", inv.InviterID)),
 			customlogger.TagMethod(method))
-	} else if inviterUser != nil {
+	}
+
+	return s.invitationResponseFrom(ctx, inv, teamDB, inviteeUser, inviterUser, method)
+}
+
+// invitationResponseFrom arma el DTO con los users/team ya resueltos (listado
+// batch o detalle). Missings degradan igual que el FindByID original: campos
+// vacíos, fee 0, can_receive false.
+func (s *invitationService) invitationResponseFrom(ctx *gin.Context, inv dbs.Invitation, teamDB *dbs.Team, inviteeUser, inviterUser *dbs.User, method string) invitation.InvitationResponse {
+	inviteeName, inviteeEmail := "", ""
+	if inviteeUser != nil {
+		inviteeName = inviteeUser.Name
+		inviteeEmail = inviteeUser.Email
+	}
+
+	inviterName := ""
+	if inviterUser != nil {
 		inviterName = inviterUser.Name
 	}
 

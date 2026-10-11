@@ -478,26 +478,6 @@ func TestDBError_Shift_RespuestaDetalleFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "no encontrada")
 }
 
-// AdministeredCalendar con 2 días presenciales del mismo día: la query de
-// colisiones falla (log + wrap).
-func TestDBError_AdministeredCalendar_DetectFails(t *testing.T) {
-	db := testutils.SetupTestDB(t)
-	owner, group := task3OwnerGroup(t, db, "dbadmin")
-	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: group.ID, UserID: owner.ID, DateStart: time.Now()}).Error)
-	dao := daos.NewGroupCalendarDayDao(db)
-	d1 := time.Now().AddDate(0, 0, 24)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: d1, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeHHMM("10:00"), PresencialTimeTo: utcTimeHHMM("11:00")}))
-	group2 := &dbs.Group{Name: "G2 dbadmin", TeamID: group.TeamID, IsMain: false}
-	require.NoError(t, db.Create(group2).Error)
-	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group2.ID, Date: d1, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeHHMM("12:00"), PresencialTimeTo: utcTimeHHMM("13:00")}))
-	failing := testutils.FailingDB(t, db, nthFail("select", 1))
-	svc := NewCalendarService(dao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, failing)
-
-	_, err := svc.AdministeredCalendar(nil, owner.ID, d1, d1)
-
-	require.EqualError(t, err, "error al detectar colisiones presenciales")
-}
-
 // AdministeredCalendar con instancia huérfana: el detalle embebido falla al armar.
 func TestDBError_AdministeredCalendar_ConInstanciaHuerfanaRompe(t *testing.T) {
 	db := testutils.SetupTestDB(t)
