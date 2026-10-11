@@ -44,18 +44,18 @@
 
 **Steps:**
 
-- [ ] **1.1** DB: columnas `lat`/`lng` en el modelo `User` (nullable,
+- [x] **1.1** DB: columnas `lat`/`lng` en el modelo `User` (nullable,
   sin backfill). Verificar `AutoMigrate` con Node real vía `SetupTestDB`.
-- [ ] **1.2** DTOs: aceptar `lat`/`lng` en registro y update de usuario;
+- [x] **1.2** DTOs: aceptar `lat`/`lng` en registro y update de usuario;
   devolverlos en las respuestas correspondientes (nullable, sin omitempty
   si la convención que use hoy la dirección dice sobre campos nulos de dirección: nullable sin omitempty).
-- [ ] **1.3** Validación: rango lat/lng (D2); charset relajado en los 5
+- [x] **1.3** Validación: rango lat/lng (D2); charset relajado en los 5
   regex de dirección del update y en los 4 del registro (D3), con mensajes
   actualizados y asertados textualmente.
-- [ ] **1.4** Tests: rango (2 casos, lat/lng), charset (nombres con
+- [x] **1.4** Tests: rango (2 casos, lat/lng), charset (nombres con
   guion/punto/apóstrofe/coma EN pasan y se guardan; payload SQLi en country
   sigue 400 con el mensaje nuevo — pin de doble uso).
-- [ ] **1.5** Swagger anotado + regenerado; `go build/vet`, suite del
+- [x] **1.5** Swagger anotado + regenerado; `go build/vet`, suite del
   paquete con DB real; commit
   `feat(users): ubicacion con lat/lng y charset de direccion (Gap 29)`.
 
@@ -73,14 +73,14 @@
 
 **Steps:**
 
-- [ ] **2.1** DB: columnas de `Team` (ídem 1.1).
-- [ ] **2.2** DTOs de team lat/lng request/response en create + update
+- [x] **2.1** DB: columnas de `Team` (ídem 1.1).
+- [x] **2.2** DTOs de team lat/lng request/response en create + update
   address + respuestas.
-- [ ] **2.3** Validación de rango (ídem 1.3 — solo rango; teams NO
+- [x] **2.3** Validación de rango (ídem 1.3 — solo rango; teams NO
   aprovecha charset hoy y no se toca).
-- [ ] **2.4** Tests: create con punto, update address sin punto no toca
+- [x] **2.4** Tests: create con punto, update address sin punto no toca
   lat/ng, fuera de rango 400, response nullable.
-- [ ] **2.5** Swagger + build/vet/suite; commit
+- [x] **2.5** Swagger + build/vet/suite; commit
   `feat(teams): ubicacion con lat/lng del equipo (Gap 29)`.
 
 ### Task 3: Rendimiento — upsert multi-fila y batch de instanciación
@@ -97,20 +97,20 @@
 
 **Steps:**
 
-- [ ] **3.1** `UpsertMany` + limpieza presencial en SQL (D5), con test de
+- [x] **3.1** `UpsertMany` + limpieza presencial en SQL (D5), con test de
   mapeo orden→id y del CASE de `presencial_opened_at`/`closed_at`
   (activación/cambio de instancia limpia, re-activación de la misma
   instancia conserva).
-- [ ] **3.2** Instanciación batch por día (D6): sesiones/links/ejercicios
+- [x] **3.2** Instanciación batch por día (D6): sesiones/links/ejercicios
   de catálogo con `IN`, inserts multi-fila con RETURNING y map índice→id;
   `ErrCalendarSessionNotFound` y demás errores idénticos al path de hoy.
-- [ ] **3.3** Migrar los write paths de Stamp + Bulk (+ Shift si su loop
+- [x] **3.3** Migrar los write paths de Stamp + Bulk (+ Shift si su loop
   hoy usa `Upsert` per-day) al batch; `UpsertDay` intacto.
-- [ ] **3.4** Tests: extend del test existente `TestCalendarService_GetRange_
+- [x] **3.4** Tests: extend del test existente `TestCalendarService_GetRange_
   BatchDetalleQueries` con un test de conteo para stamp de 4 días
   (queries esperadas exactas); regresión: assembling/rollback/keep-con-
   feedback/cerradas 422 sin cambiar aserciones.
-- [ ] **3.5** Commit `perf(calendar): stamp y bulk con escritura batch`.
+- [x] **3.5** Commit `perf(calendar): stamp y bulk con escritura batch`.
 
 ### Task 4: Rendimiento — borrado batch de instancias y bulk-clear
 
@@ -127,14 +127,14 @@
 
 **Steps:**
 
-- [ ] **4.1** DAOs para feedback/instancia con `IN` (D6c) + finder de
+- [x] **4.1** DAOs para feedback/instancia con `IN` (D6c) + finder de
   fechas (D7); tests Postgres real.
-- [ ] **4.2** `deleteSupersededInstances(batch)` con semántica D10 exacta
+- [x] **4.2** `deleteSupersededInstances(batch)` con semántica D10 exacta
   (protege Instancia si feedback de sesión o de alguno de sus ejercicios);
   migrar stamp/bulk/shift/bulk-clear.
-- [ ] **4.3** Bulk-clear con 1 read `IN`, guards en memoria (mismo
+- [x] **4.3** Bulk-clear con 1 read `IN`, guards en memoria (mismo
   orden/errores del 422), delete único y supersede batch.
-- [ ] **4.4** Tests de conteo y regresión (aserciones existentes intactas);
+- [x] **4.4** Tests de conteo y regresión (aserciones existentes intactas);
   commit `perf(calendar): bulk-clear y borrado de instancias en lote`.
 
 ### Task 5: Rendimiento — administered-calendar e invitaciones en lote
@@ -149,12 +149,12 @@
 
 **Steps:**
 
-- [ ] **5.1** AdministeredCalendar sin el loop per-fecha de
+- [x] **5.1** AdministeredCalendar sin el loop per-fecha de
   `findPresencialCollisions` (D8 — 1 query + memoria; helper del guard
   intacto); respuestas byte-idénticas.
-- [ ] **5.2** Invitaciones: 3 queries totales con maps (D9), misma
+- [x] **5.2** Invitaciones: 3 queries totales con maps (D9), misma
   tolerancia ante team/user no resuelto que el `FindByID` actual.
-- [ ] **5.3** Tests con conteo (rango del calendario administrado y
+- [x] **5.3** Tests con conteo (rango del calendario administrado y
   las listas de invitaciones) + regresión SIN cambiar aserciones; commit
   `perf(reads): colisiones del calendario administrado e invitaciones en lote`.
 
@@ -168,15 +168,15 @@
 
 **Steps:**
 
-- [ ] **6.1** SQLi pins (D10.1): `/users/search` q, `/teams/search`
+- [x] **6.1** SQLi pins (D10.1): `/users/search` q, `/teams/search`
   country/province/city, filtros de texto del historial; sort/order fuera
   de whitelist → fallback; payload matcheado literal (200, sin error SQL).
-- [ ] **6.2** No-leak 500s (D10.2): con `FailingDB`, asertar que los
+- [x] **6.2** No-leak 500s (D10.2): con `FailingDB`, asertar que los
   mensajes genéricos de error NUNCA incluyen el detalle del driver
   (SELECT/sysntax/SQLSTATE); endpoints calientes sin mock completo.
-- [ ] **6.3** Audit authz (D10.3): tabla endpoint → guard → test en el
+- [x] **6.3** Audit authz (D10.3): tabla endpoint → guard → test en el
   report; implementar los 403/404 faltantes (mock del paquete).
-- [ ] **6.4** Commit `test(security): pins anti-injection, no-leak 500 y audit authz`.
+- [x] **6.4** Commit `test(security): pins anti-injection, no-leak 500 y audit authz`.
 
 ### Task 7: Docs + verificación final
 
@@ -191,10 +191,10 @@
 
 **Steps:**
 
-- [ ] **7.1** Docs con shapes verificados contra código; `openspec
+- [x] **7.1** Docs con shapes verificados contra código; `openspec
   validate latlng-optimizaciones-y-endurecimiento --strict` → valid.
-- [ ] **7.2** Suite completa con DB real `go test -count=1 ./...` → 0 FAIL.
-- [ ] **7.3** Coverage con cache limpio → gate 85 PASS,
+- [x] **7.2** Suite completa con DB real `go test -count=1 ./...` → 0 FAIL.
+- [x] **7.3** Coverage con cache limpio → gate 85 PASS,
   `.testcoverage.yml` sin diff; gofmt/build/vet limpios; swagger final
   sync revisado.
-- [ ] **7.4** Commit `docs(gap29-perf): cerrar latlng y optimizaciones en docs`.
+- [x] **7.4** Commit `docs(gap29-perf): cerrar latlng y optimizaciones en docs`.

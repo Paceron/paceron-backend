@@ -497,3 +497,43 @@ Chat por instancia de sesión, sobre `session-instances`. Doc de dominio complet
 
   Payload mínimo, **sin contenido** del mensaje: es un "algo llegó" — el contenido se recupera por REST con `since` (fijar `since` al último `id` visto). Best-effort: nadie suscripto → no-op. Usar `payload.sessionMessageId` solo junto al refetch (ej. conteo de no-leídos).
 - Acción frontend: al recibir el frame refetchear `?since=<último id>`, push a la lista; mantener el último `id` procesado por sesión.
+
+## 14. Gap 29 — lat/lng de usuario y equipo, 500 genérico en feedback (change `latlng-optimizaciones-y-endurecimiento`)
+
+Cambios **aditivos** de contrato confirmados en el código final de la rama `feature/latlng-optimizaciones-y-endurecimiento` (HEAD `87b5935`), salvo el punto 14.3 (cambio de texto del 500 — ver ahí). Doc de dominio: `docs/CATALOGO_Y_CALENDARIO.md` §8.13. Sin backfill: los usuarios/equipos existentes devuelven `lat`/`lng` `null` hasta que alguien los setee.
+
+### 14.1 NUEVO — `lat`/`lng` en register/update de usuario
+
+- **`lat`/`lng` aceptados en** `POST /register` y `PUT /users/{id}` (`*float64` opcional — solo se validan/setean si vienen en el payload).
+- **Se devuelven siempre, nullable sin `omitempty`**: `"lat": null` si no están seteados, en register response y update response de usuario.
+
+```json
+{ "lat": -31.4178, "lng": -64.1873 }
+```
+
+- **Validación de rango (`400`, `apierror.APIError`):** `lat` fuera de [-90, 90] → message `"lat fuera de rango"`; `lng` fuera de [-180, 180] → `"lng fuera de rango"`. Solo se valida el campo que vino.
+
+### 14.2 Charset relajado de dirección en register/update de usuario
+
+Nombres/direcciones reales tipo "Maipú-O'Connor, St." ahora pasan: los 4 campos de dirección de registro (`country`/`city`/`street`/`number`, `province` de registro sin cambio) y los 5 de update (`country`/`province`/`city`/`street`/`number`) admiten **guion ASCII `-`, punto `.`, apóstrofe `'` y coma `,`**, además de lo ya admitido. NO hay soporte de guion tipográfico U+2013. Los mensajes de `400` por charset ahora listan los caracteres admitidos ("country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas", etc.). Payload SQLi en estos campos sigue siendo `400` (con el mensaje nuevo).
+
+### 14.3 AVISO — el 500 crudo del módulo feedback ahora devuelve `"error interno"` (único cambio NO aditivo de esta sección)
+
+El mapper compartido `respondFeedbackError` (10 handlers del dominio workout-feedback: create/get/update/delete/points/search/history…): los errores **sin sentinel tipado** (crudos del DAO/driver) respondían con el `err.Error()` completo (SQLSTATE/texto pgx filtrado al cliente) — **ahora responden `Message: "error interno"`** con el mismo status `500`. El detalle de la causa ya NO viaja al frontend (perseguirlo en logs del backend, no en la respuesta).
+
+Los códigos tipados intactos: `400 ErrWorkoutFeedbackInvalid`, `403 ErrWorkoutFeedbackForbidden`, `404 ErrWorkoutFeedbackNotFound`/`ErrTeamNotFound`, `409 ErrWorkoutFeedbackDuplicate` siguen devolviendo su message específico de siempre; respuestas exitosas no cambian.
+
+### 14.4 NUEVOS — `lat`/`lng` de equipo en create/update-address
+
+- **`POST /teams`** acepta `lat`/`lng` opcional (solo coordenadas — la dirección en sí se gestiona por el endpoint de address después).
+- **`PUT /teams/{id}/address`** acepta `lat`/`lng` opcional: omitidos = sin cambio; enviados = setear el valor. No hay forma de volver a `null` vía este endpoint.
+- **`lat`/`lng` devueltos en el team response** (nullable sin `omitempty`, `null` = no seteada). `TeamSearchResult` e `InvitationResponse` NO los exponen (siguen intactos).
+- **Validación (`400`):** mismo rango/mensajes que usuario — `"lat fuera de rango"`/`"lng fuera de rango"`, en Create y UpdateAddress.
+
+### 14.5 Nota — optimizaciones batch internas (sin cambio de API)
+
+Los endpoints de calendario e invitaciones (stamp/bulk/shift/bulk-clear/administered-calendar/next-session/listados de invitaciones) redujeron su número de round-trips a la base de datos internamente (escritura batch de días/instancias, borrado en lote, colisiones e invitaciones resueltas con pocas queries fijas). **Ningún contrato, shape ni código de error cambió** — detalles técnicos en `docs/CATALOGO_Y_CALENDARIO.md` §9. Acción frontend: ninguna, salvo que sea notoriamente más rápido.
+
+## 15. `GET /auth/permissions?user_id=` — pendiente de definición de producto
+
+Al auditar la seguridad de la rama quedó marcado un caso: `GET /auth/permissions?user_id=` hoy no aplica guard self/owner sobre `user_id` (cualquier usuario autenticado puede consultar permisos de otro). El change `latlng-optimizaciones-y-endurecimiento` lo dejó **sin cambio a propósito** — se necesita una definición de producto (¿a quién se le permite ver permisos de otro usuario y para qué?) antes de meter un guard que rompa un uso legítimo. Estado: pendiente de definición, NO documentado como bug cerrado.
