@@ -15,6 +15,11 @@ import (
 type GroupCalendarDaoInterface interface {
 	Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error
 	FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
+	// FindByGroupAndDates trae los días existentes para las fechas indicadas
+	// en UN solo query (design.md D7, bulk-clear). Espejo en lote de
+	// FindByGroupAndDate: devuelve solo las fechas con fila (las ausentes ni
+	// aparecen). Sin fechas no toca la DB.
+	FindByGroupAndDates(ctx *gin.Context, groupID int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	FindByGroupAndRange(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
 	// FindPresencialForGroupsInRange devuelve los días training+presencial de
 	// los grupos indicados en las fechas indicadas (base de la detección de
@@ -252,6 +257,18 @@ func (d *groupCalendarDayDao) FindPresencialForGroupsInRange(ctx *gin.Context, g
 		Find(&days).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding presencial days: %w", err)
+	}
+	return days, nil
+}
+
+func (d *groupCalendarDayDao) FindByGroupAndDates(ctx *gin.Context, groupID int64, dates []time.Time) ([]dbs.GroupCalendarDay, error) {
+	if len(dates) == 0 {
+		return nil, nil
+	}
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Where("group_id = ? AND date IN ?", groupID, dates).Order("date").Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding calendar days: %w", err)
 	}
 	return days, nil
 }

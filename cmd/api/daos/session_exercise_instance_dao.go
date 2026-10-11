@@ -27,6 +27,9 @@ type SessionExerciseInstanceDaoInterface interface {
 	// SessionInstance — paso hijo-antes-que-padre del borrado de instancia
 	// superada (design.md D10).
 	DeleteBySessionInstance(ctx *gin.Context, sessionInstanceID int64) error
+	// DeleteBySessionInstances borra físico los links de varias instancias
+	// en un solo DELETE con IN (design.md D6c). Lote vacío no toca la DB.
+	DeleteBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) error
 }
 
 type sessionExerciseInstanceDao struct {
@@ -98,6 +101,17 @@ func (d *sessionExerciseInstanceDao) DeleteBySessionInstance(ctx *gin.Context, s
 	err := d.DB.Where("session_instance_id = ?", sessionInstanceID).Delete(&dbs.SessionExerciseInstance{}).Error
 	if err != nil {
 		return fmt.Errorf("error deleting session exercise instances: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionExerciseInstanceDao) DeleteBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) error {
+	if len(sessionInstanceIDs) == 0 {
+		return nil
+	}
+	err := d.DB.Where("session_instance_id IN ?", sessionInstanceIDs).Delete(&dbs.SessionExerciseInstance{}).Error
+	if err != nil {
+		return fmt.Errorf("error deleting session exercise instances batch: %w", err)
 	}
 	return nil
 }

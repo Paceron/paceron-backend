@@ -796,6 +796,102 @@ func (s *calendarService) deleteSupersededInstance(ctx *gin.Context, tx *gorm.DB
 	return sessionInstanceDao.Delete(ctx, id)
 }
 
+// deleteSupersededInstances es el lote de deleteSupersededInstance (design.md
+// D6c) con semántica D10 por instancia idéntica: preservar si la sesión O
+// cualquiera de sus ejercicios tiene feedback activo. Queries fijas: 1 de
+// feedback por sesión, 1 de links de las no protegidas, 1 de feedback por
+// ejercicio, y deletes con IN de links/ejercicios/sesiones de las realmente
+// borrables (hijo→padre). Cualquier error sube y tumba la tx (rollback).
+func (s *calendarService) deleteSupersededInstances(ctx *gin.Context, tx *gorm.DB, ids []int64) error {
+	// Dedupe: dos días no comparten instancia (FindBySessionInstanceID espera
+	// un único día por instancia), pero la entrada llega de loops por fecha.
+	batchIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			batchIDs = append(batchIDs, id)
+		}
+	}
+	if len(batchIDs) == 0 {
+		return nil
+	}
+	sessionInstanceDao := daos.NewSessionInstanceDao(tx)
+	linkDao := daos.NewSessionExerciseInstanceDao(tx)
+	exerciseDao := daos.NewExerciseInstanceDao(tx)
+
+	sessionFeedback, err := sessionInstanceDao.HasFeedbackByIDs(ctx, batchIDs)
+	if err != nil {
+		return err
+	}
+	protected := make(map[int64]struct{}, len(sessionFeedback))
+	for _, id := range sessionFeedback {
+		protected[id] = struct{}{}
+	}
+	candidates := make([]int64, 0, len(batchIDs))
+	for _, id := range batchIDs {
+		if _, ok := protected[id]; !ok {
+			candidates = append(candidates, id)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	links, err := linkDao.FindBySessionInstances(ctx, candidates)
+	if err != nil {
+		return err
+	}
+	exerciseIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		exerciseIDs = append(exerciseIDs, link.ExerciseInstanceID)
+	}
+	exerciseFeedback, err := exerciseDao.HasFeedbackByIDs(ctx, exerciseIDs)
+	if err != nil {
+		return err
+	}
+	// El feedback de un ejercicio protege su propia sesión (D10); los ids de
+	// feedback son de otra tabla, no entran al set por id de sesión.
+	protectedByExercise := make(map[int64]struct{}, len(exerciseFeedback))
+	for _, id := range exerciseFeedback {
+		protectedByExercise[id] = struct{}{}
+	}
+	for _, link := range links {
+		if _, ok := protectedByExercise[link.ExerciseInstanceID]; ok {
+			protected[link.SessionInstanceID] = struct{}{}
+		}
+	}
+	deletable := make([]int64, 0, len(candidates))
+	for _, id := range candidates {
+		if _, ok := protected[id]; !ok {
+			deletable = append(deletable, id)
+		}
+	}
+	if len(deletable) == 0 {
+		return nil
+	}
+	deleteExerciseIDs := make([]int64, 0, len(deletable))
+	seenExercises := make(map[int64]struct{}, len(links))
+	for _, link := range links {
+		if _, ok := protected[link.SessionInstanceID]; ok {
+			continue
+		}
+		if _, dup := seenExercises[link.ExerciseInstanceID]; !dup {
+			seenExercises[link.ExerciseInstanceID] = struct{}{}
+			deleteExerciseIDs = append(deleteExerciseIDs, link.ExerciseInstanceID)
+		}
+	}
+	if err := linkDao.DeleteBySessionInstances(ctx, deletable); err != nil {
+		return err
+	}
+	if err := exerciseDao.DeleteByIDs(ctx, deleteExerciseIDs); err != nil {
+		return err
+	}
+	return sessionInstanceDao.DeleteByIDs(ctx, deletable)
+}
+
 func closedDayForRequest(existing *dbs.GroupCalendarDay, candidate *dbs.GroupCalendarDay, now time.Time) bool {
 	if existing != nil {
 		return isCalendarDayClosed(*existing, now)
@@ -1317,6 +1413,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		if err != nil {
 			return err
 		}
+		superseded := make([]int64, 0)
 		for i := range rows {
 			created := existingByDate[rows[i].Date.Format("2006-01-02")] == nil
 			if !created {
@@ -1328,10 +1425,12 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 			rows[i].CreatedAt = results[i].CreatedAt
 			rows[i].UpdatedAt = results[i].UpdatedAt
 			if existing := existingByDate[rows[i].Date.Format("2006-01-02")]; existing != nil && existing.SessionInstanceID != nil {
-				if err := s.deleteSupersededInstance(ctx, tx, *existing.SessionInstanceID); err != nil {
-					return err
-				}
+				superseded = append(superseded, *existing.SessionInstanceID)
 			}
+		}
+		// D6c: un solo borrado batch de las instancias superadas de todo el lote.
+		if err := s.deleteSupersededInstances(ctx, tx, superseded); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1519,6 +1618,7 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 		if err != nil {
 			return err
 		}
+		superseded := make([]int64, 0, len(rows))
 		for i := range rows {
 			if existing[i] != nil {
 				results[i].CreatedAt, results[i].UpdatedAt = time.Time{}, time.Time{}
@@ -1527,10 +1627,12 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			rows[i].CreatedAt = results[i].CreatedAt
 			rows[i].UpdatedAt = results[i].UpdatedAt
 			if !preservada[i] && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
-				if err := s.deleteSupersededInstance(ctx, tx, *existing[i].SessionInstanceID); err != nil {
-					return err
-				}
+				superseded = append(superseded, *existing[i].SessionInstanceID)
 			}
+		}
+		// D6c: un solo borrado batch de las instancias superadas de todo el lote.
+		if err := s.deleteSupersededInstances(ctx, tx, superseded); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1578,15 +1680,20 @@ func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, r
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-		existing := make([]*dbs.GroupCalendarDay, len(dates))
+		// D7: 1 lectura para todas las fechas; las cerradas se evalúan en
+		// memoria en el MISMO orden/criterio que el loop por fecha de antes
+		// (por fechas del input → el 422 lista las cerradas como hoy).
+		existing, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, dates)
+		if err != nil {
+			return err
+		}
+		dayByDate := make(map[string]*dbs.GroupCalendarDay, len(existing))
+		for i := range existing {
+			dayByDate[existing[i].Date.Format("2006-01-02")] = &existing[i]
+		}
 		closed := make([]string, 0)
-		for i, date := range dates {
-			var err error
-			existing[i], err = txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
-			if existing[i] != nil && isCalendarDayClosed(*existing[i], time.Now()) {
+		for _, date := range dates {
+			if day := dayByDate[date.Format("2006-01-02")]; day != nil && isCalendarDayClosed(*day, time.Now()) {
 				closed = append(closed, date.Format("2006-01-02"))
 			}
 		}
@@ -1596,14 +1703,13 @@ func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, r
 		if err := txCalendarDao.DeleteByDates(ctx, groupID, dates); err != nil {
 			return err
 		}
-		for _, day := range existing {
-			if day != nil && day.SessionInstanceID != nil {
-				if err := s.deleteSupersededInstance(ctx, tx, *day.SessionInstanceID); err != nil {
-					return err
-				}
+		superseded := make([]int64, 0, len(existing))
+		for _, date := range dates {
+			if day := dayByDate[date.Format("2006-01-02")]; day != nil && day.SessionInstanceID != nil {
+				superseded = append(superseded, *day.SessionInstanceID)
 			}
 		}
-		return nil
+		return s.deleteSupersededInstances(ctx, tx, superseded)
 	})
 	if err != nil {
 		if errors.Is(err, ErrCalendarDayClosed) {

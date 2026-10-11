@@ -61,6 +61,14 @@ func (m *mockSessionInstanceDao) HasFeedback(ctx *gin.Context, id int64) (bool, 
 	return false, nil
 }
 
+func (m *mockSessionInstanceDao) HasFeedbackByIDs(_ *gin.Context, ids []int64) ([]int64, error) {
+	return []int64{}, nil
+}
+
+func (m *mockSessionInstanceDao) DeleteByIDs(_ *gin.Context, _ []int64) error {
+	return nil
+}
+
 func (m *mockSessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
 	if m.hasInstanceAccessFn != nil {
 		return m.hasInstanceAccessFn(ctx, instanceID, callerID)

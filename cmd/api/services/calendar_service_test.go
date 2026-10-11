@@ -115,6 +115,9 @@ func (m *mockGroupCalendarDao) FindBySessionInstanceID(ctx *gin.Context, session
 	}
 	return nil, nil
 }
+func (m *mockGroupCalendarDao) FindByGroupAndDates(_ *gin.Context, _ int64, _ []time.Time) ([]dbs.GroupCalendarDay, error) {
+	return nil, nil
+}
 func (m *mockGroupCalendarDao) SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
 	if m.setPresencialOpenedAtFn != nil {
 		return m.setPresencialOpenedAtFn(ctx, dayID, at)
