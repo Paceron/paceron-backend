@@ -322,9 +322,40 @@ func (s *invitationService) batchInvitationResponses(ctx *gin.Context, method st
 			}
 		}
 	}
+	// Can_receive en lote (Task 8): 1 query de connections authorized de todos
+	// los owners del listado, replicando el criterio exacto de
+	// teamOwnerCanReceivePayments (fallo de query o owner sin conexión → false).
+	// (user_id, client_id) es clave natural: máximo una fila por owner.
+	canReceiveByOwner := make(map[int64]bool, len(teamByID))
+	ownerIDs := make([]int64, 0, len(teamByID))
+	seenOwner := make(map[int64]struct{}, len(teamByID))
+	for _, team := range teamByID {
+		if team == nil {
+			continue
+		}
+		if _, dup := seenOwner[team.OwnerID]; !dup {
+			seenOwner[team.OwnerID] = struct{}{}
+			ownerIDs = append(ownerIDs, team.OwnerID)
+		}
+	}
+	if s.sellerConnDao != nil && len(ownerIDs) > 0 {
+		conns, err := s.sellerConnDao.FindAuthorizedByUserIDs(ctx, ownerIDs, config.MyMP.OAuthClientID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking seller connections for can_receive_payments", err, customlogger.TagMethod(method))
+		} else {
+			for _, conn := range conns {
+				canReceiveByOwner[conn.UserID] = conn.PublicKey != ""
+			}
+		}
+	}
 	responses := make([]invitation.InvitationResponse, 0, len(invitations))
 	for _, inv := range invitations {
-		responses = append(responses, s.invitationResponseFrom(ctx, inv, teamByID[inv.TeamID], userByID[inv.InviteeID], userByID[inv.InviterID], method))
+		team := teamByID[inv.TeamID]
+		canReceive := false
+		if team != nil {
+			canReceive = canReceiveByOwner[team.OwnerID]
+		}
+		responses = append(responses, s.invitationResponseFrom(ctx, inv, team, userByID[inv.InviteeID], userByID[inv.InviterID], method, canReceive))
 	}
 	return responses
 }
@@ -378,13 +409,14 @@ func (s *invitationService) toInvitationResponse(ctx *gin.Context, inv dbs.Invit
 			customlogger.TagMethod(method))
 	}
 
-	return s.invitationResponseFrom(ctx, inv, teamDB, inviteeUser, inviterUser, method)
+	return s.invitationResponseFrom(ctx, inv, teamDB, inviteeUser, inviterUser, method, s.teamOwnerCanReceivePayments(ctx, teamDB, method))
 }
 
 // invitationResponseFrom arma el DTO con los users/team ya resueltos (listado
-// batch o detalle). Missings degradan igual que el FindByID original: campos
-// vacíos, fee 0, can_receive false.
-func (s *invitationService) invitationResponseFrom(ctx *gin.Context, inv dbs.Invitation, teamDB *dbs.Team, inviteeUser, inviterUser *dbs.User, method string) invitation.InvitationResponse {
+// batch o detalle) y el flag can_receive_payments ya resuelto por el caller
+// (batch de connections en listados, lookup puntual en el detalle). Missings
+// degradan igual que el FindByID original: campos vacíos, fee 0, can_receive false.
+func (s *invitationService) invitationResponseFrom(ctx *gin.Context, inv dbs.Invitation, teamDB *dbs.Team, inviteeUser, inviterUser *dbs.User, method string, canReceivePayments bool) invitation.InvitationResponse {
 	inviteeName, inviteeEmail := "", ""
 	if inviteeUser != nil {
 		inviteeName = inviteeUser.Name
@@ -413,7 +445,7 @@ func (s *invitationService) invitationResponseFrom(ctx *gin.Context, inv dbs.Inv
 		InviteeEmail:       inviteeEmail,
 		Status:             inv.Status,
 		MembershipFee:      teamMembershipFee(teamDB),
-		CanReceivePayments: s.teamOwnerCanReceivePayments(ctx, teamDB, method),
+		CanReceivePayments: canReceivePayments,
 		ExpiresAt:          inv.ExpiresAt,
 		CreatedAt:          inv.CreatedAt,
 	}
