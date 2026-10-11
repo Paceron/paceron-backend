@@ -534,6 +534,6 @@ Los códigos tipados intactos: `400 ErrWorkoutFeedbackInvalid`, `403 ErrWorkoutF
 
 Los endpoints de calendario e invitaciones (stamp/bulk/shift/bulk-clear/administered-calendar/next-session/listados de invitaciones) redujeron su número de round-trips a la base de datos internamente (escritura batch de días/instancias, borrado en lote, colisiones e invitaciones resueltas con pocas queries fijas). **Ningún contrato, shape ni código de error cambió** — detalles técnicos en `docs/CATALOGO_Y_CALENDARIO.md` §9. Acción frontend: ninguna, salvo que sea notoriamente más rápido.
 
-## 15. `GET /auth/permissions?user_id=` — pendiente de definición de producto
+## 15. `GET /auth/permissions?user_id=` — decisión de producto: sin guard
 
-Al auditar la seguridad de la rama quedó marcado un caso: `GET /auth/permissions?user_id=` hoy no aplica guard self/owner sobre `user_id` (cualquier usuario autenticado puede consultar permisos de otro). El change `latlng-optimizaciones-y-endurecimiento` lo dejó **sin cambio a propósito** — se necesita una definición de producto (¿a quién se le permite ver permisos de otro usuario y para qué?) antes de meter un guard que rompa un uso legítimo. Estado: pendiente de definición, NO documentado como bug cerrado.
+`GET /auth/permissions?user_id=` no aplica guard self/owner sobre `user_id` — cualquier usuario autenticado puede consultar los permisos (metadata del tier) de otro. **Decisión de producto (2026-10-11): se deja SIN guard a propósito** — consultar esa metadata de otros users es aceptado (expone nombre de permisos del tier, nada de datos personales ni de pago). Si el producto cambia de criterio más adelante, el cambio es mete un guard en el handler; mientras tanto contracto estables, no es bug ni deuda.

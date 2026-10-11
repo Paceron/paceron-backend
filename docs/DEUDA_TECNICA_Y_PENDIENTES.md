@@ -108,9 +108,9 @@ Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change
 
 ## Rendimiento residual (post change `latlng-optimizaciones-y-endurecimiento`)
 
-### N+1 de `sellerConnDao` en el listado de invitaciones (fuera del change)
+### Detección de colisiones presencial por fecha en stamp/bulk
 
-Las migraciones batch de invitaciones (D9 del change) dejaron el listado en 3-4 queries fijas, PERO `teamOwnerCanReceivePayments` sigue resolviendo el flag Gap 17 con **1 query de `seller_connections` por invitación listada** dentro de un loop. Fuera del scope del change a propósito (tocaba el flujo de pagos/MP del Gap 17); mismo patrón que el resto de N+1 de esta lista: cuando se aborde, resolución en colección (`FindByUserAndClient` con `IN` de owners) — no per-item.
+El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), pero la detección de colisiones presencial sigue corriendo **1 query por fecha con día presencial** (`findPresencialCollisions` reutilizado per-date). Para lotes asincrónicos no agrega queries. Resolución futura: reutilizar la clasificación in-memory de `AdministeredCalendar` (T5) alimentada por 1 lectura de todas las fechas del owner, preservando el 409/same_team_warnings byte-idéntico.
 
 ## Cobertura de tests
 
@@ -153,4 +153,4 @@ N+1 de escritura/lectura del dominio calendario, migrados a batch con el número
 - **N+1 de escritura en stamp/bulk:** migrados a `UpsertMany` (1 `INSERT` multi-fila `ON CONFLICT (group_id,date) DO UPDATE`) + instanciación batch (`session_instances`/`exercise_instances` multi-INSERT con `RETURNING`, links/exercicios de catálogo resueltos con `IN`). Stamp: 19 queries fijas + 1 guard de lectura por día (4 días = 19, 30 días = 45). Resuelto en `f6faebd`/`73f2c9d`.
 - **N+1 de borrado de instancias y N reads del bulk-clear:** `deleteSupersededInstances` batch (semántica de §8.4 intacta — protege instancia si hay feedback de la sesión o de cualquier ejercicio; soft-deleted feedback no protege) + bulk-clear reescrito (1 read `IN` + guards en memoria + 1 delete + supersede batch), fijo en 11 queries. Resuelto en `239dbde`.
 - **Loop de colisiones de AdministeredCalendar** (3 queries por fecha colisionante): clasificación in-memory sobre las filas de `FindForGroupsInRange` — 3 queries fijas para todo el rango. Resuelto en `8a17e57`.
-- **Invitaciones 3N+1** (users resueltos de a 1..2 por invitación): `ListPendingInvitationsForUser` en 3 queries, listado del team en 4 queries (teams/users con `IN`). Resuelto en `8a17e57`. Residual conocido, suma `sellerConnDao` N+1 (ver "Rendimiento residual" arriba).
+- **Invitaciones 3N+1** (users resueltos de a 1..2 por invitación): `ListPendingInvitationsForUser` en 3 queries, listado del team en 4 queries (teams/users con `IN`). Resuelto en `8a17e57` (Task 8 completó el residuo: `can_receive_payments` del listado hoy sale en 1 query batch de `seller_connections`, ver `f4dd3e8`).

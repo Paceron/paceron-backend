@@ -210,9 +210,9 @@
 - Consumes: `UpsertMany` (T3), `deleteSupersededInstances` (T4), lectura batch del bulk-clear (T4).
 - Produces: stamp/bulk con consultas previas constantes (sin la lectura +1/día); invitaciones sin N+1 de seller connections. 0 cambios de API.
 
-- [ ] **8.1** Stamp/Bulk: reemplazar la lectura por fecha del guard (`FindByGroupAndDate`/First por día) por 1 query para todas las fechas; evaluar los guards cerrado/cancelación/validaciones EN MEMORIA con semántica y mensajes idénticos (incluido el all-or-nothing del bulk y el orden de errores).
-- [ ] **8.2** Invitaciones: lookup batch de seller connections (1 query por listado con `user_id IN`), replicando el criterio exacto de `teamOwnerCanReceivePayments` (fallo → false honesto); contadores de ListPendingInvitationsForUser/ListPendingInvitations constantes.
-- [ ] **8.3** Tests: conteos (stamp/bulk sin dependencia lineal de fechas, invitaciones constantes) + regresión con DB real + tests de error de las rutas batch nuevas (con `FailingDB` donde sea barato) para el drip de cobertura.
-- [ ] **8.4** Conventional Commits, stagear solo rutas explícitas.
-- [ ] **8.5** Docs: actualizar conteos documentados si cambian; decisión del guard `GET /auth/permissions` (sin guard a propósito, decidida 2026-10-11) reflejada en FRONTEND_IMPACTO §15/DEUDA, reemplazando el "pendiente de definición".
-- [ ] **8.6** Verificación: suite completa 0 FAIL con DB real, coverage cache limpio (analyzer, gate 85), validate --strict, build/vet/gofmt.
+- [x] **8.1** Stamp/Bulk: reemplazar la lectura por fecha del guard (`FindByGroupAndDate`/First por día) por 1 query para todas las fechas; evaluar los guards cerrado/cancelación/validaciones EN MEMORIA con semántica y mensajes idénticos (incluido el all-or-nothing del bulk y el orden de errores).
+- [x] **8.2** Invitaciones: lookup batch de seller connections (1 query por listado con `user_id IN`), replicando el criterio exacto de `teamOwnerCanReceivePayments` (fallo → false honesto); contadores de ListPendingInvitationsForUser/ListPendingInvitations constantes.
+- [x] **8.3** Tests: conteos (stamp/bulk sin dependencia lineal de fechas, invitaciones constantes) + regresión con DB real + tests de error de las rutas batch nuevas (con `FailingDB` donde sea barato) para el drip de cobertura.
+- [x] **8.4** Conventional Commits, stagear solo rutas explícitas.
+- [x] **8.5** Docs: actualizar conteos documentados si cambian; decisión del guard `GET /auth/permissions` (sin guard a propósito, decidida 2026-10-11) reflejada en FRONTEND_IMPACTO §15/DEUDA, reemplazando el "pendiente de definición".
+- [x] **8.6** Verificación: suite completa 0 FAIL con DB real, coverage cache limpio (analyzer, gate 85), validate --strict, build/vet/gofmt.
