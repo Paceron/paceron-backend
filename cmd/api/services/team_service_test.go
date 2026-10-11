@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/team"
+	"simple-arq-golang/cmd/api/testutils"
 )
 
 // entrenadorMockTeamUserDao devuelve un mockTeamUserDao que reporta a cualquier
@@ -1615,4 +1616,188 @@ func TestTeamService_GetByID_SellerConnLookupError_FlagFalseOkay(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, "Alpha", resp.Name)
 	assert.False(t, resp.CanReceivePayments)
+}
+
+func teamLat(v float64) *float64 { return &v }
+
+func newTeamCreateServiceCapture(savedTeam **dbs.Team) TeamServiceInterface {
+	mockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			*savedTeam = t
+			return nil
+		},
+	}
+	return NewTeamService(mockTeamDao, &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "Coach"}, nil
+		},
+	}, &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}, &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		},
+	}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+}
+
+func TestTeamService_Create_LatLngSeGuardanYSeDevuelven(t *testing.T) {
+	var savedTeam *dbs.Team
+	svc := newTeamCreateServiceCapture(&savedTeam)
+	lat := -34.6
+	lng := -58.4
+	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "Equipo Alpha", MaxMembers: 20, Lat: &lat, Lng: &lng})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, &lat, savedTeam.Lat)
+	assert.Equal(t, &lng, savedTeam.Lng)
+	assert.Equal(t, &lat, resp.Lat)
+	assert.Equal(t, &lng, resp.Lng)
+}
+
+func TestTeamService_Create_LatLngFueraDeRango(t *testing.T) {
+	var savedTeam *dbs.Team
+	svc := newTeamCreateServiceCapture(&savedTeam)
+	latBad := 95.4
+	lngBad := -200.0
+	_, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "X", MaxMembers: 10, Lat: &latBad})
+
+	assert.ErrorIs(t, err, ErrInvalidTeamLat)
+
+	_, err = svc.Create(nil, 1, &team.CreateTeamRequest{Name: "X", MaxMembers: 10, Lng: &lngBad})
+	assert.ErrorIs(t, err, ErrInvalidTeamLng)
+	assert.Nil(t, savedTeam, "el rango inválido no debe llegar a la DB")
+}
+
+func TestTeamService_Create_LatLngLimitesValidos(t *testing.T) {
+	var savedTeam *dbs.Team
+	svc := newTeamCreateServiceCapture(&savedTeam)
+	lat := -90.0
+	lng := 180.0
+	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "X", MaxMembers: 10, Lat: &lat, Lng: &lng})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, &lat, resp.Lat)
+	assert.Equal(t, &lng, resp.Lng)
+}
+
+func TestTeamService_UpdateAddress_LatLngSeGuardan(t *testing.T) {
+	var savedTeam *dbs.Team
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error {
+			savedTeam = t
+			return nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+	lat := -33.125
+	lng := -58.4
+	resp, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{
+		Country:  "Argentina",
+		Province: "Córdoba",
+		City:     "Córdoba",
+		Street:   "Av. General Paz",
+		Number:   "1234",
+		Lat:      &lat,
+		Lng:      &lng,
+	})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, &lat, savedTeam.Lat)
+	assert.Equal(t, &lng, savedTeam.Lng)
+	assert.Equal(t, &lat, resp.Lat)
+	assert.Equal(t, &lng, resp.Lng)
+}
+
+func TestTeamService_UpdateAddress_SinLatLngNoTocaLosPuntos(t *testing.T) {
+	existingLat := -40.9
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1, Name: "Alpha", Lat: &existingLat}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error {
+			return nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+	resp, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{
+		Country: "Argentina",
+		City:    "Córdoba",
+	})
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, &existingLat, resp.Lat)
+	assert.Nil(t, resp.Lng)
+}
+
+func TestTeamService_UpdateAddress_LatLngFueraDeRango(t *testing.T) {
+	var reachDao bool
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			reachDao = true
+			return &dbs.Team{ID: 1, Name: "Alpha"}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Team) error {
+			reachDao = true
+			return nil
+		},
+	}
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+
+	latBad := 91.0
+	_, err := svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "A", Lat: &latBad})
+	assert.ErrorIs(t, err, ErrInvalidTeamLat)
+
+	lngBad := 181.0
+	_, err = svc.UpdateAddress(nil, 1, 1, &team.UpdateTeamAddressRequest{Country: "A", Lng: &lngBad})
+	assert.ErrorIs(t, err, ErrInvalidTeamLng)
+
+	assert.False(t, reachDao, "el rango inválido no debe llegar a la DB")
+}
+
+func TestTeamLatLngColumns_Persisted(t *testing.T) {
+	tx := testutils.SetupTestDB(t)
+
+	teamRow := &dbs.Team{
+		Name:       "Lat Luz",
+		MaxMembers: 10,
+		OwnerID:    1,
+		Status:     "active",
+		Country:    "Argentina",
+		City:       "Villa O'Higgins",
+		Street:     "Av. San Martin - Esq. 3",
+		Lat:        teamLat(-33.125),
+		Lng:        teamLat(-58.4),
+	}
+	require.NoError(t, tx.Create(teamRow).Error)
+
+	var back dbs.Team
+	require.NoError(t, tx.Where("name = ?", teamRow.Name).First(&back).Error)
+	require.NotNil(t, back.Lat)
+	require.NotNil(t, back.Lng)
+	assert.Equal(t, -33.125, *back.Lat)
+	assert.Equal(t, -58.4, *back.Lng)
+	assert.Equal(t, "Villa O'Higgins", back.City)
+
+	nullRow := &dbs.Team{
+		Name:       "Null Dot",
+		MaxMembers: 10,
+		OwnerID:    2,
+		Status:     "active",
+	}
+	require.NoError(t, tx.Create(nullRow).Error)
+
+	var nullBack dbs.Team
+	require.NoError(t, tx.Where("name = ?", nullRow.Name).First(&nullBack).Error)
+	assert.Nil(t, nullBack.Lat)
+	assert.Nil(t, nullBack.Lng)
 }

@@ -17,6 +17,8 @@ type TeamResponse struct {
 	City                string    `json:"city"`                   // Dirección: ciudad
 	Street              string    `json:"street"`                 // Dirección: calle
 	Number              string    `json:"number"`                 // Dirección: número
+	Lat                 *float64  `json:"lat"`                    // Ubicación: latitud (null = no seteada)
+	Lng                 *float64  `json:"lng"`                    // Ubicación: longitud (null = no seteada)
 	ShowGroupsToRunners bool      `json:"show_groups_to_runners"` // Si los corredores ven a qué grupo pertenece cada compañero
 	Visible             bool      `json:"visible"`                // Si aparece en resultados de búsqueda
 	IsPublic            bool      `json:"is_public"`              // Si acepta solicitudes de ingreso
