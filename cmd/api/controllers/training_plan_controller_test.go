@@ -107,6 +107,52 @@ func TestTrainingPlanController_Update_Partial(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+// ErrCatalogForbidden = el guard owner del service (audit authz task 6).
+func TestTrainingPlanController_Create_Forbidden(t *testing.T) {
+	svc := &mockTrainingPlanService{createFn: func(ctx *gin.Context, callerID int64, req trainingplan.TrainingPlanRequest) (*trainingplan.TrainingPlanResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	body, _ := json.Marshal(trainingplan.TrainingPlanRequest{OwnerID: 99, Name: "Plan ajeno", Days: []trainingplan.PlanDayRequest{
+		{SequenceNo: 1, Kind: "rest"}, {SequenceNo: 2, Kind: "rest"},
+	}})
+	req := httptest.NewRequest(http.MethodPost, "/training-plans", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestTrainingPlanController_Update_Forbidden(t *testing.T) {
+	svc := &mockTrainingPlanService{updateFn: func(ctx *gin.Context, id, callerID int64, req trainingplan.TrainingPlanUpdateRequest) (*trainingplan.TrainingPlanResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	body, _ := json.Marshal(trainingplan.TrainingPlanUpdateRequest{Name: strPtrTPController("X")})
+	req := httptest.NewRequest(http.MethodPut, "/training-plans/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestTrainingPlanController_Delete_Forbidden(t *testing.T) {
+	svc := &mockTrainingPlanService{deleteFn: func(ctx *gin.Context, id, callerID int64) error {
+		return services.ErrCatalogForbidden
+	}}
+	router := setupTrainingPlanRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/training-plans/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func TestTrainingPlanController_Delete_Success(t *testing.T) {
 	svc := &mockTrainingPlanService{deleteFn: func(ctx *gin.Context, id, callerID int64) error { return nil }}
 	router := setupTrainingPlanRouter(svc, 7)

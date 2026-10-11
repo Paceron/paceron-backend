@@ -518,6 +518,24 @@ func TestWorkoutFeedbackController_Delete_Forbidden(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+// El Update comparte respondFeedbackError con Create/ErrorMapping (task 6):
+// el pin acá fija que la mutación propia también cae 403 con el guard del service.
+func TestWorkoutFeedbackController_Update_Forbidden(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		updateFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
+			return nil, services.ErrWorkoutFeedbackForbidden
+		},
+	}
+	router := setupWorkoutFeedbackRouter(mockSvc, 7)
+	req := httptest.NewRequest(http.MethodPut, "/workout-feedback/1", strings.NewReader(`{"rpe":8}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 // setupWorkoutFeedbackRouter arma un router de prueba que inyecta auth_user_id y
 // mapea las rutas del módulo (mismo patrón que setupSessionRouter).
 func setupWorkoutFeedbackRouter(svc services.WorkoutFeedbackServiceInterface, authUserID int64) *gin.Engine {
