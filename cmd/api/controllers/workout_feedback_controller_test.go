@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
 	"simple-arq-golang/cmd/api/realtime"
@@ -1044,7 +1045,13 @@ func TestWorkoutFeedbackController_History_RawDBError500NoLeak(t *testing.T) {
 	controller.AthleteHistory(c)
 
 	require.Equal(t, http.StatusInternalServerError, response.Code)
-	assert.Contains(t, response.Body.String(), "error interno")
+
+	var apiErr apierror.APIError
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &apiErr))
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Equal(t, "Internal Server Error", apiErr.Code)
+	assert.Equal(t, "error interno", apiErr.Message)
+
 	for _, tok := range []string{"SQLSTATE", "pgconn", "unterminated"} {
 		assert.NotContains(t, response.Body.String(), tok)
 	}
