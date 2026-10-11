@@ -57,7 +57,7 @@ INSERT INTO group_calendar_days (group_id, date, kind, other_name,
   session_instance_id, cancelled_reason, is_presencial,
   presencial_time_from, presencial_time_to, presencial_location,
   source_plan_id, source_session_id...)  -- lat/lng no aplica acá
-VALUES (...), (...) 
+VALUES (...), (...)
 ON CONFLICT (group_id, date) DO UPDATE SET kind=EXCLUDED.kind, ...
 ```
 
