@@ -103,6 +103,68 @@ func TestSessionController_Delete_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
+// ErrCatalogForbidden = el guard owner del service (Audit authz task 6): las
+// mutaciones de catálogo rechazan con 403 cualquier caller que no sea el owner.
+func TestSessionController_Create_Forbidden(t *testing.T) {
+	svc := &mockSessionService{createFn: func(ctx *gin.Context, callerID int64, req session.SessionRequest) (*session.SessionResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupSessionRouter(svc, 7)
+	body, _ := json.Marshal(session.SessionRequest{OwnerID: 99, Name: "Ajena", Exercises: []session.SessionExerciseRequest{
+		{ExerciseID: 1, Role: "main"},
+	}})
+	req := httptest.NewRequest(http.MethodPost, "/sessions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestSessionController_Update_Forbidden(t *testing.T) {
+	svc := &mockSessionService{updateFn: func(ctx *gin.Context, id, callerID int64, req session.SessionRequest) (*session.SessionResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupSessionRouter(svc, 7)
+	body, _ := json.Marshal(session.SessionRequest{OwnerID: 7, Name: "X", Exercises: []session.SessionExerciseRequest{
+		{ExerciseID: 1, Role: "main"},
+	}})
+	req := httptest.NewRequest(http.MethodPut, "/sessions/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestSessionController_Delete_Forbidden(t *testing.T) {
+	svc := &mockSessionService{deleteFn: func(ctx *gin.Context, id, callerID int64) error {
+		return services.ErrCatalogForbidden
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/sessions/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestSessionController_Clone_Forbidden(t *testing.T) {
+	svc := &mockSessionService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*session.SessionResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupSessionRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/sessions/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func TestSessionController_Get_Success(t *testing.T) {
 	svc := &mockSessionService{getFn: func(ctx *gin.Context, id int64) (*session.SessionResponse, error) {
 		return &session.SessionResponse{ID: id, Name: "Sesión"}, nil

@@ -39,6 +39,13 @@ func (m *mockSessionDao) FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Ses
 	}
 	return nil, nil
 }
+func (m *mockSessionDao) FindByIDs(_ *gin.Context, ids []int64) ([]dbs.Session, error) {
+	rows := make([]dbs.Session, 0, len(ids))
+	for _, id := range ids {
+		rows = append(rows, dbs.Session{ID: id})
+	}
+	return rows, nil
+}
 func (m *mockSessionDao) Update(ctx *gin.Context, s *dbs.Session) error {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, s)
@@ -68,6 +75,9 @@ func (m *mockSessionExerciseDao) ReplaceForSession(ctx *gin.Context, sessionID i
 		return m.replaceForSessionFn(ctx, sessionID, rows)
 	}
 	return nil
+}
+func (m *mockSessionExerciseDao) FindBySessions(_ *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error) {
+	return nil, nil
 }
 
 func validSessionExercises() []session.SessionExerciseRequest {

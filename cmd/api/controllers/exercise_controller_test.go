@@ -178,3 +178,45 @@ func TestExerciseController_Clone_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
 }
+
+// ErrCatalogForbidden = el guard owner del service (audit authz task 6).
+func TestExerciseController_Update_Forbidden(t *testing.T) {
+	svc := &mockExerciseService{updateFn: func(ctx *gin.Context, id, callerID int64, req exercise.ExerciseRequest) (*exercise.ExerciseResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupExerciseRouter(svc, 7)
+	body, _ := json.Marshal(exercise.ExerciseRequest{OwnerID: 7, Name: "X", Kind: "running"})
+	req := httptest.NewRequest(http.MethodPut, "/exercises/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestExerciseController_Delete_Forbidden(t *testing.T) {
+	svc := &mockExerciseService{deleteFn: func(ctx *gin.Context, id, callerID int64) error {
+		return services.ErrCatalogForbidden
+	}}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodDelete, "/exercises/1", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestExerciseController_Clone_Forbidden(t *testing.T) {
+	svc := &mockExerciseService{cloneFn: func(ctx *gin.Context, id, callerID int64) (*exercise.ExerciseResponse, error) {
+		return nil, services.ErrCatalogForbidden
+	}}
+	router := setupExerciseRouter(svc, 7)
+	req := httptest.NewRequest(http.MethodPost, "/exercises/1/clone", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}

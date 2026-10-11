@@ -31,6 +31,11 @@ func (m *mockSessionInstanceDao) Create(ctx *gin.Context, s *dbs.SessionInstance
 	return nil
 }
 
+// CreateBatch no se usa por este service; exige la interfaz.
+func (m *mockSessionInstanceDao) CreateBatch(_ *gin.Context, _ []*dbs.SessionInstance) error {
+	return nil
+}
+
 func (m *mockSessionInstanceDao) FindByID(ctx *gin.Context, id int64) (*dbs.SessionInstance, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(ctx, id)
@@ -54,6 +59,14 @@ func (m *mockSessionInstanceDao) HasFeedback(ctx *gin.Context, id int64) (bool, 
 		return m.hasFeedbackFn(ctx, id)
 	}
 	return false, nil
+}
+
+func (m *mockSessionInstanceDao) HasFeedbackByIDs(_ *gin.Context, ids []int64) ([]int64, error) {
+	return []int64{}, nil
+}
+
+func (m *mockSessionInstanceDao) DeleteByIDs(_ *gin.Context, _ []int64) error {
+	return nil
 }
 
 func (m *mockSessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error) {

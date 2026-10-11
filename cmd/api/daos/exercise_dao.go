@@ -13,6 +13,9 @@ import (
 type ExerciseDaoInterface interface {
 	Create(ctx *gin.Context, e *dbs.Exercise) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Exercise, error)
+	// FindByIDs trae varios ejercicios de catálogo en una sola query
+	// (instanciación batch del write path del calendario, design.md D6).
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error)
 	FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error)
 	Update(ctx *gin.Context, e *dbs.Exercise) error
 	SoftDelete(ctx *gin.Context, id int64) error
@@ -40,6 +43,20 @@ func (d *exerciseDao) FindByID(ctx *gin.Context, id int64) (*dbs.Exercise, error
 		return nil, fmt.Errorf("error finding exercise: %w", err)
 	}
 	return &e, nil
+}
+
+// FindByIDs aspira igual que FindByID (sin borrados). Duplicados en ids
+// devuelven una fila por id distinto.
+func (d *exerciseDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var exercises []dbs.Exercise
+	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&exercises).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding exercises by ids: %w", err)
+	}
+	return exercises, nil
 }
 
 func (d *exerciseDao) FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error) {

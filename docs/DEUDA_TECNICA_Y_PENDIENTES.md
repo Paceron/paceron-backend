@@ -89,6 +89,10 @@ Check-then-act sin lock, en 3 call sites: `team_user_service.go:AddUser`, `invit
 
 Decisión: no parchear un solo call site (evaluado `SELECT ... FOR UPDATE` solo para `join-requests`, descartado por inconsistente). El efecto de la carrera es auto-corregible (el entrenador saca al corredor de más manualmente, sin corrupción de datos/dinero) — se acepta el riesgo hasta poder arreglar los 3 call sites juntos, misma estrategia de lock (`SELECT FOR UPDATE` sobre la fila de equipo dentro de una transacción es la más probable), no uno por uno.
 
+### `GET /auth/permissions?user_id=` sin guard self/owner (decisión de producto pendiente)
+
+Al auditar la authz del change `latlng-optimizaciones-y-endurecimiento` (2026-10-11) quedó marcado: cualquiera autenticado puede consultar permisos de `user_id` distintos del propio — solo exige login. Se dejó **sin cambio a propósito**: meter un guard self/owner sin definición de producto rompería cualquier uso legítimo hoy existente de consultas cruzadas. Cuando se decida qué usuarios pueden leer permisos de quién, implementar el guard (403 al patrón member-calendar). No considerar bug cerrado hasta esa decisión.
+
 ## Pendientes de limpieza
 
 ### Flake de `TestFailingDB_*`: race de migraciones concurrentes sobre la misma test DB
@@ -101,6 +105,12 @@ El fix de membresía por fecha (change `sesion-interrumpida-y-eventos-en-vivo`) 
 ### Archivo trackeado por error: `.superpowers/sdd/tasks/task-3-report.md`
 
 Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change `asignacion-por-instanciacion`, `df18d60`/`2babf15`, por un `git add` amplio del implementador que forzó/bypaseó el ignore del workspace SDD). El workspace `.superpowers/sdd/` es scratch auto-ignoreado (su propio `.gitignore` con `*`) — briefs/reports/ledger de `subagent-driven-development` son artefactos de recuperación intra-sesión, sin valor en el historial. Fix: `git rm .superpowers/sdd/tasks/task-3-report.md`, aprovechado cualquier rama futura (no amerita PR propio). Prevención: en dispatchs de implementadores exigir stageear rutas explícitas por commit, nunca `git add -A`/`git add .` en la raíz del repo ni force-add de rutas ignoradas (registrado también en `AGENTS.md` §9).
+
+## Rendimiento residual (post change `latlng-optimizaciones-y-endurecimiento`)
+
+### Detección de colisiones presencial por fecha en stamp/bulk
+
+El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), pero la detección de colisiones presencial sigue corriendo **1 query por fecha con día presencial** (`findPresencialCollisions` reutilizado per-date). Para lotes asincrónicos no agrega queries. Resolución futura: reutilizar la clasificación in-memory de `AdministeredCalendar` (T5) alimentada por 1 lectura de todas las fechas del owner, preservando el 409/same_team_warnings byte-idéntico.
 
 ## Cobertura de tests
 
@@ -135,3 +145,12 @@ Estos ítems se resolvieron antes de quedar registrados en esta lista — quedan
 - **GetRange N+1 del calendario** (y las demás vistas de colección): el builder batch `toCalendarDayResponses` resuelve las instancias embebidas en 3 queries por colección, sin una query por día. Resuelto en `077d395`.
 - **`workout_feedback_points.feedback_id` sin índice**: índice agregado, junto a 6 más sobre `group_users`/`team_users`/`session_exercise_instances`. Resuelto en `fcb64c5`.
 - **Team search 2N+1** (owners N + miembros N + resto): `Search` de equipos y `CalendarSummary` resuelven owners/miembros/nombres en queries por colección. Resuelto en `d147b1f`.
+
+## Resueltos (change `latlng-optimizaciones-y-endurecimiento`, 2026-10-11)
+
+N+1 de escritura/lectura del dominio calendario, migrados a batch con el número de round-trips **constante** (no crece con los días/invitaciones); respuestas y errores byte-idénticos. Detalle técnico con los conteos: `docs/CATALOGO_Y_CALENDARIO.md` §9.
+
+- **N+1 de escritura en stamp/bulk:** migrados a `UpsertMany` (1 `INSERT` multi-fila `ON CONFLICT (group_id,date) DO UPDATE`) + instanciación batch (`session_instances`/`exercise_instances` multi-INSERT con `RETURNING`, links/exercicios de catálogo resueltos con `IN`). Stamp: 19 queries fijas + 1 guard de lectura por día (4 días = 19, 30 días = 45). Resuelto en `f6faebd`/`73f2c9d`.
+- **N+1 de borrado de instancias y N reads del bulk-clear:** `deleteSupersededInstances` batch (semántica de §8.4 intacta — protege instancia si hay feedback de la sesión o de cualquier ejercicio; soft-deleted feedback no protege) + bulk-clear reescrito (1 read `IN` + guards en memoria + 1 delete + supersede batch), fijo en 11 queries. Resuelto en `239dbde`.
+- **Loop de colisiones de AdministeredCalendar** (3 queries por fecha colisionante): clasificación in-memory sobre las filas de `FindForGroupsInRange` — 3 queries fijas para todo el rango. Resuelto en `8a17e57`.
+- **Invitaciones 3N+1** (users resueltos de a 1..2 por invitación): `ListPendingInvitationsForUser` en 3 queries, listado del team en 4 queries (teams/users con `IN`). Resuelto en `8a17e57` (Task 8 completó el residuo: `can_receive_payments` del listado hoy sale en 1 query batch de `seller_connections`, ver `f4dd3e8`).

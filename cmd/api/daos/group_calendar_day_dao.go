@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,11 @@ import (
 type GroupCalendarDaoInterface interface {
 	Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error
 	FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
+	// FindByGroupAndDates trae los días existentes para las fechas indicadas
+	// en UN solo query (design.md D7, bulk-clear). Espejo en lote de
+	// FindByGroupAndDate: devuelve solo las fechas con fila (las ausentes ni
+	// aparecen). Sin fechas no toca la DB.
+	FindByGroupAndDates(ctx *gin.Context, groupID int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
 	FindByGroupAndRange(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
 	// FindPresencialForGroupsInRange devuelve los días training+presencial de
 	// los grupos indicados en las fechas indicadas (base de la detección de
@@ -51,6 +57,24 @@ type GroupCalendarDaoInterface interface {
 	// presencial_closed_at está NULL (final, sin reopen). true si esta
 	// llamada hizo el cierre real.
 	SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	// UpsertMany aplica el mismo upsert (group_id, date) de Upsert sobre un
+	// lote en un solo round trip (design.md D5, write path de stamp/bulk):
+	// misma fila de SETs, misma limpieza presencial Gap-26 (opened/closed a
+	// NULL si la escritura cambia la instancia o apaga is_presencial).
+	// RETURNING no garantiza orden: los resultados vuelven igualados a la
+	// posición del input por (group_id, date); los callers conservan el
+	// resto de sus filas tal cual la construyeron (shape de respuestas
+	// idéntico al de hoy).
+	UpsertMany(ctx *gin.Context, days []*dbs.GroupCalendarDay) ([]GroupCalendarDayUpsertResult, error)
+}
+
+// GroupCalendarDayUpsertResult es la porción de fila que el caller necesita
+// del RETURNING de UpsertMany (TO_CHAR del date evita el TZ-shift al
+// reconstruir la clave).
+type GroupCalendarDayUpsertResult struct {
+	ID        int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type groupCalendarDayDao struct {
@@ -97,6 +121,107 @@ func (d *groupCalendarDayDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay
 
 func sameNullableInt(a, b *int64) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+// UpsertMany (design.md D5): 1 INSERT multi-fila con ON CONFLICT y RETURNING.
+// La limpieza presencial Gap-26 va en el DO UPDATE; `t` es la fila actual
+// (heap tuple) y `EXCLUDED` la propuesta de inserción — el CASE conserva
+// opened/closed salvo que la escritura cambie la instancia o apague
+// is_presencial.
+func (d *groupCalendarDayDao) UpsertMany(ctx *gin.Context, days []*dbs.GroupCalendarDay) ([]GroupCalendarDayUpsertResult, error) {
+	if len(days) == 0 {
+		return nil, nil
+	}
+	// Dedupe por (group_id, date): filas duplicadas en el input romperían
+	// Postgres con "ON CONFLICT DO UPDATE command cannot affect row a second
+	// time". Se escribe una sola fila por clave, ganando la ÚLTIMA ocurrencia
+	// (last-write-wins, como toleraba el loop secuencial). El slice de
+	// resultado conserva len(days): cada posición de input (incluyendo
+	// duplicados) se mapea a la fila física de su clave.
+	dayKey := func(day *dbs.GroupCalendarDay) string {
+		return fmt.Sprintf("%d|%s", day.GroupID, day.Date.Format("2006-01-02"))
+	}
+	lastForKey := make(map[string]*dbs.GroupCalendarDay, len(days))
+	orderedKeys := make([]string, 0, len(days))
+	for _, day := range days {
+		key := dayKey(day)
+		if _, ok := lastForKey[key]; !ok {
+			orderedKeys = append(orderedKeys, key)
+		}
+		lastForKey[key] = day
+	}
+	values := make([]string, 0, len(orderedKeys))
+	args := make([]interface{}, 0, len(days)*13)
+	// El insert físico no tiene defaults de DB: created_at/updated_at vienen
+	// de la app (igual que hace gorm en el Create de fila única).
+	now := time.Now()
+	for _, key := range orderedKeys {
+		day := lastForKey[key]
+		values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		args = append(args,
+			day.GroupID, day.Date, day.Kind, day.OtherName, day.SessionInstanceID, day.CancelledReason,
+			day.IsPresencial, day.PresencialTimeFrom, day.PresencialTimeTo, day.PresencialLocation, day.SourcePlanID,
+			now, now,
+		)
+	}
+	// El SQL tiene que empezar exactamente con "INSERT": testutils.opOfSQL
+	// clasifica la operación por prefijo del texto de la query.
+	insertPrefix := "INSERT INTO group_calendar_days (" +
+		"group_id, date, kind, other_name, session_instance_id, " +
+		"cancelled_reason, is_presencial, presencial_time_from, " +
+		"presencial_time_to, presencial_location, source_plan_id, " +
+		"created_at, updated_at" +
+		") VALUES "
+	query := insertPrefix + strings.Join(values, ", ") + `
+		ON CONFLICT (group_id, date) DO UPDATE SET
+			kind = EXCLUDED.kind,
+			other_name = EXCLUDED.other_name,
+			session_instance_id = EXCLUDED.session_instance_id,
+			cancelled_reason = EXCLUDED.cancelled_reason,
+			is_presencial = EXCLUDED.is_presencial,
+			presencial_time_from = EXCLUDED.presencial_time_from,
+			presencial_time_to = EXCLUDED.presencial_time_to,
+			presencial_location = EXCLUDED.presencial_location,
+			source_plan_id = EXCLUDED.source_plan_id,
+			updated_at = NOW(),
+			presencial_opened_at = CASE
+				WHEN (EXCLUDED.session_instance_id IS DISTINCT FROM group_calendar_days.session_instance_id)
+					OR (NOT EXCLUDED.is_presencial)
+				THEN NULL
+				ELSE group_calendar_days.presencial_opened_at
+			END,
+			presencial_closed_at = CASE
+				WHEN (EXCLUDED.session_instance_id IS DISTINCT FROM group_calendar_days.session_instance_id)
+					OR (NOT EXCLUDED.is_presencial)
+				THEN NULL
+				ELSE group_calendar_days.presencial_closed_at
+			END
+	RETURNING id, group_id, TO_CHAR(date, 'YYYY-MM-DD') AS date_key, created_at, updated_at
+	`
+	var returned []struct {
+		ID      int64     `gorm:"column:id"`
+		GroupID int64     `gorm:"column:group_id"`
+		DateKey string    `gorm:"column:date_key"`
+		Created time.Time `gorm:"column:created_at"`
+		Updated time.Time `gorm:"column:updated_at"`
+	}
+	if err := d.DB.Raw(query, args...).Scan(&returned).Error; err != nil {
+		return nil, fmt.Errorf("error upserting calendar days batch: %w", err)
+	}
+	resultsByKey := make(map[string]GroupCalendarDayUpsertResult, len(returned))
+	for i := range returned {
+		row := &returned[i]
+		key := fmt.Sprintf("%d|%s", row.GroupID, row.DateKey)
+		if _, ok := lastForKey[key]; !ok {
+			return nil, fmt.Errorf("error upserting calendar days batch: RETURNING %d|%s fuera del lote", row.GroupID, row.DateKey)
+		}
+		resultsByKey[key] = GroupCalendarDayUpsertResult{ID: row.ID, CreatedAt: row.Created, UpdatedAt: row.Updated}
+	}
+	results := make([]GroupCalendarDayUpsertResult, len(days))
+	for i, day := range days {
+		results[i] = resultsByKey[dayKey(day)]
+	}
+	return results, nil
 }
 
 func (d *groupCalendarDayDao) FindByGroupAndDate(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
@@ -151,6 +276,18 @@ func (d *groupCalendarDayDao) FindPresencialForGroupsInRange(ctx *gin.Context, g
 		Find(&days).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding presencial days: %w", err)
+	}
+	return days, nil
+}
+
+func (d *groupCalendarDayDao) FindByGroupAndDates(ctx *gin.Context, groupID int64, dates []time.Time) ([]dbs.GroupCalendarDay, error) {
+	if len(dates) == 0 {
+		return nil, nil
+	}
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Where("group_id = ? AND date IN ?", groupID, dates).Order("date").Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding calendar days: %w", err)
 	}
 	return days, nil
 }

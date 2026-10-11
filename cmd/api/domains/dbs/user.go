@@ -14,6 +14,8 @@ type User struct {
 	City                 string     `gorm:"column:city"`
 	Street               string     `gorm:"column:street"`
 	Number               string     `gorm:"column:number"`
+	Lat                  *float64   `gorm:"column:lat"`
+	Lng                  *float64   `gorm:"column:lng"`
 	DNI                  string     `gorm:"column:dni;uniqueIndex;not null"`
 	BirthDate            time.Time  `gorm:"column:birth_date;not null"`
 	Password             string     `gorm:"column:password;not null"`

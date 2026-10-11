@@ -13,14 +13,24 @@ import (
 // solo Create/FindByID/Delete físico, sin Update ni SoftDelete.
 type SessionInstanceDaoInterface interface {
 	Create(ctx *gin.Context, s *dbs.SessionInstance) error
+	// CreateBatch inserta N instancias en un solo INSERT con RETURNING —
+	// gorm rellena cada row.ID por posición (instanciación batch, design.md
+	// D6). Lote vacío no toca la DB.
+	CreateBatch(ctx *gin.Context, rows []*dbs.SessionInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
 	// FindByIDs trae varias instancias en una sola consulta — evita el N+1
 	// al armar la vista de calendario por lotes.
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.SessionInstance, error)
 	Delete(ctx *gin.Context, id int64) error
+	// DeleteByIDs borra físico varias instancias en un solo DELETE con IN.
+	DeleteByIDs(ctx *gin.Context, ids []int64) error
 	// HasFeedback reporta si algún workout_feedback activo referencia esta
 	// instancia vía assigned_session_id (FK opaca, design.md D3).
 	HasFeedback(ctx *gin.Context, id int64) (bool, error)
+	// HasFeedbackByIDs devuelve los ids indicados que tienen algún
+	// workout_feedback activo (deleted_at IS NULL), espejo en lote de
+	// HasFeedback (design.md D6c). Lote vacío no toca la DB.
+	HasFeedbackByIDs(ctx *gin.Context, ids []int64) ([]int64, error)
 	// HasInstanceAccess aplica la regla dual de session-instance-detail D2:
 	// día con esta instancia donde el caller es miembro activo del grupo u
 	// owner del equipo, O feedback activo sobre la instancia donde el caller
@@ -39,6 +49,16 @@ func NewSessionInstanceDao(db *gorm.DB) SessionInstanceDaoInterface {
 func (d *sessionInstanceDao) Create(ctx *gin.Context, s *dbs.SessionInstance) error {
 	if err := d.DB.Create(s).Error; err != nil {
 		return fmt.Errorf("error creating session instance: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionInstanceDao) CreateBatch(ctx *gin.Context, rows []*dbs.SessionInstance) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := d.DB.Create(&rows).Error; err != nil {
+		return fmt.Errorf("error creating session instances batch: %w", err)
 	}
 	return nil
 }
@@ -72,6 +92,30 @@ func (d *sessionInstanceDao) Delete(ctx *gin.Context, id int64) error {
 		return fmt.Errorf("error deleting session instance: %w", err)
 	}
 	return nil
+}
+
+func (d *sessionInstanceDao) DeleteByIDs(ctx *gin.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := d.DB.Where("id IN ?", ids).Delete(&dbs.SessionInstance{}).Error; err != nil {
+		return fmt.Errorf("error deleting session instances batch: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionInstanceDao) HasFeedbackByIDs(ctx *gin.Context, ids []int64) ([]int64, error) {
+	out := make([]int64, 0, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	err := d.DB.Model(&dbs.WorkoutFeedback{}).
+		Where("assigned_session_id IN ? AND deleted_at IS NULL", ids).
+		Distinct().Pluck("assigned_session_id", &out).Error
+	if err != nil {
+		return nil, fmt.Errorf("error checking session instances feedback: %w", err)
+	}
+	return out, nil
 }
 
 func (d *sessionInstanceDao) HasFeedback(ctx *gin.Context, id int64) (bool, error) {

@@ -10,4 +10,6 @@ type CreateTeamRequest struct {
 	CreateDefaultGroup  *bool    `json:"create_default_group"`           // Crea un grupo principal "{name} - group" por default; pasar explícitamente false para saltearlo (opcional)
 	ShowGroupsToRunners *bool    `json:"show_groups_to_runners"`         // Si los corredores ven a qué grupo pertenece cada compañero (opcional, default false)
 	MembershipFee       *float64 `json:"membership_fee"`                 // Mensualidad que paga cada corredor al entrenador (opcional, 0 = gratis, >= 0)
+	Lat                 *float64 `json:"lat,omitempty"`                  // Ubicación: latitud (opcional, [-90, 90])
+	Lng                 *float64 `json:"lng,omitempty"`                  // Ubicación: longitud (opcional, [-180, 180])
 }

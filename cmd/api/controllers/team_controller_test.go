@@ -10,7 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/team"
 	"simple-arq-golang/cmd/api/services"
 )
@@ -787,4 +789,130 @@ func TestTeamController_Update_InvalidMembershipFee(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 	assert.Contains(t, response.Body.String(), "INVALID_MEMBERSHIP_FEE")
+}
+
+func TestTeamController_Create_LatLngFueraDeRango(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{"lat fuera de rango", services.ErrInvalidTeamLat, "lat fuera de rango"},
+		{"lng fuera de rango", services.ErrInvalidTeamLng, "lng fuera de rango"},
+	} {
+		mockSvc := &mockTeamService{
+			createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+				return nil, tc.err
+			},
+		}
+		controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+		response := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(response)
+		c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Alpha","max_members":20,"lat":95.4}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		setAuthUserID(c, 1)
+
+		controller.Create(c)
+
+		assert.Equal(t, http.StatusBadRequest, response.Code, tc.name)
+		var result apierror.APIError
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, tc.message, result.Message, tc.name)
+		assert.Equal(t, "Bad request", result.Code, tc.name)
+	}
+}
+
+func TestTeamController_Create_LatLngValidaLlegaAlService(t *testing.T) {
+	var got *team.CreateTeamRequest
+	mockSvc := &mockTeamService{
+		createFn: func(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+			lat := -34.6
+			lng := -58.4
+			got = req
+			return &team.TeamResponse{ID: 1, Name: req.Name, Lat: &lat, Lng: &lng}, nil
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/teams", strings.NewReader(`{"name":"Alpha","max_members":20,"lat":-34.6,"lng":-58.4}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	setAuthUserID(c, 1)
+
+	controller.Create(c)
+
+	assert.Equal(t, http.StatusCreated, response.Code)
+	require.NotNil(t, got)
+	require.NotNil(t, got.Lat)
+	assert.Equal(t, -34.6, *got.Lat)
+	require.NotNil(t, got.Lng)
+	assert.Equal(t, -58.4, *got.Lng)
+	var result team.TeamResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+	require.NotNil(t, result.Lat)
+	assert.Equal(t, -34.6, *result.Lat)
+}
+
+func TestTeamController_UpdateAddress_LatLngFueraDeRango(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		message string
+	}{
+		{"lat fuera de rango", services.ErrInvalidTeamLat, "lat fuera de rango"},
+		{"lng fuera de rango", services.ErrInvalidTeamLng, "lng fuera de rango"},
+	} {
+		mockSvc := &mockTeamService{
+			updateAddressFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+				return nil, tc.err
+			},
+		}
+		controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+		response := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(response)
+		c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1/address", strings.NewReader(`{"country":"Argentina","lat":91}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = []gin.Param{{Key: "id", Value: "1"}}
+		setAuthUserID(c, 1)
+
+		controller.UpdateAddress(c)
+
+		assert.Equal(t, http.StatusBadRequest, response.Code, tc.name)
+		var result apierror.APIError
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, tc.message, result.Message, tc.name)
+		assert.Equal(t, "Bad request", result.Code, tc.name)
+	}
+}
+
+func TestTeamController_UpdateAddress_LatLngValidaLlegaAlService(t *testing.T) {
+	var got *team.UpdateTeamAddressRequest
+	mockSvc := &mockTeamService{
+		updateAddressFn: func(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+			lat := -33.125
+			lng := -58.4
+			got = req
+			return &team.TeamResponse{ID: 1, Country: req.Country, Lat: &lat, Lng: &lng}, nil
+		},
+	}
+	controller := NewTeamController(mockSvc, &mockTeamDelegate{createTeamFn: mockSvc.createFn})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/teams/1/address", strings.NewReader(`{"country":"Argentina","city":"Córdoba","lat":-33.125,"lng":-58.4}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.UpdateAddress(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	require.NotNil(t, got)
+	require.NotNil(t, got.Lat)
+	assert.Equal(t, -33.125, *got.Lat)
+	require.NotNil(t, got.Lng)
+	assert.Equal(t, -58.4, *got.Lng)
+	var result team.TeamResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+	require.NotNil(t, result.Lat)
+	assert.Equal(t, -33.125, *result.Lat)
 }

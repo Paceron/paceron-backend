@@ -23,6 +23,8 @@ type Team struct {
 	City                string     `gorm:"column:city"`                                          // Dirección: ciudad
 	Street              string     `gorm:"column:street"`                                        // Dirección: calle
 	Number              string     `gorm:"column:number"`                                        // Dirección: número
+	Lat                 *float64   `gorm:"column:lat"`                                           // Ubicación: latitud (nil = no seteada)
+	Lng                 *float64   `gorm:"column:lng"`                                           // Ubicación: longitud (nil = no seteada)
 	IconKey             *string    `gorm:"column:icon_key"`                                      // Key del ícono en el bucket de storage (nil = sin ícono)
 	IconUpdatedAt       *time.Time `gorm:"column:icon_updated_at"`                               // Fecha del último upload del ícono
 	DeletedAt           *time.Time `gorm:"column:deleted_at"`                                    // Fecha de eliminación lógica (nil = activo)

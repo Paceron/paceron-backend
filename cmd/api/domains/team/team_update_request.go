@@ -16,9 +16,11 @@ type UpdateTeamRequest struct {
 
 // UpdateTeamAddressRequest es el DTO para actualizar la dirección de un equipo.
 type UpdateTeamAddressRequest struct {
-	Country  string `json:"country"`  // País
-	Province string `json:"province"` // Provincia
-	City     string `json:"city"`     // Ciudad
-	Street   string `json:"street"`   // Calle
-	Number   string `json:"number"`   // Número
+	Country  string   `json:"country"`  // País
+	Province string   `json:"province"` // Provincia
+	City     string   `json:"city"`     // Ciudad
+	Street   string   `json:"street"`   // Calle
+	Number   string   `json:"number"`   // Número
+	Lat      *float64 `json:"lat"`      // Ubicación: latitud (opcional, [-90, 90]; omitido = sin cambio)
+	Lng      *float64 `json:"lng"`      // Ubicación: longitud (opcional, [-180, 180]; omitido = sin cambio)
 }

@@ -11,6 +11,10 @@ import (
 
 type SessionExerciseDaoInterface interface {
 	FindBySession(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error)
+	// FindBySessions son los links de varias sesiones de catálogo en una
+	// sola query, ordenados por (session_id, id) — misma forma que 1
+	// FindBySession por sesión (instanciación batch, design.md D6).
+	FindBySessions(ctx *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error)
 	ReplaceForSession(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error
 }
 
@@ -27,6 +31,18 @@ func (d *sessionExerciseDao) FindBySession(ctx *gin.Context, sessionID int64) ([
 	err := d.DB.Where("session_id = ?", sessionID).Order("id").Find(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing session exercises: %w", err)
+	}
+	return rows, nil
+}
+
+func (d *sessionExerciseDao) FindBySessions(ctx *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	var rows []dbs.SessionExercise
+	err := d.DB.Where("session_id IN ?", sessionIDs).Order("session_id, id").Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing session exercises by sessions: %w", err)
 	}
 	return rows, nil
 }

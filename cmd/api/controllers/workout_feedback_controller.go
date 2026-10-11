@@ -86,10 +86,16 @@ func respondFeedbackError(c *gin.Context, err error) {
 		statusCode = http.StatusConflict
 		code = "Conflict"
 	}
+	// Un error sin sentinel tipado es crudo del DAO/driver: se responde con
+	// mensaje genérico fijo para no filtrar SQLSTATE/texto pgx al cliente.
+	message := err.Error()
+	if statusCode == http.StatusInternalServerError {
+		message = "error interno"
+	}
 	c.JSON(statusCode, apierror.APIError{
 		StatusCode: statusCode,
 		Code:       code,
-		Message:    err.Error(),
+		Message:    message,
 	})
 }
 

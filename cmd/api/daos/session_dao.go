@@ -13,6 +13,9 @@ import (
 type SessionDaoInterface interface {
 	Create(ctx *gin.Context, s *dbs.Session) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Session, error)
+	// FindByIDs trae varias sesiones de catálogo en una sola query
+	// (instanciación batch del write path del calendario, design.md D6).
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Session, error)
 	FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Session, error)
 	Update(ctx *gin.Context, s *dbs.Session) error
 	SoftDelete(ctx *gin.Context, id int64) error
@@ -40,6 +43,20 @@ func (d *sessionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Session, error) 
 		return nil, fmt.Errorf("error finding session: %w", err)
 	}
 	return &s, nil
+}
+
+// FindByIDs aspira igual que FindByID (sin borrados). Duplicados en ids
+// devuelven una fila por id distinto.
+func (d *sessionDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Session, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var sessions []dbs.Session
+	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&sessions).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding sessions by ids: %w", err)
+	}
+	return sessions, nil
 }
 
 func (d *sessionDao) FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Session, error) {

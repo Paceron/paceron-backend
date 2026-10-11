@@ -213,9 +213,7 @@ func (s *calendarService) findPresencialCollisions(
 	for _, id := range excludeDayIDs {
 		excludedDaySet[id] = struct{}{}
 	}
-
-	var cross, same []calendar.PresencialConflict
-	seen := make(map[string]struct{})
+	existingFiltered := make([]dbs.GroupCalendarDay, 0, len(existing))
 	for _, day := range existing {
 		if _, skip := excludedDaySet[day.ID]; skip {
 			continue
@@ -223,6 +221,27 @@ func (s *calendarService) findPresencialCollisions(
 		if excludeGroupID != nil && day.GroupID == *excludeGroupID {
 			continue
 		}
+		existingFiltered = append(existingFiltered, day)
+	}
+	cross, same := classifyPresencialConflicts(existingFiltered, candidates, groupByID, teamNameByID)
+	return cross, same, nil
+}
+
+// classifyPresencialConflicts clasifica en memoria (D3) cada día colisionante
+// del rango: equipo distinto del candidato que choca → cross (bloqueante),
+// mismo equipo → same (warnings); cross gana al dedup final. No toca la DB:
+// la reusan el guard (vía findPresencialCollisions) y la lectura batch de
+// AdministeredCalendar, que le pasa como filas existentes y candidatos el
+// mismo conjunto ya consultado.
+func classifyPresencialConflicts(
+	existing []dbs.GroupCalendarDay,
+	candidates []dbs.GroupCalendarDay,
+	groupByID map[int64]dbs.Group,
+	teamNameByID map[int64]string,
+) ([]calendar.PresencialConflict, []calendar.PresencialConflict) {
+	var cross, same []calendar.PresencialConflict
+	seen := make(map[string]struct{})
+	for _, day := range existing {
 		dayGroup, ok := groupByID[day.GroupID]
 		if !ok {
 			continue
@@ -276,7 +295,7 @@ func (s *calendarService) findPresencialCollisions(
 			}
 		}
 	}
-	return cross, same, nil
+	return cross, same
 }
 
 // presencialCandidates filtra las filas que quedan training+presencial (D1):
@@ -552,6 +571,132 @@ func (s *calendarService) instantiateSession(ctx *gin.Context, tx *gorm.DB, sess
 	return result, nil
 }
 
+// instantiateSessionsBatch es la versión multi-día de instantiateSession
+// (design.md D6): una consulta por tabla del catálogo y un INSERT por tabla
+// de instancia, alineados por posición. Cada día trae su copia completa (no
+// se deduplica); los nil del input corresponden a días que conservan su
+// instancia y quedan nil en el output.
+func (s *calendarService) instantiateSessionsBatch(ctx *gin.Context, tx *gorm.DB, sessionIDs []*int64) ([]*int64, error) {
+	requestedByInput := make([]int, len(sessionIDs))
+	requests := make([]int64, 0, len(sessionIDs))
+	for i, id := range sessionIDs {
+		requestedByInput[i] = -1
+		if id != nil {
+			requestedByInput[i] = len(requests)
+			requests = append(requests, *id)
+		}
+	}
+	out := make([]*int64, len(sessionIDs))
+	if len(requests) == 0 {
+		return out, nil
+	}
+	sessionDao := daos.NewSessionDao(tx)
+	sessionExerciseDao := daos.NewSessionExerciseDao(tx)
+	exerciseDao := daos.NewExerciseDao(tx)
+	sessionInstanceDao := daos.NewSessionInstanceDao(tx)
+	exerciseInstanceDao := daos.NewExerciseInstanceDao(tx)
+	linkInstanceDao := daos.NewSessionExerciseInstanceDao(tx)
+
+	catalogSessions, err := sessionDao.FindByIDs(ctx, requests)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar sesión para instanciar: %w", err)
+	}
+	sessionsByID := make(map[int64]*dbs.Session, len(catalogSessions))
+	for i := range catalogSessions {
+		sessionsByID[catalogSessions[i].ID] = &catalogSessions[i]
+	}
+	for _, sessionID := range requests {
+		if _, ok := sessionsByID[sessionID]; !ok {
+			return nil, ErrCalendarSessionNotFound
+		}
+	}
+	catalogLinks, err := sessionExerciseDao.FindBySessions(ctx, requests)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar ejercicios para instanciar: %w", err)
+	}
+	linksBySession := make(map[int64][]dbs.SessionExercise, len(sessionsByID))
+	for _, link := range catalogLinks {
+		linksBySession[link.SessionID] = append(linksBySession[link.SessionID], link)
+	}
+	catalogExerciseIDs := make([]int64, 0, len(catalogLinks))
+	seenExercises := make(map[int64]struct{}, len(catalogLinks))
+	for _, link := range catalogLinks {
+		if _, dup := seenExercises[link.ExerciseID]; !dup {
+			seenExercises[link.ExerciseID] = struct{}{}
+			catalogExerciseIDs = append(catalogExerciseIDs, link.ExerciseID)
+		}
+	}
+	catalogExercises, err := exerciseDao.FindByIDs(ctx, catalogExerciseIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error al buscar ejercicio para instanciar: %w", err)
+	}
+	exercisesByID := make(map[int64]*dbs.Exercise, len(catalogExercises))
+	for i := range catalogExercises {
+		exercisesByID[catalogExercises[i].ID] = &catalogExercises[i]
+	}
+	for _, sessionID := range requests {
+		for _, link := range linksBySession[sessionID] {
+			if _, ok := exercisesByID[link.ExerciseID]; !ok {
+				return nil, fmt.Errorf("%w: %d", ErrSessionExerciseNotFound, link.ExerciseID)
+			}
+		}
+	}
+
+	instanceRows := make([]*dbs.SessionInstance, 0, len(requests))
+	for _, sessionID := range requests {
+		catalogSession := sessionsByID[sessionID]
+		sourceID := sessionID
+		instanceRows = append(instanceRows, &dbs.SessionInstance{
+			Name: catalogSession.Name, Description: catalogSession.Description,
+			SourceSessionID: &sourceID,
+		})
+	}
+	if err := sessionInstanceDao.CreateBatch(ctx, instanceRows); err != nil {
+		return nil, fmt.Errorf("error al crear sesión instancia: %w", err)
+	}
+
+	type linkSlot struct{ sessionIndex, linkIndex int }
+	exerciseRows := make([]*dbs.ExerciseInstance, 0, len(catalogLinks)*len(requests))
+	slots := make([]linkSlot, 0, len(catalogLinks)*len(requests))
+	for sessionIndex, sessionID := range requests {
+		for linkIndex, catalogLink := range linksBySession[sessionID] {
+			catalogExercise := exercisesByID[catalogLink.ExerciseID]
+			sourceID := catalogLink.ExerciseID
+			exerciseRows = append(exerciseRows, &dbs.ExerciseInstance{
+				Name: catalogExercise.Name, Description: catalogExercise.Description, Kind: catalogExercise.Kind,
+				Intensity: catalogExercise.Intensity, Minutes: catalogExercise.Minutes, DistanceM: catalogExercise.DistanceM,
+				SpeedKph: catalogExercise.SpeedKph, MuscleGroup: catalogExercise.MuscleGroup, VideoURL: catalogExercise.VideoURL,
+				SourceExerciseID: &sourceID,
+			})
+			slots = append(slots, linkSlot{sessionIndex: sessionIndex, linkIndex: linkIndex})
+		}
+	}
+	if err := exerciseInstanceDao.CreateBatch(ctx, exerciseRows); err != nil {
+		return nil, fmt.Errorf("error al crear ejercicio instancia: %w", err)
+	}
+
+	linkRows := make([]*dbs.SessionExerciseInstance, 0, len(exerciseRows))
+	for slotIndex, entry := range slots {
+		catalogLink := linksBySession[requests[entry.sessionIndex]][entry.linkIndex]
+		linkRows = append(linkRows, &dbs.SessionExerciseInstance{
+			SessionInstanceID:  instanceRows[entry.sessionIndex].ID,
+			ExerciseInstanceID: exerciseRows[slotIndex].ID,
+			Role:               catalogLink.Role, RepeatCount: catalogLink.RepeatCount, RestMinutes: catalogLink.RestMinutes,
+		})
+	}
+	if err := linkInstanceDao.CreateBatch(ctx, linkRows); err != nil {
+		return nil, fmt.Errorf("error al crear vínculo de ejercicio instancia: %w", err)
+	}
+
+	for i := range sessionIDs {
+		if requestedByInput[i] >= 0 {
+			id := instanceRows[requestedByInput[i]].ID
+			out[i] = &id
+		}
+	}
+	return out, nil
+}
+
 func (s *calendarService) sessionInstanceResponse(ctx *gin.Context, database *gorm.DB, id *int64) (*instance.SessionInstanceResponse, error) {
 	if id == nil {
 		return nil, nil
@@ -668,6 +813,102 @@ func (s *calendarService) deleteSupersededInstance(ctx *gin.Context, tx *gorm.DB
 		}
 	}
 	return sessionInstanceDao.Delete(ctx, id)
+}
+
+// deleteSupersededInstances es el lote de deleteSupersededInstance (design.md
+// D6c) con semántica D10 por instancia idéntica: preservar si la sesión O
+// cualquiera de sus ejercicios tiene feedback activo. Queries fijas: 1 de
+// feedback por sesión, 1 de links de las no protegidas, 1 de feedback por
+// ejercicio, y deletes con IN de links/ejercicios/sesiones de las realmente
+// borrables (hijo→padre). Cualquier error sube y tumba la tx (rollback).
+func (s *calendarService) deleteSupersededInstances(ctx *gin.Context, tx *gorm.DB, ids []int64) error {
+	// Dedupe: dos días no comparten instancia (FindBySessionInstanceID espera
+	// un único día por instancia), pero la entrada llega de loops por fecha.
+	batchIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			batchIDs = append(batchIDs, id)
+		}
+	}
+	if len(batchIDs) == 0 {
+		return nil
+	}
+	sessionInstanceDao := daos.NewSessionInstanceDao(tx)
+	linkDao := daos.NewSessionExerciseInstanceDao(tx)
+	exerciseDao := daos.NewExerciseInstanceDao(tx)
+
+	sessionFeedback, err := sessionInstanceDao.HasFeedbackByIDs(ctx, batchIDs)
+	if err != nil {
+		return err
+	}
+	protected := make(map[int64]struct{}, len(sessionFeedback))
+	for _, id := range sessionFeedback {
+		protected[id] = struct{}{}
+	}
+	candidates := make([]int64, 0, len(batchIDs))
+	for _, id := range batchIDs {
+		if _, ok := protected[id]; !ok {
+			candidates = append(candidates, id)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	links, err := linkDao.FindBySessionInstances(ctx, candidates)
+	if err != nil {
+		return err
+	}
+	exerciseIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		exerciseIDs = append(exerciseIDs, link.ExerciseInstanceID)
+	}
+	exerciseFeedback, err := exerciseDao.HasFeedbackByIDs(ctx, exerciseIDs)
+	if err != nil {
+		return err
+	}
+	// El feedback de un ejercicio protege su propia sesión (D10); los ids de
+	// feedback son de otra tabla, no entran al set por id de sesión.
+	protectedByExercise := make(map[int64]struct{}, len(exerciseFeedback))
+	for _, id := range exerciseFeedback {
+		protectedByExercise[id] = struct{}{}
+	}
+	for _, link := range links {
+		if _, ok := protectedByExercise[link.ExerciseInstanceID]; ok {
+			protected[link.SessionInstanceID] = struct{}{}
+		}
+	}
+	deletable := make([]int64, 0, len(candidates))
+	for _, id := range candidates {
+		if _, ok := protected[id]; !ok {
+			deletable = append(deletable, id)
+		}
+	}
+	if len(deletable) == 0 {
+		return nil
+	}
+	deleteExerciseIDs := make([]int64, 0, len(deletable))
+	seenExercises := make(map[int64]struct{}, len(links))
+	for _, link := range links {
+		if _, ok := protected[link.SessionInstanceID]; ok {
+			continue
+		}
+		if _, dup := seenExercises[link.ExerciseInstanceID]; !dup {
+			seenExercises[link.ExerciseInstanceID] = struct{}{}
+			deleteExerciseIDs = append(deleteExerciseIDs, link.ExerciseInstanceID)
+		}
+	}
+	if err := linkDao.DeleteBySessionInstances(ctx, deletable); err != nil {
+		return err
+	}
+	if err := exerciseDao.DeleteByIDs(ctx, deleteExerciseIDs); err != nil {
+		return err
+	}
+	return sessionInstanceDao.DeleteByIDs(ctx, deletable)
 }
 
 func closedDayForRequest(existing *dbs.GroupCalendarDay, candidate *dbs.GroupCalendarDay, now time.Time) bool {
@@ -1106,14 +1347,20 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 	var sameWarnings []calendar.PresencialConflict
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(idx))
+		// D7: 1 lectura para todas las fechas del lote; los guards de abajo
+		// se evalúan en memoria con el mismo orden y mensajes que la lectura
+		// por fecha.
+		existingDays, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, targetDates)
+		if err != nil {
+			return err
+		}
+		existingByDate := make(map[string]*dbs.GroupCalendarDay, len(targetDates))
+		for i := range existingDays {
+			existingByDate[existingDays[i].Date.Format("2006-01-02")] = &existingDays[i]
+		}
 		for j, date := range targetDates {
 			i := idx[j]
-			existing, err := txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
-			existingByDate[date.Format("2006-01-02")] = existing
+			existing := existingByDate[date.Format("2006-01-02")]
 			planReq, err := calendarRequestFromPlanDay(planDays[i])
 			if err != nil {
 				return err
@@ -1165,23 +1412,50 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		}
 		sameWarnings = same
 
+		// D6 (stamp): instanciación batch — 1 query por tabla del catálogo y
+		// 1 INSERT por tabla de instancia para todo el lote, alineado por
+		// posición al orden de rows.
+		sessionIDs := make([]*int64, len(rows))
 		for i := range rows {
-			planDay := planDays[idx[i]]
-			if planDay.Kind == string(constants.GroupCalendarDayKindTraining) {
-				newInstance, err := s.instantiateSession(ctx, tx, *planDay.SessionID)
-				if err != nil {
-					return err
-				}
-				rows[i].SessionInstanceID = &newInstance.ID
+			if planDays[idx[i]].Kind == string(constants.GroupCalendarDayKindTraining) {
+				sessionIDs[i] = planDays[idx[i]].SessionID
 			}
-			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
-				return err
+		}
+		newInstanceIDs, err := s.instantiateSessionsBatch(ctx, tx, sessionIDs)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if newInstanceIDs[i] != nil {
+				rows[i].SessionInstanceID = newInstanceIDs[i]
 			}
+		}
+		rowPointers := make([]*dbs.GroupCalendarDay, len(rows))
+		for i := range rows {
+			rowPointers[i] = &rows[i]
+		}
+		results, err := txCalendarDao.UpsertMany(ctx, rowPointers)
+		if err != nil {
+			return err
+		}
+		superseded := make([]int64, 0)
+		for i := range rows {
+			created := existingByDate[rows[i].Date.Format("2006-01-02")] == nil
+			if !created {
+				// Igual que el Upsert de fila única (ruta UPDATE): la fila del
+				// caller mantiene sus timestamps en cero.
+				results[i].CreatedAt, results[i].UpdatedAt = time.Time{}, time.Time{}
+			}
+			rows[i].ID = results[i].ID
+			rows[i].CreatedAt = results[i].CreatedAt
+			rows[i].UpdatedAt = results[i].UpdatedAt
 			if existing := existingByDate[rows[i].Date.Format("2006-01-02")]; existing != nil && existing.SessionInstanceID != nil {
-				if err := s.deleteSupersededInstance(ctx, tx, *existing.SessionInstanceID); err != nil {
-					return err
-				}
+				superseded = append(superseded, *existing.SessionInstanceID)
 			}
+		}
+		// D6c: un solo borrado batch de las instancias superadas de todo el lote.
+		if err := s.deleteSupersededInstances(ctx, tx, superseded); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1280,14 +1554,23 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 	var sameWarnings []calendar.PresencialConflict
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
+		// D7: 1 lectura para todas las fechas del lote; los guards de abajo
+		// se evalúan en memoria con el mismo orden y mensajes que la lectura
+		// por fecha.
+		existingDays, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, dates)
+		if err != nil {
+			return err
+		}
+		dayByDate := make(map[string]*dbs.GroupCalendarDay, len(existingDays))
+		for i := range existingDays {
+			dayByDate[existingDays[i].Date.Format("2006-01-02")] = &existingDays[i]
+		}
 		existing := make([]*dbs.GroupCalendarDay, len(dates))
+		for i, date := range dates {
+			existing[i] = dayByDate[date.Format("2006-01-02")]
+		}
 		missing := make([]string, 0)
 		for i, date := range dates {
-			var err error
-			existing[i], err = txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) && dayReq.SessionID == nil &&
 				(existing[i] == nil || existing[i].SessionInstanceID == nil) {
 				missing = append(missing, date.Format("2006-01-02"))
@@ -1334,29 +1617,56 @@ func (s *calendarService) Bulk(ctx *gin.Context, groupID, callerID int64, req ca
 			return newCalendarPresencialCollisionError(cross)
 		}
 		sameWarnings = same
+
+		// D6 (bulk): misma instanciación batch del stamp — una pasada por
+		// tabla del catálogo/instancia para el lote entero. La preservación
+		// de instancia (training sin SessionID) y el keep de cancelled se
+		// resuelven sin insertar nada nuevo.
+		sessionIDs := make([]*int64, len(rows))
+		preservada := make([]bool, len(rows))
 		for i := range rows {
-			preservada := false
 			if dayReq.Kind == string(constants.GroupCalendarDayKindTraining) {
 				if dayReq.SessionID == nil {
-					preservada = true
+					preservada[i] = true
 				} else {
-					newInstance, err := s.instantiateSession(ctx, tx, *dayReq.SessionID)
-					if err != nil {
-						return err
-					}
-					rows[i].SessionInstanceID = &newInstance.ID
+					sessionIDs[i] = dayReq.SessionID
 				}
 			} else if dayReq.Kind == string(constants.GroupCalendarDayKindCancelled) {
 				rows[i].SessionInstanceID = existing[i].SessionInstanceID
 			}
-			if err := txCalendarDao.Upsert(ctx, &rows[i]); err != nil {
-				return err
+		}
+		newInstanceIDs, err := s.instantiateSessionsBatch(ctx, tx, sessionIDs)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if newInstanceIDs[i] != nil {
+				rows[i].SessionInstanceID = newInstanceIDs[i]
 			}
-			if !preservada && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
-				if err := s.deleteSupersededInstance(ctx, tx, *existing[i].SessionInstanceID); err != nil {
-					return err
-				}
+		}
+		rowPointers := make([]*dbs.GroupCalendarDay, len(rows))
+		for i := range rows {
+			rowPointers[i] = &rows[i]
+		}
+		results, err := txCalendarDao.UpsertMany(ctx, rowPointers)
+		if err != nil {
+			return err
+		}
+		superseded := make([]int64, 0, len(rows))
+		for i := range rows {
+			if existing[i] != nil {
+				results[i].CreatedAt, results[i].UpdatedAt = time.Time{}, time.Time{}
 			}
+			rows[i].ID = results[i].ID
+			rows[i].CreatedAt = results[i].CreatedAt
+			rows[i].UpdatedAt = results[i].UpdatedAt
+			if !preservada[i] && existing[i] != nil && existing[i].SessionInstanceID != nil && dayReq.Kind != string(constants.GroupCalendarDayKindCancelled) {
+				superseded = append(superseded, *existing[i].SessionInstanceID)
+			}
+		}
+		// D6c: un solo borrado batch de las instancias superadas de todo el lote.
+		if err := s.deleteSupersededInstances(ctx, tx, superseded); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -1404,15 +1714,20 @@ func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, r
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		txCalendarDao := daos.NewGroupCalendarDayDao(tx)
-		existing := make([]*dbs.GroupCalendarDay, len(dates))
+		// D7: 1 lectura para todas las fechas; las cerradas se evalúan en
+		// memoria en el MISMO orden/criterio que el loop por fecha de antes
+		// (por fechas del input → el 422 lista las cerradas como hoy).
+		existing, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, dates)
+		if err != nil {
+			return err
+		}
+		dayByDate := make(map[string]*dbs.GroupCalendarDay, len(existing))
+		for i := range existing {
+			dayByDate[existing[i].Date.Format("2006-01-02")] = &existing[i]
+		}
 		closed := make([]string, 0)
-		for i, date := range dates {
-			var err error
-			existing[i], err = txCalendarDao.FindByGroupAndDate(ctx, groupID, date)
-			if err != nil {
-				return err
-			}
-			if existing[i] != nil && isCalendarDayClosed(*existing[i], time.Now()) {
+		for _, date := range dates {
+			if day := dayByDate[date.Format("2006-01-02")]; day != nil && isCalendarDayClosed(*day, time.Now()) {
 				closed = append(closed, date.Format("2006-01-02"))
 			}
 		}
@@ -1422,14 +1737,13 @@ func (s *calendarService) BulkClear(ctx *gin.Context, groupID, callerID int64, r
 		if err := txCalendarDao.DeleteByDates(ctx, groupID, dates); err != nil {
 			return err
 		}
-		for _, day := range existing {
-			if day != nil && day.SessionInstanceID != nil {
-				if err := s.deleteSupersededInstance(ctx, tx, *day.SessionInstanceID); err != nil {
-					return err
-				}
+		superseded := make([]int64, 0, len(existing))
+		for _, date := range dates {
+			if day := dayByDate[date.Format("2006-01-02")]; day != nil && day.SessionInstanceID != nil {
+				superseded = append(superseded, *day.SessionInstanceID)
 			}
 		}
-		return nil
+		return s.deleteSupersededInstances(ctx, tx, superseded)
 	})
 	if err != nil {
 		if errors.Is(err, ErrCalendarDayClosed) {
@@ -1899,16 +2213,16 @@ func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, f
 		return []calendar.AggregateCalendarDayResponse{}, nil
 	}
 
-	// Detección de colisiones por fecha (design.md D8): una corrida de
-	// findPresencialCollisions por fecha distinta del rango, con todos los
-	// días presenciales de esa fecha como candidatos — evita el N+1 de una
-	// query de detección por día. Los candidatos y los días "existentes" son
-	// el mismo conjunto (las filas ya están guardadas): el cruce detecta los
-	// superpuestos de otros grupos (el helper salta el mismo grupo, así la
-	// fila nunca colisiona consigo misma) y cancelled nunca participa en
-	// ningún lado (D1). La lista plana de conflictos se atribuye a cada día
-	// de la vista re-verificando el overlap y re-clasificando por equipo del
-	// día marcado (la clasificación del helper es relativa al candidato).
+	// Detección de colisiones en lote (design.md D8): las filas ya consultadas
+	// del rango SON los candidatos (ruling del read-path: no hay
+	// excludeDayIDs), así que el cruce por fecha corre en memoria con las
+	// mismas reglas del guard (classifyPresencialConflicts) — una corrida por
+	// fecha con ≥2 presenciales, cero queries extra. El conjunto por fecha es
+	// el mismo que traería la query del helper (mismatch de grupos/fechas
+	// imposible: mismo owner y rango), y se ordena por presencial_time_from
+	// para reproducir el orden de esa query (date, presencial_time_from).
+	// Cancelled nunca participa (kind != training en el filtro) y sin otro
+	// día presencial en la fecha no hay colisión posible.
 	presencialByDate := make(map[string][]dbs.GroupCalendarDay)
 	for _, d := range days {
 		if d.IsPresencial && d.Kind == string(constants.GroupCalendarDayKindTraining) {
@@ -1916,20 +2230,17 @@ func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, f
 			presencialByDate[key] = append(presencialByDate[key], d)
 		}
 	}
+	for _, presencialDays := range presencialByDate {
+		sort.Slice(presencialDays, func(i, j int) bool {
+			return presencialTimeHHMM(presencialDays[i].PresencialTimeFrom) < presencialTimeHHMM(presencialDays[j].PresencialTimeFrom)
+		})
+	}
 	collisionByDayID := make(map[int64]*calendar.PresencialCollision)
-	for dateKey, presencialDays := range presencialByDate {
+	for _, presencialDays := range presencialByDate {
 		if len(presencialDays) < 2 {
 			continue // sin otro día presencial esa fecha no hay colisión posible
 		}
-		date, err := time.Parse("2006-01-02", dateKey)
-		if err != nil {
-			continue
-		}
-		cross, same, err := s.findPresencialCollisions(ctx, s.db, userID, nil, nil, []time.Time{date}, presencialDays)
-		if err != nil {
-			customlogger.Error(ctx, "error finding presencial collisions for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
-			return nil, fmt.Errorf("error al detectar colisiones presenciales")
-		}
+		cross, same := classifyPresencialConflicts(presencialDays, presencialDays, groupByID, teamNameByID)
 		allConflicts := append(cross, same...)
 		// Dedup: un colisionante puede aparecer en cross y same a la vez
 		// (chocó con candidatos de equipos distintos); queda una fila por

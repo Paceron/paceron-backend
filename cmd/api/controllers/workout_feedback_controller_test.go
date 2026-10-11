@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
 	"simple-arq-golang/cmd/api/realtime"
@@ -518,6 +520,24 @@ func TestWorkoutFeedbackController_Delete_Forbidden(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+// El Update comparte respondFeedbackError con Create/ErrorMapping (task 6):
+// el pin acá fija que la mutación propia también cae 403 con el guard del service.
+func TestWorkoutFeedbackController_Update_Forbidden(t *testing.T) {
+	mockSvc := &mockWorkoutFeedbackService{
+		updateFn: func(ctx *gin.Context, authUserID, feedbackID int64, req workoutfeedback.UpdateFeedbackRequest) (*dbs.WorkoutFeedback, error) {
+			return nil, services.ErrWorkoutFeedbackForbidden
+		},
+	}
+	router := setupWorkoutFeedbackRouter(mockSvc, 7)
+	req := httptest.NewRequest(http.MethodPut, "/workout-feedback/1", strings.NewReader(`{"rpe":8}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 // setupWorkoutFeedbackRouter arma un router de prueba que inyecta auth_user_id y
 // mapea las rutas del módulo (mismo patrón que setupSessionRouter).
 func setupWorkoutFeedbackRouter(svc services.WorkoutFeedbackServiceInterface, authUserID int64) *gin.Engine {
@@ -1002,5 +1022,37 @@ func TestWorkoutFeedbackController_History_ServiceErrorMapping(t *testing.T) {
 
 			assert.Equal(t, tc.expectedCode, response.Code)
 		})
+	}
+}
+
+// Un error crudo de DB del service (no tipado) cae al default del mapper de
+// respondFeedbackError: el 500 debe llevar el mensaje genérico fijo, sin
+// arrastrar SQLSTATE/texto pgx del driver al body (hallazgo del audit de task 6).
+func TestWorkoutFeedbackController_History_RawDBError500NoLeak(t *testing.T) {
+	driverErr := errors.New("SQLSTATE 42601: unterminated quoted literal in query")
+	mockSvc := &mockWorkoutFeedbackService{
+		athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			return nil, driverErr
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "7"}}
+	setAuthUserID(c, 7)
+	controller.AthleteHistory(c)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+
+	var apiErr apierror.APIError
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &apiErr))
+	assert.Equal(t, http.StatusInternalServerError, apiErr.StatusCode)
+	assert.Equal(t, "Internal Server Error", apiErr.Code)
+	assert.Equal(t, "error interno", apiErr.Message)
+
+	for _, tok := range []string{"SQLSTATE", "pgconn", "unterminated"} {
+		assert.NotContains(t, response.Body.String(), tok)
 	}
 }

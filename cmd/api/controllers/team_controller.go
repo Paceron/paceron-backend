@@ -80,6 +80,9 @@ func (tc *teamController) Create(c *gin.Context) {
 		} else if errors.Is(err, services.ErrInvalidMembershipFee) {
 			statusCode = http.StatusBadRequest
 			code = "INVALID_MEMBERSHIP_FEE"
+		} else if errors.Is(err, services.ErrInvalidTeamLat) || errors.Is(err, services.ErrInvalidTeamLng) {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -355,6 +358,9 @@ func (tc *teamController) UpdateAddress(c *gin.Context) {
 		} else if errMsg == "solo el entrenador puede actualizar el equipo" {
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
+		} else if errors.Is(err, services.ErrInvalidTeamLat) || errors.Is(err, services.ErrInvalidTeamLng) {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

@@ -8117,6 +8117,12 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -8200,6 +8206,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"
@@ -10265,9 +10277,17 @@ const docTemplate = `{
                     "description": "Descripción del equipo (opcional)",
                     "type": "string"
                 },
+                "lat": {
+                    "description": "Ubicación: latitud (opcional, [-90, 90])",
+                    "type": "number"
+                },
                 "level": {
                     "description": "Nivel del equipo (opcional)",
                     "type": "string"
+                },
+                "lng": {
+                    "description": "Ubicación: longitud (opcional, [-180, 180])",
+                    "type": "number"
                 },
                 "max_members": {
                     "description": "Cantidad máxima de integrantes (requerido)",
@@ -10335,9 +10355,17 @@ const docTemplate = `{
                     "description": "Si acepta solicitudes de ingreso",
                     "type": "boolean"
                 },
+                "lat": {
+                    "description": "Ubicación: latitud (null = no seteada)",
+                    "type": "number"
+                },
                 "level": {
                     "description": "Nivel del equipo",
                     "type": "string"
+                },
+                "lng": {
+                    "description": "Ubicación: longitud (null = no seteada)",
+                    "type": "number"
                 },
                 "max_members": {
                     "description": "Cantidad máxima de integrantes",
@@ -10459,6 +10487,14 @@ const docTemplate = `{
                 "country": {
                     "description": "País",
                     "type": "string"
+                },
+                "lat": {
+                    "description": "Ubicación: latitud (opcional, [-90, 90]; omitido = sin cambio)",
+                    "type": "number"
+                },
+                "lng": {
+                    "description": "Ubicación: longitud (opcional, [-180, 180]; omitido = sin cambio)",
+                    "type": "number"
                 },
                 "number": {
                     "description": "Número",
@@ -11229,6 +11265,12 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -11278,6 +11320,12 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "lat": {
+                    "type": "number"
+                },
+                "lng": {
+                    "type": "number"
                 },
                 "name": {
                     "type": "string"

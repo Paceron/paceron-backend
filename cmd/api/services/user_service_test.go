@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/user"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
+	"simple-arq-golang/cmd/api/testutils"
 )
 
 func TestUserUpdate_Success(t *testing.T) {
@@ -474,6 +475,121 @@ func TestValidateUserUpdateRequest_InvalidBirthDate(t *testing.T) {
 	assert.Equal(t, "birth_date debe tener formato dd/mm/aaaa", msg)
 }
 
+func TestValidateUserUpdateRequest_CharsetRelajado(t *testing.T) {
+	country := "Alto Bío Bío, Chile"
+	province := "Santa Fe - 25 de Mayo"
+	city := "Villa O'Higgins"
+	street := "Av. San Martin . Esq. 3"
+	number := "No. 742"
+	req := &user.UserUpdateRequest{
+		Country:  &country,
+		Province: &province,
+		City:     &city,
+		Street:   &street,
+		Number:   &number,
+	}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "", msg)
+}
+
+func TestValidateUserUpdateRequest_CharsetPeligrosoRechazado(t *testing.T) {
+	country := "<script>alert(1)</script>"
+	req := &user.UserUpdateRequest{Country: &country}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas", msg)
+
+	province := "'; DROP TABLE users;--"
+	req2 := &user.UserUpdateRequest{Province: &province}
+	assert.Equal(t, "province solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas", ValidateUserUpdateRequest(req2))
+
+	city := "A\"quoted\"city"
+	req3 := &user.UserUpdateRequest{City: &city}
+	assert.Equal(t, "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas", ValidateUserUpdateRequest(req3))
+}
+
+func TestValidateUserUpdateRequest_LatLngFueraDeRango(t *testing.T) {
+	lat := 95.4
+	req := &user.UserUpdateRequest{Lat: &lat}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "lat fuera de rango", msg)
+
+	lng := -200.0
+	req2 := &user.UserUpdateRequest{Lng: &lng}
+	assert.Equal(t, "lng fuera de rango", ValidateUserUpdateRequest(req2))
+}
+
+func TestValidateUserUpdateRequest_LatLngLimitesValidos(t *testing.T) {
+	lat := -90.0
+	lng := 180.0
+	req := &user.UserUpdateRequest{Lat: &lat, Lng: &lng}
+	msg := ValidateUserUpdateRequest(req)
+	assert.Equal(t, "", msg)
+}
+
+func TestUserUpdate_LatLngSeGuardanYSeDevuelven(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	var savedUser *dbs.User
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Surname:   "Doe",
+				Email:     "john@test.com",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+			}, nil
+		},
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return nil, nil
+		},
+		mockUpdate: func(ctx *gin.Context, user *dbs.User) error {
+			savedUser = user
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	lat := -34.6
+	lng := -58.4
+	req := &user.UserUpdateRequest{Lat: &lat, Lng: &lng}
+
+	resp, err := svc.Update(nil, 1, req, "")
+	assert.NoError(t, err)
+	assert.Equal(t, &lat, savedUser.Lat)
+	assert.Equal(t, &lng, savedUser.Lng)
+	assert.Equal(t, &lat, resp.Lat)
+	assert.Equal(t, &lng, resp.Lng)
+}
+
+func TestUserUpdate_SinLatLngSePisanComoEstaban(t *testing.T) {
+	birthDate := time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC)
+	existingLat := -40.9
+	mockDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        userID,
+				Name:      "John",
+				Email:     "john@test.com",
+				Password:  "$2a$10$hashedpassword",
+				BirthDate: birthDate,
+				Lat:       &existingLat,
+			}, nil
+		},
+		mockUpdate: func(ctx *gin.Context, user *dbs.User) error {
+			return nil
+		},
+	}
+
+	svc := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	newName := "John Updated"
+	resp, err := svc.Update(nil, 1, &user.UserUpdateRequest{Name: &newName}, "")
+
+	assert.NoError(t, err)
+	assert.Equal(t, &existingLat, resp.Lat)
+	assert.Nil(t, resp.Lng)
+}
+
 func TestValidateUserUpdateRequest_InvalidDefaultTheme(t *testing.T) {
 	theme := "purple"
 	req := &user.UserUpdateRequest{
@@ -858,4 +974,51 @@ func TestUserService_DeletePhoto_StorageDeleteFails(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.False(t, clearPhotoCalled, "no debe limpiar la key en DB si falla el borrado en S3")
+}
+
+func TestUserLatLngColumns_Persisted(t *testing.T) {
+	tx := testutils.SetupTestDB(t)
+
+	user := &dbs.User{
+		Name:      "Lat",
+		Surname:   "Lng",
+		Email:     "latlng-persist@test.com",
+		DNI:       "91234567",
+		BirthDate: time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC),
+		Password:  "$2a$10$hashedpassword",
+		Status:    "active",
+		City:      "Villa O'Higgins",
+		Street:    "Av. San Martin - Esq. 3",
+		Lat:       ptr(-33.125),
+		Lng:       ptr(-58.4),
+	}
+	require.NoError(t, tx.Create(user).Error)
+
+	var back dbs.User
+	require.NoError(t, tx.Where("email = ?", user.Email).First(&back).Error)
+	require.NotNil(t, back.Lat)
+	require.NotNil(t, back.Lng)
+	assert.Equal(t, -33.125, *back.Lat)
+	assert.Equal(t, -58.4, *back.Lng)
+	assert.Equal(t, "Villa O'Higgins", back.City)
+
+	nullUser := &dbs.User{
+		Name:      "Null",
+		Surname:   "Null",
+		Email:     "latlng-null@test.com",
+		DNI:       "91234568",
+		BirthDate: time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC),
+		Password:  "$2a$10$hashedpassword",
+		Status:    "active",
+	}
+	require.NoError(t, tx.Create(nullUser).Error)
+
+	var nullBack dbs.User
+	require.NoError(t, tx.Where("email = ?", nullUser.Email).First(&nullBack).Error)
+	assert.Nil(t, nullBack.Lat)
+	assert.Nil(t, nullBack.Lng)
+}
+
+func ptr(v float64) *float64 {
+	return &v
 }

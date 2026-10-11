@@ -277,6 +277,12 @@ func (s *userService) Update(ctx *gin.Context, id int64, req *user.UserUpdateReq
 	if req.Number != nil {
 		userDB.Number = strings.TrimSpace(*req.Number)
 	}
+	if req.Lat != nil {
+		userDB.Lat = req.Lat
+	}
+	if req.Lng != nil {
+		userDB.Lng = req.Lng
+	}
 	if req.Dni != nil {
 		userDB.DNI = strings.TrimSpace(*req.Dni)
 	}
@@ -435,6 +441,8 @@ func toUserUpdateResponse(userDB *dbs.User) *user.UserUpdateResponse {
 		City:                 userDB.City,
 		Street:               userDB.Street,
 		Number:               userDB.Number,
+		Lat:                  userDB.Lat,
+		Lng:                  userDB.Lng,
 		Dni:                  userDB.DNI,
 		BirthDate:            userDB.BirthDate.Format("02/01/2006"),
 		Status:               userDB.Status,
@@ -471,34 +479,40 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 		}
 	}
 	if req.Country != nil && *req.Country != "" {
-		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ ]+$`, *req.Country)
+		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Country)
 		if !match {
-			return "country solo acepta letras y espacios"
+			return "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.City != nil && *req.City != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, *req.City)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.City)
 		if !match {
-			return "city solo acepta letras, números y espacios"
+			return "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Province != nil && *req.Province != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, *req.Province)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Province)
 		if !match {
-			return "province solo acepta letras, números y espacios"
+			return "province solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Street != nil && *req.Street != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, *req.Street)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Street)
 		if !match {
-			return "street solo acepta letras, números y espacios"
+			return "street solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Number != nil && *req.Number != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]+$`, *req.Number)
+		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Number)
 		if !match {
-			return "number solo acepta letras, números y espacios"
+			return "number solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
+	}
+	if req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90) {
+		return "lat fuera de rango"
+	}
+	if req.Lng != nil && (*req.Lng < -180 || *req.Lng > 180) {
+		return "lng fuera de rango"
 	}
 	if req.Dni != nil && *req.Dni != "" {
 		match, _ := regexp.MatchString(`^[0-9]+$`, *req.Dni)

@@ -437,7 +437,7 @@ Dos lecturas paginadas de entrenamientos realizados (filas de `workout_feedback`
 
 #### Response `200 {items, total, page, page_size, available_athletes, available_exercises}`
 
-Los errores van por `respondFeedbackError` (mismo mapeo del resto del dominio feedback): 400 `ErrWorkoutFeedbackInvalid`, 403 `ErrWorkoutFeedbackForbidden`, 404 `ErrTeamNotFound`.
+Los errores van por `respondFeedbackError` (mismo mapeo del resto del dominio feedback): 400 `ErrWorkoutFeedbackInvalid`, 403 `ErrWorkoutFeedbackForbidden`, 404 `ErrTeamNotFound`. Stock del 500 (change `latlng-optimizaciones-y-endurecimiento`): un error **sin sentinel tipado** (crudo del DAO/driver) responde `500` con message fijo `"error interno"` — ya NO se expone el detalle del error (SQLSTATE/texto pgx). Los códigos tipados 400/403/404/409 siguen devolviendo su message específico.
 
 ```json
 {
@@ -569,6 +569,15 @@ Chat por instancia de sesión: `POST /api/v1/session-instances/{id}/messages` y 
 - **Aviso WS:** tras cada POST exitoso el backend emite best-effort `control:message_created` al canal `session:{id}` (payload mínimo `{sessionMessageId}`, sin contenido — el contenido se recupera por REST con `since`; el aviso es idempotente de refetchear). Sin exclusión de emisor: el propio actor recibe el aviso.
 - No hay edición ni borrado de mensajes (sin `deleted_at`): lo escrito queda escrito.
 
+### 8.13 Ubicación (lat/lng) de usuario y equipo + charset relajado de dirección (Gap 29 — change `latlng-optimizaciones-y-endurecimiento`)
+
+Campos **aditivos** de ubicación para `users` y `teams` (columnas `lat`/`lng` nullable `*float64`, sin backfill — `null` = no seteada). Shape, validación y contratos verificados contra el código (detalles frontend: `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §14).
+
+- **Aceptan lat/lng (solo si vienen, opcional):** registro de usuario (`POST /register`, DTOs de `domains/auth`), update de usuario (`PUT /users/{id}`, `domains/user`), creación de equipo (`POST /teams`, solo lat/lng de dirección) y update de dirección de equipo (`PUT /teams/{id}/address`, omitido = sin cambio). Las respuestas correspondientes los **devuelvan siempre, nullable sin `omitempty`** (`"lat": null` si no está seteado).
+- **Validación de rango:** `lat` ∈ [-90, 90], `lng` ∈ [-180, 180]. Falla → `400` con message `"lat fuera de rango"` / `"lng fuera de rango"` (team vía sentinels `ErrInvalidTeamLat`/`ErrInvalidTeamLng`, mapeados por el controller a 400 en Create/UpdateAddress; solo se valida el campo que venga).
+- **Charset de dirección relajado** (fix práctico de nombres reales tipo "Maipú-O'Connor, St."): los 4 regex de registro (`country`/`city`/`street`/`number`; `province` sin cambio) y los 5 de update admiten ahora **guion ASCII, punto, apóstrofe y coma** además de lo anterior. NO se admite U+2013 (guion tipográfico). Mensajes actualizados ("solo acepta letras, espacios, guiones, puntos, apóstrofes y comas" / con "números" en los campos alfanuméricos).
+- Este change además migró las escrituras del calendario a batch (§9, "Escrituras y lecturas batch del calendario") — sin cambio de contratos.
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.
@@ -578,6 +587,7 @@ Chat por instancia de sesión: `POST /api/v1/session-instances/{id}/messages` y 
 - **Transacciones:** siempre se instancian DAOs *nuevos* atados al `*gorm.DB` de la transacción (`daos.NewXDao(tx)`) — nunca se pasa `tx` a una instancia de DAO ya creada, este patrón de DAO no lo soporta.
 - **`Stamp`/`Bulk`/`Shift`** escriben múltiples filas dentro de una única transacción — si falla la fila N, ninguna de las N-1 anteriores queda aplicada.
 - **Vistas de calendario en batch (change `optimizaciones-calendario-y-indices`):** GetRange/Stamp/Bulk/Shift/MemberCalendar/AdministeredCalendar construyen sus respuestas con `toCalendarDayResponses`, que resuelve las instancias embebidas en 3 queries batch (`FindByIDs` de instancias + links + ejercicios) en vez de una query por fila; team Search y CalendarSummary resuelven owners/miembros/nombres de grupo en queries por colección. Índices en las tablas calientes (`group_users.group_id`/`user_id`, `team_users.team_id`/`user_id`, `session_exercise_instances.session_instance_id`/`exercise_instance_id`, `workout_feedback_points.feedback_id`). Sin cambio de contrato ni de shapes — `UpsertDay` y callers de fila única siguen su mapping original.
+- **Escrituras y lecturas batch del calendario (change `latlng-optimizaciones-y-endurecimiento`):** las escrituras del dominio dejaron de hacer 1 query por fila — el número de round-trips es **constante**, no crece con la cantidad de días. En cada caso la respuesta/errores quedaron idénticos (sin cambio de contratos): `UpsertMany` de días (1 `INSERT` multi-fila `ON CONFLICT (group_id,date) DO UPDATE`, con el CASE de limpieza presencial del Gap 26 en SQL — `UpsertDay` de fila única intacto); instanciación por día del stamp/bulk (inserts multi-fila de `session_instances`/`exercise_instances` con `RETURNING` + links resueltos con `IN` al catálogo); `Stamp` = 16 queries fijas ingrese 4 o 30 días (guad de lectura de todas las fechas en 1 query + evaluación en memoria, mensajes/all-or-nothing idénticos); `deleteSupersededInstances` batch (protección por feedback de sesión o de cualquier ejercicio, §8.4 semántica intacta); bulk-clear completo = 11 queries fijas (1 read `IN` + guards en memoria + 1 delete + supersede batch); detección de colisiones de `AdministeredCalendar` in-memory sobre las filas del rango (3 queries fijas para todo el rango, antes 3 por fecha colisionante); listados de invitaciones en batch (`ListPendingInvitationsForUser` 3 queries, listado del team 4 queries — antes +1..2 users y +1 seller connection por invitación; `can_receive_payments` hoy se resuelve con 1 query de `seller_connections` para todo el listado). Residual conocido: la detección de colisiones presencial en stamp/bulk sigue 1 query por fecha con día presencial (para lotes asincrónicos cero queries extra).
 
 ## 10. Tabla de errores por dominio
 

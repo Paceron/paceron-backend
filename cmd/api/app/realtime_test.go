@@ -59,15 +59,23 @@ func (s *channelAuthorizerStubDAO) HasInstanceAccess(_ *gin.Context, instanceID,
 }
 
 func (s *channelAuthorizerStubDAO) Create(*gin.Context, *dbs.SessionInstance) error { return nil }
+func (s *channelAuthorizerStubDAO) CreateBatch(*gin.Context, []*dbs.SessionInstance) error {
+	return nil
+}
 func (s *channelAuthorizerStubDAO) FindByID(*gin.Context, int64) (*dbs.SessionInstance, error) {
 	return nil, nil
 }
 func (s *channelAuthorizerStubDAO) FindByIDs(*gin.Context, []int64) ([]dbs.SessionInstance, error) {
 	return nil, nil
 }
-func (s *channelAuthorizerStubDAO) Delete(*gin.Context, int64) error { return nil }
+func (s *channelAuthorizerStubDAO) Delete(*gin.Context, int64) error        { return nil }
+func (s *channelAuthorizerStubDAO) DeleteByIDs(*gin.Context, []int64) error { return nil }
 func (s *channelAuthorizerStubDAO) HasFeedback(*gin.Context, int64) (bool, error) {
 	return false, nil
+}
+
+func (s *channelAuthorizerStubDAO) HasFeedbackByIDs(*gin.Context, []int64) ([]int64, error) {
+	return []int64{}, nil
 }
 
 func TestChannelAuthorizer(t *testing.T) {

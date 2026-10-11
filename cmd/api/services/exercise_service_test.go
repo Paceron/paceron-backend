@@ -33,6 +33,13 @@ func (m *mockExerciseDao) FindByID(ctx *gin.Context, id int64) (*dbs.Exercise, e
 	}
 	return nil, nil
 }
+func (m *mockExerciseDao) FindByIDs(_ *gin.Context, ids []int64) ([]dbs.Exercise, error) {
+	rows := make([]dbs.Exercise, 0, len(ids))
+	for _, id := range ids {
+		rows = append(rows, dbs.Exercise{ID: id})
+	}
+	return rows, nil
+}
 func (m *mockExerciseDao) FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error) {
 	if m.findByOwnerFn != nil {
 		return m.findByOwnerFn(ctx, ownerID)

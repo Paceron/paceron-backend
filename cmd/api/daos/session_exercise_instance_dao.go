@@ -13,6 +13,10 @@ import (
 // y viven y mueren con su SessionInstance — sin Update ni SoftDelete.
 type SessionExerciseInstanceDaoInterface interface {
 	Create(ctx *gin.Context, se *dbs.SessionExerciseInstance) error
+	// CreateBatch inserta N links en un solo INSERT (instanciación batch,
+	// design.md D6; no hace RETURNING: los ids no se usan). Lote vacío no
+	// toca la DB.
+	CreateBatch(ctx *gin.Context, rows []*dbs.SessionExerciseInstance) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.SessionExerciseInstance, error)
 	FindBySessionInstance(ctx *gin.Context, sessionInstanceID int64) ([]dbs.SessionExerciseInstance, error)
 	// FindBySessionInstances trae los links de varias instancias en una
@@ -23,6 +27,9 @@ type SessionExerciseInstanceDaoInterface interface {
 	// SessionInstance — paso hijo-antes-que-padre del borrado de instancia
 	// superada (design.md D10).
 	DeleteBySessionInstance(ctx *gin.Context, sessionInstanceID int64) error
+	// DeleteBySessionInstances borra físico los links de varias instancias
+	// en un solo DELETE con IN (design.md D6c). Lote vacío no toca la DB.
+	DeleteBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) error
 }
 
 type sessionExerciseInstanceDao struct {
@@ -36,6 +43,16 @@ func NewSessionExerciseInstanceDao(db *gorm.DB) SessionExerciseInstanceDaoInterf
 func (d *sessionExerciseInstanceDao) Create(ctx *gin.Context, se *dbs.SessionExerciseInstance) error {
 	if err := d.DB.Create(se).Error; err != nil {
 		return fmt.Errorf("error creating session exercise instance: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionExerciseInstanceDao) CreateBatch(ctx *gin.Context, rows []*dbs.SessionExerciseInstance) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := d.DB.Create(&rows).Error; err != nil {
+		return fmt.Errorf("error creating session exercise instances batch: %w", err)
 	}
 	return nil
 }
@@ -84,6 +101,17 @@ func (d *sessionExerciseInstanceDao) DeleteBySessionInstance(ctx *gin.Context, s
 	err := d.DB.Where("session_instance_id = ?", sessionInstanceID).Delete(&dbs.SessionExerciseInstance{}).Error
 	if err != nil {
 		return fmt.Errorf("error deleting session exercise instances: %w", err)
+	}
+	return nil
+}
+
+func (d *sessionExerciseInstanceDao) DeleteBySessionInstances(ctx *gin.Context, sessionInstanceIDs []int64) error {
+	if len(sessionInstanceIDs) == 0 {
+		return nil
+	}
+	err := d.DB.Where("session_instance_id IN ?", sessionInstanceIDs).Delete(&dbs.SessionExerciseInstance{}).Error
+	if err != nil {
+		return fmt.Errorf("error deleting session exercise instances batch: %w", err)
 	}
 	return nil
 }

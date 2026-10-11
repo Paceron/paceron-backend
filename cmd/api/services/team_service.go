@@ -28,6 +28,23 @@ var ErrInvalidQuery = errors.New("page debe ser mayor o igual a 1")
 // ErrInvalidMembershipFee indica que membership_fee es inválido (negativo).
 var ErrInvalidMembershipFee = errors.New("membership_fee no puede ser negativo")
 
+// ErrInvalidTeamLat/ErrInvalidTeamLng indican coordenadas fuera de rango.
+var (
+	ErrInvalidTeamLat = errors.New("lat fuera de rango")
+	ErrInvalidTeamLng = errors.New("lng fuera de rango")
+)
+
+// validateTeamLatLng valida el rango de las coordenadas opcionales del equipo.
+func validateTeamLatLng(lat, lng *float64) error {
+	if lat != nil && (*lat < -90 || *lat > 90) {
+		return ErrInvalidTeamLat
+	}
+	if lng != nil && (*lng < -180 || *lng > 180) {
+		return ErrInvalidTeamLng
+	}
+	return nil
+}
+
 // TeamServiceInterface define las operaciones de negocio para equipos.
 type TeamServiceInterface interface {
 	Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error)
@@ -225,6 +242,10 @@ func (s *teamService) DeleteIcon(ctx *gin.Context, id int64, callerID int64) err
 // Create crea un nuevo equipo a nombre del usuario autenticado, que pasa a ser el owner.
 // El owner debe tener el rol "entrenador".
 func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTeamRequest) (*team.TeamResponse, error) {
+	if err := validateTeamLatLng(req.Lat, req.Lng); err != nil {
+		return nil, err
+	}
+
 	user, err := s.userDao.FindByID(ctx, ownerID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding owner user", err,
@@ -276,6 +297,12 @@ func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTe
 			return nil, ErrInvalidMembershipFee
 		}
 		teamDB.MembershipFee = *req.MembershipFee
+	}
+	if req.Lat != nil {
+		teamDB.Lat = req.Lat
+	}
+	if req.Lng != nil {
+		teamDB.Lng = req.Lng
 	}
 
 	if err := s.teamDao.Create(ctx, teamDB); err != nil {
@@ -547,6 +574,10 @@ func (s *teamService) filterByMember(ctx *gin.Context, teams []dbs.Team, memberI
 
 // UpdateAddress actualiza la dirección de un equipo. Solo el entrenador del equipo puede hacerlo.
 func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, req *team.UpdateTeamAddressRequest) (*team.TeamResponse, error) {
+	if err := validateTeamLatLng(req.Lat, req.Lng); err != nil {
+		return nil, err
+	}
+
 	teamDB, err := s.teamDao.FindByID(ctx, id)
 	if err != nil {
 		customlogger.Error(ctx, "error finding team for address update", err,
@@ -574,6 +605,12 @@ func (s *teamService) UpdateAddress(ctx *gin.Context, id int64, callerID int64, 
 	teamDB.City = req.City
 	teamDB.Street = req.Street
 	teamDB.Number = req.Number
+	if req.Lat != nil {
+		teamDB.Lat = req.Lat
+	}
+	if req.Lng != nil {
+		teamDB.Lng = req.Lng
+	}
 
 	if err := s.teamDao.Update(ctx, teamDB); err != nil {
 		customlogger.Error(ctx, "error updating team address", err,
@@ -605,6 +642,8 @@ func (s *teamService) toResponse(t *dbs.Team) *team.TeamResponse {
 		City:                t.City,
 		Street:              t.Street,
 		Number:              t.Number,
+		Lat:                 t.Lat,
+		Lng:                 t.Lng,
 		ShowGroupsToRunners: t.ShowGroupsToRunners,
 		Visible:             t.Visible,
 		IsPublic:            t.IsPublic,
