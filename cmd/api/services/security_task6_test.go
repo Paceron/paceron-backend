@@ -186,11 +186,11 @@ func TestNoLeak_CalendarGetRange_DBFailureKeepsContractMessage(t *testing.T) {
 	assertNoDriverLeak(t, err)
 }
 
-// buildHistoryResponse propaga el error del DAO sin re-envolver y el controller
-// lo imprime tal cual en el body del 500 (hallazgo del audit de task 6). El dao
-// wrappea con %w bajo un prefijo descriptivo; este pin fija ese contrato: si el
-// mensaje alguna vez deja de tener el prefijo o arrastra texto del driver,
-// falla acá primero.
+// buildHistoryResponse re-envuelve los errores crudos del DAO bajo el prefijo
+// genérico "error interno: %w" (fix del hallazgo del audit de task 6: el mapper
+// del controller responde 500 con mensaje fijo, y este service ya no propaga
+// el crudo). Este pin fija ese contrato: el mensaje conserva el prefijo
+// genérico y el prefijo descriptivo del DAO, sin arrastrar texto del driver.
 func TestNoLeak_WorkoutFeedbackHistory_DBFailureHasDescriptiveDAOError(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	failing := testutils.FailingDB(t, db, func(op string) bool { return op == "select" })
@@ -199,6 +199,7 @@ func TestNoLeak_WorkoutFeedbackHistory_DBFailureHasDescriptiveDAOError(t *testin
 	_, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
 
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error interno: ")
 	assert.Contains(t, err.Error(), "error searching workout feedback history")
 	assertNoDriverLeak(t, err)
 }

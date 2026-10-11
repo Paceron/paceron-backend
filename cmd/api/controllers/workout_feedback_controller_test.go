@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1020,5 +1021,31 @@ func TestWorkoutFeedbackController_History_ServiceErrorMapping(t *testing.T) {
 
 			assert.Equal(t, tc.expectedCode, response.Code)
 		})
+	}
+}
+
+// Un error crudo de DB del service (no tipado) cae al default del mapper de
+// respondFeedbackError: el 500 debe llevar el mensaje genérico fijo, sin
+// arrastrar SQLSTATE/texto pgx del driver al body (hallazgo del audit de task 6).
+func TestWorkoutFeedbackController_History_RawDBError500NoLeak(t *testing.T) {
+	driverErr := errors.New("SQLSTATE 42601: unterminated quoted literal in query")
+	mockSvc := &mockWorkoutFeedbackService{
+		athleteHistoryFn: func(ctx *gin.Context, callerID, targetID int64, query workoutfeedback.HistoryQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+			return nil, driverErr
+		},
+	}
+	controller := newTestWorkoutFeedbackController(mockSvc)
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/users/7/workout-feedback-history", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "7"}}
+	setAuthUserID(c, 7)
+	controller.AthleteHistory(c)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "error interno")
+	for _, tok := range []string{"SQLSTATE", "pgconn", "unterminated"} {
+		assert.NotContains(t, response.Body.String(), tok)
 	}
 }

@@ -783,26 +783,29 @@ func parseHistoryDate(param, raw string) (time.Time, error) {
 // buildHistoryResponse ejecuta las 4 lecturas del historial (ítems paginados,
 // total sin paginar, pools) y arma el response D6 con nombres en batch.
 func (s *workoutFeedbackService) buildHistoryResponse(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, q *historyQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
+	wrap := func(e error) error { return fmt.Errorf("error interno: %w", e) }
 	rows, err := s.workoutFeedbackDao.HistorySearch(ctx, filters, q.Sort, q.Order, q.PageSize, (q.Page-1)*q.PageSize)
 	if err != nil {
-		return nil, err
+		return nil, wrap(err)
 	}
 	total, err := s.workoutFeedbackDao.HistoryCount(ctx, filters)
 	if err != nil {
-		return nil, err
+		return nil, wrap(err)
 	}
 	athletes, err := s.workoutFeedbackDao.HistoryAvailableAthletes(ctx, filters)
 	if err != nil {
-		return nil, err
+		return nil, wrap(err)
 	}
 	exercises, err := s.workoutFeedbackDao.HistoryAvailableExercises(ctx, filters)
 	if err != nil {
-		return nil, err
+		return nil, wrap(err)
 	}
 
+	// historyItems devuelve errores crudos del DAO (Users/Teams/GroupsByIDs):
+	// se envuelven acá en el mismo sitio, sin doble capa.
 	items, err := s.historyItems(ctx, rows)
 	if err != nil {
-		return nil, err
+		return nil, wrap(err)
 	}
 	if items == nil {
 		items = []workoutfeedback.WorkoutFeedbackHistoryItem{}
