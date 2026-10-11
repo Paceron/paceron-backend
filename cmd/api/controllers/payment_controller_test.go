@@ -173,6 +173,41 @@ func TestCreatePreference_MissingDescription(t *testing.T) {
 // Matriz de mapeo de errores de CreatePreference (design D4, Gap 16): 409 con
 // code SELLER_NOT_CONNECTED (el front lee error.data.code), 404, 400 y 500
 // residual con mensaje genérico (sin 502).
+func TestCreatePreference_DBFailureBodyNoDriverLeak(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments/preference", controller.CreatePreference)
+
+	reqBody := payment.CreatePreferenceRequest{
+		Concept:     "order",
+		Description: "Test preference",
+		Items: []payment.PreferenceItem{
+			{Title: "Item 1", Quantity: 1, UnitPrice: 100},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("CreatePreference", mock.AnythingOfType("*gin.Context"), reqBody).
+		Return(nil, fmt.Errorf("error creating payment record: ERROR: llave duplicada viola restricción de unicidad (SQLSTATE 23505)"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments/preference", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	var resp apierror.APIError
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	// El body del 500 es el mensaje contractual fijo del mapeo: nada del
+	// detalle del driver (SQLSTATE, texto de pgx) debe alcanzarlo.
+	assert.Equal(t, "Error al crear la preferencia", resp.Message)
+	assert.NotContains(t, w.Body.String(), "SQLSTATE")
+	assert.NotContains(t, w.Body.String(), "ERROR:")
+	service.AssertExpectations(t)
+}
+
 func TestCreatePreference_ErrorMapping(t *testing.T) {
 	reqBody := payment.CreatePreferenceRequest{
 		Concept:     string(constants.PaymentConceptTeamSubscription),
