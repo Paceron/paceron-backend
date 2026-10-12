@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"simple-arq-golang/cmd/api/config"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 
@@ -238,6 +239,46 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 	if err := db.Exec(`ALTER TABLE group_calendar_days DROP COLUMN IF EXISTS session_id;`).Error; err != nil {
 		customlogger.Error(nil, "error dropping legacy group_calendar_days.session_id", err)
 		return nil, err
+	}
+
+	// 9. exercises / exercise_instances: kind original -> vigente (2026-10-12).
+	//
+	// El frontend reemplazó los 5 kinds originales por otros 5 que declaran
+	// qué datos definen el ejercicio (liviano, elongacion, ritmo_continuo,
+	// velocidad_tiempo, velocidad_distancia). Los originales SIGUEN siendo
+	// válidos en la API —ver constants/exercise_kind.go— pero el frontend nuevo
+	// no los reconoce, así que las filas existentes hay que moverlas.
+	//
+	// Se migran las DOS tablas: `exercises` es el catálogo editable, y
+	// `exercise_instances` son copias congeladas de los días ya asignados (con
+	// feedback ya reportado al usuario). Sin migrar estas últimas, el historial
+	// ya completado se mostraría sin datos ni tipo en la app.
+	//
+	// Idempotente por construcción: el UPDATE solo matchea valores originales, y
+	// los kinds vigentes no son destino de ningún mapeo, así que correrlo de nuevo
+	// no cambia nada. Los valores salen de constants.LegacyExerciseKindMigrations
+	// —no se escriben a mano acá— para que el SQL no pueda desincronizarse de las
+	// constantes que valida el service.
+	//
+	// Ojo al leer los datos resultantes: `jogging` y `cruising` colapsan a
+	// `ritmo_continuo`, y el frontend nuevo exige distancia Y tiempo para ese
+	// tipo. Los ejercicios que estaban cargados solo con uno de los dos quedan
+	// como filas que no cumplen la matriz nueva. La API no valida la matriz
+	// (es validación del cliente), así que no las rechaza: se corrigen a mano
+	// desde el catálogo.
+	kindMigrationStmts := []string{}
+	for _, table := range []string{"exercises", "exercise_instances"} {
+		for legacy, current := range constants.LegacyExerciseKindMigrations() {
+			kindMigrationStmts = append(kindMigrationStmts, fmt.Sprintf(
+				`UPDATE %s SET kind = '%s' WHERE kind = '%s';`, table, current, legacy,
+			))
+		}
+	}
+	for _, stmt := range kindMigrationStmts {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error migrating exercise kind values", err)
+			return nil, err
+		}
 	}
 
 	customlogger.Info(nil, "DB initialized successfully",
