@@ -180,12 +180,9 @@ func (s *dashboardService) Filters(ctx *gin.Context, callerID, teamID int64) (*d
 		Exercises:     []dashboard.FiltersExercise{},
 	}
 
-	// El scope del request es el del equipo del que se llegó: aunque el corredor
-	// pertenezca a otros equipos, /filters de este equipo no puede ofrecer los de
-	// otro — el equipo es el ancla de la autorización.
-	if _, inScope := scope.Teams[teamID]; !inScope {
-		return nil, ErrDashboardForbidden
-	}
+	// resolveTeamGroup ya devolvió 403 si el equipo no está en el scope. La
+	// respuesta trae SOLO ese equipo, aunque el corredor pertenezca a otros: el
+	// equipo del que se llegó es el ancla de la autorización, no una de varias.
 	response.Teams = append(response.Teams, dashboard.FiltersTeam{ID: teamID, Name: scope.Teams[teamID].Name})
 
 	_, ownsTeam := scope.OwnedTeamIDs[teamID]
