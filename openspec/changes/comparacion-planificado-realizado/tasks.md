@@ -20,9 +20,9 @@
 
 ## 5. Controller, wiring y rutas
 
-- [ ] 5.1 Crear `cmd/api/controllers/activity_comparison_controller.go` con godoc de swagger.
-- [ ] 5.2 Wiring en `app/app.go` y rutas en `app/url_mappings.go`.
-- [ ] 5.3 Tests con `httptest`: 200, 400, 401, 403, 404 y 500.
+- [x] 5.1 Crear `cmd/api/controllers/activity_comparison_controller.go` con godoc de swagger.
+- [x] 5.2 Wiring en `app/app.go` y rutas en `app/url_mappings.go`.
+- [x] 5.3 Tests con `httptest`: 200, 400, 401, 403, 404 y 500.
 
 ## 6. Swagger y documentación
 
