@@ -1,12 +1,12 @@
 # Spec Delta — gamification-competitions
 
 > Delta sobre la capability `gamification-competitions` ya implementada por
-> `gamificacion-core` (commit `21a5e84`). El requirement "Cierre manual y winners" se
-> MODIFICA para relajar el guard de `end_at` cuando la competencia es de tipo route; el
-> resto de los requirements nuevos se declara bajo `## ADDED Requirements`. Al mergear,
-> el requirement MODIFICADO "Cierre manual y winners" reemplaza al original del change
-> `gamificacion-core` (la capability principal nunca se archivó — convención del repo de
-> declarar el requirement completo).
+> `gamificacion-core` (commit `21a5e84`). Todo se declara bajo `## ADDED Requirements`,
+> incluyendo el requirement "Cierre manual y winners" COMPLETO (versión nueva con el
+> guard de `end_at` aplicado SOLO a metric), que reemplaza al homónimo del change
+> `gamificacion-core`: la capability principal nunca se archivó, y un delta `MODIFIED`
+> contra ella sería rechazado por el archive (convención del repo, ver
+> `asignacion-por-instanciacion`).
 
 ## ADDED Requirements
 
@@ -171,18 +171,23 @@ El sistema DEBE cumplir lo siguiente (MUST):
 - **AND** no hay broadcast de leaderboard ni de traza GPS.
 - **THEN** el front refresca el resultado post-close vía `control:competition_finished`.
 
-## MODIFIED Requirements
-
 ### Requirement: Cierre manual y winners
+
+> Reemplaza en su totalidad al requirement homónimo de la capability
+> `gamification-competitions` implementado por `gamificacion-core` — ese change nunca
+> fue archivado, así que se redeclara acá completo en vez de un delta `MODIFIED` contra
+> una spec base inexistente (el archive rechazaría el MODIFIED). Cambio real de la
+> versión nueva: el guard de `end_at` ya vencida pasa a aplicar SOLO a `type='metric'`.
 
 El sistema DEBE cumplir lo siguiente (MUST):
 
-- `PATCH /competitions/{id}/close`: caller creador (trainer o runner) u owner del team.
-  SIEMPRE manual; el auto-cierre programado queda como deuda documentada. Solo sobre
-  `active`.
-- **Guard de ventana ya vencida: NO aplica cuando `type='route'`** (route no tiene
-  end_at). Para `type='metric'` con `end_at` seteado, cerrar antes de que la ventana
-  termine responde `400` (comportamiento preexistente, sin cambios).
+- `PATCH /competitions/{id}/close`: solo caller creador (trainer o runner) u owner del
+  team. SIEMPRE manual; el auto-cierre programado queda como deuda documentada. Solo
+  sobre `active`; race-safety del Finish (finished + finished_at) preexistente.
+- **Guard de ventana ya vencida: aplica SOLO a `type='metric'` con `end_at` seteado** —
+  cerrar antes de que la ventana termine responde `400` (comportamiento preexistente,
+  sin cambios). `type='route'` NO pasa por este guard: route no tiene `end_at` (la
+  ventana no aplica a ruta).
 - Al cerrar: status = `finished`, finished_at = now, y winners:
   - type=metric: MAX de la métrica por participante en la ventana
     `[start_at, end_at o now]`; empates exactos → todos ganan.
@@ -190,11 +195,15 @@ El sistema DEBE cumplir lo siguiente (MUST):
     `routeAttempts` → `SampleRoute` + `MatchRatio`); tie-break mayor % → a igual %,
     menor duración del intento → a igual duración exacta, todos ganan. Un intento por
     participante (intake D2 + unique (session_instance_id, athlete_user_id)).
-  - Sin intentos → finished sin winner (`winner_user_ids` vacía).
-- Ganador/es reciben fila en `gamification_stamp` (type `competition`, source_id
-  competencia, source_name "Competencia N", count 1); push best-effort a los
-  participantes; unseen por participante (section `competitions`, team_id del team);
-  `control:competition_finished` por WS al cerrar.
+  - Sin intentos → finished sin winner (`winner_user_ids` vacía), sin stamps ni pushes
+    de ganador.
+- Los efectos de cierre reutilizan el flujo existente: fila/s en `gamification_stamp`
+  (type `competition`, source_id competencia, source_name "Competencia N", count 1),
+  push best-effort a los participantes, unseen por participante (section `competitions`,
+  team_id del team) y `control:competition_finished` por WS al cerrar.
+- El matching route del close se computa de los GPS points de los intentos finished
+  (anclados a la instancia sintética de la competencia) contra los samples de la ruta —
+  reuso del flujo existente, sin recalcular datasets previos.
 
 #### Scenario: Cierre route sin end_at no exige ventana
 

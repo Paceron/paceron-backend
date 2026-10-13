@@ -14,11 +14,13 @@ todos los participantes y guarda su id en la columna nueva
 del repo, como `attendances.training_session_id`; seteada SOLO para route).
 
 **Estructura creada (todo en un tx dentro del Create del competition service):**
-- `session_instance {name: "Competencia ruta N" (N = id de competencia o contador
-  descriptivo), description: "Instancia sintética de la competencia de ruta", source_
-  session_id: NULL}` — no hay `group_calendar_days` que la referencie.
-- 1 `exercise_instance` sintético: name "Corrida", kind `velocidad_distancia` (el kind
-  vigente al que mapea `running` después de la migración de kinds, ver
+- `session_instance {name: fmt.Sprintf("Competencia ruta %d", competitionID) — id real
+  de la competencia, generado DESPUÉS del INSERT de la fila de competencia DENTRO de la
+  misma tx (GORM devuelve el PK del insert en el campo del model), description:
+  "Instancia sintética de la competencia de ruta", source_session_id: NULL}` — no hay
+  `group_calendar_days` que la referencie.
+- 1 `exercise_instance` sintético: name "Corrida", kind `velocidad_distancia` (confirmado
+  — es el kind al que mapea `running` en la migración de kinds, ver
   `cmd/api/domains/constants/exercise_kind.go`), sin distance/minutes obligatorios (la
   competencia no fija distancia; los campos quedan NULL).
 - Link `session_exercise_instances {session_instance_id, exercise_instance_id,
@@ -35,10 +37,9 @@ infraestructura. El Notifier.Emit del Create de feedback usa
 de feedback del intento reutilizan el canal `session:{route_session_instance_id}`
 automáticamente.
 
-**Consecuencia para la autorización:** la instancia no tiene día ni grupo, así que el
-primer brazo de `HasInstanceAccess` (miembro del grupo del día) no matchea; el acceso al
-intento lo gobierna este change vía `competition_participant` (D2), no vía
-`HasInstanceAccess`. No modificar el guard dual existente.
+**Consecuencia para la autorización:** la competencia NO toca el guard dual existente:
+el acceso al intento lo gobierna este change vía `competition_participant` (D2). La
+TERCER rama de `HasInstanceAccess` para la instancia sintética se documenta en D8.
 
 ## D2 — POST /competitions/{id}/attempts
 
@@ -128,6 +129,31 @@ el hub real.
 disponible on-demand, PERO no se suma ninguna métrica ni shape nuevo para el front. En
 vivo la vista del front refresca por `control:competition_finished` post-close; no hay
 push durante el intento (D6). Nota de diseño: no endpoint nuevo, no shape nuevo.
+
+## D8 — Branch de autorización WS pre-attempt para la instancia sintética
+
+**Qué:** el guard `HasInstanceAccess` (`cmd/api/daos/session_instance_dao.go`:132,
+regla dual actual = día/grupo + feedback) DEBE sumar una TERCERA rama: si el
+`session_instance_id` pedido coincide con `competitions.route_session_instance_id` de
+una competencia `type='route'`, autoriza si el caller es participante de esa
+competencia (join `competitions` + `competition_participants`, sin filtro de status —
+la participación no cambia con el estado de la competencia, y cualquier competencia
+route con participantes en juego está `active`).
+
+**Motivación:** los frames WS `update:*`/`control:*` del intento (D6: el finish emite
+`update:competition_progress` por `session:{route_session_instance_id}`) y los
+broadcasts de feedback del corredor usan canal `session:{instance}`, que el front
+suscribe ANTES del Play (pre-start). Sin esta rama, ningún participante podría
+suscribirse a la instancia sintética hasta que exista una fila de feedback (segunda
+regla de la dual actual), y ni el front ni el WS del intento funcionarían en el
+pre-start.
+
+**Implementación (Task 2):** extender `HasInstanceAccess` en
+`session_instance_dao.go` con el join por `route_session_instance_id` + participants,
+y tests DAO de las 4 ramas del guard: día/grupo y feedback (regresión de las 2 ramas
+dual existentes) + la 3ª rama (participante sí accede / usuario ajeno no / competencia
+`type='metric'` NO autoriza por esta rama / runner session wip SIN feedback igual
+autoriza — cubierto por la 3ª rama). Contemplado en Task 2 (item 2.9).
 
 ## Reglas de D10 que este change reafirma
 

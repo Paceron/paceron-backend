@@ -65,9 +65,9 @@ Steps:
 - [ ] 1.6 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
       tildar.
 
-### Task 2: Instancia sintética + POST attempts (D1/D2)
+### Task 2: Instancia sintética + POST attempts + rama de autorización WS (D1/D2/D8)
 
-Commit: `feat(competencias): instancia sintética de ruta y intake POST attempts (D1/D2)`
+Commit: `feat(competencias): instancia sintética de ruta y intake POST attempts (D1/D2/D8)`
 
 Files/interfaces:
 - `cmd/api/domains/dbs/competition.go` (campo `RouteSessionInstanceID *int64`).
@@ -102,11 +102,21 @@ Steps:
 - [ ] 2.6 Insert de `runner_session {session_instance_id = route_session_instance_id,
       athlete_user_id = caller, status='wip', competition_id}` sin gate presencial;
       respuesta 201 `{data: {runner_session_id, session_instance_id, competition_id}}`.
+      El `competition_id` seteado al crear hace que el finish YA existente
+      (`PATCH /session-instances/:id/runner`, sin cambios) emita el frame de D6 tal
+      cual.
 - [ ] 2.7 Controller handler + mapping de errores de servicio (400 ErrCompetitionInvalid,
       403 ErrCompetitionForbidden, 404) con 500 genérico sin leak en FailingDB; registro
       de ruta en url_mappings; comando canónico de swagger; e2e DAO de doble intento
       contra Postgres real (segundo insert viola el unique).
-- [ ] 2.8 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
+- [ ] 2.8 Tercera rama en `HasInstanceAccess` (D8): join
+      `competitions` + `competition_participants` por `route_session_instance_id`,
+     authorize participant de competencia `type='route'` SIN filtro de status +
+      tests DAO de la rama nueva contra Postgres real: participante sí /
+      usuario ajeno no / competencia metric NO autoriza por esta rama / runner session
+      wip sin feedback igualmente autoriza por la 3ª rama (regresión: ramas dual día y
+      feedback intactas).
+- [ ] 2.9 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
       tildar.
 
 ### Task 3: Cierre route sin end_at + WS frame de intento-nuevo e2e (D3/D6)
