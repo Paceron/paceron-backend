@@ -4,13 +4,13 @@
 
 ## 2. DTOs y cálculo
 
-- [ ] 2.1 Crear `cmd/api/domains/comparison/activity_comparison.go` con los DTOs del contrato.
-- [ ] 2.2 Crear `cmd/api/services/activity_comparison_calc.go`: normalización del feedback (D6), cumplimiento y desviación por serie (D4, D5), armado de ejercicio y sesión.
-- [ ] 2.3 Tests tabla por tabla: tiempo, distancia, sin objetivo, salteada, sin registro, base 0, filas dobles, series extra, división por cero, ritmo.
+- [x] 2.1 Crear `cmd/api/domains/comparison/activity_comparison.go` con los DTOs del contrato.
+- [x] 2.2 Crear `cmd/api/services/activity_comparison_calc.go`: normalización del feedback (D6), cumplimiento y desviación por serie (D4, D5), armado de ejercicio y sesión.
+- [x] 2.3 Tests tabla por tabla: tiempo, distancia, sin objetivo, salteada, sin registro, base 0, filas dobles, series extra, división por cero, ritmo.
 
 ## 3. DAO de solo lectura
 
-- [ ] 3.1 Crear `cmd/api/daos/activity_comparison_dao.go`: días planificados por membresía histórica (D7), sesiones con feedback del rango, día de una instancia, ejercicios planificados, feedback y `runner_session` en lote, y chequeos de dueño de equipo.
+- [x] 3.1 Crear `cmd/api/daos/activity_comparison_dao.go`: días planificados por membresía histórica (D7), sesiones con feedback del rango, día de una instancia, ejercicios planificados, feedback y `runner_session` en lote, y chequeos de dueño de equipo.
 - [ ] 3.2 Tests contra Postgres: membresía que termina en el medio del rango, día cancelado, filtros de equipo y grupo, sesión sin día, feedback borrado, lote vacío, errores de DB con `FailingDB`.
 
 ## 4. Service
