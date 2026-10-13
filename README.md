@@ -358,6 +358,19 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/workout-feedback/search?team_id=&athlete_user_id=&feedback_owner_user_id=&assigned_session_id=&assigned_exercise_id=&session_date_from=&session_date_to=` | Search workout feedbacks applying the ownership matrix (self by default; teams only for their owner) |
 | PUT | `/api/v1/workout-feedback/:id` | Partially edit a workout feedback (athlete/reporter/team owner; `athlete_user_id`/`feedback_owner_user_id` are not editable) |
 | DELETE | `/api/v1/workout-feedback/:id` | Soft-delete a workout feedback (same set can be reported again after deletion) |
+| GET | `/api/v1/users/:id/streaks?days=` | Strict/flexible streaks of the authenticated user (self only; `days` window default 42, 1..365; today never breaks a streak, `current`/`best` cover full history up to yesterday) |
+| POST | `/api/v1/users/:id/gamification/seen` | Mark gamification news as seen (self only; body `{section: streaks\|achievements\|competitions, team_id?}` — `team_id` only with competitions) |
+| GET | `/api/v1/achievements/catalog` | Full achievements catalog (21 rows, any authenticated user) |
+| GET | `/api/v1/users/:id/achievements` | Achievements showcase: catalog merged with unlock progress (self only; embeds `has_unseen`) |
+| GET | `/api/v1/users/:id/stamps` | User stamps (self only; populated by closed competitions) |
+| GET | `/api/v1/teams/:id/leaderboard?metric=&period=&from=&to=` | Team leaderboard (member of a team group or owner; metric: distance/duration/pace/peak_speed/sessions_count/attendance_count, period: week/month/year/custom/all; `record` only with period=all, pace record = lowest) |
+| POST | `/api/v1/teams/:id/competitions` | Create competition (trainer owner → active; runner member → pending_approval; ≥2 participants, all team members, no trainer) |
+| GET | `/api/v1/teams/:id/competitions?status=&group_id=` | List team competitions (member or owner; optional status/group_id filters; embeds `has_unseen` for that team) |
+| GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best match %; member or owner) |
+| PATCH | `/api/v1/competitions/:id/approve` | Approve a pending competition (team owner only) |
+| PATCH | `/api/v1/competitions/:id/reject` | Reject a pending competition with optional `reason` (team owner only) |
+| PATCH | `/api/v1/competitions/:id/close` | Manually close an active competition once its window ended (creator or owner); computes winners, stamps, unseen and pushes |
+| DELETE | `/api/v1/competitions/:id/cancel` | Cancel own pending competition (runner creator only; physical delete) |
 
 ## Run
 

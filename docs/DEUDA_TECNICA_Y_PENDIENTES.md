@@ -112,6 +112,56 @@ Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change
 
 El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), pero la detección de colisiones presencial sigue corriendo **1 query por fecha con día presencial** (`findPresencialCollisions` reutilizado per-date). Para lotes asincrónicos no agrega queries. Resolución futura: reutilizar la clasificación in-memory de `AdministeredCalendar` (T5) alimentada por 1 lectura de todas las fechas del owner, preservando el 409/same_team_warnings byte-idéntico.
 
+## Gamificación (change `gamificacion-core`, 2026-10-13)
+
+Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16.
+
+### Auto-cierre de competencias por cron (deuda explícita, D13)
+
+El cierre de competencias es **SIEMPRE manual** (`PATCH /competitions/:id/close`, guard ventana terminada): no existe el cron que cierra al vencer `end_at`. El frontend debe mostrar el botón de cierre al creador/owner; una competencia activa con ventana vencida queda `active` hasta que alguien la cierre.
+
+### Validación de `route_geojson` en Create es solo estructural
+
+`Create` exige que `route_geojson` venga no-vacío pero **no lo parsea** — un GeoJSON inválido (type incorrecto, coordenadas incompletas) se detecta recién al computar matching (detalle on-demand o close) y ahí falla con **500 fail-safe** a propósito (cerrar/detallar con matching sin ruta confiable mentiría el %). Mejora futura: validar parseabilidad (`routematch.ParseLineString`) en el alta para rechazar con 400.
+
+### Deriva del estado de triggers de racha (aproximado, D14)
+
+`gamification_streak_state` es el baseline de los triggers de racha; su fallo/deriva solo puede producir **punto rojo tarde o doble** — el GET de rachas es exacto y no la consulta. Aceptado por diseño; no "arreglar" sin reabrir D3/D14.
+
+### `achieved_at` del record de métricas SUM = última fila contribuyente
+
+Para `distance`/`duration` (agregación SUM), `record.achieved_at` es la `session_date` de la **última fila que contribuyó** al valor acumulado — es la interpretación elegida de "cuándo se alcanzó el récord" (el valor acumulado solo existe al cerrar esa fila). Para `peak_speed` es la fila del argmax y para `sessions_count`/`attendance_count` la última actividad.
+
+### Wording "record máximo histórico" para pace = MEJOR (mínimo) ritmo
+
+La spec decía "máximo histórico del team" genérico; para `pace` el record es el valor **más bajo** (mejor ritmo) — implementado así y aclarado en el spec delta (`gamification-leaderboards`).
+
+### `BulkCreatePoints` del DAO de feedback es operación muerta
+
+Solo `BulkCreatePointsRecompute` está en uso (subida de points del leaderboard, D6). La variante sin recompute quedó sin call sites — marcar/eliminar en una futura limpieza (no hacerla en caliente).
+
+### Frontera de membresía mixta: `date_end > NOW()` (instante) vs `::date >= hoy`
+
+`FindActiveGroupMemberships` (gamificación) evalúa la vigencia con **instante** (`date_end > NOW()`), mientras otros dominios del repo comparan por `::date >= fecha`. Consistente **dentro del módulo** (todas las queries de gamificación usan la misma frontera); unificar con el resto del repo es cambio transversal aparte.
+
+### Rachas solo sobre memberships activas: el stint histórico no cuenta
+
+Las rachas se computan sobre los grupos con membresía **activa hoy**: si la membresía de un grupo cerró (`date_end` pasada), sus días de calendario dejan de contar para current/best aunque hayan contado en su momento. Racha "histórica" de equipos abandonados desaparece del GET por diseño.
+
+### `date_start` entre 21:00 y 23:59 Cordoba resta hasta 1 día en la frontera de alta
+
+El mapeo de día (`utcDateToDay`) toma la **fecha UTC** del timestamptz: un `date_start` a la noche de Cordoba (UTC-3) cae en el día UTC siguiente y ese día de alta puede quedar `skipped` (previo a la membresía) en vez de contable. Cosmético, borde de alta; arreglaría comparando en TZ Cordoba.
+
+### Minors de tests/internals (tasks 1-6)
+
+- **Root cause del error del trigger sin log crudo:** `EvaluateRunnerCompletion` envuelve los errores como `ErrStreakTrigger` con sufijo pero **descarta el error de driver original** — el log del trigger no muestra la causa cruda (`gamification_streak_trigger.go`). Wrap con `%v` del error fuente cuando se toque.
+- **Pin de queries del trigger sin rama "sin evento" assertionada:** `TestStreakTrigger_Evaluate_QueriesConstantes` pinea el conteo (6) de la corrida **con** evento y compara 3 vs 12 días; la corrida sin evento (sin INSERT de unseen) solo se loguea (`t.Logf`), sin assert de conteo.
+- **Gate del hook por service-success sin chequeo explícito de status:** los hooks de racha/logros corren tras **cualquier** PATCH exitoso del runner (finished, interrupted, interrupted idempotente) sin inspeccionar el status final de la fila; es inofensivo (recálculo idempotente + baseline) pero un gate más fino exigiría chequear status.
+- **Idx redundante `idx_user_achievement_progress_user`:** `user_id` ya es prefijo de la PK compuesta `(user_id, achievement_id)`; el índice separado no aporta y podría eliminarse (requiere migración).
+- **`gps_N` cuenta puntos de feedbacks borrados (decisión consciente):** `CountGPSFinishedSessions` cuenta por existencia de puntos en `workout_feedback_points`; un feedback soft-deleted deja sus puntos contando para el criterio.
+- **`GetUserStamps` sin test de rama 500:** la suite del controller cubre 200/403/401 del GET de stamps pero no el pin FailingDB de la rama de error interno.
+- **Sin assert negativo "record nil en period=week":** el scenario existe en el spec delta pero la suite del service no tiene el assert negativo explícito (solo cubre record presente en `all`).
+
 ## Cobertura de tests
 
 > Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).

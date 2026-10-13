@@ -34,7 +34,7 @@ type mockAttendanceService struct {
 // newAttendanceTestController arma el controller SIN notifier: los tests que no
 // prueban el hook de emisión no deben verse afectados por él.
 func newAttendanceTestController(svc services.AttendanceServiceInterface) AttendanceController {
-	return NewAttendanceController(svc, nil)
+	return NewAttendanceController(svc, nil, nil)
 }
 
 func (m *mockAttendanceService) GenerateQR(ctx *gin.Context, authUserID, teamID, sessionID int64) (*attendance.QRResponse, error) {
@@ -706,7 +706,7 @@ func decodeAttendanceFrame(t *testing.T, payload []byte) (string, map[string]any
 // indicado (puede ser nil: es la inyección opcional del wiring).
 func registerRouteFor(mock *mockAttendanceService, notifier realtime.Notifier) AttendanceController {
 	gin.SetMode(gin.TestMode)
-	return NewAttendanceController(mock, notifier)
+	return NewAttendanceController(mock, notifier, nil)
 }
 
 func TestAttendanceController_RegisterAttendance_EmitsEventOnCreate(t *testing.T) {
@@ -778,7 +778,7 @@ func TestAttendanceController_BulkSaveAttendance_EmitsOneEventPerRow(t *testing.
 	r.POST("/api/v1/attendance/bulk", func(c *gin.Context) {
 		c.Set(utils.AuthUserIDKey, int64(3))
 		c.Next()
-	}, NewAttendanceController(mock, notifier).BulkSaveAttendance)
+	}, NewAttendanceController(mock, notifier, nil).BulkSaveAttendance)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/attendance/bulk", strings.NewReader(`{"team_id":5,"training_session_id":42,"entries":[{"user_id":12},{"user_id":13},{"user_id":14}]}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -811,7 +811,7 @@ func TestAttendanceController_DeleteAttendance_EmitsNotConfirmed(t *testing.T) {
 	r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
 		c.Set(utils.AuthUserIDKey, int64(3))
 		c.Next()
-	}, NewAttendanceController(mock, notifier).DeleteAttendance)
+	}, NewAttendanceController(mock, notifier, nil).DeleteAttendance)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/attendance/88?team_id=5", nil)
 	w := httptest.NewRecorder()
@@ -843,7 +843,7 @@ func TestAttendanceController_DeleteAttendance_ErrorDoesNotEmit(t *testing.T) {
 	r.DELETE("/api/v1/attendance/:attendance_id", func(c *gin.Context) {
 		c.Set(utils.AuthUserIDKey, int64(3))
 		c.Next()
-	}, NewAttendanceController(mock, notifier).DeleteAttendance)
+	}, NewAttendanceController(mock, notifier, nil).DeleteAttendance)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/attendance/99999?team_id=5", nil)
 	w := httptest.NewRecorder()

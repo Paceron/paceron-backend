@@ -14,7 +14,7 @@ import "time"
 type WorkoutFeedbackPoint struct {
 	ID                 int64     `gorm:"column:id;primaryKey"`
 	FeedbackID         int64     `gorm:"column:feedback_id;not null;index"`
-	SessionInstanceID  int64     `gorm:"column:session_instance_id;not null"`
+	SessionInstanceID  int64     `gorm:"column:session_instance_id;not null;index"`
 	ExerciseInstanceID int64     `gorm:"column:exercise_instance_id;not null"`
 	Order              int       `gorm:"column:order;not null"`
 	Latitude           float64   `gorm:"column:latitude;not null"`

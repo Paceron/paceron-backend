@@ -614,6 +614,108 @@ definitions:
     - plan_id
     - start_date
     type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse:
+    properties:
+      data:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionResponse'
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem:
+    properties:
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionResponse:
+    properties:
+      acceptance_radius_meters:
+        type: number
+      approved_by_user_id:
+        type: integer
+      created_by_role:
+        type: string
+      created_by_user_id:
+        type: integer
+      end_at:
+        type: string
+      finished_at:
+        type: string
+      group_id:
+        type: integer
+      id:
+        type: integer
+      metric:
+        type: string
+      participants:
+        items:
+          type: integer
+        type: array
+      progress:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem'
+        type: array
+      rejection_reason:
+        type: string
+      route:
+        type: string
+      start_at:
+        type: string
+      status:
+        type: string
+      team_id:
+        type: integer
+      type:
+        type: string
+      winner_user_ids:
+        items:
+          type: integer
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionsListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionResponse'
+        type: array
+      has_unseen:
+        type: boolean
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CreateCompetitionRequest:
+    properties:
+      acceptance_radius_meters:
+        type: number
+      end_at:
+        type: string
+      group_id:
+        type: integer
+      metric:
+        type: string
+      participants:
+        items:
+          type: integer
+        minItems: 2
+        type: array
+      route_geojson:
+        type: string
+      start_at:
+        type: string
+      type:
+        type: string
+    required:
+    - participants
+    - start_at
+    - type
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.RejectRequest:
+    properties:
+      reason:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_dbs.Attendance:
     properties:
       createdAt:
@@ -701,6 +803,161 @@ definitions:
         type: string
       video_url:
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.AchievementResponse:
+    properties:
+      description:
+        type: string
+      family:
+        type: string
+      icon_key:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      threshold:
+        type: number
+      unit:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord:
+    properties:
+      achieved_at:
+        type: string
+      name:
+        type: string
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse:
+    properties:
+      record:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord'
+      rows:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow'
+        type: array
+      viewer_rank:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank'
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow:
+    properties:
+      avatar_url:
+        type: string
+      name:
+        type: string
+      rank:
+        type: integer
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank:
+    properties:
+      rank:
+        type: integer
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.SeenRequest:
+    properties:
+      section:
+        type: string
+      team_id:
+        type: integer
+    required:
+    - section
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.SeenResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StampItem:
+    properties:
+      count:
+        type: integer
+      granted_at:
+        type: string
+      id:
+        type: integer
+      source_id:
+        type: integer
+      source_name:
+        type: string
+      type:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StampsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampItem'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreakDay:
+    properties:
+      date:
+        type: string
+      flexible_status:
+        type: string
+      strict_status:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreakSummary:
+    properties:
+      best:
+        type: integer
+      current:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreaksResponse:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakDay'
+        type: array
+      flexible:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary'
+      has_unseen:
+        type: boolean
+      strict:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary'
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem:
+    properties:
+      achievement_id:
+        type: string
+      count:
+        type: integer
+      current_level:
+        type: integer
+      last_unlocked_at:
+        type: string
+      unlocked_at:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem'
+        type: array
+      has_unseen:
+        type: boolean
     type: object
   simple-arq-golang_cmd_api_domains_group.CreateGroupRequest:
     properties:
@@ -1551,6 +1808,12 @@ definitions:
     properties:
       athlete_user_id:
         type: integer
+      competition_id:
+        description: |-
+          CompetitionID delimita el intento a una competencia (gamificacion-core
+          E4.1/D8, FK opaca). Opcional: sin el campo el flujo es idéntico al de
+          siempre; si viene, el service valida active + participante + rango.
+        type: integer
       start_date:
         type: string
     required:
@@ -1571,6 +1834,8 @@ definitions:
   simple-arq-golang_cmd_api_domains_runnersession.RunnerSessionResponse:
     properties:
       athlete_user_id:
+        type: integer
+      competition_id:
         type: integer
       end_date:
         type: string
@@ -2855,6 +3120,25 @@ info:
   title: Simple Arq Golang API
   version: 1.0.0
 paths:
+  /api/v1/achievements/catalog:
+    get:
+      description: 'Devuelve las filas del catálogo de logros (catalogo versionado
+        en constants). Compartido: cualquier usuario autenticado puede consultarlo,
+        sin guard de recurso.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Catálogo de logros
+      tags:
+      - gamification
   /api/v1/attendance/{attendance_id}:
     delete:
       description: Borra físicamente una asistencia por id. Requiere ser entrenador
@@ -3414,6 +3698,197 @@ paths:
       summary: Get user by ID or email
       tags:
       - auth
+  /api/v1/competitions/{id}:
+    get:
+      description: Accesible para miembros del team u owner; 404 si no existe. type=metric
+        muestra el acumulado de la métrica por participante dentro de [start_at, end_at
+        o now]; type=route muestra el mejor % de match (computado on-demand, sin broadcast
+        WS).
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Detalle de una competencia con progreso en vivo
+      tags:
+      - gamification
+  /api/v1/competitions/{id}/approve:
+    patch:
+      description: 'Caller owner del team (o el trainer creador, caso defensivo).
+        Solo sobre pending_approval: pasa a active. Push best-effort al creador corredor.'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Aprobar una competencia pendiente
+      tags:
+      - gamification
+  /api/v1/competitions/{id}/cancel:
+    delete:
+      description: 'Solo el creador corredor, solo sobre pending_approval: borra físicamente
+        la competencia junto con sus participantes.'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Cancelar una competencia propia pendiente
+      tags:
+      - gamification
+  /api/v1/competitions/{id}/close:
+    patch:
+      description: 'Cierre SIEMPRE manual (caller creador — trainer o runner — u owner
+        del team). Solo sobre active y con la ventana terminada si end_at está seteado:
+        status finished + finished_at + winners calculados (metric: mejor valor en
+        ventana con empate exacto = todos ganan; route: mejor % de match con tie-break
+        de menor duración). El ganador recibe stamp; a todos los participantes llegan
+        unseen y push best-effort; a los canales de los intentos registrados sale
+        control:competition_finished.'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Cerrar una competencia activa
+      tags:
+      - gamification
+  /api/v1/competitions/{id}/reject:
+    patch:
+      consumes:
+      - application/json
+      description: 'Caller owner del team (o el trainer creador, caso defensivo).
+        Solo sobre pending_approval: pasa a rejected con reason opcional persistida.
+        Push best-effort al creador corredor.'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Motivo del rechazo (opcional)
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.RejectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Rechazar una competencia pendiente
+      tags:
+      - gamification
   /api/v1/exercises:
     get:
       parameters:
@@ -5936,6 +6411,91 @@ paths:
       summary: Actualizar dirección del equipo
       tags:
       - teams
+  /api/v1/teams/{id}/competitions:
+    get:
+      description: Accesible para miembros de algún grupo del team u owner (403 otro
+        caso). Filtros opcionales status (pending_approval, active, finished, rejected
+        — 400 fuera de la whitelist) y group_id. Embebe has_unseen de la sección competitions
+        bajo el team_id.
+      parameters:
+      - description: ID del equipo
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: pending_approval | active | finished | rejected
+        in: query
+        name: status
+        type: string
+      - description: Filtrar por grupo
+        in: query
+        name: group_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionsListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar las competencias de un equipo
+      tags:
+      - gamification
+    post:
+      consumes:
+      - application/json
+      description: El creador entrenador (owner del team) crea con status active directo;
+        el creador corredor (miembro del team) propone con status pending_approval.
+        type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior
+        a start_at; type=route exige route_geojson y acceptance_radius_meters > 0.
+        Al menos 2 participantes, todos miembros activos del team, sin incluir al
+        trainer.
+      parameters:
+      - description: ID del equipo
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Datos de la competencia
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CreateCompetitionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Crear una competencia en un equipo
+      tags:
+      - gamification
   /api/v1/teams/{id}/groups/{group_id}/users:
     post:
       consumes:
@@ -6200,6 +6760,64 @@ paths:
       summary: Solicitar ingreso a un equipo
       tags:
       - join-requests
+  /api/v1/teams/{id}/leaderboard:
+    get:
+      description: Ranking del team para una métrica (distance, duration, pace, peak_speed,
+        sessions_count, attendance_count) y un período (week, month, year, custom,
+        all), con top 5, viewer_rank y record histórico (solo period=all). Accessible
+        para miembros de algún grupo del team o el owner; los corredores puntúan,
+        el owner no genera fila propia. custom exige from y to (YYYY-MM-DD, from <=
+        to); los demás períodos se derivan de hoy en TZ America/Argentina/Cordoba.
+      parameters:
+      - description: ID del equipo
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: distance | duration | pace | peak_speed | sessions_count | attendance_count
+        in: query
+        name: metric
+        required: true
+        type: string
+      - description: week | month | year | custom | all
+        in: query
+        name: period
+        required: true
+        type: string
+      - description: Desde (YYYY-MM-DD, obligatorio en custom)
+        in: query
+        name: from
+        type: string
+      - description: Hasta (YYYY-MM-DD, obligatorio en custom)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Leaderboard del equipo
+      tags:
+      - gamification
   /api/v1/teams/{id}/users:
     get:
       description: Devuelve todos los miembros activos de un equipo. Solo otro miembro
@@ -6914,6 +7532,43 @@ paths:
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/achievements:
+    get:
+      description: Devuelve el merge catálogo + progreso del propio usuario autenticado
+        (21 filas; unlocked_at null en las que no desbloqueó, current_level y count
+        en null en v1), con has_unseen de la sección achievements embebido. Self-only.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Vitrina de logros del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/administered-calendar:
     get:
       description: |-
@@ -7067,6 +7722,52 @@ paths:
       summary: Resumen de calendario del usuario
       tags:
       - calendar
+  /api/v1/users/{id}/gamification/seen:
+    post:
+      consumes:
+      - application/json
+      description: Borra las filas unseen del usuario autenticado para la sección
+        indicada. section es streaks|achievements|competitions; team_id solo se admite
+        con competitions (marca vistas solo filas de ese equipo; sin team_id limpia
+        todas, incluidas las por-equipo). Cero filas es éxito no-op.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Sección y team_id opcional (solo competitions)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Marcar novedades de gamificación como vistas
+      tags:
+      - gamification
   /api/v1/users/{id}/member-calendar:
     get:
       description: |-
@@ -7486,6 +8187,43 @@ paths:
       summary: Change tier of a role subscription
       tags:
       - user-roles
+  /api/v1/users/{id}/stamps:
+    get:
+      description: 'Devuelve las estampas del propio usuario autenticado (self-only).
+        En E2 la vitrina está vacía: la tabla solo recibe emisiones de competencia
+        desde E4.'
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Vitrina de estampas del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/status:
     patch:
       consumes:
@@ -7530,6 +8268,48 @@ paths:
       summary: Change user status
       tags:
       - users
+  /api/v1/users/{id}/streaks:
+    get:
+      description: 'Devuelve las rachas estricta (A) y flexible (B) del propio usuario
+        autenticado, con el array window de días (default 42, tope 365) y has_unseen
+        de la sección streaks. El día de hoy nunca corta una racha: la ventana de
+        cálculo termina en ayer (TZ America/Argentina/Cordoba).'
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Tamaño de ventana (default 42, entre 1 y 365)
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreaksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Rachas del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/subscriptions/{period}:
     get:
       description: Returns the next installment to pay for the role for the requested
