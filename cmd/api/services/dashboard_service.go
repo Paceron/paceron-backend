@@ -106,7 +106,6 @@ type validatedMetricsQuery struct {
 	// Scope es el scope ya resuelto: se calcula una vez por request y se pasa ya
 	// resuelto a los DAOs, de modo que ningún DAO pueda aceptar un group_id crudo.
 	Scope       *DashboardScope
-	CallerID    int64
 	TeamID      int64
 	GroupIDs    []int64
 	ExerciseIDs []int64
@@ -512,18 +511,16 @@ func (s *dashboardService) validate(ctx *gin.Context, scope *DashboardScope, que
 		return nil, err
 	}
 
-	exerciseIDs, kinds, err := s.resolveExerciseFilter(ctx, scope, query)
+	exerciseIDs, err := s.resolveExerciseFilter(ctx, scope, query)
 	if err != nil {
 		return nil, err
 	}
 
 	return &validatedMetricsQuery{
 		Scope:          scope,
-		CallerID:       scope.CallerID,
 		TeamID:         query.TeamID,
 		GroupIDs:       groupIDs,
 		ExerciseIDs:    exerciseIDs,
-		Kinds:          kinds,
 		From:           from,
 		To:             to,
 		Granularity:    granularity,
@@ -642,7 +639,7 @@ func parseDashboardPaging(pageRaw, pageSizeRaw string) (int, int, error) {
 // kinds[] se resuelve a los ids de catálogo de esos tipos YA en el backend: el
 // front tiene prohibido recalcular KPIs, así que un ritmo_continuo de 4 km y uno
 // de 21 km llegan en la misma fila con sus KPIs agregados por volumen.
-func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *DashboardScope, query MetricsQuery) ([]int64, []string, error) {
+func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *DashboardScope, query MetricsQuery) ([]int64, error) {
 	selected := 0
 	if query.ExerciseID != nil {
 		selected++
@@ -654,7 +651,7 @@ func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *Dashbo
 		selected++
 	}
 	if selected > 1 {
-		return nil, nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
 			"exercise_id, exercise_ids y kinds son excluyentes: mandá solo uno")
 	}
 
@@ -666,13 +663,13 @@ func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *Dashbo
 	case len(query.Kinds) > 0:
 		for _, kind := range query.Kinds {
 			if !constants.IsCurrentExerciseKind(kind) {
-				return nil, nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
+				return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
 					"kind %q no es un tipo vigente", kind)
 			}
 		}
 		return s.catalogExercisesInScope(ctx, scope, query.TeamID, nil, query.Kinds)
 	default:
-		return nil, nil, nil
+		return nil, nil
 	}
 }
 
@@ -680,7 +677,7 @@ func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *Dashbo
 // dueños del equipo pedido, y se asegura de que esos ejercicios existan. Un
 // ejercicio de otro entrenador no está en el scope: 404 si no existe, 403 si
 // existe pero es de otro dueño.
-func (s *dashboardService) catalogExercisesInScope(ctx *gin.Context, scope *DashboardScope, teamID int64, ids []int64, kinds []string) ([]int64, []string, error) {
+func (s *dashboardService) catalogExercisesInScope(ctx *gin.Context, scope *DashboardScope, teamID int64, ids []int64, kinds []string) ([]int64, error) {
 	ownerIDs := s.teamOwnerIDs(scope, teamID)
 	resolved := make([]int64, 0, len(ids))
 	seen := map[int64]struct{}{}
@@ -696,7 +693,7 @@ func (s *dashboardService) catalogExercisesInScope(ctx *gin.Context, scope *Dash
 		if err != nil {
 			customlogger.Error(ctx, "error resolving dashboard exercise filter", err,
 				customlogger.TagMethod("Dashboard.resolveExerciseFilter"))
-			return nil, nil, fmt.Errorf("error al resolver el filtro de ejercicios")
+			return nil, fmt.Errorf("error al resolver el filtro de ejercicios")
 		}
 		for _, exercise := range found {
 			if exercise.OwnerID != ownerID {
@@ -709,17 +706,17 @@ func (s *dashboardService) catalogExercisesInScope(ctx *gin.Context, scope *Dash
 			resolved = append(resolved, exercise.ID)
 		}
 	}
-	if len(kinds) > 0 {
-		return resolved, kinds, nil
-	}
 	if len(resolved) == 0 {
-		return nil, nil, ErrDashboardNotFound
+		return nil, ErrDashboardNotFound
 	}
 	if len(resolved) != len(dedupeIDs(ids)) {
-		return nil, nil, ErrDashboardNotFound
+		// Pediste N ejercicios y solo N-k están en el scope: 404 en vez de devolver
+		// silenciosamente los que sí, que es lo que haría creer al cliente que el
+		// ejercicio pedido existe.
+		return nil, ErrDashboardNotFound
 	}
 	sort.Slice(resolved, func(i, j int) bool { return resolved[i] < resolved[j] })
-	return resolved, nil, nil
+	return resolved, nil
 }
 
 // resolveLegacyInstances traduce las ExerciseInstance sin source_exercise_id a
