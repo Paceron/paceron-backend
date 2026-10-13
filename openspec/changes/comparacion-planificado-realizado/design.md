@@ -104,7 +104,9 @@ Antes de comparar:
 - Una serie con estado distinto de `completed` y `skipped` cuenta como sin
   registro.
 - Las series registradas por encima de `repeat_count` se devuelven con
-  `extra = true`: suman a los totales reales pero no al cumplimiento.
+  `extra = true`: suman a la duración y la distancia reales, pero no al
+  cumplimiento ni a las series completadas o salteadas (que se comparan contra
+  lo planificado, "3/4 series").
 
 ### D7. Qué sesiones entran en la lista
 

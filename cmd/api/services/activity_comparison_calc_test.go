@@ -254,7 +254,7 @@ func TestCompareExercise_UnregisteredAndExtraSets(t *testing.T) {
 	assert.True(t, result.Sets[2].Extra)
 	assert.Equal(t, 50.0, result.CompliancePct)
 	assert.InDelta(t, 1.0, ratioSum, 0.0001)
-	assert.Equal(t, 2, result.CompletedSets)
+	assert.Equal(t, 1, result.CompletedSets, "la serie extra no cuenta como completada")
 	assert.True(t, result.HasTarget)
 }
 
@@ -280,6 +280,23 @@ func TestCompareSession_TotalsAndEdgeCases(t *testing.T) {
 	assert.Equal(t, 0.0, empty.compliancePct)
 	assert.Equal(t, 0, empty.totals.PlannedSets)
 	assert.Empty(t, empty.exercises)
+}
+
+func TestCompareSession_ExtraSetsAddTimeButNotCompletedSets(t *testing.T) {
+	ex := cmpExercise(1, cmpInt(10), nil)
+	feedback := []dbs.WorkoutFeedback{
+		cmpFeedback(1, 1, 1, "completed", cmpI64(600000), nil),
+		cmpFeedback(2, 1, 2, "completed", cmpI64(300000), nil),
+		cmpFeedback(3, 1, 3, "skipped", nil, nil),
+	}
+
+	result := compareSession([]daos.ComparisonPlannedExercise{ex}, feedback, cmpAthlete)
+
+	assert.Equal(t, 1, result.totals.PlannedSets)
+	assert.Equal(t, 1, result.totals.CompletedSets)
+	assert.Equal(t, 0, result.totals.SkippedSets)
+	assert.Equal(t, int64(900000), result.totals.ActualDurationMs)
+	assert.Equal(t, 100.0, result.compliancePct)
 }
 
 func TestPaces(t *testing.T) {

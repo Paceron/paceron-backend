@@ -247,7 +247,12 @@ func compareExercise(ex daos.ComparisonPlannedExercise, feedback []dbs.WorkoutFe
 		}
 	}
 
+	// Las series extra no cuentan como completadas: "3/4 series" compara contra
+	// lo planificado. Sí suman al tiempo y la distancia reales (compareSession).
 	for _, set := range result.Sets {
+		if set.Extra {
+			continue
+		}
 		switch set.Status {
 		case comparison.SetStatusCompleted:
 			result.CompletedSets++
@@ -305,7 +310,9 @@ func compareSession(exercises []daos.ComparisonPlannedExercise, feedback []dbs.W
 		for _, set := range exResult.Sets {
 			switch set.Status {
 			case comparison.SetStatusCompleted:
-				result.totals.CompletedSets++
+				if !set.Extra {
+					result.totals.CompletedSets++
+				}
 				if set.DurationMs != nil {
 					result.totals.ActualDurationMs += *set.DurationMs
 				}
@@ -313,7 +320,9 @@ func compareSession(exercises []daos.ComparisonPlannedExercise, feedback []dbs.W
 					result.totals.ActualDistanceM += *set.DistanceMeters
 				}
 			case comparison.SetStatusSkipped:
-				result.totals.SkippedSets++
+				if !set.Extra {
+					result.totals.SkippedSets++
+				}
 			default:
 				if !set.Extra {
 					result.totals.UnregisteredSets++
