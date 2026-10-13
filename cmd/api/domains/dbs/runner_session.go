@@ -6,7 +6,9 @@ import "time"
 // Play o se ingresó al registro manual) o finished (se completaron todas las
 // series). session_instance_id / athlete_user_id son FK opacas (sin constraint
 // de DB, integridad gobernada por el service — mismo patrón que
-// workout_feedback.assigned_session_id). El constraint único real
+// workout_feedback.assigned_session_id). competition_id es la marca del
+// intento dentro de una competencia (gamificacion-core D8), FK opaca
+// BIGINT > 0 sin constraint: nil = intento sin competencia. El constraint único real
 // uq_runner_session_session_athlete (UNIQUE plano, no parcial) lo emite
 // AutoMigrate desde los tags: un corredor tiene un solo estado por sesión, y
 // dos atletas pueden compartir la misma sesión (día de grupo). start_date es el
@@ -19,6 +21,7 @@ type RunnerSession struct {
 	Status            string    `gorm:"column:status;not null;default:'wip'"`
 	StartDate         time.Time `gorm:"column:start_date;not null"`
 	EndDate           *time.Time `gorm:"column:end_date"`
+	CompetitionID     *int64     `gorm:"column:competition_id"`
 	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt         time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }

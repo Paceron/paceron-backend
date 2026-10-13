@@ -25,6 +25,10 @@ const (
 type CreateRunnerSessionRequest struct {
 	AthleteUserID *int64    `json:"athlete_user_id"`
 	StartDate     time.Time `json:"start_date" binding:"required"`
+	// CompetitionID delimita el intento a una competencia (gamificacion-core
+	// E4.1/D8, FK opaca). Opcional: sin el campo el flujo es idéntico al de
+	// siempre; si viene, el service valida active + participante + rango.
+	CompetitionID *int64    `json:"competition_id"`
 }
 
 // RunnerStatusRequest es el body de PATCH /api/v1/session-instances/:id/runner.
@@ -45,6 +49,7 @@ type RunnerSessionResponse struct {
 	Status            string     `json:"status"`
 	StartDate         time.Time  `json:"start_date"`
 	EndDate           *time.Time `json:"end_date"`
+	CompetitionID     *int64     `json:"competition_id,omitempty"`
 }
 
 // MutationResponse es la respuesta de create/finish (mensaje + recurso).

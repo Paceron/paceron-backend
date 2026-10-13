@@ -194,6 +194,16 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// team O owner; solo corredores puntúan.
 	r.GET("/api/v1/teams/:id/leaderboard", app.leaderboardController.GetLeaderboard)
 
+	// Gamificación: competencias (E4.1). El creation va bajo el team con el
+	// guard de caller; la moderación/cierre/detalle bajo el recurso.
+	r.POST("/api/v1/teams/:id/competitions", app.competitionController.Create)
+	r.GET("/api/v1/teams/:id/competitions", app.competitionController.ListByTeam)
+	r.PATCH("/api/v1/competitions/:id/approve", app.competitionController.Approve)
+	r.PATCH("/api/v1/competitions/:id/reject", app.competitionController.Reject)
+	r.PATCH("/api/v1/competitions/:id/close", app.competitionController.Close)
+	r.DELETE("/api/v1/competitions/:id/cancel", app.competitionController.Cancel)
+	r.GET("/api/v1/competitions/:id", app.competitionController.GetDetail)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)

@@ -62,6 +62,7 @@ type Application struct {
 	gamificationSeenController  controllers.GamificationSeenController
 	achievementsController      controllers.AchievementsController
 	leaderboardController       controllers.LeaderboardController
+	competitionController       controllers.CompetitionController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
 }
@@ -335,6 +336,12 @@ func NewApplication() *Application {
 	leaderboardService := services.NewLeaderboardService(daos.NewLeaderboardDao(db))
 	leaderboardController := controllers.NewLeaderboardController(leaderboardService)
 
+	// Gamificación (gamificacion-core E4.1): competencias (CRUD + moderación +
+	// cierre stub; winners en E4.2).
+	competitionDao := daos.NewCompetitionDao(db)
+	competitionService := services.NewCompetitionService(competitionDao, pushTokenDao, expoPushClient)
+	competitionController := controllers.NewCompetitionController(competitionService)
+
 	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier, achievementsService)
@@ -351,7 +358,7 @@ func NewApplication() *Application {
 	// apertura/cierre del entrenador; el controller emite update:session_state.
 	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
-	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
+	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService, competitionDao)
 
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)
 
@@ -394,6 +401,7 @@ func NewApplication() *Application {
 		gamificationSeenController:  gamificationSeenController,
 		achievementsController:      achievementsController,
 		leaderboardController:       leaderboardController,
+		competitionController:       competitionController,
 		realtimeGateway:             realtimeGateway,
 	}
 }

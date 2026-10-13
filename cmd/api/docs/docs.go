@@ -862,6 +862,276 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/competitions/{id}": {
+            "get": {
+                "description": "Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor % de match (computado on-demand, sin broadcast WS).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Detalle de una competencia con progreso en vivo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/competitions/{id}/approve": {
+            "patch": {
+                "description": "Caller owner del team (o el trainer creador, caso defensivo). Solo sobre pending_approval: pasa a active. Push best-effort al creador corredor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Aprobar una competencia pendiente",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/competitions/{id}/cancel": {
+            "delete": {
+                "description": "Solo el creador corredor, solo sobre pending_approval: borra físicamente la competencia junto con sus participantes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Cancelar una competencia propia pendiente",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/competitions/{id}/close": {
+            "patch": {
+                "description": "Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active y con la ventana terminada si end_at está seteado: status finished + finished_at. La computación de winners corre en el pipeline del cierre (E4.2).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Cerrar una competencia activa",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/competitions/{id}/reject": {
+            "patch": {
+                "description": "Caller owner del team (o el trainer creador, caso defensivo). Solo sobre pending_approval: pasa a rejected con reason opcional persistida. Push best-effort al creador corredor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Rechazar una competencia pendiente",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Motivo del rechazo (opcional)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.RejectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/exercises": {
             "get": {
                 "produces": [
@@ -4643,6 +4913,122 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/teams/{id}/competitions": {
+            "get": {
+                "description": "Accesible para miembros de algún grupo del team u owner (403 otro caso). Filtros opcionales status (pending_approval, active, finished, rejected — 400 fuera de la whitelist) y group_id. Embebe has_unseen de la sección competitions bajo el team_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Listar las competencias de un equipo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "pending_approval | active | finished | rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filtrar por grupo",
+                        "name": "group_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionsListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "El creador entrenador (owner del team) crea con status active directo; el creador corredor (miembro del team) propone con status pending_approval. type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior a start_at; type=route exige route_geojson y acceptance_radius_meters \u003e 0. Al menos 2 participantes, todos miembros activos del team, sin incluir al trainer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Crear una competencia en un equipo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Datos de la competencia",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CreateCompetitionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -8992,6 +9378,161 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionDetailResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionResponse"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionResponse": {
+            "type": "object",
+            "properties": {
+                "acceptance_radius_meters": {
+                    "type": "number"
+                },
+                "approved_by_user_id": {
+                    "type": "integer"
+                },
+                "created_by_role": {
+                    "type": "string"
+                },
+                "created_by_user_id": {
+                    "type": "integer"
+                },
+                "end_at": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "progress": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem"
+                    }
+                },
+                "rejection_reason": {
+                    "type": "string"
+                },
+                "route": {
+                    "type": "string"
+                },
+                "start_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "winner_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionsListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionResponse"
+                    }
+                },
+                "has_unseen": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CreateCompetitionRequest": {
+            "type": "object",
+            "required": [
+                "participants",
+                "start_at",
+                "type"
+            ],
+            "properties": {
+                "acceptance_radius_meters": {
+                    "type": "number"
+                },
+                "end_at": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "participants": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "route_geojson": {
+                    "type": "string"
+                },
+                "start_at": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.RejectRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_dbs.Attendance": {
             "type": "object",
             "properties": {
@@ -10604,6 +11145,10 @@ const docTemplate = `{
                 "athlete_user_id": {
                     "type": "integer"
                 },
+                "competition_id": {
+                    "description": "CompetitionID delimita el intento a una competencia (gamificacion-core\nE4.1/D8, FK opaca). Opcional: sin el campo el flujo es idéntico al de\nsiempre; si viene, el service valida active + participante + rango.",
+                    "type": "integer"
+                },
                 "start_date": {
                     "type": "string"
                 }
@@ -10632,6 +11177,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "athlete_user_id": {
+                    "type": "integer"
+                },
+                "competition_id": {
                     "type": "integer"
                 },
                 "end_date": {

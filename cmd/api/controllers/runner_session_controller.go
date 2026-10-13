@@ -118,6 +118,7 @@ func toRunnerSessionResponse(rs *dbs.RunnerSession) runnersession.RunnerSessionR
 		Status:            rs.Status,
 		StartDate:         rs.StartDate,
 		EndDate:           rs.EndDate,
+		CompetitionID:     rs.CompetitionID,
 	}
 }
 
