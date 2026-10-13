@@ -24,6 +24,8 @@ func TestDaos_HotTablesIndexes(t *testing.T) {
 		"idx_session_exercise_instances_session_instance_id":  "session_exercise_instances",
 		"idx_session_exercise_instances_exercise_instance_id": "session_exercise_instances",
 		"idx_workout_feedback_points_feedback_id":             "workout_feedback_points",
+		"idx_workout_feedback_points_session_instance_id":     "workout_feedback_points",
+		"idx_runner_session_athlete_user_id":                  "runner_session",
 		"idx_gamification_unseen_user_section":                "gamification_unseen",
 		"gamification_streak_state_pkey":                      "gamification_streak_state",
 		"idx_user_achievement_progress_user":                  "user_achievement_progress",

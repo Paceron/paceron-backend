@@ -17,7 +17,7 @@ import "time"
 type RunnerSession struct {
 	ID                int64      `gorm:"column:id;primaryKey"`
 	SessionInstanceID int64      `gorm:"column:session_instance_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:1"`
-	AthleteUserID     int64      `gorm:"column:athlete_user_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:2"`
+	AthleteUserID     int64      `gorm:"column:athlete_user_id;not null;index;uniqueIndex:uq_runner_session_session_athlete,priority:2"`
 	Status            string     `gorm:"column:status;not null;default:'wip'"`
 	StartDate         time.Time  `gorm:"column:start_date;not null"`
 	EndDate           *time.Time `gorm:"column:end_date"`
