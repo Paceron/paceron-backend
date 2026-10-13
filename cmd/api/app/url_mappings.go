@@ -226,6 +226,18 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PUT("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Update)
 	r.DELETE("/api/v1/workout-feedback/:id", app.workoutFeedbackController.Delete)
 
+	// Dashboard analítico. team_id es obligatorio en los siete endpoints: el
+	// acceso es por pestaña del detalle de equipo, así que el equipo siempre se
+	// conoce y el scope no se deduce. Leaderboard y comparaciones son del dueño
+	// del equipo (403 para el corredor), el resto responde 200 a los dos.
+	r.GET("/api/v1/dashboard/filters", app.dashboardController.Filters)
+	r.GET("/api/v1/dashboard/metrics/summary", app.dashboardController.Summary)
+	r.GET("/api/v1/dashboard/metrics/timeseries", app.dashboardController.TimeSeries)
+	r.GET("/api/v1/dashboard/leaderboard", app.dashboardController.Leaderboard)
+	r.GET("/api/v1/dashboard/exercises/:id/series", app.dashboardController.ExerciseSeries)
+	r.POST("/api/v1/dashboard/comparisons", app.dashboardController.Comparisons)
+	r.POST("/api/v1/dashboard/comparisons/periods", app.dashboardController.Periods)
+
 	// Runner Session (estado de la sesión del corredor, wip -> finished) y
 	// feedback de una sesión asignada. Sin ruta /session-instances/* existente
 	// antes: este es el primer bloque bajo ese recurso.

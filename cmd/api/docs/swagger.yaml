@@ -614,6 +614,487 @@ definitions:
     - plan_id
     - start_date
     type: object
+  simple-arq-golang_cmd_api_domains_dashboard.BandCounts:
+    properties:
+      met:
+        type: integer
+      missed:
+        type: integer
+      near:
+        type: integer
+      unknown:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow:
+    properties:
+      athlete_user_id:
+        type: integer
+      best_time_ms:
+        type: integer
+      compliance_rate:
+        type: number
+      mean_speed_kph:
+        type: number
+      name:
+        type: string
+      sessions:
+        type: integer
+      surname:
+        type: string
+      total_distance_m:
+        type: number
+      trend:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Trend'
+      valid_series:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.ComparisonsRequest:
+    properties:
+      athlete_user_ids:
+        items:
+          type: integer
+        type: array
+      exercise_id:
+        type: integer
+      exercise_ids:
+        items:
+          type: integer
+        type: array
+      from:
+        type: string
+      group_id:
+        type: integer
+      kinds:
+        items:
+          type: string
+        type: array
+      team_id:
+        type: integer
+      to:
+        type: string
+      tolerance:
+        type: number
+    required:
+    - team_id
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.ComparisonsResponse:
+    properties:
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      series:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow'
+        type: array
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.Consistency:
+    properties:
+      cv:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.DataQuality:
+    properties:
+      degraded_time:
+        type: integer
+      insufficient_data:
+        type: boolean
+      invalid_series:
+        type: integer
+      legacy_sessions:
+        type: integer
+      open_sessions:
+        type: integer
+      unknown_status:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.DateRange:
+    properties:
+      max:
+        type: string
+      min:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.FiltersAthlete:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      surname:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.FiltersExercise:
+    properties:
+      current_target_distance_m:
+        type: integer
+      current_target_minutes:
+        type: integer
+      id:
+        type: integer
+      kind:
+        type: string
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.FiltersGroup:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+      team_id:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.FiltersResponse:
+    properties:
+      athletes:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersAthlete'
+        type: array
+      date_range:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DateRange'
+      exercise_types:
+        items:
+          type: string
+        type: array
+      exercises:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersExercise'
+        type: array
+      groups:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersGroup'
+        type: array
+      teams:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersTeam'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.FiltersTeam:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.LeaderboardItem:
+    properties:
+      athlete_user_id:
+        type: integer
+      best_time_ms:
+        type: integer
+      compliance_rate:
+        type: number
+      is_self:
+        type: boolean
+      mean_speed_kph:
+        type: number
+      name:
+        type: string
+      position:
+        type: integer
+      rank:
+        type: integer
+      sessions:
+        type: integer
+      surname:
+        type: string
+      total_distance_m:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.LeaderboardResponse:
+    properties:
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.LeaderboardItem'
+        type: array
+      order:
+        type: string
+      page:
+        type: integer
+      page_size:
+        type: integer
+      sort:
+        type: string
+      total:
+        type: integer
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics:
+    properties:
+      best_time_ms:
+        type: integer
+      compliance_rate:
+        type: number
+      from:
+        type: string
+      mean_speed_kph:
+        type: number
+      series:
+        type: integer
+      to:
+        type: string
+      total_distance_m:
+        type: number
+      valid_series:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.PeriodRange:
+    properties:
+      from:
+        type: string
+      to:
+        type: string
+    required:
+    - from
+    - to
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.PeriodsDelta:
+    properties:
+      best_time_pct:
+        type: number
+      compliance_pp:
+        description: |-
+          CompliancePP son puntos porcentuales, no porcentaje relativo: 58 % contra
+          64 % es −6 pp, no −9,4 %.
+        type: number
+      distance_pct:
+        type: number
+      series:
+        type: integer
+      speed_pct:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.PeriodsRequest:
+    properties:
+      current:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange'
+      exercise_id:
+        type: integer
+      exercise_ids:
+        items:
+          type: integer
+        type: array
+      group_id:
+        type: integer
+      kinds:
+        items:
+          type: string
+        type: array
+      previous:
+        allOf:
+        - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange'
+        description: |-
+          Previous es opcional: si no viene, el backend lo deriva desplazando current
+          hacia atrás exactamente su misma cantidad de días.
+      team_id:
+        type: integer
+      tolerance:
+        type: number
+    required:
+    - current
+    - team_id
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.PeriodsResponse:
+    properties:
+      current:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics'
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      delta:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsDelta'
+      previous:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics'
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+      verdict:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.SeriesDetailItem:
+    properties:
+      active_duration_ms:
+        type: integer
+      athlete_user_id:
+        type: integer
+      band:
+        description: |-
+          Band es null cuando has_target es false: sin objetivo no hay cumplimiento
+          que clasificar. No es lo mismo que la banda "unknown".
+        type: string
+      completion_status:
+        type: string
+      delta_pct:
+        type: number
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      feedback_owner_user_id:
+        type: integer
+      met_target:
+        type: boolean
+      session_date:
+        type: string
+      session_instance_id:
+        type: integer
+      set_number:
+        type: integer
+      speed_kph:
+        description: |-
+          SpeedKph es DERIVADA de distancia y tiempo, nunca leída de
+          exercise_instances.speed_kph (design.md D2).
+        type: number
+      target_distance_m:
+        type: integer
+      target_minutes:
+        type: integer
+      time_quality:
+        type: string
+      tolerance_applied:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.SeriesResponse:
+    properties:
+      axis:
+        type: string
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      has_target:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SeriesDetailItem'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      series_count:
+        description: |-
+          SeriesCount son las series válidas del ejercicio en el scope; Total son las
+          filas de la página.
+        type: integer
+      total:
+        type: integer
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.SummaryResponse:
+    properties:
+      axis:
+        type: string
+      consistency:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Consistency'
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      has_target:
+        type: boolean
+      series_count:
+        type: integer
+      tolerance_applied:
+        description: |-
+          ToleranceApplied y SeriesCount viajan porque el tooltip de KPI necesita
+          mostrar la tolerancia usada y cuántas series entraron, y no hay otra fuente.
+        type: number
+      totals:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SummaryTotals'
+      trend:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Trend'
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.SummaryTotals:
+    properties:
+      achieved_speed_kph:
+        type: number
+      best_time_ms:
+        type: integer
+      compliance_rate:
+        description: |-
+          ComplianceRate es un PORCENTAJE 0-100, no una fracción, para que no compita
+          con delta_pct.
+        type: number
+      delta_pct:
+        type: number
+      distance_m:
+        type: number
+      series:
+        type: integer
+      sessions:
+        type: integer
+      target_speed_kph:
+        type: number
+      time_ms:
+        type: integer
+      valid_series:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TimeseriesBucket:
+    properties:
+      achieved_speed_kph:
+        type: number
+      band_counts:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.BandCounts'
+      best_time_ms:
+        type: integer
+      compliance_rate:
+        type: number
+      delta_pct:
+        type: number
+      period_start:
+        type: string
+      series:
+        type: integer
+      sessions:
+        type: integer
+      target_speed_kph:
+        type: number
+      valid_series:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TimeseriesResponse:
+    properties:
+      buckets:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TimeseriesBucket'
+        type: array
+      data_quality:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality'
+      granularity:
+        type: string
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.Trend:
+    properties:
+      trend_pct:
+        type: number
+      verdict:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.Units:
+    properties:
+      best_time:
+        type: string
+      compliance:
+        type: string
+      delta:
+        type: string
+      distance:
+        type: string
+      percentage_point:
+        type: string
+      speed:
+        type: string
+      time:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_dbs.Attendance:
     properties:
       createdAt:
@@ -3414,6 +3895,475 @@ paths:
       summary: Get user by ID or email
       tags:
       - auth
+  /api/v1/dashboard/comparisons:
+    post:
+      consumes:
+      - application/json
+      description: 'Una fila por corredor comparable del scope, con su tendencia y
+        el `data_quality` común. Solo el dueño del equipo. Cada `athlete_user_id`
+        se valida por separado: si uno está fuera de scope responde 403 nombrándolo,
+        sin devolver los datos de los válidos.'
+      parameters:
+      - description: Filtros de la comparación
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Comparación entre corredores
+      tags:
+      - dashboard
+  /api/v1/dashboard/comparisons/periods:
+    post:
+      consumes:
+      - application/json
+      description: 'Compara el período actual contra el anterior de la misma longitud;
+        sin `previous`, el backend lo deriva desplazando `current` hacia atrás. `compliance_pp`
+        son puntos porcentuales y `best_time_pct` tiene el signo invertido: bajar
+        el tiempo es mejorar. Solo el dueño del equipo.'
+      parameters:
+      - description: Períodos y filtros de la comparación
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Comparación de períodos
+      tags:
+      - dashboard
+  /api/v1/dashboard/exercises/{id}/series:
+    get:
+      description: Serie por serie con objetivo congelado, cumplimiento, banda y calidad
+        de tiempo. El `{id}` es el `exercises.id` de catálogo, el mismo que expone
+        `/dashboard/filters`. Las instancias anteriores al change de instancia-referencia-catálogo
+        se resuelven por nombre normalizado contra el catálogo del mismo dueño.
+      parameters:
+      - description: Ejercicio de catálogo (exercises.id)
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Equipo del que se está mirando el dashboard
+        format: int64
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: Acotar a un grupo del scope (no lo amplía)
+        format: int64
+        in: query
+        name: group_id
+        type: integer
+      - description: Desde (YYYY-MM-DD, obligatorio)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Hasta (YYYY-MM-DD; sin él, cierra en from)
+        in: query
+        name: to
+        type: string
+      - description: Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)
+        in: query
+        name: tolerance
+        type: number
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página, máximo 100 (default 20)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SeriesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Detalle de series de un ejercicio
+      tags:
+      - dashboard
+  /api/v1/dashboard/filters:
+    get:
+      description: Equipos, grupos, corredores, tipos de ejercicio, catálogo con su
+        objetivo VIGENTE y el rango de fechas real con datos, todo recortado por el
+        scope del solicitante. El entrenador ve sus corredores; el corredor, solo
+        su propia entrada.
+      parameters:
+      - description: Equipo del que se está mirando el dashboard
+        format: int64
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Filtros del dashboard
+      tags:
+      - dashboard
+  /api/v1/dashboard/leaderboard:
+    get:
+      description: Ranking paginado del scope con la posición global de cada corredor
+        (`position`), calculada sobre todas las filas y con el mismo criterio de orden
+        que la página. Solo el dueño del equipo.
+      parameters:
+      - description: Equipo del que se está mirando el dashboard
+        format: int64
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: Acotar a un grupo del scope (no lo amplía)
+        format: int64
+        in: query
+        name: group_id
+        type: integer
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+        format: int64
+        in: query
+        name: exercise_id
+        type: integer
+      - collectionFormat: csv
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        in: query
+        items:
+          format: int64
+          type: integer
+        name: exercise_ids
+        type: array
+      - collectionFormat: csv
+        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+        in: query
+        items:
+          enum:
+          - liviano
+          - elongacion
+          - ritmo_continuo
+          - velocidad_tiempo
+          - velocidad_distancia
+          type: string
+        name: kinds
+        type: array
+      - description: Desde (YYYY-MM-DD, obligatorio)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Hasta (YYYY-MM-DD; sin él, cierra en from)
+        in: query
+        name: to
+        type: string
+      - description: Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)
+        in: query
+        name: tolerance
+        type: number
+      - description: Página (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Tamaño de página, máximo 100 (default 20)
+        in: query
+        name: page_size
+        type: integer
+      - description: Columna de orden (default best_time_ms)
+        enum:
+        - best_time_ms
+        - mean_speed_kph
+        - total_distance_m
+        - compliance_rate
+        in: query
+        name: sort
+        type: string
+      - description: Sentido del orden (default asc)
+        enum:
+        - asc
+        - desc
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.LeaderboardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Ranking de corredores
+      tags:
+      - dashboard
+  /api/v1/dashboard/metrics/summary:
+    get:
+      description: 'KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor
+        tiempo, consistencia, tendencia y estado de los datos. `compliance_rate` es
+        porcentaje y `delta_pct` va con signo positivo hacia la mejora, incluso en
+        el eje temporal.'
+      parameters:
+      - description: Equipo del que se está mirando el dashboard
+        format: int64
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: Acotar a un grupo del scope (no lo amplía)
+        format: int64
+        in: query
+        name: group_id
+        type: integer
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+        format: int64
+        in: query
+        name: exercise_id
+        type: integer
+      - collectionFormat: csv
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        in: query
+        items:
+          format: int64
+          type: integer
+        name: exercise_ids
+        type: array
+      - collectionFormat: csv
+        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+        in: query
+        items:
+          enum:
+          - liviano
+          - elongacion
+          - ritmo_continuo
+          - velocidad_tiempo
+          - velocidad_distancia
+          type: string
+        name: kinds
+        type: array
+      - description: Desde (YYYY-MM-DD, obligatorio)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Hasta (YYYY-MM-DD; sin él, cierra en from)
+        in: query
+        name: to
+        type: string
+      - description: Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)
+        in: query
+        name: tolerance
+        type: number
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SummaryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Resumen de métricas
+      tags:
+      - dashboard
+  /api/v1/dashboard/metrics/timeseries:
+    get:
+      description: 'Buckets de calendario (session/week/month/quarter) con los mismos
+        KPIs del resumen. Los anclajes son de calendario: un bucket puede empezar
+        antes del `from` y el recorte nunca parte una semana ni un trimestre por la
+        mitad.'
+      parameters:
+      - description: Equipo del que se está mirando el dashboard
+        format: int64
+        in: query
+        name: team_id
+        required: true
+        type: integer
+      - description: Acotar a un grupo del scope (no lo amplía)
+        format: int64
+        in: query
+        name: group_id
+        type: integer
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+        format: int64
+        in: query
+        name: exercise_id
+        type: integer
+      - collectionFormat: csv
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        in: query
+        items:
+          format: int64
+          type: integer
+        name: exercise_ids
+        type: array
+      - collectionFormat: csv
+        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+        in: query
+        items:
+          enum:
+          - liviano
+          - elongacion
+          - ritmo_continuo
+          - velocidad_tiempo
+          - velocidad_distancia
+          type: string
+        name: kinds
+        type: array
+      - description: Desde (YYYY-MM-DD, obligatorio)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: Hasta (YYYY-MM-DD; sin él, cierra en from)
+        in: query
+        name: to
+        type: string
+      - description: Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)
+        in: query
+        name: tolerance
+        type: number
+      - description: Anclaje del bucket (default session)
+        enum:
+        - session
+        - week
+        - month
+        - quarter
+        in: query
+        name: granularity
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TimeseriesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Métricas por período
+      tags:
+      - dashboard
   /api/v1/exercises:
     get:
       parameters:
