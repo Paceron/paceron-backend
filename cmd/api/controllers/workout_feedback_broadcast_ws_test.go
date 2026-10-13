@@ -73,7 +73,7 @@ func newFeedbackBroadcastServer(t *testing.T) *wsBroadcastServer {
 			return fixtureFeedbackForSession(42, 7), nil
 		},
 	}
-	ctrl := NewWorkoutFeedbackController(mockSvc, notifier)
+	ctrl := NewWorkoutFeedbackController(mockSvc, notifier, nil)
 	router.POST("/api/v1/workout-feedback", ctrl.Create)
 
 	server := httptest.NewServer(router)

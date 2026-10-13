@@ -702,6 +702,30 @@ definitions:
       video_url:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementResponse'
+        type: array
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.AchievementResponse:
+    properties:
+      description:
+        type: string
+      family:
+        type: string
+      icon_key:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      threshold:
+        type: number
+      unit:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_gamification.SeenRequest:
     properties:
       section:
@@ -715,6 +739,28 @@ definitions:
     properties:
       message:
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StampItem:
+    properties:
+      count:
+        type: integer
+      granted_at:
+        type: string
+      id:
+        type: integer
+      source_id:
+        type: integer
+      source_name:
+        type: string
+      type:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StampsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampItem'
+        type: array
     type: object
   simple-arq-golang_cmd_api_domains_gamification.StreakDay:
     properties:
@@ -744,6 +790,28 @@ definitions:
         type: boolean
       strict:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary'
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem:
+    properties:
+      achievement_id:
+        type: string
+      count:
+        type: integer
+      current_level:
+        type: integer
+      last_unlocked_at:
+        type: string
+      unlocked_at:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem'
+        type: array
+      has_unseen:
+        type: boolean
     type: object
   simple-arq-golang_cmd_api_domains_group.CreateGroupRequest:
     properties:
@@ -2898,6 +2966,25 @@ info:
   title: Simple Arq Golang API
   version: 1.0.0
 paths:
+  /api/v1/achievements/catalog:
+    get:
+      description: 'Devuelve las filas del catálogo de logros (catalogo versionado
+        en constants). Compartido: cualquier usuario autenticado puede consultarlo,
+        sin guard de recurso.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Catálogo de logros
+      tags:
+      - gamification
   /api/v1/attendance/{attendance_id}:
     delete:
       description: Borra físicamente una asistencia por id. Requiere ser entrenador
@@ -6957,6 +7044,43 @@ paths:
       summary: Update user attributes
       tags:
       - users
+  /api/v1/users/{id}/achievements:
+    get:
+      description: Devuelve el merge catálogo + progreso del propio usuario autenticado
+        (21 filas; unlocked_at null en las que no desbloqueó, current_level y count
+        en null en v1), con has_unseen de la sección achievements embebido. Self-only.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Vitrina de logros del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/administered-calendar:
     get:
       description: |-
@@ -7575,6 +7699,43 @@ paths:
       summary: Change tier of a role subscription
       tags:
       - user-roles
+  /api/v1/users/{id}/stamps:
+    get:
+      description: 'Devuelve las estampas del propio usuario autenticado (self-only).
+        En E2 la vitrina está vacía: la tabla solo recibe emisiones de competencia
+        desde E4.'
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Vitrina de estampas del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/status:
     patch:
       consumes:

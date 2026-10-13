@@ -36,15 +36,20 @@ type runnerSessionController struct {
 	// D3) post-write del PATCH hacia finished/interrupted. No aplica al Create
 	// (wip nunca genera novedad de racha). Async best-effort.
 	streakTrigger services.StreakTriggerServiceInterface
+	// achievementsTrigger es opcional (nil): hook de evaluación de logros
+	// (gamificacion-core D5) en la misma transición post-write. Async
+	// best-effort; el fallo se loguea y no toca la respuesta.
+	achievementsTrigger services.AchievementsTriggerInterface
 }
 
 // NewRunnerSessionController crea una nueva instancia de RunnerSessionController.
-func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier, streakTrigger services.StreakTriggerServiceInterface) RunnerSessionController {
+func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier, streakTrigger services.StreakTriggerServiceInterface, achievementsTrigger services.AchievementsTriggerInterface) RunnerSessionController {
 	return &runnerSessionController{
 		runnerSessionService: runnerSessionService,
 		presencial:           presencial,
 		notifier:             notifier,
 		streakTrigger:        streakTrigger,
+		achievementsTrigger:  achievementsTrigger,
 	}
 }
 
@@ -254,6 +259,11 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 	// respuesta del PATCH). El Create (wip) no dispara.
 	if rc.streakTrigger != nil {
 		rc.streakTrigger.OnRunnerSessionCompletion(c, rs.AthleteUserID)
+	}
+	// Hook de logros (D5): misma transición, evaluate idempotente async
+	// (sessions/early por finished; streak reusa el cálculo de D2).
+	if rc.achievementsTrigger != nil {
+		rc.achievementsTrigger.OnEvent(c, rs.AthleteUserID, services.AchievementTriggerRunnerSession)
 	}
 
 	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;

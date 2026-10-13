@@ -26,6 +26,10 @@ func TestDaos_HotTablesIndexes(t *testing.T) {
 		"idx_workout_feedback_points_feedback_id":             "workout_feedback_points",
 		"idx_gamification_unseen_user_section":                "gamification_unseen",
 		"gamification_streak_state_pkey":                      "gamification_streak_state",
+		"idx_user_achievement_progress_user":                  "user_achievement_progress",
+		"user_achievement_progress_pkey":                      "user_achievement_progress",
+		"gamification_stamp_pkey":                             "gamification_stamp",
+		"idx_gamification_stamp_user":                         "gamification_stamp",
 	}
 
 	for indexName, table := range expected {

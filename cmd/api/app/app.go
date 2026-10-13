@@ -60,6 +60,7 @@ type Application struct {
 	runnerSessionController     controllers.RunnerSessionController
 	streakController            controllers.StreakController
 	gamificationSeenController  controllers.GamificationSeenController
+	achievementsController      controllers.AchievementsController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
 }
@@ -313,10 +314,26 @@ func NewApplication() *Application {
 	realtimeHub := realtime.NewHub()
 	realtimeGateway := realtime.NewGateway(realtimeHub, newChannelAuthorizer(sessionInstanceDao), allowedOrigins())
 
+	// Gamificación (gamificacion-core E1): rachas recalculadas fresco del
+	// histórico; unseen para el punto rojo con su POST seen; trigger de racha
+	// post-write del PATCH de runner session (hook async best-effort D3).
+	gamificationDao := daos.NewGamificationDao(db)
+	streakService := services.NewStreakService(gamificationDao)
+	streakController := controllers.NewStreakController(streakService)
+	gamificationSeenController := controllers.NewGamificationSeenController(services.NewGamificationSeenService(gamificationDao))
+	streakTrigger := services.NewStreakTriggerService(gamificationDao, streakService)
+
+	// Gamificación (gamificacion-core E2): catálogo + evaluadores de logros.
+	// La misma instancia alimenta la vitrina y el hook de evaluación (trigger)
+	// que los controllers llevan opcional.
+	achievementDao := daos.NewAchievementDao(db)
+	achievementsService := services.NewAchievementsService(achievementDao, gamificationDao, streakService, pushTokenDao, expoPushClient)
+	achievementsController := controllers.NewAchievementsController(achievementsService)
+
 	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
-	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier)
-	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier)
+	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier, achievementsService)
+	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier, achievementsService)
 
 	// Session messages (chat de sesión instanciada, Gap 27). El controller emite
 	// control:message_created con la misma instancia compartida del notifier.
@@ -331,16 +348,7 @@ func NewApplication() *Application {
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
 
-	// Gamificación (gamificacion-core E1): rachas recalculadas fresco del
-	// histórico; unseen para el punto rojo con su POST seen; trigger de racha
-	// post-write del PATCH de runner session (hook async best-effort D3).
-	gamificationDao := daos.NewGamificationDao(db)
-	streakService := services.NewStreakService(gamificationDao)
-	streakController := controllers.NewStreakController(streakService)
-	gamificationSeenController := controllers.NewGamificationSeenController(services.NewGamificationSeenService(gamificationDao))
-	streakTrigger := services.NewStreakTriggerService(gamificationDao, streakService)
-
-	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger)
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)
 
 	return &Application{
 		pingController:              controllers.NewPingController(),
@@ -377,8 +385,9 @@ func NewApplication() *Application {
 		workoutFeedbackController:   workoutFeedbackController,
 		sessionMessageController:    sessionMessageController,
 		runnerSessionController:     runnerSessionController,
-		streakController:            streakController,
-		gamificationSeenController:  gamificationSeenController,
+	streakController:            streakController,
+	gamificationSeenController:  gamificationSeenController,
+	achievementsController:      achievementsController,
 		realtimeGateway:             realtimeGateway,
 	}
 }

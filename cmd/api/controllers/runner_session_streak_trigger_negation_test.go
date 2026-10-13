@@ -47,7 +47,7 @@ func TestRunnerSessionController_Create_WipNoDisparaStreakTrigger(t *testing.T) 
 			return fixtureRunnerSessionResponse(), nil, true, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger)
+	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -73,7 +73,7 @@ func TestRunnerSessionController_Finish_DisparaStreakTrigger(t *testing.T) {
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger)
+	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -95,7 +95,7 @@ func TestRunnerSessionController_Finish_Interrupted_DisparaStreakTrigger(t *test
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger)
+	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -118,7 +118,7 @@ func TestRunnerSessionController_Finish_SinTriggerNilSafe(t *testing.T) {
 			return rs, nil
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc, nil, nil, nil)
+	controller := NewRunnerSessionController(mockSvc, nil, nil, nil, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -137,7 +137,7 @@ func TestRunnerSessionController_Finish_ErrorNoDispara(t *testing.T) {
 			return nil, services.ErrRunnerSessionInvalid
 		},
 	}
-	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger)
+	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

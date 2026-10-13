@@ -37,14 +37,28 @@ type workoutFeedbackController struct {
 	// notifier es opcional (nil en tests = sin cambios de comportamiento):
 	// emite update:set_event a session:{id} al crear feedback (D7, best-effort).
 	notifier realtime.Notifier
+	// achievementsTrigger es opcional (nil): hook de evaluación de logros
+	// (gamificacion-core D5). Create/Update alimentan distance (distance_meters
+	// llega con la serie) y CreatePoints alimenta gps (recorrido subido).
+	// Async best-effort nil-safe.
+	achievementsTrigger services.AchievementsTriggerInterface
 }
 
 // NewWorkoutFeedbackController crea una nueva instancia de WorkoutFeedbackController.
-func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface, notifier realtime.Notifier) WorkoutFeedbackController {
+func NewWorkoutFeedbackController(workoutFeedbackService services.WorkoutFeedbackServiceInterface, notifier realtime.Notifier, achievementsTrigger services.AchievementsTriggerInterface) WorkoutFeedbackController {
 	return &workoutFeedbackController{
 		workoutFeedbackService: workoutFeedbackService,
 		notifier:               notifier,
+		achievementsTrigger:    achievementsTrigger,
 	}
+}
+
+// triggerAchievements es el helper del hook (D5): nil-safe en ambos lados.
+func (fc *workoutFeedbackController) triggerAchievements(c *gin.Context, userID int64, trigger services.AchievementTrigger) {
+	if fc.achievementsTrigger == nil || userID <= 0 {
+		return
+	}
+	fc.achievementsTrigger.OnEvent(c, userID, trigger)
 }
 
 // sessionChannel arma el canal canónico del gateway para una sesión
@@ -203,6 +217,10 @@ func (fc *workoutFeedbackController) CreatePoints(c *gin.Context) {
 		return
 	}
 
+	// Hook de logros (D5): el recorrido GPS subió → re-evalúa gps_first/10/50
+	// a favor del atleta del feedback.
+	fc.triggerAchievements(c, result.AthleteUserID, services.AchievementTriggerGPSPoints)
+
 	c.JSON(http.StatusCreated, workoutfeedback.PointsMutationResponse{
 		Message: workoutfeedback.MsgPointsCreated,
 		Data: workoutfeedback.PointsMutationData{
@@ -354,6 +372,10 @@ func (fc *workoutFeedbackController) Create(c *gin.Context) {
 		respondFeedbackError(c, err)
 		return
 	}
+
+	// Hook de logros (D5): la serie puede traer distance_meters → re-evalúa
+	// distance_10k/50k/100k/42k_single (async best-effort).
+	fc.triggerAchievements(c, feedback.AthleteUserID, services.AchievementTriggerFeedback)
 
 	response := toWorkoutFeedbackResponse(feedback)
 	mutation := workoutfeedback.MutationResponse{
@@ -545,6 +567,9 @@ func (fc *workoutFeedbackController) Update(c *gin.Context) {
 		respondFeedbackError(c, err)
 		return
 	}
+
+	// Hook de logros (D5): distance_meters puede cambiar en la edición.
+	fc.triggerAchievements(c, feedback.AthleteUserID, services.AchievementTriggerFeedback)
 
 	response := toWorkoutFeedbackResponse(feedback)
 	c.JSON(http.StatusOK, workoutfeedback.MutationResponse{

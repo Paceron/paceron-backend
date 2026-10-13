@@ -111,7 +111,7 @@ func (m *mockWorkoutFeedbackService) AdministeredHistory(ctx *gin.Context, calle
 // newTestWorkoutFeedbackController arma el controller SIN notifier: los tests
 // HTTP no deben ver frames (nil = comportamiento anterior intacto).
 func newTestWorkoutFeedbackController(svc services.WorkoutFeedbackServiceInterface) WorkoutFeedbackController {
-	return NewWorkoutFeedbackController(svc, nil)
+	return NewWorkoutFeedbackController(svc, nil, nil)
 }
 
 // stubFeedbackNotifier registra las llamadas Emit del hook de Create (D7).
@@ -217,7 +217,7 @@ func setupFeedbackBroadcastRouter(svc services.WorkoutFeedbackServiceInterface, 
 		c.Set(utils.AuthUserIDKey, int64(7))
 		c.Next()
 	})
-	ctrl := NewWorkoutFeedbackController(svc, notifier)
+	ctrl := NewWorkoutFeedbackController(svc, notifier, nil)
 	r.POST("/workout-feedback", ctrl.Create)
 	r.PUT("/workout-feedback/:id", ctrl.Update)
 	r.DELETE("/workout-feedback/:id", ctrl.Delete)

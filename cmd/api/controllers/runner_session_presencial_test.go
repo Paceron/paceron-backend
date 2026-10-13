@@ -55,7 +55,7 @@ func (m *mockPresencialGateway) OnRunnerFinished(ctx *gin.Context, sessionInstan
 }
 
 func newRunnerCtrl(mockSvc *mockRunnerSessionControllerService, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier) RunnerSessionController {
-	return NewRunnerSessionController(mockSvc, presencial, notifier, nil)
+	return NewRunnerSessionController(mockSvc, presencial, notifier, nil, nil)
 }
 
 func runnerSessionPOST(c *gin.Context, body string) {

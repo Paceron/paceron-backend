@@ -17,6 +17,32 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/v1/achievements/catalog": {
+            "get": {
+                "description": "Devuelve las filas del catálogo de logros (catalogo versionado en constants). Compartido: cualquier usuario autenticado puede consultarlo, sin guard de recurso.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Catálogo de logros",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/attendance/bulk": {
             "post": {
                 "description": "Crea o actualiza la asistencia de varios corredores a una misma sesión. Idempotente. Todo-o-nada: si algún corredor no era miembro del grupo en la fecha de la sesión, no se escribe ninguna fila.",
@@ -6045,6 +6071,59 @@
                 }
             }
         },
+        "/api/v1/users/{id}/achievements": {
+            "get": {
+                "description": "Devuelve el merge catálogo + progreso del propio usuario autenticado (21 filas; unlocked_at null en las que no desbloqueó, current_level y count en null en v1), con has_unseen de la sección achievements embebido. Self-only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Vitrina de logros del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/administered-calendar": {
             "get": {
                 "description": "Los días de calendario de TODOS los grupos administrados por\nel usuario (owner de los equipos) en el rango, ordenados por\nfecha, con group_id/group_name/team_id/team_name resueltos\nserver-side. Cada día presencial que superpone con otro día\npresencial de otro grupo administrado trae presencial_collision\n{type: \"same_team\"|\"cross_team\", conflicts: [...]} (cross_team\ngana si hay de ambos; conflicts lista todos los colisionantes;\nausente si no colisiona). Incluye colisiones viejas guardadas\nantes del guard. Conforme a\nopenspec/changes/colisiones-presenciales-y-calendario-agregado (D8).",
@@ -6898,6 +6977,59 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/{id}/stamps": {
+            "get": {
+                "description": "Devuelve las estampas del propio usuario autenticado (self-only). En E2 la vitrina está vacía: la tabla solo recibe emisiones de competencia desde E4.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Vitrina de estampas del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -8904,6 +9036,43 @@
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_gamification.AchievementCatalogResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.AchievementResponse"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.AchievementResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "icon_key": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_gamification.SeenRequest": {
             "type": "object",
             "required": [
@@ -8923,6 +9092,40 @@
             "properties": {
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.StampItem": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "granted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "source_id": {
+                    "type": "integer"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.StampsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StampItem"
+                    }
                 }
             }
         },
@@ -8968,6 +9171,40 @@
                 },
                 "strict": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem": {
+            "type": "object",
+            "properties": {
+                "achievement_id": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "current_level": {
+                    "type": "integer"
+                },
+                "last_unlocked_at": {
+                    "type": "string"
+                },
+                "unlocked_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.UserAchievementsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.UserAchievementItem"
+                    }
+                },
+                "has_unseen": {
+                    "type": "boolean"
                 }
             }
         },

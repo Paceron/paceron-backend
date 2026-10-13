@@ -33,13 +33,18 @@ type attendanceController struct {
 	// notifier es opcional (nil en tests = sin eventos): emite
 	// update:attendance_event a session:{id} en altas y bajas (Gap 28 D13).
 	notifier realtime.Notifier
+	// achievementsTrigger es opcional (nil): hook de evaluación de logros
+	// (gamificacion-core D5) en altas de asistencia, a favor del asistente
+	// afectado. Async best-effort nil-safe.
+	achievementsTrigger services.AchievementsTriggerInterface
 }
 
 // NewAttendanceController crea una nueva instancia de AttendanceController.
-func NewAttendanceController(attendanceService services.AttendanceServiceInterface, notifier realtime.Notifier) AttendanceController {
+func NewAttendanceController(attendanceService services.AttendanceServiceInterface, notifier realtime.Notifier, achievementsTrigger services.AchievementsTriggerInterface) AttendanceController {
 	return &attendanceController{
-		attendanceService: attendanceService,
-		notifier:          notifier,
+		attendanceService:   attendanceService,
+		notifier:            notifier,
+		achievementsTrigger: achievementsTrigger,
 	}
 }
 
@@ -234,6 +239,10 @@ func (ac *attendanceController) RegisterAttendance(c *gin.Context) {
 			RegisteredAt: &row.CreatedAt,
 			AttendanceID: &row.AttendanceID,
 		})
+		// Hook de logros (D5): la asistencia confirmada subió → team_first/10.
+		if ac.achievementsTrigger != nil {
+			ac.achievementsTrigger.OnEvent(c, row.UserID, services.AchievementTriggerAttendance)
+		}
 	}
 
 	statusCode := http.StatusCreated
@@ -612,6 +621,10 @@ func (ac *attendanceController) BulkSaveAttendance(c *gin.Context) {
 			RegisteredAt: &rows[i].CreatedAt,
 			AttendanceID: &rows[i].AttendanceID,
 		})
+		// Hook de logros (D5): misma carga masiva, por asistente.
+		if ac.achievementsTrigger != nil {
+			ac.achievementsTrigger.OnEvent(c, rows[i].UserID, services.AchievementTriggerAttendance)
+		}
 	}
 
 	c.JSON(http.StatusOK, result)

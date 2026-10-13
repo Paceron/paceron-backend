@@ -25,9 +25,12 @@ var (
 const maxPointsPerBulk = 5000
 
 // PointsResult son los conteos efectivos del bulk insert idempotente de puntos.
+// AthleteUserID sale del feedback cargado: alimenta el hook de logros (gps_N)
+// a favor del atleta, sin cambiar el shape HTTP del endpoint.
 type PointsResult struct {
-	Created int
-	Skipped int
+	Created       int
+	Skipped       int
+	AthleteUserID int64
 }
 
 // WorkoutFeedbackServiceInterface define las operaciones de negocio de feedback
@@ -330,7 +333,7 @@ func (s *workoutFeedbackService) CreatePoints(ctx *gin.Context, authUserID, feed
 	if err != nil {
 		return nil, err
 	}
-	return &PointsResult{Created: int(created), Skipped: len(models) - int(created)}, nil
+	return &PointsResult{Created: int(created), Skipped: len(models) - int(created), AthleteUserID: feedback.AthleteUserID}, nil
 }
 
 // GetPoints autoriza como Get (reportante, atleta u owner del team) y devuelve el

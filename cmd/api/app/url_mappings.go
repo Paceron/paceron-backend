@@ -184,6 +184,12 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// Escape del punto rojo (D3): POST seen, self-only.
 	r.POST("/api/v1/users/:id/gamification/seen", app.gamificationSeenController.See)
 
+	// Gamificación: catálogo + vitrina de logros y estampas (E2). El catálogo
+	// es compartido (sin guard de recurso); la vitrina es self-only.
+	r.GET("/api/v1/achievements/catalog", app.achievementsController.GetCatalog)
+	r.GET("/api/v1/users/:id/achievements", app.achievementsController.GetUserAchievements)
+	r.GET("/api/v1/users/:id/stamps", app.achievementsController.GetUserStamps)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
