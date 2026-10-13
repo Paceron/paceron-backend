@@ -15,3 +15,16 @@ const (
 	ErrorCodePaymentInstallmentNotFound    = "PAYMENT_INSTALLMENT_NOT_FOUND"
 	ErrorCodePaymentInstallmentForbidden   = "PAYMENT_INSTALLMENT_FORBIDDEN"
 )
+
+// Códigos de los rechazos de parámetro del dashboard. Son estables a propósito:
+// el 400 del dashboard no es reintentable —reintentar la misma request devuelve
+// lo mismo—, así que el cliente necesita un `code` para no ofrecer "reintentar"
+// como acción y para poder explicar qué corregir.
+const (
+	ErrorCodeInvalidRange       = "INVALID_RANGE"
+	ErrorCodeInvalidTolerance   = "INVALID_TOLERANCE"
+	ErrorCodeInvalidSort        = "INVALID_SORT"
+	ErrorCodeInvalidGranularity = "INVALID_GRANULARITY"
+	ErrorCodeMissingFrom        = "MISSING_FROM"
+	ErrorCodeInvalidPageSize    = "INVALID_PAGE_SIZE"
+)

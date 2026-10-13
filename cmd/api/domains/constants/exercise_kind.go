@@ -46,6 +46,34 @@ func GetValidExerciseKinds() []string {
 	}
 }
 
+// CurrentExerciseKinds son los CINCO tipos vigentes, sin los legacy. Es la lista
+// para cualquier superficie que muestre tipos al usuario —el tablist del
+// dashboard, `/dashboard/filters.exercise_types`, los filtros de `kinds[]`—:
+// reusar GetValidExerciseKinds() ahí devolvería los 10 valores válidos (5
+// vigentes + 5 legacy) y el usuario vería tipos que ya no existen en el catálogo
+// (tarea 6.2b).
+func CurrentExerciseKinds() []string {
+	return []string{
+		string(ExerciseKindLiviano),
+		string(ExerciseKindElongacion),
+		string(ExerciseKindRitmoContinuo),
+		string(ExerciseKindVelocidadTiempo),
+		string(ExerciseKindVelocidadDistancia),
+	}
+}
+
+// IsCurrentExerciseKind es la validación de `kinds[]` del dashboard: solo los
+// vigentes. Un kind legacy o inventado en el filtro es un 400, no un filtro sin
+// resultados.
+func IsCurrentExerciseKind(kind string) bool {
+	for _, k := range CurrentExerciseKinds() {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // Mapeo de los kinds originales a los vigentes, para la migración de datos.
 // Vive acá y no en la migración SQL para que los tests puedan verificar que
 // cubre los 10 valores válidos — un kind viejo que se olvide en el UPDATE
