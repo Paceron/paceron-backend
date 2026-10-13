@@ -32,6 +32,6 @@
 
 ## 7. Verificación
 
-- [ ] 7.1 `go vet ./...` y `go test ./...`.
+- [x] 7.1 `go vet ./...` y `go test ./...` (en Windows falla `TestSanitizeRelativePath_BlocksTraversal`, preexistente y ajeno; registrado en la deuda).
 - [ ] 7.2 `make coverage-with-db`: total de 85% o más y archivos nuevos de 90% o más.
-- [ ] 7.3 Probar contra la base de testing con la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19): 50,1%.
+- [x] 7.3 Probar contra la base de testing con la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19): 50,1%.
