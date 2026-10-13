@@ -689,9 +689,10 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 	if bundle.comp.Status != competition.StatusActive {
 		return nil, nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
 	}
-	// Cierre manual pedido antes de que el end_at pase (D9: manual; si el
-	// front lo intenta antes de que la ventana termine, 400).
-	if bundle.comp.EndAt != nil && gametime.Now().Before(*bundle.comp.EndAt) {
+	// Cierre manual pedido antes de que el end_at pase (D9: manual). El
+	// guard de ventana aplica solo a metric: route se cierra cuando el
+	// creador/owner decide (D3, sin ventana).
+	if bundle.comp.Type == competition.TypeMetric && bundle.comp.EndAt != nil && gametime.Now().Before(*bundle.comp.EndAt) {
 		return nil, nil, fmt.Errorf("%w: competencia no puede cerrarse todavía", ErrCompetitionInvalid)
 	}
 

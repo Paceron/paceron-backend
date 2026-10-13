@@ -298,3 +298,50 @@ func TestCompetitionService_CloseRoute_RutaInvalidaNoCierra(t *testing.T) {
 	require.Error(t, err)
 	assert.Zero(t, dao.finishCalls, "ruta mal cargada: el cierre no aplica la transición")
 }
+
+// routeDaoConEndAt replica closeRouteDao y agrega end_at explícito: el guard
+// de ventana del close es metric-only (D3) y route se cierra igual con la
+// ventana viva.
+func routeDaoConEndAt(endAt time.Time) *mockCompetitionDAO {
+	dao := closeRouteDao(50)
+	dao.findByIDFn = func(id int64) (*dbs.Competition, error) {
+		comp, _ := closeRouteDao(50).findByIDFn(id)
+		comp.EndAt = &endAt
+		return comp, nil
+	}
+	return dao
+}
+
+func TestCompetitionService_CloseRoute_FutureEndAtCierra(t *testing.T) {
+	fixGamNow(t)
+	// end_at en el futuro (10/25 vs now 10/20): metric daría 400, route cierra.
+	endFuture := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
+	dao := routeDaoConEndAt(endFuture)
+	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{
+			routeAttemptFixture(900, 11, 5*time.Minute),
+			routeAttemptFixture(912, 12, 7*time.Minute),
+		}, nil
+	}
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		return append(attemptSpreadGPS(900, 11), attemptSpreadGPS(912, 12)...), nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, instances, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusFinished, resp.Status)
+	assert.Equal(t, []int64{11}, resp.WinnerUserIDs)
+	assert.ElementsMatch(t, []int64{900, 912}, instances)
+	assert.Equal(t, 1, dao.finishCalls)
+}
+
+func TestCompetitionService_CloseRoute_Ajeno403SinDAOEscritura(t *testing.T) {
+	fixGamNow(t)
+	// Caller ni creador ni owner: 403 ANTES de tocar escritura (regresión
+	// del guard compartido con metric, pinado para route).
+	dao := routeDaoConEndAt(time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC))
+	svc := newCompetitionServiceForTest(dao)
+	_, _, err := svc.Close(nil, 99, 5)
+	require.ErrorIs(t, err, ErrCompetitionForbidden)
+	assert.Zero(t, dao.finishCalls)
+}

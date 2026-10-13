@@ -234,7 +234,7 @@ func createSyntheticRouteInstance(tx *gorm.DB, competitionID int64) (*dbs.Sessio
 	return sessionInstance, nil
 }
 
-// strPtrDaos helper de puntero de string para los tests del package.
+// strPtrDaos helper de puntero de string de producción (instancia sintética).
 func strPtrDaos(s string) *string { return &s }
 
 func (d *competitionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {

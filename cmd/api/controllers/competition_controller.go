@@ -321,7 +321,7 @@ func (cc *competitionController) GetDetail(c *gin.Context) {
 
 // Close godoc
 // @Summary      Cerrar una competencia activa
-// @Description  Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active y con la ventana terminada si end_at está seteado: status finished + finished_at + winners calculados (metric: mejor valor en ventana con empate exacto = todos ganan; route: mejor % de match con tie-break de menor duración). El ganador recibe stamp; a todos los participantes llegan unseen y push best-effort; a los canales de los intentos registrados sale control:competition_finished.
+// @Description  Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active; type=metric exige además ventana terminada (end_at pasado), route se cierra cuando el caller decide: status finished + finished_at + winners calculados (metric: mejor valor en ventana con empate exacto = todos ganan; route: mejor % de match con tie-break de menor duración). El ganador recibe stamp; a todos los participantes llegan unseen y push best-effort; a los canales de los intentos registrados sale control:competition_finished.
 // @Tags         gamification
 // @Produce      json
 // @Param        id    path  int  true  "ID de la competencia"
