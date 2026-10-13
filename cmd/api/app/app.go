@@ -343,7 +343,11 @@ func NewApplication() *Application {
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
 
 	competitionDao := daos.NewCompetitionDao(db)
-	competitionService := services.NewCompetitionService(competitionDao, pushTokenDao, expoPushClient)
+	// DAO de runner sessions compartido: el intake de intentos de competencias
+	// de ruta (competencias-ruta-intake D2) inserta el wip tagueado con el
+	// mismo DAO que el flujo normal del corredor.
+	runnerSessionDao := daos.NewRunnerSessionDao(db)
+	competitionService := services.NewCompetitionService(competitionDao, pushTokenDao, expoPushClient, runnerSessionDao)
 	competitionController := controllers.NewCompetitionController(competitionService, realtimeNotifier)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier, achievementsService)
 	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier, achievementsService)
@@ -358,7 +362,6 @@ func NewApplication() *Application {
 	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
 	// apertura/cierre del entrenador; el controller emite update:session_state.
 	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
-	runnerSessionDao := daos.NewRunnerSessionDao(db)
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService, competitionDao)
 
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)

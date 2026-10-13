@@ -26,10 +26,12 @@ type mockCompetitionDAO struct {
 	countMembersFn     func(teamID int64, userIDs []int64) (int64, error)
 	groupBelongsToFn   func(groupID, teamID int64) (bool, error)
 	createFn           func(comp *dbs.Competition, participantIDs []int64) error
+	createWithInstFn   func(comp *dbs.Competition, participantIDs []int64) error
 	findByIDFn         func(id int64) (*dbs.Competition, error)
 	listParticipantsFn func(ids []int64) ([]dbs.CompetitionParticipant, error)
 	listByTeamFn       func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
 	isParticipantFn    func(competitionID, userID int64) (bool, error)
+	existsAttemptFn    func(competitionID, userID int64) (bool, error)
 	approveFn          func(competitionID, approvedBy int64) (bool, error)
 	rejectFn           func(competitionID int64, reason *string) (bool, error)
 	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
@@ -40,6 +42,7 @@ type mockCompetitionDAO struct {
 	attemptPointsFn    func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
+	createWithInstCalls, existsAttemptCalls                          int
 	lastFinishWinners                                                []int64
 	lastFinishUnseenCount, lastFinishStampsCount                     int
 }
@@ -78,6 +81,24 @@ func (m *mockCompetitionDAO) Create(ctx *gin.Context, comp *dbs.Competition, par
 		return m.createFn(comp, participantIDs)
 	}
 	return nil
+}
+
+// CreateWithInstance: fn propio si lo define el test, si no delega en Create
+// (los tests históricos del create route siguen viendo el mismo createFn).
+func (m *mockCompetitionDAO) CreateWithInstance(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error {
+	m.createWithInstCalls++
+	if m.createWithInstFn != nil {
+		return m.createWithInstFn(comp, participantIDs)
+	}
+	return m.Create(ctx, comp, participantIDs)
+}
+
+func (m *mockCompetitionDAO) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, competitionID, userID int64) (bool, error) {
+	m.existsAttemptCalls++
+	if m.existsAttemptFn != nil {
+		return m.existsAttemptFn(competitionID, userID)
+	}
+	return false, nil
 }
 
 func (m *mockCompetitionDAO) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {

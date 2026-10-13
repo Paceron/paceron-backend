@@ -52,16 +52,31 @@ type CompetitionServiceInterface interface {
 	// para el control:competition_finished del controller (D9); sin intentos
 	// = slice vacío.
 	Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
+	// CreateAttempt registra el intento de una competencia route
+	// (competencias-ruta-intake D2): guards en orden 404 → 400 type → 400
+	// status → 403 → 400 doble intento, luego insert runner_session wip
+	// tagueado con competition_id y la instancia sintética (compartida). NO
+	// pasa por el service/gate presencial de runner sessions: la instancia
+	// sintética no tiene día de calendario y ese gate no aplica.
+	CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error)
 }
 
 type competitionService struct {
-	dao          daos.CompetitionDAOInterface
-	pushTokenDao daos.PushTokenDaoInterface
-	pushClient   expopushclient.ExpoPushClientInterface
+	dao              daos.CompetitionDAOInterface
+	pushTokenDao     daos.PushTokenDaoInterface
+	pushClient       expopushclient.ExpoPushClientInterface
+	runnerSessionDao daos.RunnerSessionDAOInterface
 }
 
-func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface) CompetitionServiceInterface {
-	return &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
+// NewCompetitionService crea el service de competencias. runnerSessionDao es
+// variadic opcional (competencias-ruta-intake D2): los call sites históricos
+// de tres argumentos quedan intactos; CreateAttempt lo exige en runtime.
+func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface, runnerSessionDao ...daos.RunnerSessionDAOInterface) CompetitionServiceInterface {
+	svc := &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
+	if len(runnerSessionDao) > 0 && runnerSessionDao[0] != nil {
+		svc.runnerSessionDao = runnerSessionDao[0]
+	}
+	return svc
 }
 
 func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error) {
@@ -140,11 +155,77 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		CreatedByRole:          role,
 		Status:                 status,
 	}
-	if err := s.dao.Create(ctx, comp, unique); err != nil {
+	if req.Type == competition.TypeRoute {
+		// Branch route (competencias-ruta-intake D1): el Create tx-extendido
+		// del DAO arma dentro de la MISMA transacción la instancia sintética
+		// del intento y persiste route_session_instance_id. Un fallo en la
+		// instancia revierte también competencia + participantes.
+		err = s.dao.CreateWithInstance(ctx, comp, unique)
+	} else {
+		err = s.dao.Create(ctx, comp, unique)
+	}
+	if err != nil {
 		customlogger.Error(ctx, "error creating competition", err, customlogger.TagMethod("CompetitionCreate"))
 		return nil, fmt.Errorf("error al crear la competencia")
 	}
 	return toCompetitionResponse(comp, unique, nil), nil
+}
+
+// CreateAttempt registra el intento de una competencia route (D2): los 5
+// guards en orden, cada uno sin tocar la escritura, y el insert de
+// runner_session reusando el DAO de runner sessions (mismo ON CONFLICT DO
+// NOTHING: si un intento concurrente ganó la carrera, RowsAffected=0 también
+// es doble intento — el uq (session_instance_id, athlete_user_id) arbitra).
+// Sin gate presencial ni rango temporal: la instancia sintética no tiene día
+// y route no usa ventana.
+func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error) {
+	comp, err := s.dao.FindByID(ctx, competitionID)
+	if err != nil {
+		return nil, err
+	}
+	if comp.Type != competition.TypeRoute {
+		return nil, fmt.Errorf("%w: solo las competencias de ruta admiten intentos", ErrCompetitionInvalid)
+	}
+	if comp.Status != competition.StatusActive {
+		return nil, fmt.Errorf("%w: la competencia no está activa", ErrCompetitionInvalid)
+	}
+	isParticipant, err := s.dao.IsParticipant(ctx, competitionID, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if !isParticipant {
+		return nil, ErrCompetitionForbidden
+	}
+	attempt, err := s.dao.ExistsAttemptByCompetitionAndAthlete(ctx, competitionID, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if attempt {
+		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
+	}
+	if s.runnerSessionDao == nil {
+		customlogger.Error(ctx, "competition attempt without runner session dao", nil, customlogger.TagMethod("CompetitionCreateAttempt"))
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if comp.RouteSessionInstanceID == nil {
+		return nil, fmt.Errorf("%w: la competencia no tiene instancia de ruta asignada", ErrCompetitionInvalid)
+	}
+	rs := &dbs.RunnerSession{
+		SessionInstanceID: *comp.RouteSessionInstanceID,
+		AthleteUserID:     callerID,
+		Status:            runnersession.RunnerSessionStatusWip,
+		StartDate:         gametime.Now(),
+		CompetitionID:     &comp.ID,
+	}
+	created, err := s.runnerSessionDao.Create(ctx, rs)
+	if err != nil {
+		customlogger.Error(ctx, "error creating competition attempt", err, customlogger.TagMethod("CompetitionCreateAttempt"))
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if !created {
+		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
+	}
+	return rs, nil
 }
 
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige

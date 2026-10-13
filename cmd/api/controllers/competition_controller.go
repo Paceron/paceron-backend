@@ -13,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
@@ -27,6 +28,7 @@ type CompetitionController interface {
 	ListByTeam(c *gin.Context)
 	GetDetail(c *gin.Context)
 	Close(c *gin.Context)
+	CreateAttempt(c *gin.Context)
 }
 
 type competitionController struct {
@@ -361,4 +363,42 @@ func (cc *competitionController) emitCompetitionFinished(competitionID int64, in
 		channel := sessionChannel(id)
 		cc.notifier.Emit(channel, realtime.MarshalControlCompetitionFinished(channel, competitionID))
 	}
+}
+
+// CreateAttempt godoc
+// @Summary      Registrar el intento del atleta en una competencia de ruta
+// @Description  Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip sobre la instancia sintética de la competencia tagueado con competition_id. Un único intento por participante (400 si ya registró uno, único garantizado por el constraint (session_instance_id, athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.
+// @Tags         gamification
+// @Produce      json
+// @Param        id    path  int  true  "ID de la competencia"
+// @Success      201  {object}  runnersession.MutationResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/competitions/{id}/attempts [post]
+func (cc *competitionController) CreateAttempt(c *gin.Context) {
+	authUserID, ok := requireAuthForCompetition(c)
+	if !ok {
+		return
+	}
+	competitionID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	rs, err := cc.competitionService.CreateAttempt(c, authUserID, competitionID)
+	if err != nil {
+		respondCompetitionError(c, err)
+		return
+	}
+	response := toRunnerSessionResponse(rs)
+	c.JSON(http.StatusCreated, runnersession.MutationResponse{
+		Message: competition.MsgCompetitionAttemptCreated,
+		Data:    &response,
+	})
 }

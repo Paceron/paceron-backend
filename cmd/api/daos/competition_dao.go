@@ -37,6 +37,14 @@ type CompetitionDAOInterface interface {
 
 	// Create inserta la competencia y sus participantes en una transacción.
 	Create(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error
+	// CreateWithInstance es el Create extendido de competencias-ruta-intake
+	// D1: dentro de la MISMA transacción, para type=route crea la instancia
+	// sintética (session_instance + exercise_instance "Corrida" + link
+	// role=main) y persiste su id en route_session_instance_id; para
+	// type=metric no crea instancia ni toca la columna. La creación fallida
+	// de cualquiera de las piezas revierte todo (competencia + participantes
+	// + instancia: nada queda huérfano).
+	CreateWithInstance(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error)
 	// ListParticipantsByCompetitionIDs trae las membresías en batch (sin N+1
 	// en detalle ni listado).
@@ -46,6 +54,10 @@ type CompetitionDAOInterface interface {
 	ListByTeam(ctx *gin.Context, teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
 	// IsParticipant indica si el usuario está entre los participantes.
 	IsParticipant(ctx *gin.Context, competitionID, userID int64) (bool, error)
+	// ExistsAttemptByCompetitionAndAthlete es el guard anti-doble intento de
+	// una competencia route (competencias-ruta-intake D2): true si el atleta
+	// ya tiene runner_session sobre esta competencia.
+	ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) (bool, error)
 	// Approve / Reject / Finish aplican la transición de status (guard de
 	// status en el WHERE: solo corren sobre el status origen válido) y
 	// devuelven si hubo cambio. Finish es el cierre E4.2 race-safe: una única
@@ -152,6 +164,79 @@ func (d *competitionDao) Create(ctx *gin.Context, comp *dbs.Competition, partici
 	return err
 }
 
+// CreateWithInstance persiste competencia + participantes y, para type=route
+// (competencias-ruta-intake D1), la instancia sintética del intento — todo en
+// la MISMA transacción: si la instancia falla, no queda competencia ni
+// participantes huérfanos. El id de la instancia se persiste en
+// route_session_instance_id con un UPDATE dentro del tx (la fila de
+// competencia se inserta primero para obtener el PK que nombra la instancia).
+func (d *competitionDao) CreateWithInstance(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error {
+	isRoute := comp.Type == competition.TypeRoute
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(comp).Error; err != nil {
+			return fmt.Errorf("error creating competition: %w", err)
+		}
+		if isRoute {
+			instance, err := createSyntheticRouteInstance(tx, comp.ID)
+			if err != nil {
+				return err
+			}
+			res := tx.Model(&dbs.Competition{}).
+				Where("id = ?", comp.ID).
+				Update("route_session_instance_id", instance.ID)
+			if res.Error != nil {
+				return fmt.Errorf("error saving competition route instance: %w", res.Error)
+			}
+			comp.RouteSessionInstanceID = &instance.ID
+		}
+		participants := make([]dbs.CompetitionParticipant, 0, len(participantIDs))
+		for _, id := range participantIDs {
+			participants = append(participants, dbs.CompetitionParticipant{CompetitionID: comp.ID, UserID: id})
+		}
+		if err := tx.Create(&participants).Error; err != nil {
+			return fmt.Errorf("error creating competition participants: %w", err)
+		}
+		return nil
+	})
+	return err
+}
+
+// createSyntheticRouteInstance arma la estructura mínima compartida por todos
+// los participantes de una competencia route (D1): 1 session_instance + 1
+// exercise_instance sintético (name "Corrida", kind velocidad_distancia,
+// intencionalmente sin datos de catálogo: SourceExerciseID NULL) + 1 link
+// role=main. La instancia no pertenece a ningún día de calendario.
+func createSyntheticRouteInstance(tx *gorm.DB, competitionID int64) (*dbs.SessionInstance, error) {
+	sessionInstance := &dbs.SessionInstance{
+		Name:        fmt.Sprintf("Competencia ruta %d", competitionID),
+		Description: strPtrDaos("Instancia sintética de la competencia de ruta"),
+	}
+	if err := tx.Create(sessionInstance).Error; err != nil {
+		return nil, fmt.Errorf("error creating competition session instance: %w", err)
+	}
+	exerciseInstance := &dbs.ExerciseInstance{
+		Name: "Corrida",
+		Kind: string(constants.ExerciseKindVelocidadDistancia),
+	}
+	if err := tx.Create(exerciseInstance).Error; err != nil {
+		return nil, fmt.Errorf("error creating competition exercise instance: %w", err)
+	}
+	link := &dbs.SessionExerciseInstance{
+		SessionInstanceID:  sessionInstance.ID,
+		ExerciseInstanceID: exerciseInstance.ID,
+		Role:               string(constants.SessionExerciseRoleMain),
+		RepeatCount:        1,
+		RestMinutes:        0,
+	}
+	if err := tx.Create(link).Error; err != nil {
+		return nil, fmt.Errorf("error creating competition exercise link: %w", err)
+	}
+	return sessionInstance, nil
+}
+
+// strPtrDaos helper de puntero de string para los tests del package.
+func strPtrDaos(s string) *string { return &s }
+
 func (d *competitionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {
 	var comp dbs.Competition
 	err := d.DB.Where("id = ?", id).First(&comp).Error
@@ -211,6 +296,20 @@ func (d *competitionDao) IsParticipant(ctx *gin.Context, competitionID, userID i
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("error checking competition participant: %w", err)
+	}
+	return count > 0, nil
+}
+
+// ExistsAttemptByCompetitionAndAthlete consulta runner_session por la marca
+// de competencia (FK opaca competition_id): es una tabla ajena al package
+// pero la regla del intento es de la competencia (D2).
+func (d *competitionDao) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) (bool, error) {
+	var count int64
+	err := d.DB.Model(&dbs.RunnerSession{}).
+		Where("competition_id = ? AND athlete_user_id = ?", competitionID, athleteUserID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("error checking competition attempt: %w", err)
 	}
 	return count > 0, nil
 }

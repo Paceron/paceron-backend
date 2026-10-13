@@ -3768,6 +3768,47 @@ paths:
       summary: Aprobar una competencia pendiente
       tags:
       - gamification
+  /api/v1/competitions/{id}/attempts:
+    post:
+      description: 'Solo competencias type=route en status active y con el caller
+        entre los participantes: crea su estado de sesión wip sobre la instancia sintética
+        de la competencia tagueado con competition_id. Un único intento por participante
+        (400 si ya registró uno, único garantizado por el constraint (session_instance_id,
+        athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner
+        existente. NO aplica el gate presencial: la instancia sintética no pertenece
+        a ningún día de calendario.'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Registrar el intento del atleta en una competencia de ruta
+      tags:
+      - gamification
   /api/v1/competitions/{id}/cancel:
     delete:
       description: 'Solo el creador corredor, solo sobre pending_approval: borra físicamente
