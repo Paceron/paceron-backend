@@ -15,8 +15,8 @@
 
 ## 4. Service
 
-- [ ] 4.1 Crear `cmd/api/services/activity_comparison_service.go` con `GetSessionComparison` y `ListComparisons`: validación, acceso (D3) y armado de la respuesta.
-- [ ] 4.2 Tests con mocks: acceso propio y de entrenador, 404, 403, rango inválido, `kind` inválido, filtro por tipo, sesiones sin día, resumen, errores del DAO.
+- [x] 4.1 Crear `cmd/api/services/activity_comparison_service.go` con `GetSessionComparison` y `ListComparisons`: validación, acceso (D3) y armado de la respuesta.
+- [x] 4.2 Tests con mocks: acceso propio y de entrenador, 404, 403, rango inválido, `kind` inválido, filtro por tipo, sesiones sin día, resumen, errores del DAO.
 
 ## 5. Controller, wiring y rutas
 
@@ -34,4 +34,4 @@
 
 - [ ] 7.1 `go vet ./...` y `go test ./...`.
 - [ ] 7.2 `make coverage-with-db`: total de 85% o más y archivos nuevos de 90% o más.
-- [ ] 7.3 Probar contra la base de testing con la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19): 50%.
+- [ ] 7.3 Probar contra la base de testing con la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19): 50,1%.

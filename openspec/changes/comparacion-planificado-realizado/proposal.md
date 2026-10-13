@@ -56,7 +56,7 @@ Que un entrenador pueda consultar lo mismo para un corredor de un equipo suyo.
 ## Métrica de éxito
 
 - Para la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19: primera
-  caminata completa, segunda al 50%, tercera salteada) el detalle devuelve
-  100%, 50% y 0% por ejercicio y **50%** para la sesión.
+  caminata completa, segunda de 5:01 sobre 10 minutos, tercera salteada) el
+  detalle devuelve 100%, 50,2% y 0% por ejercicio y **50,1%** para la sesión.
 - Los archivos nuevos quedan con 90% o más de cobertura y el total del repo se
   mantiene en 85% o más.
