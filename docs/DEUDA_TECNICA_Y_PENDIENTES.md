@@ -114,15 +114,11 @@ El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), per
 
 ## Gamificación (change `gamificacion-core`, 2026-10-13)
 
-Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16.
+Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16 y §17 (ruta, `competencias-ruta-intake`).
 
 ### Auto-cierre de competencias por cron (deuda explícita, D13)
 
-El cierre de competencias es **SIEMPRE manual** (`PATCH /competitions/:id/close`, guard ventana terminada): no existe el cron que cierra al vencer `end_at`. El frontend debe mostrar el botón de cierre al creador/owner; una competencia activa con ventana vencida queda `active` hasta que alguien la cierre.
-
-### Validación de `route_geojson` en Create es solo estructural
-
-`Create` exige que `route_geojson` venga no-vacío pero **no lo parsea** — un GeoJSON inválido (type incorrecto, coordenadas incompletas) se detecta recién al computar matching (detalle on-demand o close) y ahí falla con **500 fail-safe** a propósito (cerrar/detallar con matching sin ruta confiable mentiría el %). Mejora futura: validar parseabilidad (`routematch.ParseLineString`) en el alta para rechazar con 400.
+El cierre de competencias es **SIEMPRE manual** (`PATCH /competitions/:id/close`): no existe el cron que cierra al vencer `end_at`. El guard de ventana es **metric-only** (spec 4b, `competencias-ruta-intake`): cerrar una `metric` antes de que termine su `end_at` da `400`; una `route` se cierra cuando el creador/owner decide (no tiene ventana). El frontend debe mostrar el botón de cierre al creador/owner en ambos tipos.
 
 ### Deriva del estado de triggers de racha (aproximado, D14)
 
@@ -204,3 +200,27 @@ N+1 de escritura/lectura del dominio calendario, migrados a batch con el número
 - **N+1 de borrado de instancias y N reads del bulk-clear:** `deleteSupersededInstances` batch (semántica de §8.4 intacta — protege instancia si hay feedback de la sesión o de cualquier ejercicio; soft-deleted feedback no protege) + bulk-clear reescrito (1 read `IN` + guards en memoria + 1 delete + supersede batch), fijo en 11 queries. Resuelto en `239dbde`.
 - **Loop de colisiones de AdministeredCalendar** (3 queries por fecha colisionante): clasificación in-memory sobre las filas de `FindForGroupsInRange` — 3 queries fijas para todo el rango. Resuelto en `8a17e57`.
 - **Invitaciones 3N+1** (users resueltos de a 1..2 por invitación): `ListPendingInvitationsForUser` en 3 queries, listado del team en 4 queries (teams/users con `IN`). Resuelto en `8a17e57` (Task 8 completó el residuo: `can_receive_payments` del listado hoy sale en 1 query batch de `seller_connections`, ver `f4dd3e8`).
+
+## Competencias de ruta — spec 4b (change `competencias-ruta-intake`, 2026-10-13)
+
+Pendientes del intake/cierre de competencias de ruta. Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14 (subsección "Competencias de ruta"); contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §17.
+
+### Intento wip/interrupted no se borra ni se reabre (RUTA v1)
+
+El anti-doble intento cuenta runner sessions con `competition_id` **de cualquier status** (`ExistsAttemptByCompetitionAndAthlete`): un intento `interrupted` consume el único intento del atleta y **no hay endpoint de reset/borrado/re-apertura** en v1. Rediseñarlo (contador de reintentos, ventana de reintento, o contar solo finished) toca guards + spec — propio change futuro.
+
+### Leaderboard en vivo mid-attempt
+
+Durante el intento en curso (`wip`) no hay broadcast WS de nada (ni ranking ni traza GPS); los frames WS son solo post-finish (`update:competition_progress`) y post-close (`control:competition_finished`). Progreso intermedio on-demand vía `GET /competitions/{id}`. Escenario declarado en el spec delta y al front en §17.5.
+
+### Microventana race del pre-check anti-doble
+
+`CreateAttempt` es check-then-insert sin lock: dos POSTs casi simultáneos del mismo atleta pueden superar ambos el pre-check (`ExistsAttempt...` con Count). El arbitraje real es el unique `(session_instance_id, athlete_user_id)` de runner_session — el perdedor recibe `400` vía `ON CONFLICT DO NOTHING` + `RowsAffected=0`. Inofensiva (resultado correcto por ambas rutas de error); si algún día se quiere el message único en carrera también, tocaría transacción o advisory lock.
+
+### Default de `acceptance_radius_meters` solo sugerido por el front
+
+Backend NO aplica default: el campo es requerido en [5, 500] metros (`400` "el radio de aceptación debe estar entre 5 y 500 metros"). El frontend debe **sugerir 50 m** en su UI de creación de competencia de ruta.
+
+## Resueltos (change `competencias-ruta-intake`, 2026-10-13)
+
+- **Validación de `route_geojson` en Create solo estructural** (deuda de `gamificacion-core`, entry eliminada de las Gamificación): Create ahora parsea el LineString y rechaza con `400` inválido / >500 vértices / >100 km Haversine (`routematch.ParseLineString` + `LineStringLength`) — el passthrough al `500` fail-safe en el matching ya no aplica en el alta (el matching sobre una competencia creada siempre tiene ruta confiable). Resuelto en `3e6d0c3`.

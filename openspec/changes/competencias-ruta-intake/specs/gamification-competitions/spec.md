@@ -67,7 +67,7 @@ El sistema DEBE cumplir lo siguiente (MUST):
 - Acción: inserta `runner_session {session_instance_id = route_session_instance_id,
   athlete_user_id = caller, status='wip', competition_id}` SIN pasar por el gate
   presencial (la instancia sintética no tiene día/grupo).
-- Responde `201` con `{data: {runner_session_id, session_instance_id, competition_id}}`.
+- Responde `201` con `{message, data}` donde `data` es el runner session creado (mismo shape que `POST /session-instances/:id/runner`: `id`, `session_instance_id`, `athlete_user_id`, `status`, `competition_id`).
 - El finish del intento sigue siendo `PATCH /session-instances/:id/runner` (flujo
   existente, sin cambios en el servicio de feedback); `syncRun` sube los feedback points
   a la instancia sintética sin cambios.
@@ -76,8 +76,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 - **WHEN** un participante de una competencia route active abre su intento
 - **AND** no tiene intento previo.
-- **THEN** responde `201` con `{data: {runner_session_id, session_instance_id,
-  competition_id}}` y la runner_session queda creada con status `wip`.
+- **THEN** responde `201` con `{message, data}` donde `data` trae el runner session
+  creado (`id`, `session_instance_id`, `competition_id`, `athlete_user_id`,
+  `status` con valor `wip`).
 
 #### Scenario: 404 competencia inexistente
 

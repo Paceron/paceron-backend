@@ -676,3 +676,73 @@ Por los canales `session:{id}` (el id es el **session instance id** del intento,
 | `competitions` | `GET /teams/{id}/competitions` (por `team_id`) | `seen {section:"competitions", team_id}` (o sin `team_id` para todos) |
 
 El punto rojo se **deriva de la existencia de filas unseen** — no hay contador ni estado extra. Las fuentes de filas: triggers de racha (reset o cruce de hito 10/20/50/100 hacia arriba), desbloqueo de logros, y cierre de competencias (todos los participantes, ganen o no).
+
+## 17. Competencias de ruta: intake `POST /competitions/{id}/attempts` e instancia sintética (change `competencias-ruta-intake`)
+
+Se superpone a §16.5/16.6/16.7: es aditivo para `metric` (sin cambios) y redefine cómo se abre y cierra el intento de una competencia `type="route"`. Todo lo del close/winners/stamps/unseen de §16.5 sigue valiendo salvo lo que se aclara acá.
+
+### 17.1 Create route: validaciones de ruta (reemplaza el shape laxo de §16.5)
+
+En `POST /teams/{id}/competitions` con `type="route"`, además del shape de §16.5:
+
+- `route_geojson` debe ser un **LineString GeoJSON parseable** (`400` "la ruta GeoJSON no es válida" si no).
+- **≤ 500 vértices** (`400` "la ruta admite hasta 500 puntos").
+- Longitud total **≤ 100 km** (Haversine sumada sobre los vértices; `400` "la ruta no puede superar los 100 km").
+- `acceptance_radius_meters`: **requerido**, rango válido **[5, 500] metros** (`400` "el radio de aceptación debe estar entre 5 y 500 metros") — **sin default backend-mandado**: si falta, `400`. El front debe **sugerir 50 m** en su UI.
+- La ruta es **inmutable post-create**: no hay endpoint de edición de ruta (cambiarla = crear otra competencia).
+
+Estas validaciones sustituyen el enunciado anterior "`acceptance_radius_meters > 0`" de §16.5 y el comportamiento previo de GeoJSON inválido detectado recién al matching (hoy rechaza con `400` en el alta).
+
+### 17.2 NUEVO — instancia sintética compartida de la competencia route
+
+Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **NO viaja en `CompetitionResponse`**: el front conoce la instancia a través del `session_instance_id` de la respuesta del intento.
+
+Consecuencia clave: **todos los participantes corren sobre la MISMA session_instance** → el canal WS de la competencia es común — suscribirse a `session:{route_session_instance_id}` alcanza a todos los intentos (frames de §17.5).
+
+### 17.3 NUEVO — `POST /competitions/{id}/attempts` (intake del intento)
+
+Guards **en este orden**, cada uno sin tocar la escritura:
+
+| Orden | Error | Mensaje |
+|---|---|---|
+| 1 | `404` | competencia inexistente |
+| 2 | `400` | "solo las competencias de ruta admiten intentos" (`type != route`) |
+| 3 | `400` | "la competencia no está activa" (`status != active`) |
+| 4 | `403` | caller no está en `competition_participant` |
+| 5 | `400` | doble intento (ver abajo) |
+
+Acción: inserta la runner session `{session_instance_id: instancia sintética, athlete_user_id: caller, status: "wip", competition_id: id}` directamente, **sin gate presencial** (la instancia no pertenece a ningún día) y **sin ventana temporal** (route no usa `start_at`/`end_at` para el intento).
+
+```json
+{
+  "message": "intento registrado",
+  "data": {
+    "id": 120,
+    "session_instance_id": 88,
+    "athlete_user_id": 7,
+    "status": "wip",
+    "start_date": "2026-10-13T18:30:00Z",
+    "end_date": null,
+    "competition_id": 3
+  }
+}
+```
+
+OJO: `data` es el runner session plano — la clave del recurso es **`id`**, no `runner_session_id`. Mismo shape que `POST /session-instances/:id/runner` (§12.1) con `competition_id` poblado.
+
+- **Sin reintentos:** un intento por participante. El `400` de doble intento ("ya tenés un intento registrado en esta competencia") aplica tanto por pre-check como ante una segunda request repetida; la unicidad real la garantiza el unique `(session_instance_id, athlete_user_id)` de runner_session (todos los intentos comparten instancia, así que el unique de siempre ya arbitra). Un intento `interrupted` también bloquea: **no hay reset ni re-apertura** en v1.
+- **El finish sigue siendo `PATCH /session-instances/:id/runner`** (§12.1/§16.6): nada nuevo en el servicio de feedback; al quedar `finished` con `competition_id` poblado se emite el frame de §17.5.
+- La competencia `metric` **NO cambia**: sigue abriendo intentos vía §16.6 (runner session normal con `competition_id`); `POST attempts` sobre una metric responde `400` (order 2).
+
+### 17.4 MODIFICADO — cierre route sin guard de ventana
+
+El guard "no puede cerrarse todavía" (cerrar con `end_at` en el futuro → `400`) ahora aplica **SOLO a `type="metric"`**. En route **no hay guard de `end_at` para cerrar**: el creador/owner cierra cuando decide, con la ventana llena de intentos o antes. El resto del close de §16.5 es byte-idéntico (winners por match %, stamps, unseen, pushes, `400` fuera de `active`, `403` ajeno, sin intentos → winners vacía).
+
+### 17.5 Frames WS sin canal nuevo
+
+Los 2 frames de §16.7 siguen siendo todos los del intento; **no se agrega canal ni frame nuevo** para el intento en curso:
+
+- `update:competition_progress {competition_id, user_id}` — al terminar cada intento, por el canal común `session:{route_session_instance_id}` (todos los participes lo ven, sin exclusión del emisor).
+- `control:competition_finished {competitionId}` — al cerrar, por el canal de la instancia (único, compartido por los intentos).
+- **Sin leaderboard en vivo mid-attempt**: mientras el intento está en `wip` no hay broadcast de nada (ni ranking ni traza GPS); el resultado live del detalle sale on-demand en `GET /competitions/{id}` (§16.5) y el resultado final viaja post-close con `control:competition_finished` + refetch.
+

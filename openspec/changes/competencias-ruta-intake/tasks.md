@@ -49,20 +49,20 @@ Files/interfaces:
 - `cmd/api/docs/` (regeneración swagger de create).
 
 Steps:
-- [ ] 1.1 Branch TypeRoute de `validateCreateRequest`: después del shape existente,
+- [x] 1.1 Branch TypeRoute de `validateCreateRequest`: después del shape existente,
       agregar `routematch.ParseLineString` válido (400 en caso contrario), máximo 500
       vértices (400 "la ruta admite hasta 500 puntos"), longitud Haversine total ≤ 100 km
       (400 "la ruta no puede superar los 100 km").
-- [ ] 1.2 Rango de `acceptance_radius_meters` acotado a [5, 500] (400 "el radio de
+- [x] 1.2 Rango de `acceptance_radius_meters` acotado a [5, 500] (400 "el radio de
       aceptación debe estar entre 5 y 500 metros"); campo requerido sin default
       (regresión del shape ya existente cubierta por test).
-- [ ] 1.3 Suite de validación en test del service: geojson inválido / >500 vértices /
+- [x] 1.3 Suite de validación en test del service: geojson inválido / >500 vértices /
       >100 km / radio 3 / radio 600 / radio faltante / happy path route en el límite
       (500 vértices y ~100 km exactos pasan).
-- [ ] 1.4 Assert de que la ruta inmutable post-create NO introduce endpoint de edición
+- [x] 1.4 Assert de que la ruta inmutable post-create NO introduce endpoint de edición
       (solo nota de test/convención; nada que agregar).
-- [ ] 1.5 Regenerar swagger (create route validations) y revisar diff limpio.
-- [ ] 1.6 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
+- [x] 1.5 Regenerar swagger (create route validations) y revisar diff limpio.
+- [x] 1.6 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
       tildar.
 
 ### Task 2: Instancia sintética + POST attempts + rama de autorización WS (D1/D2/D8)
@@ -82,41 +82,41 @@ Files/interfaces:
 - `cmd/api/docs/` (regeneración swagger del endpoint nuevo).
 
 Steps:
-- [ ] 2.1 Columna `route_session_instance_id` en el model `dbs.Competition` (BIGINT
+- [x] 2.1 Columna `route_session_instance_id` en el model `dbs.Competition` (BIGINT
       nullable sin FK) + AutoMigrate del test bootstrap si corresponde.
-- [ ] 2.2 Branch route del `Create` del service: en la MISMA transacción, crear
+- [x] 2.2 Branch route del `Create` del service: en la MISMA transacción, crear
       session_instance {name "Competencia ruta N", description instancia sintética de la
       competencia de ruta, source_session_id NULL} + exercise_instance {name "Corrida",
       kind `velocidad_distancia`, resto NULL} + session_exercise_instances
       {role='main', repeat_count=1, rest_minutes=0}; la instancia queda sin día (group_
       calendar_days NO la referencia — no se crea ningún día).
-- [ ] 2.3 Persistir `competition.route_session_instance_id` en el insert de la
+- [x] 2.3 Persistir `competition.route_session_instance_id` en el insert de la
       competencia; `type='metric'` la deja NULL (test: create metric no crea instancia).
-- [ ] 2.4 Creación de instancia dentro del tx de Create: verificar rollback (si falla la
+- [x] 2.4 Creación de instancia dentro del tx de Create: verificar rollback (si falla la
       creación de la instancia, no queda competencia huérfana ni viceversa — test contra
       Postgres real).
-- [ ] 2.5 Service `CreateAttempt` con los 5 guards de D2 en orden: 404 inexistente → 400
+- [x] 2.5 Service `CreateAttempt` con los 5 guards de D2 en orden: 404 inexistente → 400
       type != route ("solo las competencias de ruta admiten intentos") → 400 status !=
       active ("la competencia no está activa") → 403 no participante → 400 doble intento
       (via ExistsAttempt + respaldo del unique DB). Fecha/rango: no aplica.
-- [ ] 2.6 Insert de `runner_session {session_instance_id = route_session_instance_id,
+- [x] 2.6 Insert de `runner_session {session_instance_id = route_session_instance_id,
       athlete_user_id = caller, status='wip', competition_id}` sin gate presencial;
       respuesta 201 `{data: {runner_session_id, session_instance_id, competition_id}}`.
       El `competition_id` seteado al crear hace que el finish YA existente
       (`PATCH /session-instances/:id/runner`, sin cambios) emita el frame de D6 tal
       cual.
-- [ ] 2.7 Controller handler + mapping de errores de servicio (400 ErrCompetitionInvalid,
+- [x] 2.7 Controller handler + mapping de errores de servicio (400 ErrCompetitionInvalid,
       403 ErrCompetitionForbidden, 404) con 500 genérico sin leak en FailingDB; registro
       de ruta en url_mappings; comando canónico de swagger; e2e DAO de doble intento
       contra Postgres real (segundo insert viola el unique).
-- [ ] 2.8 Tercera rama en `HasInstanceAccess` (D8): join
+- [x] 2.8 Tercera rama en `HasInstanceAccess` (D8): join
       `competitions` + `competition_participants` por `route_session_instance_id`,
      authorize participant de competencia `type='route'` SIN filtro de status +
       tests DAO de la rama nueva contra Postgres real: participante sí /
       usuario ajeno no / competencia metric NO autoriza por esta rama / runner session
       wip sin feedback igualmente autoriza por la 3ª rama (regresión: ramas dual día y
       feedback intactas).
-- [ ] 2.9 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
+- [x] 2.9 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
       tildar.
 
 ### Task 3: Cierre route sin end_at + WS frame de intento-nuevo e2e (D3/D6)
@@ -131,24 +131,24 @@ Files/interfaces:
   update:competition_progress SOLO si falta y cabe en ≤ 20 líneas de test).
 
 Steps:
-- [ ] 3.1 `Close`: el guard "end_at ya pasado" (`EndAt != nil && now < *EndAt` → 400)
+- [x] 3.1 `Close`: el guard "end_at ya pasado" (`EndAt != nil && now < *EndAt` → 400)
       pasa a aplicarse SOLO cuando `type='metric'`; route se cierra sin ventana. El resto
       queda byte-idéntico: guard creador/owner 403, solo active → 400, race-safety del
       Finish.
-- [ ] 3.2 Test de cierre route: happy path con 2 intentos finished anclados a la
+- [x] 3.2 Test de cierre route: happy path con 2 intentos finished anclados a la
       instancia sintética (winners por match % reutilizando `routeAttempts`/`MatchRatio`
       — sin duplicar cálculo), cierre sin intentos → finished con winners vacía, cierre
       de metric antes de end_at sigue dando 400 (regresión del guard original), cierre
       route por creador runner OK y por corredor ajeno 403.
-- [ ] 3.3 Verificar (sin código nuevo de protocolo) que el `Finish` de la runner session
+- [x] 3.3 Verificar (sin código nuevo de protocolo) que el `Finish` de la runner session
       con competition_id seteado emite `update:competition_progress {competition_id,
       user_id}` por `session:{route_session_instance_id}`; si el e2e contra el hub de
       competition_controller_test no cubre el caso "intento nacido de POST attempts",
       extender el existente (SOLO si ≤ 20 líneas).
-- [ ] 3.4 Asegurar que `control:competition_finished` del close route emite por los
+- [x] 3.4 Asegurar que `control:competition_finished` del close route emite por los
       intentos registrados (ya cubierto por gamificacion-core — reuso del test existente
       si corresponde).
-- [ ] 3.5 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
+- [x] 3.5 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en verde antes de
       tildar.
 
 ### Task 4: Docs + validación openspec + verificación final
@@ -164,12 +164,12 @@ Files/interfaces:
 - `openspec/changes/competencias-ruta-intake/**` (este commit ÚNICO de artefactos).
 
 Steps:
-- [ ] 4.1 Documentar en las 3 docs el flujo de ruta v1 (D1-D7), la deuda marcada y el
+- [x] 4.1 Documentar en las 3 docs el flujo de ruta v1 (D1-D7), la deuda marcada y el
       default sugerido de radio (50 m) — textos en español y limpios (sin mojibake).
-- [ ] 4.2 Tildar los checkboxes de Task 1-3 en este tasks.md (memoria persistente real).
-- [ ] 4.3 `openspec validate competencias-ruta-intake --strict` → valid.
-- [ ] 4.4 Verificación final: `grep -P '[\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]'` sobre
+- [x] 4.2 Tildar los checkboxes de Task 1-3 en este tasks.md (memoria persistente real).
+- [x] 4.3 `openspec validate competencias-ruta-intake --strict` → valid.
+- [x] 4.4 Verificación final: `grep -P '[\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]'` sobre
       openspec/changes/competencias-ruta-intake/ → 0 matches; suite completa post-clear
       verde; coverage gate 85; build/vet/gofmt OK.
-- [ ] 4.5 Commit único de artefactos OpenSpec (stage explícito de rutas bajo el change;
+- [x] 4.5 Commit único de artefactos OpenSpec (stage explícito de rutas bajo el change;
       jamás `git add -A`).
