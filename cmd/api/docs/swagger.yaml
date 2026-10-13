@@ -702,6 +702,20 @@ definitions:
       video_url:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_gamification.SeenRequest:
+    properties:
+      section:
+        type: string
+      team_id:
+        type: integer
+    required:
+    - section
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.SeenResponse:
+    properties:
+      message:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_gamification.StreakDay:
     properties:
       date:
@@ -7096,6 +7110,52 @@ paths:
       summary: Resumen de calendario del usuario
       tags:
       - calendar
+  /api/v1/users/{id}/gamification/seen:
+    post:
+      consumes:
+      - application/json
+      description: Borra las filas unseen del usuario autenticado para la sección
+        indicada. section es streaks|achievements|competitions; team_id solo se admite
+        con competitions (marca vistas solo filas de ese equipo; sin team_id limpia
+        todas, incluidas las por-equipo). Cero filas es éxito no-op.
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Sección y team_id opcional (solo competitions)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Marcar novedades de gamificación como vistas
+      tags:
+      - gamification
   /api/v1/users/{id}/member-calendar:
     get:
       description: |-

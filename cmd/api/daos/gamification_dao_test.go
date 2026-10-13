@@ -169,3 +169,100 @@ func TestGamificationDAO_HasUnseenSection(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, has)
 }
+
+func TestGamificationDAO_DeleteUnseen(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGamificationDao(db)
+	runner, _ := setupGamificationGroupWithRunner(t, db, "06")
+
+	teamA, teamB := int64(11), int64(22)
+	require.NoError(t, db.Create(&dbs.GamificationUnseen{UserID: runner.ID, Section: "streaks"}).Error)
+	require.NoError(t, db.Create(&dbs.GamificationUnseen{UserID: runner.ID, Section: "competitions", TeamID: &teamA}).Error)
+	require.NoError(t, db.Create(&dbs.GamificationUnseen{UserID: runner.ID, Section: "competitions", TeamID: &teamB}).Error)
+	require.NoError(t, db.Create(&dbs.GamificationUnseen{UserID: runner.ID, Section: "achievements"}).Error)
+	require.NoError(t, db.Create(&dbs.GamificationUnseen{UserID: runner.ID + 1, Section: "streaks"}).Error)
+
+	// Con team_id: solo filas de competitions de ese team.
+	deleted, err := dao.DeleteUnseen(nil, runner.ID, "competitions", &teamA)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, deleted)
+
+	var rest int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?", runner.ID, "competitions").Count(&rest).Error)
+	assert.EqualValues(t, 1, rest, "queda la fila del team B")
+
+	// Sin team_id en competitions: limpia TODAS las de la sección del
+	// usuario, incluidas las por-equipo.
+	deleted, err = dao.DeleteUnseen(nil, runner.ID, "competitions", nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, deleted)
+
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?", runner.ID, "competitions").Count(&rest).Error)
+	assert.Zero(t, rest)
+
+	// Otras secciones / otros usuarios intactas + seen repetido deja 0.
+	deleted, err = dao.DeleteUnseen(nil, runner.ID, "streaks", nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, deleted)
+	deleted, err = dao.DeleteUnseen(nil, runner.ID, "streaks", nil)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, deleted, "no-op exitoso")
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?", runner.ID+1, "streaks").Count(&rest).Error)
+	assert.EqualValues(t, 1, rest)
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?", runner.ID, "achievements").Count(&rest).Error)
+	assert.EqualValues(t, 1, rest)
+}
+
+func TestGamificationDAO_InsertUnseen(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGamificationDao(db)
+	runner, _ := setupGamificationGroupWithRunner(t, db, "07")
+
+	err := dao.InsertUnseen(nil, nil)
+	require.NoError(t, err, "nil vacío = no-op")
+
+	rows := []dbs.GamificationUnseen{
+		{UserID: runner.ID, Section: "streaks"},
+		{UserID: runner.ID, Section: "streaks"},
+	}
+	err = dao.InsertUnseen(nil, rows)
+	require.NoError(t, err)
+
+	var count int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?", runner.ID, "streaks").Count(&count).Error)
+	assert.EqualValues(t, 2, count)
+}
+
+func TestGamificationDAO_UpsertStreakState(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGamificationDao(db)
+	runner, _ := setupGamificationGroupWithRunner(t, db, "08")
+
+	// Alta cuando no hay fila.
+	err := dao.UpsertStreakState(nil, runner.ID, 3, 7)
+	require.NoError(t, err)
+	state, err := dao.GetStreakState(nil, runner.ID)
+	require.NoError(t, err)
+	require.NotNil(t, state)
+	assert.Equal(t, 3, state.StrictCurrent)
+	assert.Equal(t, 7, state.FlexibleCurrent)
+
+	// Update del mismo user_id (conflicto ya va por esa PK).
+	err = dao.UpsertStreakState(nil, runner.ID, 10, 20)
+	require.NoError(t, err)
+	state, err = dao.GetStreakState(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 10, state.StrictCurrent)
+	assert.Equal(t, 20, state.FlexibleCurrent)
+	assert.False(t, state.UpdatedAt.IsZero())
+}
+
+func TestGamificationDAO_GetStreakState_SinFila(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGamificationDao(db)
+	runner, _ := setupGamificationGroupWithRunner(t, db, "09")
+
+	state, err := dao.GetStreakState(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Nil(t, state, "sin fila aún: nil, el trigger trata el prev como 0/0")
+}

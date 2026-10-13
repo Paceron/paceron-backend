@@ -13,9 +13,15 @@ import (
 	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
-// StreakServiceInterface expone el cálculo exacto de rachas (design.md D2).
+// StreakServiceInterface expone el cálculo exacto de rachas (design.md D2) y
+// la computación de currents current-only que reutiliza el trigger de racha
+// (design.md D3 evita duplicar la lógica del GET).
 type StreakServiceInterface interface {
 	GetStreaks(ctx *gin.Context, targetUserID int64, days int) (*gamification.StreaksResponse, error)
+	// ComputeCurrentStreaks recalcula fresco los currents de ambas rachas con
+	// el mismo path batch del GET (3 queries fijas; no consulta ni unseen ni
+	// gamification_streak_state).
+	ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (strict, flexible int, err error)
 }
 
 type streakService struct {
@@ -70,6 +76,14 @@ func (d *streakData) flexibleStatus(date time.Time) string {
 	return gamification.DayStatusFailed
 }
 
+// streakHistory es el producto del path batch de 3 queries (memberships,
+// días training, sesiones finished): data cruda por día + earliest del
+// histórico. Lo comparte el GET (D2) y el trigger de racha (D3).
+type streakHistory struct {
+	data     *streakData
+	earliest time.Time
+}
+
 // GetStreaks recalcula ambas rachas fresco del histórico (hoy nunca corta: la
 // ventana de cálculo termina en AYER y el día de hoy se emite pending). La
 // ventana days solo recorta el array; current/best van sobre todo el
@@ -90,6 +104,38 @@ func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days in
 	}
 	resp.HasUnseen = hasUnseen
 
+	history, err := s.loadStreakHistory(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Strict.Current = backwardStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
+	resp.Flexible.Current = backwardStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
+	resp.Strict.Best = bestStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
+	resp.Flexible.Best = bestStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
+
+	resp.Days = windowDays(history.data, windowStart, today)
+	return resp, nil
+}
+
+// ComputeCurrentStreaks solo los currents (trigger de racha D3): recalcula
+// fresco contra la DB del histórico, misma lógica batch del GET.
+func (s *streakService) ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (int, int, error) {
+	history, err := s.loadStreakHistory(ctx, targetUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	yesterday := gametime.Yesterday()
+	strict := backwardStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
+	flexible := backwardStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
+	return strict, flexible, nil
+}
+
+// loadStreakHistory corre las 3 queries batch de D2 (memberships activos +
+// días training hasta ayer + sesiones finished) y arma el data por día.
+func (s *streakService) loadStreakHistory(ctx *gin.Context, targetUserID int64) (*streakHistory, error) {
+	yesterday := gametime.Yesterday()
+
 	memberships, err := s.dao.FindActiveGroupMemberships(ctx, targetUserID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding memberships for streaks", err, customlogger.TagMethod("GetStreaks"))
@@ -107,21 +153,13 @@ func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days in
 		}
 	}
 
-	data := &streakData{assigned: map[string][]*int64{}, finished: map[int64]struct{}{}}
-	earliest := time.Time{}
+	history := &streakHistory{data: &streakData{assigned: map[string][]*int64{}, finished: map[int64]struct{}{}}, earliest: time.Time{}}
 	if len(groupIDs) > 0 {
-		if err := s.loadHistory(ctx, targetUserID, groupIDs, joinByGroup, yesterday, data, &earliest); err != nil {
+		if err := s.loadHistory(ctx, targetUserID, groupIDs, joinByGroup, yesterday, history.data, &history.earliest); err != nil {
 			return nil, err
 		}
 	}
-
-	resp.Strict.Current = backwardStreak(data, earliest, yesterday, data.strictStatus)
-	resp.Flexible.Current = backwardStreak(data, earliest, yesterday, data.flexibleStatus)
-	resp.Strict.Best = bestStreak(data, earliest, yesterday, data.strictStatus)
-	resp.Flexible.Best = bestStreak(data, earliest, yesterday, data.flexibleStatus)
-
-	resp.Days = windowDays(data, windowStart, today)
-	return resp, nil
+	return history, nil
 }
 
 // utcDateToDay lleva un instante escaneado de una columna date (medianoche

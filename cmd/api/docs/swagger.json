@@ -6257,6 +6257,71 @@
                 }
             }
         },
+        "/api/v1/users/{id}/gamification/seen": {
+            "post": {
+                "description": "Borra las filas unseen del usuario autenticado para la sección indicada. section es streaks|achievements|competitions; team_id solo se admite con competitions (marca vistas solo filas de ese equipo; sin team_id limpia todas, incluidas las por-equipo). Cero filas es éxito no-op.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Marcar novedades de gamificación como vistas",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Sección y team_id opcional (solo competitions)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.SeenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/member-calendar": {
             "get": {
                 "description": "Los días de calendario de TODOS los grupos con membresía\nactiva del usuario en el rango, ordenados por fecha, con\ngroup_id/group_name/team_id/team_name resueltos server-side.\nConforme a openspec/changes/colisiones-presenciales-y-calendario-agregado (D8).",
@@ -8835,6 +8900,28 @@
                     "type": "string"
                 },
                 "video_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.SeenRequest": {
+            "type": "object",
+            "required": [
+                "section"
+            ],
+            "properties": {
+                "section": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.SeenResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
                     "type": "string"
                 }
             }

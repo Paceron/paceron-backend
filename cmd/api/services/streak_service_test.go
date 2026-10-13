@@ -29,6 +29,14 @@ type mockGamificationDao struct {
 	findTrainingDaysFn func(ctx *gin.Context, groupIDs []int64, until time.Time) ([]dbs.GroupCalendarDay, error)
 	findFinishedFn     func(ctx *gin.Context, sessionInstanceIDs []int64, athleteUserID int64) ([]dbs.RunnerSession, error)
 	hasUnseenFn        func(ctx *gin.Context, userID int64, section string) (bool, error)
+	// Escrituras (Task 2: POST seen + trigger de racha).
+	deleteUnseenFn   func(ctx *gin.Context, userID int64, section string, teamID *int64) (int64, error)
+	deleteUnseenCall int
+	insertUnseenFn   func(ctx *gin.Context, unseen []dbs.GamificationUnseen) error
+	insertedUnseen   [][]dbs.GamificationUnseen
+	getStateFn       func(ctx *gin.Context, userID int64) (*dbs.GamificationStreakState, error)
+	upsertStateFn    func(ctx *gin.Context, userID int64, strict, flexible int) error
+	upsertdAt        [][]int // corridas del upsert: [[strict, flexible], ...]
 }
 
 func (m *mockGamificationDao) FindActiveGroupMemberships(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
@@ -57,6 +65,37 @@ func (m *mockGamificationDao) HasUnseenSection(ctx *gin.Context, userID int64, s
 		return m.hasUnseenFn(ctx, userID, section)
 	}
 	return false, nil
+}
+
+func (m *mockGamificationDao) DeleteUnseen(ctx *gin.Context, userID int64, section string, teamID *int64) (int64, error) {
+	m.deleteUnseenCall++
+	if m.deleteUnseenFn != nil {
+		return m.deleteUnseenFn(ctx, userID, section, teamID)
+	}
+	return 1, nil
+}
+
+func (m *mockGamificationDao) InsertUnseen(ctx *gin.Context, unseen []dbs.GamificationUnseen) error {
+	m.insertedUnseen = append(m.insertedUnseen, unseen)
+	if m.insertUnseenFn != nil {
+		return m.insertUnseenFn(ctx, unseen)
+	}
+	return nil
+}
+
+func (m *mockGamificationDao) GetStreakState(ctx *gin.Context, userID int64) (*dbs.GamificationStreakState, error) {
+	if m.getStateFn != nil {
+		return m.getStateFn(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockGamificationDao) UpsertStreakState(ctx *gin.Context, userID int64, strict, flexible int) error {
+	m.upsertdAt = append(m.upsertdAt, []int{strict, flexible})
+	if m.upsertStateFn != nil {
+		return m.upsertStateFn(ctx, userID, strict, flexible)
+	}
+	return nil
 }
 
 // fixStreakToday pisa gametime.Now con time.Date para fijar el "hoy". La
