@@ -162,6 +162,22 @@ El mapeo de día (`utcDateToDay`) toma la **fecha UTC** del timestamptz: un `dat
 - **`GetUserStamps` sin test de rama 500:** la suite del controller cubre 200/403/401 del GET de stamps pero no el pin FailingDB de la rama de error interno.
 - **Sin assert negativo "record nil en period=week":** el scenario existe en el spec delta pero la suite del service no tiene el assert negativo explícito (solo cubre record presente en `all`).
 
+### `group_calendar_days.source_plan_id` se pierde al editar un día (change `comparacion-planificado-realizado`)
+
+Solo `Stamp` setea `source_plan_id`; `UpsertDay` y `Bulk` reescriben la fila completa y lo dejan en NULL, aunque el día siga siendo el del plan. Por eso la comparación planificado vs realizado se hace por sesión (`session_instance`) y no por plan de entrenamiento. Si se quiere comparar por plan, primero hay que conservar `source_plan_id` al editar.
+
+### `workout_feedback.set_number` en base 0 en filas viejas
+
+Hasta el 2026-09-30 la app sincronizaba las series en base 0; desde entonces manda base 1. Las filas viejas no se migraron: la comparación las normaliza al leer (un ejercicio con alguna serie 0 se pasa entero a base 1, design D6). Cualquier otra lectura que cruce `set_number` con `repeat_count` tiene que hacer lo mismo o migrar los datos.
+
+### Comentario desactualizado en `dbs/workout_feedback.go`
+
+El comentario del struct dice que las tablas `assigned_*` todavía no existen. Hoy `assigned_session_id` apunta a `session_instances.id` y `assigned_exercise_id` a `exercise_instances.id` (FK opacas, sin constraint). Corregir el comentario cuando se toque el archivo.
+
+### `TestSanitizeRelativePath_BlocksTraversal` falla en Windows
+
+El test de `app/docs_handler_test.go` arma rutas con `/` y `filepath` usa `\` en Windows, así que falla al correr `go test ./...` en una máquina Windows. En CI (Linux) pasa. Hacerlo independiente del separador.
+
 ## Cobertura de tests
 
 > Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).

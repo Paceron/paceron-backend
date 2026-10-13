@@ -26,9 +26,9 @@
 
 ## 6. Swagger y documentación
 
-- [ ] 6.1 Regenerar swagger.
-- [ ] 6.2 Agregar los endpoints al `README.md` y una sección en `docs/CATALOGO_Y_CALENDARIO.md`.
-- [ ] 6.3 Registrar en `docs/DEUDA_TECNICA_Y_PENDIENTES.md`: `source_plan_id` que se pierde al editar un día, `set_number` en base 0 de las filas viejas y el comentario desactualizado de `dbs/workout_feedback.go`.
+- [x] 6.1 Regenerar swagger.
+- [x] 6.2 Agregar los endpoints al `README.md` y una sección en `docs/CATALOGO_Y_CALENDARIO.md`.
+- [x] 6.3 Registrar en `docs/DEUDA_TECNICA_Y_PENDIENTES.md`: `source_plan_id` que se pierde al editar un día, `set_number` en base 0 de las filas viejas y el comentario desactualizado de `dbs/workout_feedback.go`.
 
 ## 7. Verificación
 
