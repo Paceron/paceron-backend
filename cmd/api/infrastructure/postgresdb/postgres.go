@@ -111,6 +111,9 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		// sin constraint física.
 		&dbs.SessionMessage{},
 		&dbs.SessionMessageRecipient{},
+		// Gamificación (gamificacion-core E1): unseen + estado de racha.
+		&dbs.GamificationUnseen{},
+		&dbs.GamificationStreakState{},
 	)
 	if err != nil {
 		customlogger.Error(nil, "auto-migrate failed", err)

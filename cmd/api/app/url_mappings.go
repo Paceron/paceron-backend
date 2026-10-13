@@ -179,6 +179,9 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/users/:id/workout-feedback-history", app.workoutFeedbackController.AthleteHistory)
 	r.GET("/api/v1/users/:id/administered-workout-feedback-history", app.workoutFeedbackController.AdministeredHistory)
 
+	// Gamificación: rachas (gamificacion-core E1), self-only.
+	r.GET("/api/v1/users/:id/streaks", app.streakController.GetStreaks)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)

@@ -58,6 +58,7 @@ type Application struct {
 	workoutFeedbackController   controllers.WorkoutFeedbackController
 	sessionMessageController    controllers.SessionMessageController
 	runnerSessionController     controllers.RunnerSessionController
+	streakController            controllers.StreakController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
 }
@@ -330,6 +331,12 @@ func NewApplication() *Application {
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier)
 
+	// Gamificación (gamificacion-core E1): rachas recalculadas fresco del
+	// histórico; unseen para el punto rojo (escritura llega en Task 2).
+	gamificationDao := daos.NewGamificationDao(db)
+	streakService := services.NewStreakService(gamificationDao)
+	streakController := controllers.NewStreakController(streakService)
+
 	return &Application{
 		pingController:              controllers.NewPingController(),
 		userController:              userController,
@@ -365,6 +372,7 @@ func NewApplication() *Application {
 		workoutFeedbackController:   workoutFeedbackController,
 		sessionMessageController:    sessionMessageController,
 		runnerSessionController:     runnerSessionController,
+		streakController:            streakController,
 		realtimeGateway:             realtimeGateway,
 	}
 }

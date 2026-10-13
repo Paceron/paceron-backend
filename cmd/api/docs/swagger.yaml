@@ -702,6 +702,35 @@ definitions:
       video_url:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreakDay:
+    properties:
+      date:
+        type: string
+      flexible_status:
+        type: string
+      strict_status:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreakSummary:
+    properties:
+      best:
+        type: integer
+      current:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.StreaksResponse:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakDay'
+        type: array
+      flexible:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary'
+      has_unseen:
+        type: boolean
+      strict:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary'
+    type: object
   simple-arq-golang_cmd_api_domains_group.CreateGroupRequest:
     properties:
       description:
@@ -7530,6 +7559,48 @@ paths:
       summary: Change user status
       tags:
       - users
+  /api/v1/users/{id}/streaks:
+    get:
+      description: 'Devuelve las rachas estricta (A) y flexible (B) del propio usuario
+        autenticado, con el array window de días (default 42, tope 365) y has_unseen
+        de la sección streaks. El día de hoy nunca corta una racha: la ventana de
+        cálculo termina en ayer (TZ America/Argentina/Cordoba).'
+      parameters:
+      - description: ID del usuario (debe ser el autenticado)
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Tamaño de ventana (default 42, entre 1 y 365)
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreaksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Rachas del usuario
+      tags:
+      - gamification
   /api/v1/users/{id}/subscriptions/{period}:
     get:
       description: Returns the next installment to pay for the role for the requested

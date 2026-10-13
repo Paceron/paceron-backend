@@ -6911,6 +6911,65 @@
                 }
             }
         },
+        "/api/v1/users/{id}/streaks": {
+            "get": {
+                "description": "Devuelve las rachas estricta (A) y flexible (B) del propio usuario autenticado, con el array window de días (default 42, tope 365) y has_unseen de la sección streaks. El día de hoy nunca corta una racha: la ventana de cálculo termina en ayer (TZ America/Argentina/Cordoba).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Rachas del usuario",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del usuario (debe ser el autenticado)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamaño de ventana (default 42, entre 1 y 365)",
+                        "name": "days",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreaksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/users/{id}/subscriptions/{period}": {
             "get": {
                 "description": "Returns the next installment to pay for the role for the requested period (Bricks checkout data). period=current returns the active subscription; period=next returns the pending first-payment subscription. Empty body (200) when there is no subscription in that state.",
@@ -8777,6 +8836,51 @@
                 },
                 "video_url": {
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.StreakDay": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "flexible_status": {
+                    "type": "string"
+                },
+                "strict_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.StreakSummary": {
+            "type": "object",
+            "properties": {
+                "best": {
+                    "type": "integer"
+                },
+                "current": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.StreaksResponse": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakDay"
+                    }
+                },
+                "flexible": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary"
+                },
+                "has_unseen": {
+                    "type": "boolean"
+                },
+                "strict": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.StreakSummary"
                 }
             }
         },
