@@ -177,3 +177,38 @@ func TestCompetitionDAO_ExistsAttemptByCompetitionAndAthlete(t *testing.T) {
 	}
 	require.Error(t, raceErr)
 }
+
+// FindByRouteSessionInstance es la mitad inversa del guard de anclaje del
+// intento (review extra I1): resuelve la dueña de la instancia sintética, y
+// devuelve not-found para instancias que no anclan a ninguna route.
+func TestCompetitionDAO_FindByRouteSessionInstance(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "rt05")
+
+	routeComp := newRouteCompetition()
+	routeComp.TeamID = fx.team.ID
+	routeComp.CreatedByUserID = fx.owner.ID
+	routeComp.CreatedByRole = competition.CreatorRoleTrainer
+	routeComp.Status = competition.StatusActive
+	require.NoError(t, dao.CreateWithInstance(nil, routeComp, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+	routeInst := *routeComp.RouteSessionInstanceID
+
+	metricComp := newRouteCompetition()
+	metricComp.Type = competition.TypeMetric
+	metricComp.Metric = strPtr("distance")
+	metricComp.TeamID = fx.team.ID
+	metricComp.CreatedByUserID = fx.owner.ID
+	metricComp.CreatedByRole = competition.CreatorRoleTrainer
+	metricComp.Status = competition.StatusActive
+	require.NoError(t, dao.CreateWithInstance(nil, metricComp, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+
+	owner, err := dao.FindByRouteSessionInstance(nil, routeInst)
+	require.NoError(t, err)
+	assert.Equal(t, routeComp.ID, owner.ID)
+	assert.Equal(t, competition.TypeRoute, owner.Type)
+
+	// Ni una id inexistente ni la fk opaca vacía de las metric resuelven dueña.
+	_, err = dao.FindByRouteSessionInstance(nil, 999999)
+	require.ErrorIs(t, err, ErrCompetitionNotFound)
+}

@@ -46,6 +46,11 @@ type CompetitionDAOInterface interface {
 	// + instancia: nada queda huérfano).
 	CreateWithInstance(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error
 	FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error)
+	// FindByRouteSessionInstance resuelve la competencia type=route dueña de
+	// la instancia sintética dada (competencias-ruta-intake, guard
+	// bidireccional del intento). ErrCompetitionNotFound si ninguna route
+	// ancla esa instancia (instancia regular de calendario).
+	FindByRouteSessionInstance(ctx *gin.Context, sessionInstanceID int64) (*dbs.Competition, error)
 	// ListParticipantsByCompetitionIDs trae las membresías en batch (sin N+1
 	// en detalle ni listado).
 	ListParticipantsByCompetitionIDs(ctx *gin.Context, competitionIDs []int64) ([]dbs.CompetitionParticipant, error)
@@ -245,6 +250,18 @@ func (d *competitionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Competition,
 			return nil, ErrCompetitionNotFound
 		}
 		return nil, fmt.Errorf("error finding competition: %w", err)
+	}
+	return &comp, nil
+}
+
+func (d *competitionDao) FindByRouteSessionInstance(ctx *gin.Context, sessionInstanceID int64) (*dbs.Competition, error) {
+	var comp dbs.Competition
+	err := d.DB.Where("route_session_instance_id = ? AND type = ?", sessionInstanceID, competition.TypeRoute).First(&comp).Error
+	if err != nil {
+		if isGormNotFound(err) {
+			return nil, ErrCompetitionNotFound
+		}
+		return nil, fmt.Errorf("error finding route competition by instance: %w", err)
 	}
 	return &comp, nil
 }

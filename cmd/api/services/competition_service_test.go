@@ -28,6 +28,7 @@ type mockCompetitionDAO struct {
 	createFn           func(comp *dbs.Competition, participantIDs []int64) error
 	createWithInstFn   func(comp *dbs.Competition, participantIDs []int64) error
 	findByIDFn         func(id int64) (*dbs.Competition, error)
+	findByRouteInstFn  func(instanceID int64) (*dbs.Competition, error)
 	listParticipantsFn func(ids []int64) ([]dbs.CompetitionParticipant, error)
 	listByTeamFn       func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
 	isParticipantFn    func(competitionID, userID int64) (bool, error)
@@ -43,6 +44,7 @@ type mockCompetitionDAO struct {
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
 	createWithInstCalls, existsAttemptCalls                          int
+	findByRouteInstCalls                                             int
 	lastFinishWinners                                                []int64
 	lastFinishUnseenCount, lastFinishStampsCount                     int
 }
@@ -104,6 +106,14 @@ func (m *mockCompetitionDAO) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Conte
 func (m *mockCompetitionDAO) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(id)
+	}
+	return nil, daos.ErrCompetitionNotFound
+}
+
+func (m *mockCompetitionDAO) FindByRouteSessionInstance(ctx *gin.Context, sessionInstanceID int64) (*dbs.Competition, error) {
+	m.findByRouteInstCalls++
+	if m.findByRouteInstFn != nil {
+		return m.findByRouteInstFn(sessionInstanceID)
 	}
 	return nil, daos.ErrCompetitionNotFound
 }

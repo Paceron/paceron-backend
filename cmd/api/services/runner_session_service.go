@@ -67,9 +67,12 @@ func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, pr
 }
 
 // validateCompetitionIntent aplica las reglas del intento tagueado (D9): la
-// competencia debe existir, estar active, el caller ser participante y el
-// instante actual estar dentro del rango activo. Cualquier falla es 400.
-func (s *runnerSessionService) validateCompetitionIntent(ctx *gin.Context, authUserID int64, competitionID *int64) error {
+// competencia debe existir, estar active, el caller ser participante, el
+// instante actual estar dentro del rango activo y respetar el anclaje de
+// instancia en los dos sentidos (una route solo taguea sobre su propia
+// instancia sintética; una instancia sintética solo acepta a su dueña, lo que
+// también bloquea el mixeo de tipos). Cualquier falla es 400.
+func (s *runnerSessionService) validateCompetitionIntent(ctx *gin.Context, sessionInstanceID, authUserID int64, competitionID *int64) error {
 	if s.competitionDAO == nil {
 		return fmt.Errorf("%w: competition_id no se puede resolver en este ámbito", ErrRunnerSessionInvalid)
 	}
@@ -96,6 +99,25 @@ func (s *runnerSessionService) validateCompetitionIntent(ctx *gin.Context, authU
 	}
 	if comp.EndAt != nil && now.After(*comp.EndAt) {
 		return fmt.Errorf("%w: la competencia ya terminó", ErrRunnerSessionInvalid)
+	}
+	if comp.Type == competition.TypeRoute {
+		// Route SIEMPRE tiene instancia sintética (D1); el nil-check es
+		// defensivo. Anchor distinto = instancia de otra competencia.
+		if comp.RouteSessionInstanceID == nil || sessionInstanceID != *comp.RouteSessionInstanceID {
+			return fmt.Errorf("%w: la competencia indicada no corresponde a esta sesión", ErrRunnerSessionInvalid)
+		}
+	}
+	// Anclaje inverso: si la instancia pedida es la sintética de una route
+	// (dueña en DB), solo la dueña puede taguearse sobre ella — cubre el
+	// mixeo de tipos (comp metric/ajena sobre instancia de route). Sin el
+	// intento tagueado no se pasa por acá, y una instancia regular de
+	// calendario no ancla a ninguna.
+	anchor, err := s.competitionDAO.FindByRouteSessionInstance(ctx, sessionInstanceID)
+	if err != nil && !errors.Is(err, daos.ErrCompetitionNotFound) {
+		return fmt.Errorf("error al validar la competencia del intento")
+	}
+	if anchor != nil && anchor.ID != comp.ID {
+		return fmt.Errorf("%w: la competencia indicada no corresponde a esta sesión", ErrRunnerSessionInvalid)
 	}
 	return nil
 }
@@ -136,7 +158,7 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 	// Marca de competencia (E4.1): validar ANTES del write; sin el campo el
 	// flujo es byte-idéntico al de siempre.
 	if req.CompetitionID != nil {
-		if err := s.validateCompetitionIntent(ctx, athleteUserID, req.CompetitionID); err != nil {
+		if err := s.validateCompetitionIntent(ctx, sessionInstanceID, athleteUserID, req.CompetitionID); err != nil {
 			return nil, nil, false, err
 		}
 	}
