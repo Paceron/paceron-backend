@@ -96,14 +96,21 @@ func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days in
 		return nil, fmt.Errorf("error al calcular rachas")
 	}
 	groupIDs := make([]int64, len(memberships))
+	// Alta del corredor por grupo: un día de calendario previo al date_start
+	// de su membresía en ese grupo es historia ajena → skipped, no failed.
+	joinByGroup := make(map[int64]time.Time, len(memberships))
 	for i, m := range memberships {
 		groupIDs[i] = m.GroupID
+		join := utcDateToDay(m.DateStart)
+		if cur, ok := joinByGroup[m.GroupID]; !ok || join.Before(cur) {
+			joinByGroup[m.GroupID] = join
+		}
 	}
 
 	data := &streakData{assigned: map[string][]*int64{}, finished: map[int64]struct{}{}}
 	earliest := time.Time{}
 	if len(groupIDs) > 0 {
-		if err := s.loadHistory(ctx, targetUserID, groupIDs, yesterday, data, &earliest); err != nil {
+		if err := s.loadHistory(ctx, targetUserID, groupIDs, joinByGroup, yesterday, data, &earliest); err != nil {
 			return nil, err
 		}
 	}
@@ -126,10 +133,23 @@ func utcDateToDay(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, gametime.Location)
 }
 
+// previoAMembresía: el día de calendario pertenece a un grupo cuyo alta del
+// corredor es posterior (o el grupo no tiene alta cargada) → no puede contar
+// contra él (sin failed en ninguna racha; el día queda skipped).
+func daysBeforeMembership(joinByGroup map[int64]time.Time, groupID int64, day time.Time) bool {
+	join, ok := joinByGroup[groupID]
+	if !ok || join.After(day) {
+		return true
+	}
+	return false
+}
+
 // loadHistory corre las queries (b) y (c): días kind='training' de los
 // grupos del usuario hasta ayer (rango abierto al pasado a propósito: best
 // cubre TODO el histórico) y las runner sessions finished (batch por IN).
-func (s *streakService) loadHistory(ctx *gin.Context, targetUserID int64, groupIDs []int64, yesterday time.Time, data *streakData, earliest *time.Time) error {
+// Días previos a la membresía del corredor en su grupo no cargan: quedan
+// skipped (sin failed) y no estiran earliest.
+func (s *streakService) loadHistory(ctx *gin.Context, targetUserID int64, groupIDs []int64, joinByGroup map[int64]time.Time, yesterday time.Time, data *streakData, earliest *time.Time) error {
 	trainingDays, err := s.dao.FindTrainingDaysUntil(ctx, groupIDs, yesterday)
 	if err != nil {
 		customlogger.Error(ctx, "error finding training days for streaks", err, customlogger.TagMethod("GetStreaks"))
@@ -140,6 +160,9 @@ func (s *streakService) loadHistory(ctx *gin.Context, targetUserID int64, groupI
 	for i := range trainingDays {
 		day := trainingDays[i]
 		dayDate := utcDateToDay(day.Date)
+		if daysBeforeMembership(joinByGroup, day.GroupID, dayDate) {
+			continue
+		}
 		key := dayDate.Format("2006-01-02")
 		data.assigned[key] = append(data.assigned[key], day.SessionInstanceID)
 		if day.SessionInstanceID != nil {

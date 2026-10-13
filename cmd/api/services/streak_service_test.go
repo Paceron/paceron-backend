@@ -265,6 +265,85 @@ func TestStreakService_BestNoEsLocalALaVentana(t *testing.T) {
 	assert.Equal(t, 7, resp.Flexible.Best)
 }
 
+// Historia pre-membresía: corredor con alta (date_start) a mitad del
+// histórico del grupo. Los días training ANTERIORES a su alta no son suyos:
+// skipped en ambos estados (no failed) y no cortan rachas — current/best
+// cuentan desde el ingreso.
+func TestStreakService_HistoriaPreMembresiaNoCorta(t *testing.T) {
+	fixStreakToday(t, 2026, 10, 13)
+	dao := &mockGamificationDao{
+		findMembershipsFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+			return []dbs.GroupUser{{GroupID: 10, DateStart: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}}, nil
+		},
+		findTrainingDaysFn: func(ctx *gin.Context, groupIDs []int64, until time.Time) ([]dbs.GroupCalendarDay, error) {
+			var out []dbs.GroupCalendarDay
+			out = append(out, mkTrainingDays("2026-10-02", 2)...)
+			out = append(out, mkTrainingDays("2026-10-04", 4)...)
+			out = append(out, mkTrainingDays("2026-10-05", 5)...)
+			for i := 6; i <= 12; i++ {
+				out = append(out, mkTrainingDays(fmt.Sprintf("2026-10-%02d", i), int64(i))...)
+			}
+			return out, nil
+		},
+		findFinishedFn: func(ctx *gin.Context, ids []int64, athleteID int64) ([]dbs.RunnerSession, error) {
+			return finishedRuns(6, 7, 8, 9, 10, 11, 12), nil
+		},
+	}
+	resp, err := NewStreakService(dao).GetStreaks(nil, 7, 42)
+	require.NoError(t, err)
+
+	// Pre-alta: training sin finished pero del grupo → NO failed, skipped.
+	assertDay(t, resp, "2026-10-02", gamification.DayStatusSkipped, gamification.DayStatusSkipped)
+	assertDay(t, resp, "2026-10-04", gamification.DayStatusSkipped, gamification.DayStatusSkipped)
+	assertDay(t, resp, "2026-10-05", gamification.DayStatusSkipped, gamification.DayStatusSkipped)
+	// Desde el alta inclusive: completed normal.
+	for i := 6; i <= 12; i++ {
+		assertDay(t, resp, fmt.Sprintf("2026-10-%02d", i), gamification.DayStatusCompleted, gamification.DayStatusCompleted)
+	}
+	// Sin failed en todo el histórico: 7 días corridos de Oct-6 a Oct-12.
+	assert.Equal(t, 7, resp.Strict.Current)
+	assert.Equal(t, 7, resp.Strict.Best)
+	assert.Equal(t, 7, resp.Flexible.Current)
+	assert.Equal(t, 7, resp.Flexible.Best)
+}
+
+// La fecha de alta cuenta INCLUSIVE: un training el mismo día del date_start
+// es un día del corredor (la racha arranca ahí, no un día después).
+func TestStreakService_AltaIncluidaEnLaRacha(t *testing.T) {
+	fixStreakToday(t, 2026, 10, 13)
+	dao := &mockGamificationDao{
+		findMembershipsFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+			return []dbs.GroupUser{{GroupID: 10, DateStart: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)}}, nil
+		},
+		findTrainingDaysFn: func(ctx *gin.Context, groupIDs []int64, until time.Time) ([]dbs.GroupCalendarDay, error) {
+			var out []dbs.GroupCalendarDay
+			out = append(out, mkTrainingDays("2026-10-03", 3)...)
+			out = append(out, mkTrainingDays("2026-10-04", 4)...)
+			out = append(out, mkTrainingDays("2026-10-05", 5)...)
+			for i := 6; i <= 12; i++ {
+				out = append(out, mkTrainingDays(fmt.Sprintf("2026-10-%02d", i), int64(i))...)
+			}
+			return out, nil
+		},
+		findFinishedFn: func(ctx *gin.Context, ids []int64, athleteID int64) ([]dbs.RunnerSession, error) {
+			return finishedRuns(5, 6, 7, 8, 9, 10, 11, 12), nil
+		},
+	}
+	resp, err := NewStreakService(dao).GetStreaks(nil, 7, 42)
+	require.NoError(t, err)
+
+	// Día del alta: training terminado → completed (racha desde el alta inclusive).
+	assertDay(t, resp, "2026-10-05", gamification.DayStatusCompleted, gamification.DayStatusCompleted)
+	// Pre-alta: skipped (no failed, no cappea).
+	assertDay(t, resp, "2026-10-03", gamification.DayStatusSkipped, gamification.DayStatusSkipped)
+	assertDay(t, resp, "2026-10-04", gamification.DayStatusSkipped, gamification.DayStatusSkipped)
+	// Oct-5..Oct-12 = 8 días; si el día de alta quedara afuera sería 7.
+	assert.Equal(t, 8, resp.Strict.Current)
+	assert.Equal(t, 8, resp.Strict.Best)
+	assert.Equal(t, 8, resp.Flexible.Current)
+	assert.Equal(t, 8, resp.Flexible.Best)
+}
+
 // El día de hoy nunca corta la racha ni la rompe (spec "El día de hoy no
 // corta"): ayer completado y hoy sin entrenar → current intacto y hoy pending.
 func TestStreakService_TodayNoCorta(t *testing.T) {
