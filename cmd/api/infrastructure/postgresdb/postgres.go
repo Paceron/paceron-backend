@@ -281,6 +281,39 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
+	// 10. Índices de las consultas analíticas del dashboard (design.md D15).
+	//
+	// CONCURRENTLY es viable porque ConfigDB no abre transacciones: todo lo de
+	// arriba corre en autocommit. Envolver ESTE bloque en db.Transaction lo
+	// rompe (CONCURRENTLY no se permite dentro de una transacción) — si alguna
+	// vez se necesita transactions para otra migración, va en su propio item.
+	//
+	// idx_runner_session_athlete: el UNIQUE vigente arranca por
+	// session_instance_id, así que solo sirve para "la corrida de esta sesión".
+	// La vista de corredor de un grupo filtra por corredor sin saber la sesión.
+	//
+	// idx_feedback_session_date: el dashboard filtra por sesión Y rango de
+	// fechas, y el índice vigente de assigned_session_id no trae session_date
+	// (el rango se filtraría en memoria, después del join).
+	//
+	// Un índice que queda INVALID a mitad de una falla NO lo reintenta el IF
+	// NOT EXISTS: hay que dropearlo a mano. Rollback:
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_runner_session_athlete;
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_feedback_session_date;
+	dashboardIndexes := []string{
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_runner_session_athlete
+			ON runner_session (athlete_user_id);`,
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feedback_session_date
+			ON workout_feedback (assigned_session_id, session_date)
+			WHERE deleted_at IS NULL;`,
+	}
+	for _, stmt := range dashboardIndexes {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error creating dashboard analytics index", err)
+			return nil, err
+		}
+	}
+
 	customlogger.Info(nil, "DB initialized successfully",
 		customlogger.Tag("db_name", configDB.Name))
 
