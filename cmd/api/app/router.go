@@ -64,14 +64,16 @@ func StartApp() {
 	// afuera (misma app, mismos endpoints) y confundirse produce síntomas que
 	// parecen bugs. El caso típico es haberse olvidado de --stage=local y estar
 	// pegados contra la base de Supabase cloud sin saberlo.
-	stage := "testing"
-	switch {
-	case config.IsLocalStage():
-		stage = "LOCAL"
-	case config.IsProductionStage():
-		stage = "PRODUCTION"
+	customlogger.Info(nil, "stage resolved", customlogger.Tag("stage", config.ResolvedStage()))
+
+	// Antes de abrir la base ni registrar rutas: SEEDING_ENABLED sin
+	// --stage=local aborta acá (design.md D14). Con la bandera inerte, que es el
+	// estado de todos los deploys, no hay ninguna comprobación.
+	config.AssertSeedingStage()
+	if config.SeedingEnabled() {
+		customlogger.Warn(nil, "seeding enabled: past calendar days are writable",
+			customlogger.Tag("stage", config.ResolvedStage()))
 	}
-	customlogger.Info(nil, "stage resolved", customlogger.Tag("stage", stage))
 
 	router := gin.New()
 	router.Use(gin.Recovery())
