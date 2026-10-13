@@ -93,7 +93,7 @@ func respondCompetitionMutation(c *gin.Context, resp *competition.CompetitionRes
 
 // Create godoc
 // @Summary      Crear una competencia en un equipo
-// @Description  El creador entrenador (owner del team) crea con status active directo; el creador corredor (miembro del team) propone con status pending_approval. type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior a start_at; type=route exige route_geojson y acceptance_radius_meters > 0. Al menos 2 participantes, todos miembros activos del team, sin incluir al trainer.
+// @Description  El creador entrenador (owner del team) crea con status active directo; el creador corredor (miembro del team) propone con status pending_approval. type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior a start_at; type=route exige route_geojson LineString (máx 500 vértices, máx 100 km) y acceptance_radius_meters en [5, 500]. Al menos 2 participantes, todos miembros activos del team, sin incluir al trainer.
 // @Tags         gamification
 // @Accept       json
 // @Produce      json

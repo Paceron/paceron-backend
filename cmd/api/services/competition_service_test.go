@@ -1,6 +1,8 @@
 package services
 
 import (
+	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/utils/gametime"
+	"simple-arq-golang/cmd/api/utils/routematch"
 )
 
 // Tests del service de competencias (E4.1, D9) con DAO mockeado: guards,
@@ -752,4 +755,84 @@ func TestCompetitionService_ModeracionPushAlCreador(t *testing.T) {
 	assert.Equal(t, competition.StatusActive, resp.Status)
 	assert.Equal(t, 1, client.sendCallCount)
 	assert.Equal(t, "/teams/10", client.lastData["route"])
+}
+
+// TestCompetitionService_CreateValidacionesRuta cubre el endurecido del create
+// type=route (spec 4b, D4/D5): parse GeoJSON, límite de vértices, longitud
+// Haversine y rango del radius — y el happy path en el límite exacto.
+func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
+	svc := newCompetitionServiceForTest(&mockCompetitionDAO{
+		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	})
+
+	polylineGeoJSON := func(points []routematch.Point) string {
+		coords := make([][]float64, len(points))
+		for i, p := range points {
+			coords[i] = []float64{p.Lng, p.Lat}
+		}
+		b, err := json.Marshal(map[string]any{"type": "LineString", "coordinates": coords})
+		require.NoError(t, err)
+		return string(b)
+	}
+
+	// Vértices al nivel (lat 0, pasos de lat constante): la Haversine del
+	// service por segmento es earthRadiusMeters * dLat, sin influencia de cos.
+	repeatVertex := func(n int) []routematch.Point {
+		out := make([]routematch.Point, n)
+		for i := range out {
+			out[i] = routematch.Point{Lat: float64(i), Lng: 0}
+		}
+		return out
+	}
+	happyVertices := func(n int) []routematch.Point {
+		// ~99,995 km en n-1 segmentos: pasa el gate de 100 km.
+		stepDeg := (99990.0 / float64(n-1)) * (math.Pi / 180) / routematch.EarthRadiusMeters
+		out := make([]routematch.Point, n)
+		for i := range out {
+			out[i] = routematch.Point{Lat: float64(i) * stepDeg, Lng: 0}
+		}
+		return out
+	}
+
+	routeReqWith := func(geo string, radius *float64) competition.CreateCompetitionRequest {
+		req := routeCreateReq()
+		req.RouteGeoJSON = &geo
+		req.AcceptanceRadiusMeters = radius
+		return req
+	}
+
+	cases := []struct {
+		name    string
+		req     competition.CreateCompetitionRequest
+		wantMsg string
+	}{
+		{"geojson inválido", routeReqWith("{}", fptr(50)), "la ruta GeoJSON no es válida"},
+		{"geojson no Parseable", routeReqWith("no-json", fptr(50)), "la ruta GeoJSON no es válida"},
+		{"501 vértices", routeReqWith(polylineGeoJSON(repeatVertex(501)), fptr(50)), "la ruta admite hasta 500 puntos"},
+		{"más de 100 km", routeReqWith(polylineGeoJSON([]routematch.Point{{Lat: 0, Lng: 0}, {Lat: 0.95, Lng: 0}}), fptr(50)), "la ruta no puede superar los 100 km"},
+		{"radius bajo", routeReqWith(polylineGeoJSON(happyVertices(2)), fptr(3)), "el radio de aceptación debe estar entre 5 y 500 metros"},
+		{"radius alto", routeReqWith(polylineGeoJSON(happyVertices(2)), fptr(600)), "el radio de aceptación debe estar entre 5 y 500 metros"},
+		{"radius faltante", routeReqWith(polylineGeoJSON(happyVertices(2)), nil), "el radio de aceptación debe estar entre 5 y 500 metros"},
+	}
+	for _, tc := range cases {
+		_, err := svc.Create(nil, 1, 10, tc.req)
+		require.ErrorIs(t, err, ErrCompetitionInvalid, tc.name)
+		assert.Contains(t, err.Error(), tc.wantMsg, tc.name)
+	}
+
+	// Happy path en el límite: 500 vértices y ~100 km exactos pasan.
+	req := routeReqWith(polylineGeoJSON(happyVertices(500)), fptr(500))
+	dao := &mockCompetitionDAO{
+		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	}
+	svcLimit := newCompetitionServiceForTest(dao)
+	_, err := svcLimit.Create(nil, 1, 10, req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, dao.createCalls)
+
+	// 5 m = floor del rango de radius y vértice único degenerado: pasan.
+	_, err = svc.Create(nil, 1, 10, routeReqWith("{\"type\":\"LineString\",\"coordinates\":[[0,0]]}", fptr(5)))
+	require.NoError(t, err)
 }

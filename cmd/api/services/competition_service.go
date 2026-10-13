@@ -32,6 +32,14 @@ var (
 // métricas válidas para type=metric: las mismas fuente de feedback (D6/D7).
 var validCompetitionMetrics = []string{"distance", "duration", "pace", "peak_speed"}
 
+// límites de rutas y radius (spec 4b, D4/D5).
+const (
+	maxRouteVertices     = 500
+	maxRouteLengthMeters = 100000.0
+	minAcceptanceRadiusM = 5.0
+	maxAcceptanceRadiusM = 500.0
+)
+
 type CompetitionServiceInterface interface {
 	Create(ctx *gin.Context, callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error)
 	Approve(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
@@ -140,7 +148,8 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 }
 
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige
-// metric + end_at > start_at; route exige route_geojson + radius > 0.
+// metric + end_at > start_at; route exige route_geojson (parseable, ≤500
+// vértices, ≤100 km) + radius en [5, 500].
 func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 	if req.Type != competition.TypeMetric && req.Type != competition.TypeRoute {
 		return fmt.Errorf("%w: type debe ser metric o route", ErrCompetitionInvalid)
@@ -175,8 +184,20 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		if req.RouteGeoJSON == nil || *req.RouteGeoJSON == "" {
 			return fmt.Errorf("%w: type=route exige route_geojson", ErrCompetitionInvalid)
 		}
-		if req.AcceptanceRadiusMeters == nil || *req.AcceptanceRadiusMeters <= 0 {
-			return fmt.Errorf("%w: type=route exige acceptance_radius_meters > 0", ErrCompetitionInvalid)
+		vertices, err := routematch.ParseLineString(*req.RouteGeoJSON)
+		if err != nil {
+			return fmt.Errorf("%w: la ruta GeoJSON no es válida", ErrCompetitionInvalid)
+		}
+		if len(vertices) > maxRouteVertices {
+			return fmt.Errorf("%w: la ruta admite hasta 500 puntos", ErrCompetitionInvalid)
+		}
+		if routematch.LineStringLength(vertices) > maxRouteLengthMeters {
+			return fmt.Errorf("%w: la ruta no puede superar los 100 km", ErrCompetitionInvalid)
+		}
+		if req.AcceptanceRadiusMeters == nil ||
+			*req.AcceptanceRadiusMeters < minAcceptanceRadiusM ||
+			*req.AcceptanceRadiusMeters > maxAcceptanceRadiusM {
+			return fmt.Errorf("%w: el radio de aceptación debe estar entre 5 y 500 metros", ErrCompetitionInvalid)
 		}
 		if req.Metric != nil {
 			return fmt.Errorf("%w: type=route no admite metric", ErrCompetitionInvalid)
