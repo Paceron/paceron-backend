@@ -32,14 +32,19 @@ type runnerSessionController struct {
 	// notifier es opcional (nil): emite update:session_state a session:{id}
 	// al abrir/cerrar (D10, best-effort, patrón workout-feedback).
 	notifier realtime.Notifier
+	// streakTrigger es opcional (nil): hook de gamificación (gamificacion-core
+	// D3) post-write del PATCH hacia finished/interrupted. No aplica al Create
+	// (wip nunca genera novedad de racha). Async best-effort.
+	streakTrigger services.StreakTriggerServiceInterface
 }
 
 // NewRunnerSessionController crea una nueva instancia de RunnerSessionController.
-func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier) RunnerSessionController {
+func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier, streakTrigger services.StreakTriggerServiceInterface) RunnerSessionController {
 	return &runnerSessionController{
 		runnerSessionService: runnerSessionService,
 		presencial:           presencial,
 		notifier:             notifier,
+		streakTrigger:        streakTrigger,
 	}
 }
 
@@ -242,6 +247,13 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 	if err != nil {
 		respondRunnerSessionError(c, err)
 		return
+	}
+
+	// Hook de gamificación (D3): finished/interrupted post-write corre el
+	// chequeo de rachas (async best-effort; el fallo se loguea y no toca la
+	// respuesta del PATCH). El Create (wip) no dispara.
+	if rc.streakTrigger != nil {
+		rc.streakTrigger.OnRunnerSessionCompletion(c, rs.AthleteUserID)
 	}
 
 	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;

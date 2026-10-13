@@ -181,6 +181,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Gamificación: rachas (gamificacion-core E1), self-only.
 	r.GET("/api/v1/users/:id/streaks", app.streakController.GetStreaks)
+	// Escape del punto rojo (D3): POST seen, self-only.
+	r.POST("/api/v1/users/:id/gamification/seen", app.gamificationSeenController.See)
 
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)

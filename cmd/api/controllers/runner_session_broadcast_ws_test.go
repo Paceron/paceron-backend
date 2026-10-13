@@ -87,7 +87,7 @@ func newRunnerBroadcastServer(t *testing.T, hub *realtime.Hub, presencial servic
 			return rs, nil
 		},
 	}
-	ctrl := NewRunnerSessionController(mockSvc, presencial, notifier)
+	ctrl := NewRunnerSessionController(mockSvc, presencial, notifier, nil)
 	router.POST("/api/v1/session-instances/:id/runner", ctrl.Create)
 	router.PATCH("/api/v1/session-instances/:id/runner", ctrl.Finish)
 

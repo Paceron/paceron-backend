@@ -59,6 +59,7 @@ type Application struct {
 	sessionMessageController    controllers.SessionMessageController
 	runnerSessionController     controllers.RunnerSessionController
 	streakController            controllers.StreakController
+	gamificationSeenController  controllers.GamificationSeenController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
 }
@@ -329,13 +330,17 @@ func NewApplication() *Application {
 	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
 	runnerSessionDao := daos.NewRunnerSessionDao(db)
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService)
-	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier)
 
 	// Gamificación (gamificacion-core E1): rachas recalculadas fresco del
-	// histórico; unseen para el punto rojo (escritura llega en Task 2).
+	// histórico; unseen para el punto rojo con su POST seen; trigger de racha
+	// post-write del PATCH de runner session (hook async best-effort D3).
 	gamificationDao := daos.NewGamificationDao(db)
 	streakService := services.NewStreakService(gamificationDao)
 	streakController := controllers.NewStreakController(streakService)
+	gamificationSeenController := controllers.NewGamificationSeenController(services.NewGamificationSeenService(gamificationDao))
+	streakTrigger := services.NewStreakTriggerService(gamificationDao, streakService)
+
+	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger)
 
 	return &Application{
 		pingController:              controllers.NewPingController(),
@@ -373,6 +378,7 @@ func NewApplication() *Application {
 		sessionMessageController:    sessionMessageController,
 		runnerSessionController:     runnerSessionController,
 		streakController:            streakController,
+		gamificationSeenController:  gamificationSeenController,
 		realtimeGateway:             realtimeGateway,
 	}
 }
