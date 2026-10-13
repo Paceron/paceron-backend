@@ -1,10 +1,10 @@
 package daos
 
 import (
-	"math"
 	"sort"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/utils/routematch"
 )
 
 // Métricas denormalizadas del leaderboard (gamificacion-core D6): funciones
@@ -22,22 +22,10 @@ func computePaceSecPerKM(durationMs *int64, distanceMeters *float64) *float64 {
 	return &pace
 }
 
-// earthRadiusMeters para haversine.
-const earthRadiusMeters = 6371000.0
-
-// haversineMeters distancia entre dos coordenadas GPS en metros.
-func haversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
-	rad := math.Pi / 180
-	dLat := (lat2 - lat1) * rad
-	dLon := (lon2 - lon1) * rad
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
-	return earthRadiusMeters * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-}
-
 // computePeakSpeedKPH devuelve la velocidad instantánea máxima en km/h entre
 // segmentos de points consecutivos (ordenados por Order). NULL con menos de
-// dos puntos o si ningún segmento tiene Δt > 0.
+// dos puntos o si ningún segmento tiene Δt > 0. El haversine vive en
+// utils/routematch (única fuente, compartido con el matching de rutas Task 6).
 func computePeakSpeedKPH(points []dbs.WorkoutFeedbackPoint) *float64 {
 	if len(points) < 2 {
 		return nil
@@ -52,7 +40,7 @@ func computePeakSpeedKPH(points []dbs.WorkoutFeedbackPoint) *float64 {
 		if dt <= 0 {
 			continue
 		}
-		speedKPH := haversineMeters(
+		speedKPH := routematch.HaversineMeters(
 			sorted[i-1].Latitude, sorted[i-1].Longitude,
 			sorted[i].Latitude, sorted[i].Longitude,
 		) / dt * 3.6

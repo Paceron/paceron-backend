@@ -37,8 +37,9 @@ type sessionStateFrame struct {
 }
 
 type rawFrame struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
+	Type    string          `json:"type"`
+	Data    json.RawMessage `json:"data,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 func presencialDayFixture(opened, closed *time.Time) *dbs.GroupCalendarDay {
@@ -260,5 +261,105 @@ func TestRunnerSession_NonOwner_DoesNotEmit(t *testing.T) {
 	target := s.dialSubscriber(t, "session:42")
 
 	require.Equal(t, http.StatusCreated, s.postRunner(t))
+	target.waitSilence(t, 300*time.Millisecond)
+}
+
+// competitionProgressFrame replica el frame update:competition_progress
+// (E4.2 D9): payload {competition_id, user_id}.
+type competitionProgressFrame struct {
+	Type    string `json:"type"`
+	Payload struct {
+		CompetitionID int64 `json:"competition_id"`
+		UserID        int64 `json:"user_id"`
+	} `json:"-"`
+	TypedData json.RawMessage `json:"data"`
+}
+
+func TestRunnerSession_CompetitionProgress_BroadcastsToWS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hub := realtime.NewHub()
+	gateway := realtime.NewGateway(hub, permissiveSessionAuthorizer{}, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(7))
+		c.Next()
+	})
+	router.GET("/api/v1/ws", func(c *gin.Context) {
+		conn, err := gateway.Upgrade(c.Writer, c.Request)
+		if err != nil {
+			return
+		}
+		gateway.Serve(conn, 7)
+	})
+
+	compID := int64(5)
+	mockSvc := &mockRunnerSessionControllerService{
+		finishFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.RunnerStatusRequest) (*dbs.RunnerSession, error) {
+			rs := fixtureRunnerSessionResponse()
+			rs.Status = runnersession.RunnerSessionStatusFinished
+			rs.CompetitionID = &compID
+			rs.EndDate = nil
+			return rs, nil
+		},
+	}
+	router.PATCH("/api/v1/session-instances/:id/runner", NewRunnerSessionController(mockSvc, nil, realtime.NewHubNotifier(hub), nil, nil).Finish)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	frames := make(chan rawFrame, 16)
+	go func() {
+		for {
+			_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+			_, raw, rerr := conn.ReadMessage()
+			if rerr != nil {
+				return
+			}
+			var f rawFrame
+			if uerr := json.Unmarshal(raw, &f); uerr == nil {
+				frames <- f
+			}
+		}
+	}()
+	require.NoError(t, conn.WriteJSON(map[string]any{"type": "subscribe", "channel": "session:42"}))
+
+	req, err := http.NewRequest(http.MethodPatch, server.URL+"/api/v1/session-instances/42/runner", strings.NewReader(`{"status":"finished"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("timeout esperando update:competition_progress")
+		case f := <-frames:
+			if f.Type == realtime.UpdateCompetitionProgressEventType {
+				var payload struct {
+					CompetitionID int64 `json:"competition_id"`
+					UserID        int64 `json:"user_id"`
+				}
+				require.NoError(t, json.Unmarshal(f.Payload, &payload))
+				assert.Equal(t, int64(5), payload.CompetitionID)
+				assert.Equal(t, int64(7), payload.UserID)
+				return
+			}
+		}
+	}
+}
+
+func TestRunnerSession_SinCompetitionID_NilNotifier_SinFrame(t *testing.T) {
+	// El fixture no taguea competencia: PATCH finished no emite progress.
+	hub := realtime.NewHub()
+	s := newRunnerBroadcastServer(t, hub, nil, realtime.NewHubNotifier(hub))
+	target := s.dialSubscriber(t, "session:42")
+
+	require.Equal(t, http.StatusOK, s.patchRunnerFinished(t))
 	target.waitSilence(t, 300*time.Millisecond)
 }

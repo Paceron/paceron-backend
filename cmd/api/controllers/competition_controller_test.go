@@ -9,13 +9,17 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/gorilla/websocket"
+
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/testutils"
 	"simple-arq-golang/cmd/api/utils"
@@ -28,7 +32,7 @@ type mockCompetitionService struct {
 	cancelFn  func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
 	listFn    func(callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
 	getFn     func(callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
-	closeFn   func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
+	closeFn   func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
 
 	createCalls, approveCalls, rejectCalls, cancelCalls, listCalls, getCalls, closeCalls int
 	lastReason                                                                           *string
@@ -87,12 +91,12 @@ func (m *mockCompetitionService) Get(ctx *gin.Context, callerID, competitionID i
 	return &competition.CompetitionDetailResponse{Data: competition.CompetitionResponse{ID: competitionID}}, nil
 }
 
-func (m *mockCompetitionService) Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error) {
+func (m *mockCompetitionService) Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
 	m.closeCalls++
 	if m.closeFn != nil {
 		return m.closeFn(callerID, competitionID)
 	}
-	return &competition.CompetitionResponse{ID: competitionID, Status: competition.StatusFinished}, nil
+	return &competition.CompetitionResponse{ID: competitionID, Status: competition.StatusFinished}, nil, nil
 }
 
 func setupCompetitionRouterS(t *testing.T, svc services.CompetitionServiceInterface, authUserID int64) *gin.Engine {
@@ -105,7 +109,7 @@ func setupCompetitionRouterS(t *testing.T, svc services.CompetitionServiceInterf
 		}
 		c.Next()
 	})
-	cc := NewCompetitionController(svc)
+	cc := NewCompetitionController(svc, nil)
 	router.POST("/api/v1/teams/:id/competitions", cc.Create)
 	router.GET("/api/v1/teams/:id/competitions", cc.ListByTeam)
 	router.PATCH("/api/v1/competitions/:id/approve", cc.Approve)
@@ -190,8 +194,8 @@ func TestCompetitionController_ErroresMapeados(t *testing.T) {
 		{"no existe", daos.ErrCompetitionNotFound, http.StatusNotFound, "Not Found"},
 	}
 	for _, tc := range cases {
-		svc := &mockCompetitionService{closeFn: func(callerID, competitionID int64) (*competition.CompetitionResponse, error) {
-			return nil, tc.serviceErr
+		svc := &mockCompetitionService{closeFn: func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
+			return nil, nil, tc.serviceErr
 		}}
 		router := setupCompetitionRouterS(t, svc, 7)
 		resp := doCompetitionRequest(t, router, http.MethodPatch, "/api/v1/competitions/2/close", "")
@@ -270,4 +274,139 @@ func TestCompetitionController_GetDetail_Success(t *testing.T) {
 	var out competition.CompetitionDetailResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
 	assert.Equal(t, int64(2), out.Data.ID)
+}
+
+// E4.2: control:competition_finished por los canales session:{instance} de los
+// intentos registrados. Hub real mismo harness de los broadcast de feedback.
+type competitionFinishedFrame struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func TestCompetitionController_Close_WSControlFrames(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hub := realtime.NewHub()
+	gateway := realtime.NewGateway(hub, permissiveSessionAuthorizer{}, nil)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(7))
+		c.Next()
+	})
+	router.GET("/ws", func(c *gin.Context) {
+		conn, err := gateway.Upgrade(c.Writer, c.Request)
+		if err != nil {
+			return
+		}
+		gateway.Serve(conn, 7)
+	})
+
+	svc := &mockCompetitionService{closeFn: func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
+		return &competition.CompetitionResponse{ID: competitionID, Status: competition.StatusFinished}, []int64{42, 43}, nil
+	}}
+	router.PATCH("/api/v1/competitions/:id/close", NewCompetitionController(svc, realtime.NewHubNotifier(hub)).Close)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	// Cliente suscripto al canal del intento 42.
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	frames := make(chan [2]string, 16)
+	go func() {
+		for {
+			_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+			_, raw, rerr := conn.ReadMessage()
+			if rerr != nil {
+				return
+			}
+			var f competitionFinishedFrame
+			if uerr := json.Unmarshal(raw, &f); uerr == nil {
+				frames <- [2]string{f.Type, string(f.Payload)}
+			}
+		}
+	}()
+	require.NoError(t, conn.WriteJSON(map[string]any{"type": "subscribe", "channel": "session:42"}))
+
+	require.Equal(t, http.StatusOK, doCompetitionRequest(t, router, http.MethodPatch, "/api/v1/competitions/5/close", "").Code)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("timeout esperando control:competition_finished")
+		case got := <-frames:
+			if got[0] == "control:competition_finished" {
+				assert.Contains(t, got[1], `"competitionId":5`)
+				return
+			}
+		}
+	}
+}
+
+func TestCompetitionController_Close_SinIntentos_Silencio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hub := realtime.NewHub()
+	gateway := realtime.NewGateway(hub, permissiveSessionAuthorizer{}, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(utils.AuthUserIDKey, int64(7))
+		c.Next()
+	})
+	router.GET("/ws", func(c *gin.Context) {
+		conn, err := gateway.Upgrade(c.Writer, c.Request)
+		if err != nil {
+			return
+		}
+		gateway.Serve(conn, 7)
+	})
+	svc := &mockCompetitionService{closeFn: func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
+		return &competition.CompetitionResponse{ID: competitionID, Status: competition.StatusFinished}, nil, nil
+	}}
+	router.PATCH("/api/v1/competitions/:id/close", NewCompetitionController(svc, realtime.NewHubNotifier(hub)).Close)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, http.Header{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	subs := make(chan [2]string, 16)
+	go func() {
+		for {
+			_, raw, rerr := conn.ReadMessage()
+			if rerr != nil {
+				return
+			}
+			var f competitionFinishedFrame
+			if uerr := json.Unmarshal(raw, &f); uerr == nil {
+				subs <- [2]string{f.Type, string(f.Payload)}
+			}
+		}
+	}()
+	require.NoError(t, conn.WriteJSON(map[string]any{"type": "subscribe", "channel": "session:42"}))
+	require.Equal(t, http.StatusOK, doCompetitionRequest(t, router, http.MethodPatch, "/api/v1/competitions/5/close", "").Code)
+
+	_ = subs
+	select {
+	case got := <-subs:
+		require.NotEqual(t, "control:competition_finished", got[0], "sin intentos no se emite el control")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// FailingDB no-leak del close (E4.2 D12): la primera query del cierre falla
+// con DB real inyectada y responde 500 genérico sin filtrar el error.
+func TestCompetitionController_Close_FailingDB_NoLeak(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, func(op string) bool { return op == "select" })
+	realSvc := services.NewCompetitionService(daos.NewCompetitionDao(failing), nil, nil)
+	router := setupCompetitionRouterS(t, realSvc, 7)
+	resp := doCompetitionRequest(t, router, http.MethodPatch, "/api/v1/competitions/5/close", "")
+	require.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.Equal(t, "error interno", competitionErrorMessage(t, resp))
+	assert.NotContains(t, resp.Body.String(), "inyectado")
+	assert.NotContains(t, resp.Body.String(), "FailingDB")
 }

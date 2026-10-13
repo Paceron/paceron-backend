@@ -336,14 +336,15 @@ func NewApplication() *Application {
 	leaderboardService := services.NewLeaderboardService(daos.NewLeaderboardDao(db))
 	leaderboardController := controllers.NewLeaderboardController(leaderboardService)
 
-	// Gamificación (gamificacion-core E4.1): competencias (CRUD + moderación +
-	// cierre stub; winners en E4.2).
+	// Gamificación (gamificacion-core E4.1/E4.2): competencias (CRUD +
+	// moderación + cierre con winners).
+	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
+	// La misma instancia alimenta los WS de competencias (E4.2, D9).
+	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
+
 	competitionDao := daos.NewCompetitionDao(db)
 	competitionService := services.NewCompetitionService(competitionDao, pushTokenDao, expoPushClient)
-	competitionController := controllers.NewCompetitionController(competitionService)
-
-	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
-	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
+	competitionController := controllers.NewCompetitionController(competitionService, realtimeNotifier)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier, achievementsService)
 	attendanceController := controllers.NewAttendanceController(attendanceService, realtimeNotifier, achievementsService)
 

@@ -1,6 +1,7 @@
 package daos
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -209,7 +210,7 @@ func TestCompetitionDAO_Transiciones(t *testing.T) {
 	assert.False(t, updated)
 
 	at := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
-	updated, err = dao.Finish(nil, comp.ID, at)
+	updated, err = dao.Finish(nil, comp.ID, at, nil, nil, nil)
 	require.NoError(t, err)
 	assert.True(t, updated)
 	loaded, err = dao.FindByID(nil, comp.ID)
@@ -242,7 +243,7 @@ func TestCompetitionDAO_Transiciones(t *testing.T) {
 	assert.Equal(t, "te pasa", *loaded.RejectionReason)
 
 	// Finish solo sobre active: una rejected no se cierra.
-	updated, err = dao.Finish(nil, comp3.ID, at)
+	updated, err = dao.Finish(nil, comp3.ID, at, nil, nil, nil)
 	require.NoError(t, err)
 	assert.False(t, updated)
 }
@@ -307,4 +308,101 @@ func TestCompetitionDAO_UnseenYVentana(t *testing.T) {
 	// B solo reportó distance: duration y peak quedan null.
 	assert.Nil(t, byUser[fx.runnerB.ID].SumDurationMs)
 	assert.Nil(t, byUser[fx.runnerB.ID].MaxPeak)
+}
+
+func TestCompetitionDAO_FinishConEfectos(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "07")
+
+	comp := newMetricCompetition(t, db, fx, competition.StatusActive, "ef", nil)
+	finishedAt := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	stamps := []dbs.GamificationStamp{{
+		UserID: fx.runnerA.ID, Type: "competition", SourceID: comp.ID,
+		SourceName: fmt.Sprintf("Competencia %d", comp.ID), GrantedAt: finishedAt, Count: 1,
+	}}
+	unseen := []dbs.GamificationUnseen{
+		{UserID: fx.runnerA.ID, Section: "competitions", TeamID: &fx.team.ID},
+		{UserID: fx.runnerB.ID, Section: "competitions", TeamID: &fx.team.ID},
+	}
+	updated, err := dao.Finish(nil, comp.ID, finishedAt, []int64{fx.runnerA.ID}, stamps, unseen)
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	loaded, err := dao.FindByID(nil, comp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusFinished, loaded.Status)
+	require.NotNil(t, loaded.FinishedAt)
+
+	winners, err := dao.ListWinnersByCompetitionIDs(nil, []int64{comp.ID})
+	require.NoError(t, err)
+	require.Len(t, winners, 1)
+	assert.Equal(t, fx.runnerA.ID, winners[0].UserID)
+
+	var stampsCount, unseenCount int64
+	require.NoError(t, db.Model(&dbs.GamificationStamp{}).Where("user_id = ?", fx.runnerA.ID).Count(&stampsCount).Error)
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("section = ? AND team_id = ?", "competitions", fx.team.ID).Count(&unseenCount).Error)
+	assert.Equal(t, int64(1), stampsCount)
+	assert.Equal(t, int64(2), unseenCount)
+
+	// Re-Finish no toca filas: ni winners ni stamps duplicados (guard del status).
+	updated, err = dao.Finish(nil, comp.ID, finishedAt, []int64{fx.runnerA.ID}, stamps, unseen)
+	require.NoError(t, err)
+	assert.False(t, updated)
+	var winnerRows int64
+	require.NoError(t, db.Model(&dbs.CompetitionWinner{}).Where("competition_id = ?", comp.ID).Count(&winnerRows).Error)
+	assert.Equal(t, int64(1), winnerRows)
+}
+
+func TestCompetitionDAO_AttemptSessionsYPoints(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "08")
+	comp := newMetricCompetition(t, db, fx, competition.StatusActive, "att", nil)
+
+	compID := comp.ID
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: 771, AthleteUserID: fx.runnerA.ID,
+		Status: "finished", StartDate: time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC),
+		CompetitionID: &compID,
+	}).Error)
+	// Intento de otro atleta wip (solo canal).
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: 772, AthleteUserID: fx.runnerB.ID,
+		Status: "wip", StartDate: time.Date(2026, 10, 5, 10, 0, 0, 0, time.UTC),
+		CompetitionID: &compID,
+	}).Error)
+	// Runner session del mismo atleta SIN competencia: fuera.
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: 773, AthleteUserID: fx.runnerA.ID,
+		Status: "finished", StartDate: time.Date(2026, 10, 5, 11, 0, 0, 0, time.UTC),
+	}).Error)
+
+	fb := testFeedback(t, db, fx.runnerA.ID, fx.owner.ID, 771, 1, &fx.team.ID, 0)
+	require.NoError(t, db.Create(&dbs.WorkoutFeedbackPoint{
+		FeedbackID: fb.ID, SessionInstanceID: 771, ExerciseInstanceID: 1, Order: 0,
+		Latitude: -31.42, Longitude: -64.18, RecordedAt: time.Date(2026, 10, 5, 9, 0, 30, 0, time.UTC),
+	}).Error)
+	require.NoError(t, db.Create(&dbs.WorkoutFeedbackPoint{
+		FeedbackID: fb.ID, SessionInstanceID: 771, ExerciseInstanceID: 1, Order: 1,
+		Latitude: -31.421, Longitude: -64.181, RecordedAt: time.Date(2026, 10, 5, 9, 1, 0, 0, time.UTC),
+	}).Error)
+
+	sessions, err := dao.ListAttemptSessions(nil, comp.ID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 2)
+
+	points, err := dao.ListAttemptPoints(nil, []int64{771, 772}, []int64{fx.runnerA.ID, fx.runnerB.ID})
+	require.NoError(t, err)
+	require.Len(t, points, 2)
+	assert.Equal(t, int64(771), points[0].SessionInstanceID)
+	assert.Equal(t, fx.runnerA.ID, points[0].AthleteUserID)
+	assert.Equal(t, -31.42, points[0].Latitude)
+	// ídola nueva instancia fuera del filtro devuelva 0.
+	none, err := dao.ListAttemptPoints(nil, []int64{999}, []int64{fx.runnerA.ID})
+	require.NoError(t, err)
+	assert.Empty(t, none)
+	none, err = dao.ListAttemptPoints(nil, nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, none)
 }

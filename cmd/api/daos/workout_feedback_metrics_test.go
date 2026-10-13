@@ -11,6 +11,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
+	"simple-arq-golang/cmd/api/utils/routematch"
 )
 
 // Métricas denormalizadas D6: pace = duration_ms / distance_meters y peak =
@@ -82,12 +83,12 @@ func TestComputePeakSpeedKPH_CasosNulos(t *testing.T) {
 	}))
 }
 
-func TestHaversineMeters(t *testing.T) {
-	assert.InDelta(t, 0, haversineMeters(0, 0, 0, 0), 0.0001)
+func TestHaversineMeters(t *testing.T) { // vive en utils/routematch (Task 6)
+	assert.InDelta(t, 0, routematch.HaversineMeters(0, 0, 0, 0), 0.0001)
 	// 1 grado de latitud ≈ 111.19 km.
-	assert.InDelta(t, 111190, haversineMeters(0, 0, 1, 0), 100)
-	assert.InDelta(t, haversineMeters(0, 0, 1, 0), haversineMeters(1, 0, 0, 0), 0.0001)
-	assert.False(t, math.IsNaN(haversineMeters(-34.6, -58.4, 40.4, -3.7)))
+	assert.InDelta(t, 111190, routematch.HaversineMeters(0, 0, 1, 0), 100)
+	assert.InDelta(t, routematch.HaversineMeters(0, 0, 1, 0), routematch.HaversineMeters(1, 0, 0, 0), 0.0001)
+	assert.False(t, math.IsNaN(routematch.HaversineMeters(-34.6, -58.4, 40.4, -3.7)))
 }
 
 // Regresión D6: el DTO de feedback NO expone pace_sec_per_km ni

@@ -40,3 +40,14 @@ type CompetitionMetricAgg struct {
 	SumDurationMs *int64   `gorm:"column:sum_duration_ms"`
 	MaxPeak       *float64 `gorm:"column:max_peak"`
 }
+
+// CompetitionAttemptPoint es un punto GPS del intento: proviene del feedback
+// activo del atleta sobre la misma instancia del intento; el (instance_id,
+// athlete_user_id) viaja en cada fila para agrupar en 1 query sin N+1
+// (matching de rutas E4.2/D10).
+type CompetitionAttemptPoint struct {
+	SessionInstanceID int64   `gorm:"column:session_instance_id"`
+	AthleteUserID     int64   `gorm:"column:athlete_user_id"`
+	Latitude          float64 `gorm:"column:latitude"`
+	Longitude         float64 `gorm:"column:longitude"`
+}

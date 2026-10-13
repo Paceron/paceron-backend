@@ -1,7 +1,8 @@
 package services
 
-// Competencias (gamificacion-core E4.1, D8/D9). CRUD + moderación + cierre
-// stub (la computación de winners llega en E4.2).
+// Competencias (gamificacion-core E4.1, D8/D9). CRUD + moderación + cierre:
+// E4.2 computa winners al cerrar (metric por ventana; route con matching D10),
+// stamps a los ganadores, unseen por participante y push best-effort a todos.
 
 import (
 	"errors"
@@ -13,10 +14,13 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/utils/gametime"
+	"simple-arq-golang/cmd/api/utils/routematch"
 )
 
 var (
@@ -35,7 +39,11 @@ type CompetitionServiceInterface interface {
 	Cancel(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
 	ListByTeam(ctx *gin.Context, callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
 	Get(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
-	Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
+	// Close aplica el cierre (status finished + efectos): devuelve la respuesta
+	// y los session_instance_ids de los intentos registrados de la competencia
+	// para el control:competition_finished del controller (D9); sin intentos
+	// = slice vacío.
+	Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
 }
 
 type competitionService struct {
@@ -240,12 +248,13 @@ func (s *competitionService) Approve(ctx *gin.Context, callerID, competitionID i
 	if !updated {
 		return nil, fmt.Errorf("%w: solo se puede aprobar una competencia en pending_approval", ErrCompetitionConflict)
 	}
+	// Respuesta armada desde el bundle ya cargado: la consulta con re-guard
+	// del detalle puede 403 cuando el caller es trainer creador no-owner (o
+	// cualquier caso de guard distinto), y no hay razón para releer.
+	bundle.comp.Status = competition.StatusActive
+	bundle.comp.ApprovedByUserID = &callerID
 	s.notifyCreator(bundle.comp, "Competencia aprobada", "Tu competencia fue aprobada y ya está activa.", "competition_approved")
-	detail, err := s.Get(ctx, callerID, competitionID)
-	if err != nil {
-		return nil, err
-	}
-	return &detail.Data, nil
+	return s.detailResponse(ctx, bundle), nil
 }
 
 func (s *competitionService) Reject(ctx *gin.Context, callerID, competitionID int64, reason *string) (*competition.CompetitionResponse, error) {
@@ -261,12 +270,10 @@ func (s *competitionService) Reject(ctx *gin.Context, callerID, competitionID in
 	if !updated {
 		return nil, fmt.Errorf("%w: solo se puede rechazar una competencia en pending_approval", ErrCompetitionConflict)
 	}
+	bundle.comp.Status = competition.StatusRejected
+	bundle.comp.RejectionReason = reason
 	s.notifyCreator(bundle.comp, "Competencia rechazada", "Tu competencia propuesta fue rechazada.", "competition_rejected")
-	detail, err := s.Get(ctx, callerID, competitionID)
-	if err != nil {
-		return nil, err
-	}
-	return &detail.Data, nil
+	return s.detailResponse(ctx, bundle), nil
 }
 
 // moderationGuard resuelve 404 y el guard de moderación (owner del team, o el
@@ -284,7 +291,11 @@ func (s *competitionService) moderationGuard(ctx *gin.Context, callerID, competi
 	if !isOwner && !isTrainerCreator {
 		return nil, ErrCompetitionForbidden
 	}
-	return &competitionBundle{comp: comp}, nil
+	participants, winners, err := s.loadMembers(ctx, []int64{comp.ID})
+	if err != nil {
+		return nil, fmt.Errorf("error al moderar la competencia")
+	}
+	return &competitionBundle{comp: comp, participants: participants[comp.ID], winners: winners[comp.ID]}, nil
 }
 
 func (s *competitionService) Cancel(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error) {
@@ -380,15 +391,23 @@ func (s *competitionService) Get(ctx *gin.Context, callerID, competitionID int64
 			return nil, ErrCompetitionForbidden
 		}
 	}
+	return &competition.CompetitionDetailResponse{Data: *s.detailResponse(ctx, bundle)}, nil
+}
+
+// detailResponse arma la respuesta del detalle desde el bundle (usada en Get
+// y por las mutaciones que ya cargaron el bundle: sin re-Get ni re-guard).
+func (s *competitionService) detailResponse(ctx *gin.Context, bundle *competitionBundle) *competition.CompetitionResponse {
 	resp := toCompetitionResponse(bundle.comp, bundle.participants, bundle.winners)
 	if bundle.comp.Type == competition.TypeMetric {
 		resp.Progress = s.computeMetricProgress(ctx, bundle)
+	} else if bundle.comp.Type == competition.TypeRoute {
+		resp.Progress = s.computeRouteProgress(ctx, bundle)
 	}
-	return &competition.CompetitionDetailResponse{Data: *resp}, nil
+	return resp
 }
 
 // computeMetricProgress arma el acumulado in-ventana por participante
-// (detalle on-demand; sin broadcast). route queda sin progreso hasta E4.2.
+// (detalle on-demand; sin broadcast). El progreso de route corre su matcher.
 func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgressItem {
 	agg, err := s.dao.AggregateFeedbackWindow(ctx, bundle.comp.TeamID, bundle.participants, gametime.DateOnly(bundle.comp.StartAt), gametime.DateOnly(windowEnd(bundle.comp)))
 	if err != nil {
@@ -403,6 +422,113 @@ func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *com
 	for _, uid := range bundle.participants {
 		value := metricValueFromAgg(byUser[uid], bundle.comp.Metric)
 		progress = append(progress, competition.CompetitionProgressItem{UserID: uid, Value: value})
+	}
+	sort.Slice(progress, func(i, j int) bool { return progress[i].UserID < progress[j].UserID })
+	return progress
+}
+
+// competitionRouteAttempt es un intento de competencia tipo route: el valor
+// matcheado y la duración del intento (desempate D10).
+type competitionRouteAttempt struct {
+	userID     int64
+	pct        float64
+	durationMs float64
+}
+
+// routeAttempts arma los intentos de la competencia a partir de los runner
+// sessions tagueados: 1 batch de sesiones + 1 batch de puntos, sin N+1.
+// Devuelve también los instance_ids de TODOS los intentos registrados (canales
+// WS del cierre). Solo los intentos finished de participantes computan match.
+func (s *competitionService) routeAttempts(ctx *gin.Context, bundle *competitionBundle) (attempts []competitionRouteAttempt, registeredInstanceIDs []int64, err error) {
+	sessions, err := s.dao.ListAttemptSessions(ctx, bundle.comp.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	seenInstances := make(map[int64]bool, len(sessions))
+	inParticipants := make(map[int64]bool, len(bundle.participants))
+	for _, uid := range bundle.participants {
+		inParticipants[uid] = true
+	}
+	finished := make([]dbs.RunnerSession, 0, len(sessions))
+	for _, rs := range sessions {
+		if !seenInstances[rs.SessionInstanceID] {
+			seenInstances[rs.SessionInstanceID] = true
+			registeredInstanceIDs = append(registeredInstanceIDs, rs.SessionInstanceID)
+		}
+		if !inParticipants[rs.AthleteUserID] || rs.Status != runnersession.RunnerSessionStatusFinished {
+			continue
+		}
+		finished = append(finished, rs)
+	}
+	if len(finished) == 0 {
+		return nil, registeredInstanceIDs, nil
+	}
+	instanceIDs := make([]int64, 0, len(finished))
+	for _, rs := range finished {
+		instanceIDs = append(instanceIDs, rs.SessionInstanceID)
+	}
+	points, err := s.dao.ListAttemptPoints(ctx, instanceIDs, bundle.participants)
+	if err != nil {
+		return nil, nil, err
+	}
+	byAttempt := make(map[[2]int64][]routematch.Point, len(points))
+	for _, p := range points {
+		key := [2]int64{p.SessionInstanceID, p.AthleteUserID}
+		byAttempt[key] = append(byAttempt[key], routematch.Point{Lat: p.Latitude, Lng: p.Longitude})
+	}
+	samples, err := s.routeSamples(ctx, bundle.comp)
+	if err != nil {
+		return nil, nil, err
+	}
+	radius := 0.0
+	if bundle.comp.AcceptanceRadiusMeters != nil {
+		radius = *bundle.comp.AcceptanceRadiusMeters
+	}
+	attempts = make([]competitionRouteAttempt, 0, len(finished))
+	for _, rs := range finished {
+		pct := routematch.MatchPercent(samples, radius, byAttempt[[2]int64{rs.SessionInstanceID, rs.AthleteUserID}])
+		duration := 0.0
+		if rs.EndDate != nil && rs.EndDate.After(rs.StartDate) {
+			duration = rs.EndDate.Sub(rs.StartDate).Seconds() * 1000
+		}
+		attempts = append(attempts, competitionRouteAttempt{userID: rs.AthleteUserID, pct: pct, durationMs: duration})
+	}
+	return attempts, registeredInstanceIDs, nil
+}
+
+// routeSamples parsea y samplea el GeoJSON de la competencia; el fallo de
+// parseo (ruta mal cargada en el alta) loguea y se propaga: cerrar/detallar
+// con un matching sin ruta confiable sería mentir el %.
+func (s *competitionService) routeSamples(ctx *gin.Context, comp *dbs.Competition) ([]routematch.Point, error) {
+	if comp.RouteGeoJSON == nil {
+		return nil, fmt.Errorf("competencia %d sin route_geojson", comp.ID)
+	}
+	route, err := routematch.ParseLineString(*comp.RouteGeoJSON)
+	if err != nil {
+		customlogger.Error(ctx, "error parsing competition route", err, customlogger.TagMethod("CompetitionRouteMatch"))
+		return nil, fmt.Errorf("route_geojson inválido: %w", err)
+	}
+	return routematch.SampleRoute(route), nil
+}
+
+// computeRouteProgress arma el mejor % de match de cada participante hasta
+// ahora (detalle on-demand; el matching es el mismo del cierre, D10).
+func (s *competitionService) computeRouteProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgressItem {
+	attempts, _, err := s.routeAttempts(ctx, bundle)
+	if err != nil {
+		customlogger.Error(ctx, "error computing competition route progress", err, customlogger.TagMethod("CompetitionGet"))
+		return nil
+	}
+	best := make(map[int64]float64, len(attempts))
+	for _, a := range attempts {
+		if a.pct > best[a.userID] {
+			best[a.userID] = a.pct
+		}
+	}
+	progress := make([]competition.CompetitionProgressItem, 0, len(bundle.participants))
+	for _, uid := range bundle.participants {
+		value := best[uid]
+		progress = append(progress, competition.CompetitionProgressItem{UserID: uid, Value: &value})
 	}
 	sort.Slice(progress, func(i, j int) bool { return progress[i].UserID < progress[j].UserID })
 	return progress
@@ -445,40 +571,200 @@ func metricValueFromAgg(agg dbs.CompetitionMetricAgg, metric *string) *float64 {
 	return nil
 }
 
-func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error) {
+func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
 	bundle, err := s.loadBundle(ctx, competitionID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Guard: creador (trainer o runner) u owner del team.
 	isOwner, err := s.dao.IsTeamOwner(ctx, bundle.comp.TeamID, callerID)
 	if err != nil {
-		return nil, fmt.Errorf("error al cerrar la competencia")
+		return nil, nil, fmt.Errorf("error al cerrar la competencia")
 	}
 	if !isOwner && bundle.comp.CreatedByUserID != callerID {
-		return nil, ErrCompetitionForbidden
+		return nil, nil, ErrCompetitionForbidden
 	}
 	if bundle.comp.Status != competition.StatusActive {
-		return nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
+		return nil, nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
 	}
 	// Cierre manual pedido antes de que el end_at pase (D9: manual; si el
 	// front lo intenta antes de que la ventana termine, 400).
 	if bundle.comp.EndAt != nil && gametime.Now().Before(*bundle.comp.EndAt) {
-		return nil, fmt.Errorf("%w: competencia no puede cerrarse todavía", ErrCompetitionInvalid)
+		return nil, nil, fmt.Errorf("%w: competencia no puede cerrarse todavía", ErrCompetitionInvalid)
 	}
-	updated, err := s.dao.Finish(ctx, competitionID, gametime.Now())
+
+	// Intentos registrados: canales WS del cierre (solo si hay).
+	attemptSessions, err := s.dao.ListAttemptSessions(ctx, competitionID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing competition attempts", err, customlogger.TagMethod("CompetitionClose"))
+		return nil, nil, fmt.Errorf("error al cerrar la competencia")
+	}
+	registeredInstanceIDs := make([]int64, 0, len(attemptSessions))
+	seen := make(map[int64]bool, len(attemptSessions))
+	for _, rs := range attemptSessions {
+		if !seen[rs.SessionInstanceID] {
+			seen[rs.SessionInstanceID] = true
+			registeredInstanceIDs = append(registeredInstanceIDs, rs.SessionInstanceID)
+		}
+	}
+
+	// Winners: metric por ventana / route por matching. Fallo aquí (ex. ruta
+	// mal cargada) sube: cerrar sin matching confiable mentiría el resultado.
+	winners, err := s.computeWinners(ctx, bundle)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al cerrar la competencia")
+	}
+	finishedAt := gametime.Now()
+	// Efectos en la MISMA transacción del finish: winners, stamps (solo con
+	// ganador) y unseen para todos los participantes (D9).
+	stamps, unseen := closeEffects(bundle, winners, finishedAt)
+	updated, err := s.dao.Finish(ctx, competitionID, finishedAt, winners, stamps, unseen)
 	if err != nil {
 		customlogger.Error(ctx, "error closing competition", err, customlogger.TagMethod("CompetitionClose"))
-		return nil, fmt.Errorf("error al cerrar la competencia")
+		return nil, nil, fmt.Errorf("error al cerrar la competencia")
 	}
 	if !updated {
-		return nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
+		return nil, nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
 	}
-	detail, err := s.Get(ctx, callerID, competitionID)
-	if err != nil {
-		return nil, err
+
+	if len(winners) > 0 {
+		s.notifyFinish(bundle.participants, competitionID)
 	}
-	return &detail.Data, nil
+
+	// Respuesta directo del bundle (sin re-Get: el guard de detalle puede
+	// 403 a trainer creador no-owner — mismo fix de la moderación).
+	bundle.comp.Status = competition.StatusFinished
+	bundle.comp.FinishedAt = &finishedAt
+	bundle.winners = winners
+	return s.detailResponse(ctx, bundle), registeredInstanceIDs, nil
+}
+
+// computeWinners compara la métrica (o el match % de route) entre participantes.
+// Empate EXACTO → todos ganan (D9). Value null (sin datos) = sin candidato.
+// type=metric usa la misma agregación en ventana que el progreso del detalle
+// (criterios del leaderboard D6); pace menor = mejor.
+func (s *competitionService) computeWinners(ctx *gin.Context, bundle *competitionBundle) ([]int64, error) {
+	switch bundle.comp.Type {
+	case competition.TypeMetric:
+		agg, err := s.dao.AggregateFeedbackWindow(ctx, bundle.comp.TeamID, bundle.participants, gametime.DateOnly(bundle.comp.StartAt), gametime.DateOnly(windowEnd(bundle.comp)))
+		if err != nil {
+			return nil, err
+		}
+		byUser := make(map[int64]*float64, len(agg))
+		for _, r := range agg {
+			byUser[r.UserID] = metricValueFromAgg(r, bundle.comp.Metric)
+		}
+		best := bestMetricCandidates(bundle.participants, bundle.comp.Metric, func(uid int64) *float64 {
+			return byUser[uid]
+		})
+		return best, nil
+	case competition.TypeRoute:
+		attempts, _, err := s.routeAttempts(ctx, bundle)
+		if err != nil {
+			return nil, err
+		}
+		if len(attempts) == 0 {
+			return nil, nil
+		}
+		bestPct := attempts[0].pct
+		for _, a := range attempts[1:] {
+			if a.pct > bestPct {
+				bestPct = a.pct
+			}
+		}
+		// Tie-break de duración SOLO dentro del subconjunto del mejor %.
+		bestDur := 0.0
+		for _, a := range attempts {
+			if a.pct == bestPct && (bestDur == 0 || a.durationMs < bestDur) {
+				bestDur = a.durationMs
+			}
+		}
+		winners := make([]int64, 0, len(attempts))
+		for _, a := range attempts {
+			if a.pct == bestPct && a.durationMs == bestDur {
+				winners = append(winners, a.userID)
+			}
+		}
+		return winners, nil
+	}
+	return nil, nil
+}
+
+// bestMetricCandidates devuelve todos los usuarios empatados en el mejor valor
+// de métrica (igualdad EXACTA: D9 empate → todos ganan). Menor pace = mejor.
+func bestMetricCandidates(participants []int64, metric *string, valueOf func(int64) *float64) []int64 {
+	candidates := make([]int64, 0, len(participants))
+	var best *float64
+	for _, uid := range participants {
+		v := valueOf(uid)
+		if v == nil {
+			continue
+		}
+		if best == nil {
+			best = v
+			candidates = append(candidates, uid)
+			continue
+		}
+		if isBetterMetricValue(metric, *v, *best) {
+			best = v
+			candidates = candidates[:0] // reset slice length
+			candidates = append(candidates, uid)
+		} else if *v == *best {
+			candidates = append(candidates, uid)
+		}
+	}
+	return candidates
+}
+
+// isBetterMetricValue indica si el valor a supera a b dentro del ranking del
+// metric dado. Los 4 son fuente de feedback (D6); pace menor mejor.
+func isBetterMetricValue(metric *string, a, b float64) bool {
+	if metric != nil && *metric == "pace" {
+		return a < b
+	}
+	return a > b
+}
+
+// closeEffects arma stamps (solo si hay ganadores) y unseen (todos los
+// participantes) — filas para la tx de Finish del DAO.
+func closeEffects(bundle *competitionBundle, winners []int64, finishedAt time.Time) ([]dbs.GamificationStamp, []dbs.GamificationUnseen) {
+	var stamps []dbs.GamificationStamp
+	if len(winners) > 0 {
+		stamps = make([]dbs.GamificationStamp, 0, len(winners))
+		for _, uid := range winners {
+			stamps = append(stamps, dbs.GamificationStamp{
+				UserID:     uid,
+				Type:       "competition",
+				SourceID:   bundle.comp.ID,
+				SourceName: fmt.Sprintf("Competencia %d", bundle.comp.ID),
+				GrantedAt:  finishedAt,
+				Count:      1,
+			})
+		}
+	}
+	unseen := make([]dbs.GamificationUnseen, 0, len(bundle.participants))
+	for _, uid := range bundle.participants {
+		unseen = append(unseen, dbs.GamificationUnseen{
+			UserID:  uid,
+			Section: constants.GamificationSectionCompetitions,
+			TeamID:  &bundle.comp.TeamID,
+		})
+	}
+	return stamps, unseen
+}
+
+// notifyFinish es el push best-effort del cierre a los participantes: texto
+// genérico (D8: sin title, "Competencia Finalizada"), data.route placeholder y
+// fail silencioso con log.
+func (s *competitionService) notifyFinish(participants []int64, competitionID int64) {
+	if s.pushTokenDao == nil || s.pushClient == nil {
+		return
+	}
+	route := fmt.Sprintf("/competencias/%d", competitionID)
+	for _, uid := range participants {
+		sendPushToUser(nil, s.pushTokenDao, s.pushClient, uid,
+			"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", "competition_finished", route)
+	}
 }
 
 // notifyCreator es el push best-effort de moderación hacia el corredor

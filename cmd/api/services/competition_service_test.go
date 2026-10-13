@@ -29,12 +29,16 @@ type mockCompetitionDAO struct {
 	isParticipantFn    func(competitionID, userID int64) (bool, error)
 	approveFn          func(competitionID, approvedBy int64) (bool, error)
 	rejectFn           func(competitionID int64, reason *string) (bool, error)
-	finishFn           func(competitionID int64, finishedAt time.Time) (bool, error)
+	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
 	deleteFn           func(competitionID int64) error
 	hasUnseenFn        func(userID, teamID int64) (bool, error)
 	aggregateWindowFn  func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
+	attemptSessionsFn  func(competitionID int64) ([]dbs.RunnerSession, error)
+	attemptPointsFn    func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
+	lastFinishWinners                                                []int64
+	lastFinishUnseenCount, lastFinishStampsCount                     int
 }
 
 func (m *mockCompetitionDAO) IsTeamOwner(ctx *gin.Context, teamID, userID int64) (bool, error) {
@@ -121,10 +125,13 @@ func (m *mockCompetitionDAO) Reject(ctx *gin.Context, competitionID int64, reaso
 	return true, nil
 }
 
-func (m *mockCompetitionDAO) Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time) (bool, error) {
+func (m *mockCompetitionDAO) Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error) {
 	m.finishCalls++
+	m.lastFinishWinners = winners
+	m.lastFinishUnseenCount = len(unseen)
+	m.lastFinishStampsCount = len(stamps)
 	if m.finishFn != nil {
-		return m.finishFn(competitionID, finishedAt)
+		return m.finishFn(competitionID, finishedAt, winners, stamps, unseen)
 	}
 	return true, nil
 }
@@ -147,6 +154,20 @@ func (m *mockCompetitionDAO) HasUnseenTeam(ctx *gin.Context, userID, teamID int6
 func (m *mockCompetitionDAO) AggregateFeedbackWindow(ctx *gin.Context, teamID int64, participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error) {
 	if m.aggregateWindowFn != nil {
 		return m.aggregateWindowFn(participantIDs, startAt, endAt)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) ListAttemptSessions(ctx *gin.Context, competitionID int64) ([]dbs.RunnerSession, error) {
+	if m.attemptSessionsFn != nil {
+		return m.attemptSessionsFn(competitionID)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) ListAttemptPoints(ctx *gin.Context, instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+	if m.attemptPointsFn != nil {
+		return m.attemptPointsFn(instanceIDs, athleteIDs)
 	}
 	return nil, nil
 }
@@ -564,16 +585,21 @@ func TestCompetitionService_GetDetalleProgreso(t *testing.T) {
 	assert.InDelta(t, 3000.0, *resp.Data.Progress[0].Value, 0.0001)
 	assert.InDelta(t, 7000.0, *resp.Data.Progress[1].Value, 0.0001)
 
-	// type=route queda sin progress (E4.2).
+	// type=route con el matcher de E4.2: sin intentos registrados, cada
+	// participante muestra 0 (y no se pide agregación de métrica).
 	comp.Type = competition.TypeRoute
 	comp.Metric = nil
 	dao.aggregateWindowFn = func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error) {
-		t.Fatal("la ruta no debe pedir agregación hasta el matching de E4.2")
+		t.Fatal("la ruta no debe pedir agregación de métrica")
 		return nil, nil
 	}
 	resp, err = svc.Get(nil, 3, 5)
 	require.NoError(t, err)
-	assert.Empty(t, resp.Data.Progress)
+	require.Len(t, resp.Data.Progress, 2)
+	for _, item := range resp.Data.Progress {
+		require.NotNil(t, item.Value)
+		assert.InDelta(t, 0.0, *item.Value, 1e-9)
+	}
 }
 
 func TestCompetitionService_Close(t *testing.T) {
@@ -604,7 +630,7 @@ func TestCompetitionService_Close(t *testing.T) {
 				}, nil
 			},
 			isMemberFn: func(teamID, userID int64) (bool, error) { return userID == createdBy, nil },
-			finishFn: func(competitionID int64, at time.Time) (bool, error) {
+			finishFn: func(competitionID int64, at time.Time, _ []int64, _ []dbs.GamificationStamp, _ []dbs.GamificationUnseen) (bool, error) {
 				closed = true
 				return true, nil
 			},
@@ -616,12 +642,12 @@ func TestCompetitionService_Close(t *testing.T) {
 	// Caller que no es creador ni owner: 403.
 	dao := closeDao(competition.StatusActive, &endPassed, 77, competition.CreatorRoleRunner)
 	svc := newCompetitionServiceForTest(dao)
-	_, err := svc.Close(nil, 99, 5)
+	_, _, err := svc.Close(nil, 99, 5)
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
 	assert.Zero(t, dao.finishCalls)
 
 	// Corredor creador cierra (ventana terminada): 200.
-	resp, err := svc.Close(nil, 77, 5)
+	resp, _, err := svc.Close(nil, 77, 5)
 	require.NoError(t, err)
 	assert.Equal(t, competition.StatusFinished, resp.Status)
 	assert.Equal(t, 1, dao.finishCalls)
@@ -629,7 +655,7 @@ func TestCompetitionService_Close(t *testing.T) {
 	// Cierre antes de end_at: 400 y sin persistir cierre.
 	dao = closeDao(competition.StatusActive, &endFuture, 77, competition.CreatorRoleRunner)
 	svc = newCompetitionServiceForTest(dao)
-	_, err = svc.Close(nil, 77, 5)
+	_, _, err = svc.Close(nil, 77, 5)
 	require.ErrorContains(t, err, "competencia no puede cerrarse todavía")
 	assert.Zero(t, dao.finishCalls)
 
@@ -637,14 +663,14 @@ func TestCompetitionService_Close(t *testing.T) {
 	dao = closeDao(competition.StatusActive, &endPassed, 77, competition.CreatorRoleRunner)
 	dao.isOwnerFn = func(teamID, userID int64) (bool, error) { return true, nil }
 	svc = newCompetitionServiceForTest(dao)
-	_, err = svc.Close(nil, 1, 5)
+	_, _, err = svc.Close(nil, 1, 5)
 	require.NoError(t, err)
 	assert.Equal(t, 1, dao.finishCalls)
 
 	// Cerrar algo no activo: 400.
 	dao = closeDao(competition.StatusPendingApproval, nil, 77, competition.CreatorRoleRunner)
 	svc = newCompetitionServiceForTest(dao)
-	_, err = svc.Close(nil, 77, 5)
+	_, _, err = svc.Close(nil, 77, 5)
 	require.ErrorIs(t, err, ErrCompetitionConflict)
 	assert.Zero(t, dao.finishCalls)
 }
@@ -671,20 +697,26 @@ func TestCompetitionsMetricValueFromAgg(t *testing.T) {
 func ptrInt64Ms(v int64) *int64 { return &v }
 
 func TestCompetitionService_ModeracionTrainerCreador(t *testing.T) {
-	dao := &mockCompetitionDAO{
+	var dao *mockCompetitionDAO
+	dao = &mockCompetitionDAO{
 		findByIDFn: func(id int64) (*dbs.Competition, error) {
+			statusNow := competition.StatusPendingApproval
+			if dao.approveCalls > 0 {
+				statusNow = competition.StatusActive
+			}
 			return &dbs.Competition{
-				ID: id, TeamID: 10, Status: competition.StatusPendingApproval,
+				ID: id, TeamID: 10, Status: statusNow,
 				CreatedByUserID: 77, CreatedByRole: competition.CreatorRoleTrainer,
 			}, nil
 		},
 	}
 	svc := newCompetitionServiceForTest(dao)
-	// La moderación sí corre (el guard admite al trainer creador), aunque el
-	// Get final falla por el guard mockeado sin memberships.
-	_, err := svc.Approve(nil, 77, 5)
-	require.ErrorIs(t, err, ErrCompetitionForbidden)
+	// El guard de moderación admite al trainer creador; la respuesta se arma
+	// desde el bundle ya cargado (Task 6: sin re-Get que 403 post-mutación).
+	resp, err := svc.Approve(nil, 77, 5)
+	require.NoError(t, err)
 	assert.Equal(t, 1, dao.approveCalls)
+	assert.Equal(t, competition.StatusActive, resp.Status)
 }
 
 func TestCompetitionService_ModeracionPushAlCreador(t *testing.T) {
@@ -698,7 +730,13 @@ func TestCompetitionService_ModeracionPushAlCreador(t *testing.T) {
 			return &dbs.Competition{
 				ID: id, TeamID: 10, Status: statusNow,
 				CreatedByUserID: 77, CreatedByRole: competition.CreatorRoleRunner,
-				ApprovedByUserID: func() *int64 { if dao.approveCalls > 0 { i := int64(1); return &i }; return nil }(),
+				ApprovedByUserID: func() *int64 {
+					if dao.approveCalls > 0 {
+						i := int64(1)
+						return &i
+					}
+					return nil
+				}(),
 			}, nil
 		},
 		isOwnerFn: func(teamID, userID int64) (bool, error) { return userID == 1, nil },

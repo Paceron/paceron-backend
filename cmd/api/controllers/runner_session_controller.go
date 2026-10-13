@@ -81,6 +81,17 @@ func (rc *runnerSessionController) emitSessionState(sessionInstanceID int64, day
 	rc.notifier.Emit(channel, realtime.MarshalUpdateSessionState(channel, toSessionStateData(day)))
 }
 
+// emitCompetitionProgress emite el frame update:competition_progress (E4.2
+// D9) al canal de la instancia, sólo para intentos tagueados al pasar a
+// finished. nil-safe; la ausencia del campo no emite.
+func (rc *runnerSessionController) emitCompetitionProgress(sessionInstanceID int64, rs *dbs.RunnerSession) {
+	if rc.notifier == nil || rs.CompetitionID == nil || rs.Status != runnersession.RunnerSessionStatusFinished {
+		return
+	}
+	channel := sessionChannel(sessionInstanceID)
+	rc.notifier.Emit(channel, realtime.MarshalUpdateCompetitionProgress(channel, *rs.CompetitionID, rs.AthleteUserID))
+}
+
 // respondRunnerSessionError mapea los errores de negocio del service a status HTTP.
 func respondRunnerSessionError(c *gin.Context, err error) {
 	statusCode := http.StatusInternalServerError
@@ -279,6 +290,12 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 			rc.emitSessionState(sessionInstanceID, day)
 		}
 	}
+
+	// Hook de competencia (E4.2 D9): intento tagueado que pasa a finished
+	// emite update:competition_progress por el canal de la instancia, payload
+	// mínimo {competition_id, user_id}, SIN exclusión del emisor (mismo
+	// fan-out del broadcast de feedback). nil-safe.
+	rc.emitCompetitionProgress(sessionInstanceID, rs)
 
 	response := toRunnerSessionResponse(rs)
 	message := runnersession.MsgRunnerSessionFinished

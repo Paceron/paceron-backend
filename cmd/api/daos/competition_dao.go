@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
-	"simple-arq-golang/cmd/api/domains/competition"
 )
 
 // ErrCompetitionNotFound se devuelve cuando la competencia no existe. El
@@ -48,10 +48,20 @@ type CompetitionDAOInterface interface {
 	IsParticipant(ctx *gin.Context, competitionID, userID int64) (bool, error)
 	// Approve / Reject / Finish aplican la transición de status (guard de
 	// status en el WHERE: solo corren sobre el status origen válido) y
-	// devuelven si hubo cambio.
+	// devuelven si hubo cambio. Finish es el cierre E4.2 race-safe: una única
+	// transacción persiste la transición + winners + stamps + unseen
+	// (all-or-nothing). Los efectos nulos son no-op.
 	Approve(ctx *gin.Context, competitionID, approvedByUserID int64) (bool, error)
 	Reject(ctx *gin.Context, competitionID int64, reason *string) (bool, error)
-	Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time) (bool, error)
+	Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
+
+	// ListAttemptSessions devuelve los runner sessions tagueados con
+	// competition_id (intentos registrados de cualquier status; el service
+	// filtra finished para el matching — D9/D10).
+	ListAttemptSessions(ctx *gin.Context, competitionID int64) ([]dbs.RunnerSession, error)
+	// ListAttemptPoints trae en una sola query los puntos GPS de los intentos
+	// provistos (join feedback activo del atleta, D10).
+	ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 	// Delete borra físicamente la competencia junto con sus participantes
 	// (DELETE cancel D9; borrado físico).
 	Delete(ctx *gin.Context, competitionID int64) error
@@ -222,8 +232,8 @@ func (d *competitionDao) Reject(ctx *gin.Context, competitionID int64, reason *s
 	res := d.DB.Model(&dbs.Competition{}).
 		Where("id = ? AND status = ?", competitionID, competition.StatusPendingApproval).
 		Updates(map[string]interface{}{
-			"status":            competition.StatusRejected,
-			"rejection_reason":  reason,
+			"status":           competition.StatusRejected,
+			"rejection_reason": reason,
 		})
 	if res.Error != nil {
 		return false, fmt.Errorf("error rejecting competition: %w", res.Error)
@@ -231,17 +241,52 @@ func (d *competitionDao) Reject(ctx *gin.Context, competitionID int64, reason *s
 	return res.RowsAffected == 1, nil
 }
 
-func (d *competitionDao) Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time) (bool, error) {
-	res := d.DB.Model(&dbs.Competition{}).
-		Where("id = ? AND status = ?", competitionID, competition.StatusActive).
-		Updates(map[string]interface{}{
-			"status":      competition.StatusFinished,
-			"finished_at": finishedAt,
-		})
-	if res.Error != nil {
-		return false, fmt.Errorf("error finishing competition: %w", res.Error)
+// Finish persiste en una sola transacción la transición de status (con guard
+// en el WHERE sobre active) y los efectos del cierre: winners, stamps y
+// unseen. Si el update no toca filas (carrera: la competencia ya no está
+// active) no escribe efectos y devuelve false — ni dobles winners ni dobles
+// stamps por doble close.
+func (d *competitionDao) Finish(ctx *gin.Context, competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error) {
+	var updated bool
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&dbs.Competition{}).
+			Where("id = ? AND status = ?", competitionID, competition.StatusActive).
+			Updates(map[string]interface{}{
+				"status":      competition.StatusFinished,
+				"finished_at": finishedAt,
+			})
+		if res.Error != nil {
+			return fmt.Errorf("error finishing competition: %w", res.Error)
+		}
+		if res.RowsAffected != 1 {
+			return nil
+		}
+		updated = true
+		if len(winners) > 0 {
+			rows := make([]dbs.CompetitionWinner, 0, len(winners))
+			for _, uid := range winners {
+				rows = append(rows, dbs.CompetitionWinner{CompetitionID: competitionID, UserID: uid})
+			}
+			if err := tx.Create(&rows).Error; err != nil {
+				return fmt.Errorf("error creating competition winners: %w", err)
+			}
+		}
+		if len(stamps) > 0 {
+			if err := tx.Create(&stamps).Error; err != nil {
+				return fmt.Errorf("error creating competition stamps: %w", err)
+			}
+		}
+		if len(unseen) > 0 {
+			if err := tx.Create(&unseen).Error; err != nil {
+				return fmt.Errorf("error creating competition unseen: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
 	}
-	return res.RowsAffected == 1, nil
+	return updated, nil
 }
 
 func (d *competitionDao) Delete(ctx *gin.Context, competitionID int64) error {
@@ -286,6 +331,36 @@ func (d *competitionDao) AggregateFeedbackWindow(ctx *gin.Context, teamID int64,
 		Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("error aggregating competition feedback window: %w", err)
+	}
+	return rows, nil
+}
+
+// ListAttemptSessions devuelve los runner sessions tagueados con la
+// competencia (intentos registrados, cualquier status): el service los filtra
+// finished para el matching y usa todos para los canales WS del cierre.
+func (d *competitionDao) ListAttemptSessions(ctx *gin.Context, competitionID int64) ([]dbs.RunnerSession, error) {
+	var sessions []dbs.RunnerSession
+	err := d.DB.Where("competition_id = ?", competitionID).Find(&sessions).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing competition attempts: %w", err)
+	}
+	return sessions, nil
+}
+
+// ListAttemptPoints une en una query los puntos GPS de los intentos (los
+// puntos viven del feedback activo del atleta sobre la misma instancia).
+func (d *competitionDao) ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+	if len(sessionInstanceIDs) == 0 || len(athleteUserIDs) == 0 {
+		return nil, nil
+	}
+	var rows []dbs.CompetitionAttemptPoint
+	err := d.DB.Table("workout_feedback_points AS p").
+		Select("p.session_instance_id, wf.athlete_user_id AS athlete_user_id, p.latitude, p.longitude").
+		Joins("JOIN workout_feedback wf ON wf.id = p.feedback_id AND wf.deleted_at IS NULL").
+		Where("p.session_instance_id IN ? AND wf.athlete_user_id IN ?", sessionInstanceIDs, athleteUserIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing competition attempt points: %w", err)
 	}
 	return rows, nil
 }

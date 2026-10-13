@@ -52,6 +52,15 @@ const UpdateAttendanceEventType = TypeUpdate + ":" + EventAttendance
 // del mensaje NO viaja en el frame — la privacidad la aplica el filtro del GET.
 const ControlMessageCreatedEventType = "control:message_created"
 
+// Competition events (gamificacion-core E4.2, D9): progress al terminar un
+// intento tagueado y finished al cerrar la competencia.
+const (
+	EventCompetition                    = "competition"
+	EventCompetitionFinish              = "competition_finished"
+	UpdateCompetitionProgressEventType  = TypeUpdate + ":" + EventCompetition + "_progress"
+	ControlCompetitionFinishedEventType = TypeControl + ":" + EventCompetitionFinish
+)
+
 // clientMessage es el decode de todo frame cliente → servidor. payload de
 // presence/control viaja opaco pero debe ser un objeto JSON (ver ParseInbound).
 type clientMessage struct {
@@ -127,4 +136,30 @@ func ParseInbound(raw []byte) (*clientMessage, error) {
 		return nil, fmt.Errorf("tipo desconocido: %q", msg.Type)
 	}
 	return &msg, nil
+}
+
+// MarshalUpdateCompetitionProgress arma el frame update:competition_progress
+// (E4.2 D9): payload mínimo {competition_id, user_id} emitido al terminar un
+// intento tagueado, SIN contenido y SIN exclusión del emisor (mismo fan-out
+// que el resto de los update:*).
+func MarshalUpdateCompetitionProgress(channel string, competitionID, userID int64) []byte {
+	payload, _ := json.Marshal(map[string]int64{"competition_id": competitionID, "user_id": userID})
+	return MarshalOutbound(&outboundMessage{
+		Type:    UpdateCompetitionProgressEventType,
+		Channel: channel,
+		Payload: payload,
+	})
+}
+
+// MarshalControlCompetitionFinished arma el frame control:competition_finished
+// (E4.2 D9): aviso mínimo {"competitionId"} por los canales session:{instance}
+// de los intentos registrados de la competencia cerrada (mismo shape de payload
+// mínimo que control:message_created).
+func MarshalControlCompetitionFinished(channel string, competitionID int64) []byte {
+	payload, _ := json.Marshal(map[string]int64{"competitionId": competitionID})
+	return MarshalOutbound(&outboundMessage{
+		Type:    ControlCompetitionFinishedEventType,
+		Channel: channel,
+		Payload: payload,
+	})
 }

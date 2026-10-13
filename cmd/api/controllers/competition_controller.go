@@ -1,6 +1,8 @@
 package controllers
 
-// Competencias (gamificacion-core E4.1, D9): CRUD, moderación, cierre stub.
+// Competencias (gamificacion-core E4.1, D9): CRUD, moderación y cierre. Task 6
+// (E4.2): el cierre emite control:competition_finished por los canales de los
+// intentos registrados (best-effort, nil-safe como el resto de los hooks).
 
 import (
 	"errors"
@@ -11,6 +13,7 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
@@ -28,10 +31,13 @@ type CompetitionController interface {
 
 type competitionController struct {
 	competitionService services.CompetitionServiceInterface
+	// notifier es opcional (nil): emite control:competition_finished al
+	// cerrar (D9). Sin intentos registrados no emite: el push alcanza al resto.
+	notifier realtime.Notifier
 }
 
-func NewCompetitionController(competitionService services.CompetitionServiceInterface) CompetitionController {
-	return &competitionController{competitionService: competitionService}
+func NewCompetitionController(competitionService services.CompetitionServiceInterface, notifier realtime.Notifier) CompetitionController {
+	return &competitionController{competitionService: competitionService, notifier: notifier}
 }
 
 // respondCompetitionError mapea los errores de negocio del service a status HTTP.
@@ -313,7 +319,7 @@ func (cc *competitionController) GetDetail(c *gin.Context) {
 
 // Close godoc
 // @Summary      Cerrar una competencia activa
-// @Description  Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active y con la ventana terminada si end_at está seteado: status finished + finished_at. La computación de winners corre en el pipeline del cierre (E4.2).
+// @Description  Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active y con la ventana terminada si end_at está seteado: status finished + finished_at + winners calculados (metric: mejor valor en ventana con empate exacto = todos ganan; route: mejor % de match con tie-break de menor duración). El ganador recibe stamp; a todos los participantes llegan unseen y push best-effort; a los canales de los intentos registrados sale control:competition_finished.
 // @Tags         gamification
 // @Produce      json
 // @Param        id    path  int  true  "ID de la competencia"
@@ -337,6 +343,22 @@ func (cc *competitionController) Close(c *gin.Context) {
 		})
 		return
 	}
-	resp, err := cc.competitionService.Close(c, authUserID, competitionID)
+	resp, attemptInstanceIDs, err := cc.competitionService.Close(c, authUserID, competitionID)
 	respondCompetitionMutation(c, resp, err)
+	if err == nil {
+		cc.emitCompetitionFinished(competitionID, attemptInstanceIDs)
+	}
+}
+
+// emitCompetitionFinished emite el frame control:competition_finished (D9) por
+// los canales session:{instance} de los intentos registrados. nil-safe; sin
+// intentos no emite (el push alcanza al resto).
+func (cc *competitionController) emitCompetitionFinished(competitionID int64, instanceIDs []int64) {
+	if cc.notifier == nil || len(instanceIDs) == 0 {
+		return
+	}
+	for _, id := range instanceIDs {
+		channel := sessionChannel(id)
+		cc.notifier.Emit(channel, realtime.MarshalControlCompetitionFinished(channel, competitionID))
+	}
 }
