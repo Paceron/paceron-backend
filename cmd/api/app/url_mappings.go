@@ -190,6 +190,10 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/users/:id/achievements", app.achievementsController.GetUserAchievements)
 	r.GET("/api/v1/users/:id/stamps", app.achievementsController.GetUserStamps)
 
+	// Gamificación: leaderboard por equipo (E3). Miembro de algún grupo del
+	// team O owner; solo corredores puntúan.
+	r.GET("/api/v1/teams/:id/leaderboard", app.leaderboardController.GetLeaderboard)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)

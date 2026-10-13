@@ -61,6 +61,7 @@ type Application struct {
 	streakController            controllers.StreakController
 	gamificationSeenController  controllers.GamificationSeenController
 	achievementsController      controllers.AchievementsController
+	leaderboardController       controllers.LeaderboardController
 	// Gateway WebSocket (ws-gateway-sesiones): hub + authorizer session:{id} + orígenes CORS.
 	realtimeGateway *realtime.Gateway
 }
@@ -330,6 +331,10 @@ func NewApplication() *Application {
 	achievementsService := services.NewAchievementsService(achievementDao, gamificationDao, streakService, pushTokenDao, expoPushClient)
 	achievementsController := controllers.NewAchievementsController(achievementsService)
 
+	// Gamificación (gamificacion-core E3): leaderboard por team (D7).
+	leaderboardService := services.NewLeaderboardService(daos.NewLeaderboardDao(db))
+	leaderboardController := controllers.NewLeaderboardController(leaderboardService)
+
 	// D7: el broadcast de feedback sale hub→Notifier→hook en el controller.
 	realtimeNotifier := realtime.NewHubNotifier(realtimeHub)
 	workoutFeedbackController := controllers.NewWorkoutFeedbackController(workoutFeedbackService, realtimeNotifier, achievementsService)
@@ -388,6 +393,7 @@ func NewApplication() *Application {
 		streakController:            streakController,
 		gamificationSeenController:  gamificationSeenController,
 		achievementsController:      achievementsController,
+		leaderboardController:       leaderboardController,
 		realtimeGateway:             realtimeGateway,
 	}
 }

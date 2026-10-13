@@ -92,6 +92,10 @@ type WorkoutFeedbackDAOInterface interface {
 	// falla (INSERT ... ON CONFLICT DO NOTHING). Devuelve la cantidad de filas
 	// realmente insertadas (created); el service calcula skipped = len - created.
 	BulkCreatePoints(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
+	// BulkCreatePointsRecompute es el flujo de subida del leaderboard (D6):
+	// mismo bulk idempotente y, si creó filas (count > 0), recompute de
+	// pace_sec_per_km/peak_speed_kph en la MISMA transacción.
+	BulkCreatePointsRecompute(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error)
 	// GetPointsByFeedback devuelve el recorrido de la serie ordenado por "order".
 	GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 
@@ -277,6 +281,56 @@ func (d *workoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID in
 		return nil, fmt.Errorf("error getting workout feedback points: %w", err)
 	}
 	return points, nil
+}
+
+// BulkCreatePointsRecompute inserta el batch y, si creó filas, recomputo
+// pace/peak sobre TODO el recorrido de la serie en la misma transacción
+// (recompute completo → idempotente ante reintentos y subidas parciales).
+func (d *workoutFeedbackDao) BulkCreatePointsRecompute(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error) {
+	var created int64
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		for i := range points {
+			points[i].FeedbackID = feedbackID
+		}
+		res := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "feedback_id"}, {Name: "order"}},
+			DoNothing: true,
+		}).Create(&points)
+		if res.Error != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(res.Error, &pgErr) && pgErr.Code == postgresUniqueViolation {
+				return ErrWorkoutFeedbackDuplicate
+			}
+			return fmt.Errorf("error creating workout feedback points: %w", res.Error)
+		}
+		created = res.RowsAffected
+		if created == 0 {
+			return nil
+		}
+
+		var feedback dbs.WorkoutFeedback
+		if err := tx.Select("id, duration_ms, distance_meters").
+			Where("id = ?", feedbackID).First(&feedback).Error; err != nil {
+			return fmt.Errorf("error loading feedback for recompute: %w", err)
+		}
+		var all []dbs.WorkoutFeedbackPoint
+		if err := tx.Where("feedback_id = ?", feedbackID).Order(`"order"`).Find(&all).Error; err != nil {
+			return fmt.Errorf("error loading points for recompute: %w", err)
+		}
+		if err := tx.Model(&dbs.WorkoutFeedback{}).
+			Where("id = ?", feedbackID).
+			Updates(map[string]interface{}{
+				"pace_sec_per_km": computePaceSecPerKM(feedback.DurationMs, feedback.DistanceMeters),
+				"peak_speed_kph":  computePeakSpeedKPH(all),
+			}).Error; err != nil {
+			return fmt.Errorf("error recomputing leaderboard columns: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return created, nil
 }
 
 // GetBySession devuelve los feedbacks activos de una sesión asignada, con un

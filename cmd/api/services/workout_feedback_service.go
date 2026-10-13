@@ -329,7 +329,7 @@ func (s *workoutFeedbackService) CreatePoints(ctx *gin.Context, authUserID, feed
 		})
 	}
 
-	created, err := s.workoutFeedbackDao.BulkCreatePoints(ctx, feedbackID, models)
+	created, err := s.workoutFeedbackDao.BulkCreatePointsRecompute(ctx, feedbackID, models)
 	if err != nil {
 		return nil, err
 	}

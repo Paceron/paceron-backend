@@ -5041,6 +5041,85 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/teams/{id}/leaderboard": {
+            "get": {
+                "description": "Ranking del team para una métrica (distance, duration, pace, peak_speed, sessions_count, attendance_count) y un período (week, month, year, custom, all), con top 5, viewer_rank y record histórico (solo period=all). Accessible para miembros de algún grupo del team o el owner; los corredores puntúan, el owner no genera fila propia. custom exige from y to (YYYY-MM-DD, from \u003c= to); los demás períodos se derivan de hoy en TZ America/Argentina/Cordoba.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Leaderboard del equipo",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID del equipo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "distance | duration | pace | peak_speed | sessions_count | attendance_count",
+                        "name": "metric",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "week | month | year | custom | all",
+                        "name": "period",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, obligatorio en custom)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD, obligatorio en custom)",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/{id}/users": {
             "get": {
                 "description": "Devuelve todos los miembros activos de un equipo. Solo otro miembro del equipo puede consultarlo",
@@ -9076,6 +9155,74 @@ const docTemplate = `{
                 },
                 "unit": {
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord": {
+            "type": "object",
+            "properties": {
+                "achieved_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse": {
+            "type": "object",
+            "properties": {
+                "record": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow"
+                    }
+                },
+                "viewer_rank": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank": {
+            "type": "object",
+            "properties": {
+                "rank": {
+                    "type": "integer"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "value": {
+                    "type": "number"
                 }
             }
         },

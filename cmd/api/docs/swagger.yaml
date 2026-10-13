@@ -726,6 +726,50 @@ definitions:
       unit:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord:
+    properties:
+      achieved_at:
+        type: string
+      name:
+        type: string
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse:
+    properties:
+      record:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRecord'
+      rows:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow'
+        type: array
+      viewer_rank:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank'
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardRow:
+    properties:
+      avatar_url:
+        type: string
+      name:
+        type: string
+      rank:
+        type: integer
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_gamification.LeaderboardViewerRank:
+    properties:
+      rank:
+        type: integer
+      user_id:
+        type: integer
+      value:
+        type: number
+    type: object
   simple-arq-golang_cmd_api_domains_gamification.SeenRequest:
     properties:
       section:
@@ -6330,6 +6374,64 @@ paths:
       summary: Solicitar ingreso a un equipo
       tags:
       - join-requests
+  /api/v1/teams/{id}/leaderboard:
+    get:
+      description: Ranking del team para una métrica (distance, duration, pace, peak_speed,
+        sessions_count, attendance_count) y un período (week, month, year, custom,
+        all), con top 5, viewer_rank y record histórico (solo period=all). Accessible
+        para miembros de algún grupo del team o el owner; los corredores puntúan,
+        el owner no genera fila propia. custom exige from y to (YYYY-MM-DD, from <=
+        to); los demás períodos se derivan de hoy en TZ America/Argentina/Cordoba.
+      parameters:
+      - description: ID del equipo
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: distance | duration | pace | peak_speed | sessions_count | attendance_count
+        in: query
+        name: metric
+        required: true
+        type: string
+      - description: week | month | year | custom | all
+        in: query
+        name: period
+        required: true
+        type: string
+      - description: Desde (YYYY-MM-DD, obligatorio en custom)
+        in: query
+        name: from
+        type: string
+      - description: Hasta (YYYY-MM-DD, obligatorio en custom)
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_gamification.LeaderboardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Leaderboard del equipo
+      tags:
+      - gamification
   /api/v1/teams/{id}/users:
     get:
       description: Devuelve todos los miembros activos de un equipo. Solo otro miembro
