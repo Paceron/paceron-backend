@@ -104,8 +104,10 @@ El sistema DEBE cumplir lo siguiente (MUST):
 #### Scenario: Cruza de varios hitos en un solo write
 
 - **WHEN** una correccion masiva de sesiones pasadas sube el current de la racha de 15 a 55
-- **THEN** se insertan unseen que reflejan la cruza de los hitos 20 y 50 hacia arriba; la
-  regla general es old < hito y new >= hito para cada hito de 10/20/50/100.
+- **THEN** se inserta UNA unseen de section streaks por esa racha (un salto que pisa varios
+  hitos es UNA novedad por racha afectada, sin multiplicar filas por hito; max 2 filas si
+  ambas rachas se ven afectadas). La regla de cruce es old < hito y new >= hito para cada
+  hito de 10/20/50/100.
 
 #### Scenario: Cambio de estado wip no dispara
 

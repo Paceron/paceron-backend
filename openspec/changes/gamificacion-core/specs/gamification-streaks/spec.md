@@ -35,8 +35,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 #### Scenario: Lectura propia con ventana default
 
 - **WHEN** el corredor llama a `GET /users/su-id/streaks` sin `days`
-- **THEN** responde `200` con la ventana de 42 días (41 días atrás hasta ayer) y `current`
-  y `best` calculados sobre todo el histórico hasta ayer.
+- **THEN** responde `200` con la ventana de 42 días (de 41 días atrás hasta el día de
+  hoy inclusive, con el día de hoy marcado `pending`) y `current` y `best` calculados sobre
+  todo el histórico hasta ayer (el día de hoy no los modifica).
 - **AND** los tres queries de lectura (memberships, calendario, sesiones) corren en batch, sin
   una query por día.
 
@@ -71,8 +72,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 #### Scenario: Solo el array se recorta por la ventana
 
 - **WHEN** el corredor histórico tiene una racha de 60 días y pide `days=7`
-- **THEN** `days` trae 7 elementos (de `hoy-6` hasta ayer) pero `current` y `best` reflejan
-  el histórico completo hasta ayer, no solo la ventana.
+- **THEN** `days` trae 7 elementos (de `hoy-6` hasta el día de hoy inclusive, con el día
+  de hoy marcado `pending`) pero `current` y `best` reflejan el histórico completo hasta
+  ayer, no solo la ventana.
 
 #### Scenario: Rachas ajenas
 
@@ -100,3 +102,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 - **WHEN** el helper fija hoy en Cordoba y la hora real del servidor en UTC es posterior
 - **THEN** la ventana responde a la fecha de Cordoba, no a la del servidor.
+
+#### Scenario: historia previa a la membresia no corta la racha
+
+- **WHEN** un corredor se une a un grupo con historico de calendar de trainings previos a su date_start
+- **THEN** los dias de training anteriores al ingreso del corredor en ESE grupo se clasifican `skipped` (no `failed`) y no cortan su racha
+- **AND** la racha current/best se consolida solo desde el dia de alta inclusive

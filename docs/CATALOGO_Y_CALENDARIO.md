@@ -578,6 +578,47 @@ Campos **aditivos** de ubicación para `users` y `teams` (columnas `lat`/`lng` n
 - **Charset de dirección relajado** (fix práctico de nombres reales tipo "Maipú-O'Connor, St."): los 4 regex de registro (`country`/`city`/`street`/`number`; `province` sin cambio) y los 5 de update admiten ahora **guion ASCII, punto, apóstrofe y coma** además de lo anterior. NO se admite U+2013 (guion tipográfico). Mensajes actualizados ("solo acepta letras, espacios, guiones, puntos, apóstrofes y comas" / con "números" en los campos alfanuméricos).
 - Este change además migró las escrituras del calendario a batch (§9, "Escrituras y lecturas batch del calendario") — sin cambio de contratos.
 
+### 8.14 Gamificación: rachas, logros, leaderboard y competencias (Gaps 30-34 — change `gamificacion-core`)
+
+Mecánica de dominio del módulo de gamificación. Shapes JSON, códigos HTTP y frames WS: `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16; spec: `openspec/changes/gamificacion-core/`. **Toda la aritmética de fechas usa TZ fija `America/Argentina/Cordoba`** vía el helper `utils/gametime` (var global sobreescribible en tests, D1) — no `time.Now()` local del servidor.
+
+#### Rachas (`GET /users/{id}/streaks`)
+
+- Día "contable" = `group_calendar_days` con `kind='training'` de los grupos con **membresía activa** del corredor. Cada día trae dos estados: **estricta** (A: todas las runner sessions del día `finished`) y **flexible** (B: al menos una `finished`); valores `completed|failed|skipped|pending`. `skipped` = día sin training asignado, training sin instancia (no puede completarse nunca) o **previo al `date_start` de la membresía del corredor en ese grupo** (historia ajena, no corta). `pending` = solo el día de hoy.
+- **La ventana de cálculo termina en AYER**: hoy nunca corta ni rompe una racha (queda `pending`). `current`/`best` se computan sobre TODO el histórico hasta ayer (best nunca es local a la ventana); el query `days` solo recorta el array de días.
+- El GET es **siempre exacto**: recalcula fresco con 3 queries batch (memberships, días training, sesiones finished) y **no consulta** `gamification_streak_state`.
+- Días previos a la membresía no cargan al histórico ni estiran su inicio: la racha se consolida desde el día de alta inclusive.
+
+#### Triggers de racha y novedades (`gamification_unseen` / `gamification_streak_state`)
+
+- El PATCH de runner session hacia `finished`/`interrupted` dispara post-commit un hook **async nil-safe** (D3): compara el current persistido en `gamification_streak_state` con el recálculo fresco (misma lógica del GET). Si una racha pasa de `> 0` a `0` (reset) o cruza un hito **10/20/50/100** hacia arriba (`old < hito && new >= hito`), inserta fila en `gamification_unseen` (section `streaks`). Un salto que pisa varios hitos es **una** novedad por racha afectada (máx 2 filas: estricta + flexible).
+- `gamification_streak_state` SOLO alimenta el trigger; el GET nunca la lee. La **deriva** (punto rojo tarde o doble) es degradación aceptada (D14): el fallo del trigger se loguea sin romper la respuesta.
+- El create `wip` y los writes del calendario **no** disparan el trigger.
+- **Unseen/seen:** `gamification_unseen` modela "hay algo nuevo que ver" (section `streaks|achievements|competitions`, `team_id` solo en competitions). `POST /users/{id}/gamification/seen` borra filas de la sección (con `team_id` filtra por equipo; sin él, todas). `has_unseen` viaja embebido en el GET de cada sección (competitions lo filtra por team).
+
+#### Logros (E2)
+
+- Catálogo de **21 logros "once"** versionado en constants Go (`constants/achievements.go`, `AchievementCatalogVersion`), no en tabla: consistency 6 (first_session, streak_3..60), volume 4 (distance_10k/50k/100k, distance_42k_single), sessions 5 (5/25/50/100/200), gps 3, early_bird 1 (early_5), team 2 (team_first/team_10). Umbral único por fila; la familia es metadata de agrupación (escalera multi-threshold es regla futura).
+- Evaluadores por criterio con hooks **post-commit async nil-safe** en los controllers que registran hechos: `runner_session` (finished: count, rachas vía D2, early_N por `started_at < 08:00` Cordoba), `feedback` (SUM distance, MAX por instancia), `gps_points` (sesiones finished con puntos), `asistencia` (días distintos confirmados). Cada trigger re-evalúa solo su mapa.
+- Desbloqueo **idempotente por PK compuesta** (`user_achievement_progress.user_id+achievement_id`): una vez, **sin revoke** (nunca se quita ni re-timestampa). Solo la primera inserción genera unseen y push best-effort (`/achievements`).
+- `gamification_stamp` se crea vacía en E2: solo recibe emisiones de E4.
+
+#### Leaderboard de team (E3)
+
+- `GET /teams/{id}/leaderboard`: 6 métricas (distance SUM m, duration SUM ms, **pace = SUM duration/SUM distance del período — razón agregada, menor mejor, no promedio de ritmos**, peak_speed MAX km/h, sessions_count, attendance_count) × 5 períodos (week desde el lunes, month, year, custom con from/to, all), base "hoy" en TZ Cordoba. Columnas denormalizadas `workout_feedback.pace_sec_per_km`/`peak_speed_kph` (D6) alimentan las agregaciones de feedback: recompute idempotente al subir points, sin backfill y sin exponerse en el DTO de feedback.
+- 1 query GROUP BY + batch de nombres/avatars (sin N+1). Solo corredores puntúan (el owner no genera fila).
+- Desempates: métricas de feedback → menos entrenamientos contribuyentes; `sessions_count` → empezó antes; `attendance_count` → registró antes su última asistencia. Ranks compartidos a igual valor exacto, la siguiente posición saltea N.
+- **Record solo con `period=all`**: el mejor valor histórico del team — para `pace` es el **mínimo** (mejor ritmo), para el resto el máximo. `achieved_at` = session_date de la fila que alcanzó el valor (a empate, la más reciente; en métricas SUM, la última fila contribuyente).
+
+#### Competencias (E4)
+
+- Modelo: `competition` (+`competition_participant`/`competition_winner`, PKs compuestas) y `runner_session.competition_id` **FK opaca** nullable (BIGINT > 0, sin constraint — patrón `attendances.training_session_id`).
+- Estados: `pending_approval → active` (approve del owner) | `rejected` (reject con reason opcional); `active → finished` (cierre). El creador corredor propone (`pending_approval`), el creador entrenador (owner) crea `active` directo. `cancel`: solo el creador corredor sobre `pending`, borrado físico con participantes. El trainer no compite (no puede ser participante).
+- **Intentos tagueados:** `POST /session-instances/:id/runner` acepta `competition_id` opcional; valida active + participante + ventana `[start_at, end_at]` al crear (400 si falla). Sin el campo, byte-idéntico.
+- **Cierre SIEMPRE manual** (owner/creador; no hay cron de auto-cierre — deuda documentada): solo sobre `active` y con la ventana terminada si hay `end_at`. Winners al cerrar: `metric` = mejor valor del acumulado en la ventana (para `pace` el menor) con **empate exacto = todos ganan**; `route` = mejor % de match con tie-break menor duración (duración exacta igual = todos ganan). Sin intentos → finished sin winner.
+- **Route matching (D10):** `route_geojson` (LineString) se samplea a pasos fijos de **~40 m** por segmento (`utils/routematch`); match % = fracción de samples dentro de `acceptance_radius_meters` de cualquier punto GPS del intento (**Haversine** en Go). Sin GPS → 0. Sin umbral mínimo. Corre solo en close y en el detalle on-demand (nunca por WS).
+- Efectos del cierre (misma transacción): stamps type `competition` a los ganadores (`source_name "Competencia N"`), unseen section `competitions` con `team_id` para **todos** los participantes, push best-effort, y `control:competition_finished` por los canales de los intentos registrados (solo si hay).
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

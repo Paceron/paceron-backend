@@ -54,7 +54,7 @@ El sistema DEBE cumplir lo siguiente (MUST):
 #### Scenario: Entrenador crea activa
 
 - **WHEN** el owner del team crea una competencia metric válida
-- **THEN** responde `201`/`200` con la competencia en status `active`.
+- **THEN** responde `200` con la competencia en status `active` (shape `CompetitionDetailResponse`, como el resto de las mutaciones).
 
 #### Scenario: Corredor propone
 
@@ -195,7 +195,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 El sistema DEBE cumplir lo siguiente (MUST):
 
 - `PATCH /competitions/{id}/close`: caller creador (trainer o runner) u owner del team.
-  SIEMPRE manual; el auto-cierre programado queda como deuda documentada.
+  SIEMPRE manual; el auto-cierre programado queda como deuda documentada. Solo sobre
+  `active` y, con `end_at` seteado, solo cuando la ventana ya terminó (cerrar antes de
+  `end_at` responde `400`).
 - Al cerrar: status = `finished`, finished_at = now, y winners:
   - type=metric: MAX de la métrica por participante en la ventana
     `[start_at, end_at o now]`; empates exactos → todos ganan (`winner_user_ids` con N
@@ -227,6 +229,11 @@ El sistema DEBE cumplir lo siguiente (MUST):
 - **WHEN** el cierre corre sobre una competencia sin ningún intento registrado
 - **THEN** la competencia queda `finished` con winner_user_ids vacía y sin stamps ni pushes
   de ganador.
+
+#### Scenario: Cierre antes de que termine la ventana
+
+- **WHEN** el creador intenta cerrar una competencia active con `end_at` en el futuro
+- **THEN** responde `400` (el cierre es manual pero exige la ventana vencida).
 
 #### Scenario: Stamp al ganador
 

@@ -110,9 +110,10 @@ El sistema DEBE cumplir lo siguiente (MUST):
   anterior).
 - Desempate específico de `attendance_count`: gana quien registró la última asistencia que
   le alcanzó con fecha más temprana.
-- `record` incluido SOLO con `period=all`: `{user_id, name, value, achieved_at}` del máximo
-  histórico del team para la métrica; achieved_at = session_date de la fila que alcanzó el
-  max, y a empate la más reciente.
+- `record` incluido SOLO con `period=all`: `{user_id, name, value, achieved_at}` del mejor
+  valor histórico del team para la métrica (para `pace` el MEJOR ritmo es el MÁS BAJO, no un
+  máximo); achieved_at = session_date de la fila que alcanzó el valor — para métricas SUM
+  (distance/duration) es la última fila contribuyente — y a empate la más reciente.
 
 #### Scenario: Empate comparte rank
 
