@@ -28,7 +28,7 @@ type CreateRunnerSessionRequest struct {
 	// CompetitionID delimita el intento a una competencia (gamificacion-core
 	// E4.1/D8, FK opaca). Opcional: sin el campo el flujo es idéntico al de
 	// siempre; si viene, el service valida active + participante + rango.
-	CompetitionID *int64    `json:"competition_id"`
+	CompetitionID *int64 `json:"competition_id"`
 }
 
 // RunnerStatusRequest es el body de PATCH /api/v1/session-instances/:id/runner.

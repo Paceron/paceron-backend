@@ -451,7 +451,9 @@ func TestStreakService_DBErrorMensajesContractuales(t *testing.T) {
 			findMembershipsFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 				return []dbs.GroupUser{{GroupID: 10}}, nil
 			},
-			findTrainingDaysFn: func(ctx *gin.Context, groupIDs []int64, until time.Time) ([]dbs.GroupCalendarDay, error) { return nil, boom },
+			findTrainingDaysFn: func(ctx *gin.Context, groupIDs []int64, until time.Time) ([]dbs.GroupCalendarDay, error) {
+				return nil, boom
+			},
 		},
 		"finished": {
 			findMembershipsFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {

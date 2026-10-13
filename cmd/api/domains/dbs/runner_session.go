@@ -15,15 +15,15 @@ import "time"
 // instante del primer Play / primer ingreso manual; end_date lo setea el
 // servidor al pasar a finished. No hay soft-delete (lifecycle wip -> finished).
 type RunnerSession struct {
-	ID                int64     `gorm:"column:id;primaryKey"`
-	SessionInstanceID int64     `gorm:"column:session_instance_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:1"`
-	AthleteUserID     int64     `gorm:"column:athlete_user_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:2"`
-	Status            string    `gorm:"column:status;not null;default:'wip'"`
-	StartDate         time.Time `gorm:"column:start_date;not null"`
+	ID                int64      `gorm:"column:id;primaryKey"`
+	SessionInstanceID int64      `gorm:"column:session_instance_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:1"`
+	AthleteUserID     int64      `gorm:"column:athlete_user_id;not null;uniqueIndex:uq_runner_session_session_athlete,priority:2"`
+	Status            string     `gorm:"column:status;not null;default:'wip'"`
+	StartDate         time.Time  `gorm:"column:start_date;not null"`
 	EndDate           *time.Time `gorm:"column:end_date"`
 	CompetitionID     *int64     `gorm:"column:competition_id"`
-	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt         time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	CreatedAt         time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt         time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (RunnerSession) TableName() string {

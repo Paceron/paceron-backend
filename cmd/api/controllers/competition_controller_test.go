@@ -330,6 +330,21 @@ func TestCompetitionController_Close_WSControlFrames(t *testing.T) {
 	}()
 	require.NoError(t, conn.WriteJSON(map[string]any{"type": "subscribe", "channel": "session:42"}))
 
+	// El frame del close solo llega a clientes ya registrados en el hub:
+	// esperar el "subscribed" antes del write (sin esto, bajo carga, el
+	// PATCH le gana al subscribe y el test flakea).
+waitForSubscribed:
+	for {
+		select {
+		case <-time.After(2 * time.Second):
+			t.Fatal("timeout esperando subscribed")
+		case got := <-frames:
+			if got[0] == "subscribed" {
+				break waitForSubscribed
+			}
+		}
+	}
+
 	require.Equal(t, http.StatusOK, doCompetitionRequest(t, router, http.MethodPatch, "/api/v1/competitions/5/close", "").Code)
 
 	deadline := time.After(2 * time.Second)
