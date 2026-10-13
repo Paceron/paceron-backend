@@ -385,9 +385,9 @@ func NewApplication() *Application {
 		workoutFeedbackController:   workoutFeedbackController,
 		sessionMessageController:    sessionMessageController,
 		runnerSessionController:     runnerSessionController,
-	streakController:            streakController,
-	gamificationSeenController:  gamificationSeenController,
-	achievementsController:      achievementsController,
+		streakController:            streakController,
+		gamificationSeenController:  gamificationSeenController,
+		achievementsController:      achievementsController,
 		realtimeGateway:             realtimeGateway,
 	}
 }
