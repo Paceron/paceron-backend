@@ -314,6 +314,29 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
+	// 11. Backfill de exercise_instances.source_exercise_id (2026-10-13).
+	//
+	// La columna la agregó AutoMigrate en el change instancia-referencia-catalogo
+	// (8670ffe, 2026-09-21) y se puebla al instanciar. AutoMigrate no toca filas
+	// existentes, así que TODA instancia estampada antes de esa fecha quedó en
+	// NULL. Sin el link, el dashboard no puede agrupar series: dos instancias de
+	// "Distancia 4 km" de enero y marzo serían dos ejercicios distintos y la
+	// progresión longitudinal se perdería.
+	//
+	// Es un backfill y no un fallback en cada query a propósito: el dato debería
+	// estar escrito, y matchear por nombre en cada request cuesta y decide la
+	// ambigüedad en silencio. Acá se matchea una vez, por (owner_id, nombre
+	// normalizado), y lo que no resuelve queda en NULL para el fallback —que sí
+	// es el caso raro y por eso está contado en data_quality.legacy_sessions.
+	//
+	// Idempotente: el UPDATE filtra las NULL, así que una segunda pasada no
+	// toca nada. Corre en autocommit como el resto del bloque; si alguna vez
+	// necesita transacción, va en su propio item (ver la nota del 10).
+	if err := BackfillSourceExerciseID(db); err != nil {
+		customlogger.Error(nil, "error backfilling source_exercise_id", err)
+		return nil, err
+	}
+
 	customlogger.Info(nil, "DB initialized successfully",
 		customlogger.Tag("db_name", configDB.Name))
 
