@@ -221,6 +221,17 @@ Durante el intento en curso (`wip`) no hay broadcast WS de nada (ni ranking ni t
 
 Backend NO aplica default: el campo es requerido en [5, 500] metros (`400` "el radio de aceptación debe estar entre 5 y 500 metros"). El frontend debe **sugerir 50 m** en su UI de creación de competencia de ruta.
 
+### Memoización del matching de ruta (ronda seguridad 2026-10-14)
+
+Dos recomputos que un memo por request/bundle ahorraría, documentados como mejora futura (no afectan correncta DIR): (a) `Close` de route corre `routeAttempts`/matching **2×** y `ListAttemptSessions` 3× (para canales WS + winners + respuesta final) — un campo memo en el bundle del request lo reduciría 1 query + 1 matching completo; (b) el progreso route del `GET /competitions/{id}` recomputa todo el matching O(samples×points) por GET aunque la ruta es inmutable — los samples son cacheables por competencia indefinidamente (hoy ~2500 allocs por GET). Bound actual aceptable (≤500 vértices / ≤100 km / ≤5000 puntos por bulk).
+
+### Sin MaxBytesReader ni rate-limit en los POST de competencias (ronda seguridad 2026-10-14)
+
+`POST /teams/{id}/competitions` bindea el body completo sin `http.MaxBytesReader` (ni rate-limit repo-wide; fotos es lo único con MaxBytes en el repo). El pico de memoria por request queda acotado en persistencia por las validaciones (500 vértices/100 km) pero el parseo/unmarshal ocurre ANTES de las validaciones. Follow-up transversal si algún día se generaliza límite de body/cuota en el repo.
+
 ## Resueltos (change `competencias-ruta-intake`, 2026-10-13)
+
+- **Guard de status de cancel** (ronda seguridad 2026-10-14): `DELETE cancel` tenía el DELETE sin condición de status en el SQL (race con approve podía borrar una competencia ya `active`). Ahora el DELETE exige `status = 'pending_approval'` en el WHERE y `RowsAffected==0` → `400` (patrón Approve/Reject/Finish), con test `TestCompetitionDAO_CancelVsApproveRace`. Resuelto en `5aed0e4`.
+- **Exclusión del owner como participante** (ronda seguridad 2026-10-14): solo se bloqueaba cuando el caller era owner; un corredor creador podía incluir al owner en participants. Ahora el owner se excluye SIEMPRE (resolución `TeamOwnerID` + guard incondicional), con test del 400 "el entrenador no compite". Resuelto en `5aed0e4` (mezcla: commit `f71c713` cerró antes el I1 de competencia rota tagueada sobre instancia ajena, guard bidireccional con `FindByRouteSessionInstance`)
 
 - **Validación de `route_geojson` en Create solo estructural** (deuda de `gamificacion-core`, entry eliminada de las Gamificación): Create ahora parsea el LineString y rechaza con `400` inválido / >500 vértices / >100 km Haversine (`routematch.ParseLineString` + `LineStringLength`) — el passthrough al `500` fail-safe en el matching ya no aplica en el alta (el matching sobre una competencia creada siempre tiene ruta confiable). Resuelto en `3e6d0c3`.
