@@ -237,6 +237,18 @@ func plannedStatus(day, athlete int) string {
 // lifecycle es parte del runbook: el backfill del ítem 11 de postgres.go corre en
 // cada arranque y las vuelve a llenar por nombre, que es justamente para lo que
 // existe.
+// isLegacyInstanceDay dice si el día tiene instancias a las que el seed les
+// borró el source_exercise_id. El espejo de lectura de markLegacyInstances: sin
+// esta, la verificación del seed no puede modelar el caso que él mismo crea.
+func isLegacyInstanceDay(dayIndex int) bool {
+	for _, d := range legacyInstanceDays {
+		if d == dayIndex {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *seeder) markLegacyInstances(days []seededDay) error {
 	targets := make(map[int]struct{}, len(legacyInstanceDays))
 	for _, dayIndex := range legacyInstanceDays {

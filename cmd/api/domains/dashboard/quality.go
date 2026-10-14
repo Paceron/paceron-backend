@@ -32,8 +32,11 @@ func dataQualityFromSeries(series []Series) DataQuality {
 			quality.UnknownStatus++
 		}
 		// legacy_sessions es informativo, no un defecto: cuenta series válidas
-		// que entran igual al KPI y que no tienen fila en runner_session.
-		if valid && !s.HasRunnerSession {
+		// que entran igual al KPI por una vía sin respaldo completo. Son dos
+		// casos que el usuario ve igual, así que van en el mismo contador:
+		//   1. sin fila en runner_session (anteriores al registro de sesión)
+		//   2. instancia resuelta por nombre, que el backfill no pudo resolver
+		if valid && (!s.HasRunnerSession || s.ResolvedByName) {
 			quality.LegacySessions++
 		}
 	}

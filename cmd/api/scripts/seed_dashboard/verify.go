@@ -174,6 +174,12 @@ func expectedDataQuality(planned []plannedSeries) dashboard.DataQuality {
 				DistanceMeters:   item.spec.DistanceMeters,
 				CompletionStatus: item.spec.CompletionStatus,
 				HasRunnerSession: !isLegacyAthlete(item.athlete.Index),
+				// markLegacyInstances deja en NULL el source_exercise_id de TODOS
+				// los bloques de los días de legacyInstanceDays, así que cada
+				// serie de esos días entra al KPI por el fallback de nombre y
+				// cuenta en legacy_sessions. Sin esto, la expectativa cuenta solo
+				// el caso de runner_session y difiere del dataset real.
+				ResolvedByName: isLegacyInstanceDay(item.day.DayIndex),
 			},
 			SetNumber:       item.spec.Input.Set,
 			TargetMinutes:   item.spec.TargetMinutes,

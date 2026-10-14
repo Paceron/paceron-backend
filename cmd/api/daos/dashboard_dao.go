@@ -54,6 +54,10 @@ type DashboardSeriesRow struct {
 	DistanceMeters      *float64
 	CompletionStatus    *string
 	HasRunnerSession    bool
+	// ResolvedByName marca las instancias que entraron por el fallback de nombre
+	// normalizado, o sea las que el backfill de source_exercise_id no pudo
+	// resolver. Es lo que las separa en data_quality.legacy_sessions.
+	ResolvedByName bool
 }
 
 // DashboardOpenSessions cuenta las sesiones en estado wip del scope. Es una
@@ -253,6 +257,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		"wf.distance_meters AS distance_meters",
 		"wf.completion_status AS completion_status",
 		"(rs.id IS NOT NULL) AS has_runner_session",
+		"(ei.source_exercise_id IS NULL) AS resolved_by_name",
 	}
 
 	args := []interface{}{filter.GroupIDs, filter.From, filter.To,
@@ -299,6 +304,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		DistanceMeters      *float64  `gorm:"column:distance_meters"`
 		CompletionStatus    *string   `gorm:"column:completion_status"`
 		HasRunnerSession    bool      `gorm:"column:has_runner_session"`
+		ResolvedByName      bool      `gorm:"column:resolved_by_name"`
 	}
 	if err := d.DB.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("error finding dashboard series: %w", err)
@@ -323,6 +329,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 			DistanceMeters:      row.DistanceMeters,
 			CompletionStatus:    row.CompletionStatus,
 			HasRunnerSession:    row.HasRunnerSession,
+			ResolvedByName:      row.ResolvedByName,
 		})
 	}
 	return out, nil

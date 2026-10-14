@@ -835,6 +835,7 @@ func mapSeriesRows(rows []daos.DashboardSeriesRow) []dashboard.ScopedSeries {
 				DistanceMeters:   row.DistanceMeters,
 				CompletionStatus: row.CompletionStatus,
 				HasRunnerSession: row.HasRunnerSession,
+				ResolvedByName:   row.ResolvedByName,
 			},
 			FeedbackID:          row.FeedbackID,
 			SessionInstanceID:   row.SessionInstanceID,

@@ -15,6 +15,11 @@ type Series struct {
 	DistanceMeters   *float64
 	CompletionStatus *string
 	HasRunnerSession bool
+	// ResolvedByName marca la serie cuya ExerciseInstance entró por el fallback
+	// de nombre normalizado (source_exercise_id sigue en NULL porque el backfill
+	// no pudo resolverla). No la invalida: la serie cuenta igual, pero se
+	// contabiliza en data_quality.legacy_sessions.
+	ResolvedByName bool
 }
 
 // TimeQuality marca si el tiempo logrado viene del tiempo activo o del
