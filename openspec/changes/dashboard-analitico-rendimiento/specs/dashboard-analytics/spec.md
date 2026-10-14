@@ -309,7 +309,16 @@ Por eso la regla es:
 
 El caso `NULL` se incluye porque esos datos son válidos: describen sesiones que sí ocurrieron, y excluirlos vaciaría el dashboard de todo el histórico previo al registro de sesión.
 
-Por eso `data_quality` **no es un conjunto cerrado de cinco campos**: suma `legacy_sessions`, el contador de **series** sin fila `runner_session` asociada. El nombre dice "sessions" por el de la tabla, pero cuenta series como el resto del bloque; `open_sessions` sí cuenta sesiones. Un conjunto cerrado no puede expresar "esto no es un error, es histórico", y sin ese campo el front no puede explicarle al usuario por qué ve menos sesiones de las que recuerda.
+Por eso `data_quality` **no es un conjunto cerrado de cinco campos**: suma `legacy_sessions`, el contador de series que entraron al KPI por una vía que no es la normal. Reúne los dos casos en que eso pasa:
+
+1. La serie **no tiene fila `runner_session`** — datos anteriores al feature de registro de sesión.
+2. La serie pertenece a una `ExerciseInstance` **sin `source_exercise_id`** que el backfill no pudo resolver, y que el fallback por nombre normalizado resuelve contra un ejercicio del mismo dueño.
+
+El caso 2 debería ser **cero** después del backfill: la columna se agregó con `AutoMigrate` el 2026-09-21 y no hubo backfill de filas previas, así que la migración del ítem 11 las rellena por `(owner_id, nombre normalizado)`. Queda en NULL solo lo que no matchea —mismo nombre con más de un ejercicio del mismo dueño, o un ejercicio que ya no está en el catálogo— y esas filas **no se descartan**: entran al KPI y se cuentan acá.
+
+Agrupar los dos casos en un campo es lo correcto porque el usuario los ve igual: en los dos, la serie se contou pero sin respaldo completo. El nombre dice "sessions" por el de la tabla, pero cuenta series como el resto del bloque; `open_sessions` sí cuenta sesiones.
+
+Un conjunto cerrado no puede expresar "esto no es un error, es histórico", y sin ese campo el front no puede explicarle al usuario por qué ve menos sesiones de las que recuerda.
 
 #### Scenario: Sesión a medias no degrada el cumplimiento
 
@@ -320,6 +329,11 @@ Por eso `data_quality` **no es un conjunto cerrado de cinco campos**: suma `lega
 
 - **WHEN** una serie pertenece a una sesión que nunca tuvo fila en `runner_session`
 - **THEN** la serie **entra** al KPI y `legacy_sessions` suma 1
+
+#### Scenario: Instancia que el backfill no pudo resolver
+
+- **WHEN** una `ExerciseInstance` sigue con `source_exercise_id` en NULL porque su nombre normalizado matchea más de un ejercicio del mismo dueño
+- **THEN** la serie **entra** al KPI resuelta por el fallback, y `legacy_sessions` suma 1
 
 #### Scenario: El filtro se aplica en la consulta
 
