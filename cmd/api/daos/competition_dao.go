@@ -80,8 +80,17 @@ type CompetitionDAOInterface interface {
 	// provistos (join feedback activo del atleta, D10).
 	ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 	// Delete borra físicamente la competencia junto con sus participantes
-	// (DELETE cancel D9; borrado físico).
-	Delete(ctx *gin.Context, competitionID int64) error
+	// (DELETE cancel D9; borrado físico). El guard de status corre en el SQL
+	// (solo sobre pending_approval) para arbitrar la carrera cancel-vs-approve:
+	// 0 filas = ya no estaba pending y no se borra nada (devuelve false). En la
+	// MISMA transacción limpia la instancia sintética route que quedó apuntando
+	// la competencia (sin intentos por ser solo-pending: no deja huérfanos).
+	Delete(ctx *gin.Context, competitionID int64) (bool, error)
+
+	// TeamOwnerID devuelve el owner del team (0 si el team no existe): el
+	// service lo usa para excluirlo de los participants —el entrenador no
+	// compite— sin importar quién sea el creador.
+	TeamOwnerID(ctx *gin.Context, teamID int64) (int64, error)
 
 	// HasUnseenTeam es el EXISTS de novedades (D11) para el listado embebido.
 	HasUnseenTeam(ctx *gin.Context, userID, teamID int64) (bool, error)
@@ -109,6 +118,18 @@ func (d *competitionDao) IsTeamOwner(ctx *gin.Context, teamID, userID int64) (bo
 		return false, fmt.Errorf("error checking competition team owner: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (d *competitionDao) TeamOwnerID(ctx *gin.Context, teamID int64) (int64, error) {
+	var team dbs.Team
+	err := d.DB.Select("owner_id").Where("id = ? AND deleted_at IS NULL", teamID).First(&team).Error
+	if err != nil {
+		if isGormNotFound(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("error fetching competition team owner: %w", err)
+	}
+	return team.OwnerID, nil
 }
 
 func (d *competitionDao) IsTeamGroupMember(ctx *gin.Context, teamID, userID int64) (bool, error) {
@@ -405,16 +426,77 @@ func (d *competitionDao) Finish(ctx *gin.Context, competitionID int64, finishedA
 	return updated, nil
 }
 
-func (d *competitionDao) Delete(ctx *gin.Context, competitionID int64) error {
-	return d.DB.Transaction(func(tx *gorm.DB) error {
+// Delete borra físicamente la competencia (DELETE cancel D9). El guard de
+// status está en el WHERE del DELETE: si tras el FindByID del service la
+// competencia dejó de ser pending_approval (owner aprobó interleavado), no
+// toca ninguna fila y devuelve false — el service lo mapea a 400, igual que
+// Approve/Reject manejan 0 filas. Al borrar limpia en la MISMA transacción
+// la instancia sintética route (session/exercise + link): solo-pending no
+// tuvo intentos, la limpieza no deja ni deja de borrar nada ajeno.
+func (d *competitionDao) Delete(ctx *gin.Context, competitionID int64) (bool, error) {
+	var deleted bool
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		var comp dbs.Competition
+		// El route_session_instance_id se lee antes del delete para saber
+		// qué instancias limpiar (después ya no existe la fila).
+		err := tx.Select("route_session_instance_id").
+			Where("id = ?", competitionID).
+			First(&comp).Error
+		if err != nil {
+			if isGormNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("error finding competition to delete: %w", err)
+		}
+		res := tx.Where("id = ? AND status = ?", competitionID, competition.StatusPendingApproval).
+			Delete(&dbs.Competition{})
+		if res.Error != nil {
+			return fmt.Errorf("error deleting competition: %w", res.Error)
+		}
+		if res.RowsAffected != 1 {
+			return nil
+		}
+		deleted = true
 		if err := tx.Where("competition_id = ?", competitionID).Delete(&dbs.CompetitionParticipant{}).Error; err != nil {
 			return fmt.Errorf("error deleting competition participants: %w", err)
 		}
-		if err := tx.Where("id = ?", competitionID).Delete(&dbs.Competition{}).Error; err != nil {
-			return fmt.Errorf("error deleting competition: %w", err)
+		if comp.RouteSessionInstanceID != nil {
+			if err := deleteSyntheticRouteInstance(tx, *comp.RouteSessionInstanceID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
+	if err != nil {
+		return false, err
+	}
+	return deleted, nil
+}
+
+// deleteSyntheticRouteInstance limpia las piezas que CreateWithInstance creó
+// para el intento de una competencia route cancelada: links, exercise
+// instances y session instance. Corre tras la baja de competencia+participantes
+// en la MISMA tx.
+func deleteSyntheticRouteInstance(tx *gorm.DB, instanceID int64) error {
+	var exerciseIDs []int64
+	err := tx.Model(&dbs.SessionExerciseInstance{}).
+		Where("session_instance_id = ?", instanceID).
+		Pluck("exercise_instance_id", &exerciseIDs).Error
+	if err != nil {
+		return fmt.Errorf("error plucking competition instance exercises: %w", err)
+	}
+	if err := tx.Where("session_instance_id = ?", instanceID).Delete(&dbs.SessionExerciseInstance{}).Error; err != nil {
+		return fmt.Errorf("error deleting competition instance exercise links: %w", err)
+	}
+	if len(exerciseIDs) > 0 {
+		if err := tx.Where("id IN ?", exerciseIDs).Delete(&dbs.ExerciseInstance{}).Error; err != nil {
+			return fmt.Errorf("error deleting competition exercise instances: %w", err)
+		}
+	}
+	if err := tx.Where("id = ?", instanceID).Delete(&dbs.SessionInstance{}).Error; err != nil {
+		return fmt.Errorf("error deleting competition session instance: %w", err)
+	}
+	return nil
 }
 
 func (d *competitionDao) HasUnseenTeam(ctx *gin.Context, userID, teamID int64) (bool, error) {

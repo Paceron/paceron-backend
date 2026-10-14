@@ -166,7 +166,7 @@ func TestCompetitionService_CreateAttemptDAOError500(t *testing.T) {
 func TestCompetitionService_CreateRouteUsaInstancia(t *testing.T) {
 	var captured *dbs.Competition
 	dao := &mockCompetitionDAO{
-		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
 		createWithInstFn: func(comp *dbs.Competition, participantIDs []int64) error {
 			captured = comp

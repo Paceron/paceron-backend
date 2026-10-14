@@ -94,13 +94,15 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 	}
 
 	// Guard: sin ser owner ni miembro el DAO de competencias no se toca (403).
-	isOwner, err := s.dao.IsTeamOwner(ctx, teamID, callerID)
+	// El owner_id del team resuelve también si el caller es el entrenador
+	// (F5: la exclusión del owner de participants no depende del caller).
+	teamOwnerID, err := s.dao.TeamOwnerID(ctx, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("error al crear la competencia")
 	}
 	status := competition.StatusPendingApproval
 	role := competition.CreatorRoleRunner
-	if isOwner {
+	if callerID == teamOwnerID {
 		status = competition.StatusActive
 		role = competition.CreatorRoleTrainer
 	} else {
@@ -134,9 +136,11 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		return nil, fmt.Errorf("%w: todos los participantes deben ser miembros activos del equipo", ErrCompetitionInvalid)
 	}
 
-	if isOwner {
+	// El owner del team (el entrenador) no compite: excluido de los
+	// participants siempre —también cuando el creador es un corredor (F5).
+	if teamOwnerID > 0 {
 		for _, id := range unique {
-			if id == callerID {
+			if id == teamOwnerID {
 				return nil, fmt.Errorf("%w: el entrenador no compite (no puede estar entre los participantes)", ErrCompetitionInvalid)
 			}
 		}
@@ -413,9 +417,15 @@ func (s *competitionService) Cancel(ctx *gin.Context, callerID, competitionID in
 	if comp.Status != competition.StatusPendingApproval {
 		return nil, fmt.Errorf("%w: solo se puede cancelar una competencia en pending_approval", ErrCompetitionConflict)
 	}
-	if err := s.dao.Delete(ctx, competitionID); err != nil {
+	// Race-safe igual que Approve: el DELETE del DAO lleva el guard de status
+	// en el SQL; 0 filas = el owner aprobó la competencia interleavado (F1).
+	deleted, err := s.dao.Delete(ctx, competitionID)
+	if err != nil {
 		customlogger.Error(ctx, "error deleting competition", err, customlogger.TagMethod("CompetitionCancel"))
 		return nil, fmt.Errorf("error al cancelar la competencia")
+	}
+	if !deleted {
+		return nil, fmt.Errorf("%w: solo se puede cancelar una competencia en pending_approval", ErrCompetitionConflict)
 	}
 	return nil, nil
 }

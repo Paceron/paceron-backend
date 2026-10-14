@@ -23,6 +23,7 @@ import (
 type mockCompetitionDAO struct {
 	isOwnerFn          func(teamID, userID int64) (bool, error)
 	isMemberFn         func(teamID, userID int64) (bool, error)
+	teamOwnerFn        func(teamID int64) (int64, error)
 	countMembersFn     func(teamID int64, userIDs []int64) (int64, error)
 	groupBelongsToFn   func(groupID, teamID int64) (bool, error)
 	createFn           func(comp *dbs.Competition, participantIDs []int64) error
@@ -36,7 +37,7 @@ type mockCompetitionDAO struct {
 	approveFn          func(competitionID, approvedBy int64) (bool, error)
 	rejectFn           func(competitionID int64, reason *string) (bool, error)
 	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
-	deleteFn           func(competitionID int64) error
+	deleteFn           func(competitionID int64) (bool, error)
 	hasUnseenFn        func(userID, teamID int64) (bool, error)
 	aggregateWindowFn  func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
 	attemptSessionsFn  func(competitionID int64) ([]dbs.RunnerSession, error)
@@ -54,6 +55,13 @@ func (m *mockCompetitionDAO) IsTeamOwner(ctx *gin.Context, teamID, userID int64)
 		return m.isOwnerFn(teamID, userID)
 	}
 	return false, nil
+}
+
+func (m *mockCompetitionDAO) TeamOwnerID(ctx *gin.Context, teamID int64) (int64, error) {
+	if m.teamOwnerFn != nil {
+		return m.teamOwnerFn(teamID)
+	}
+	return 0, nil
 }
 
 func (m *mockCompetitionDAO) IsTeamGroupMember(ctx *gin.Context, teamID, userID int64) (bool, error) {
@@ -170,12 +178,12 @@ func (m *mockCompetitionDAO) Finish(ctx *gin.Context, competitionID int64, finis
 	return true, nil
 }
 
-func (m *mockCompetitionDAO) Delete(ctx *gin.Context, competitionID int64) error {
+func (m *mockCompetitionDAO) Delete(ctx *gin.Context, competitionID int64) (bool, error) {
 	m.deleteCalls++
 	if m.deleteFn != nil {
 		return m.deleteFn(competitionID)
 	}
-	return nil
+	return true, nil
 }
 
 func (m *mockCompetitionDAO) HasUnseenTeam(ctx *gin.Context, userID, teamID int64) (bool, error) {
@@ -237,7 +245,7 @@ func fptr(v float64) *float64 { return &v }
 
 func TestCompetitionService_CreateValidaciones(t *testing.T) {
 	svc := newCompetitionServiceForTest(&mockCompetitionDAO{
-		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
 	})
 
@@ -314,7 +322,6 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	// Caller fuera del team: 403 y DAO de escritura sin tocar.
 	var calls int
 	dao := &mockCompetitionDAO{
-		isOwnerFn:  func(teamID, userID int64) (bool, error) { return false, nil },
 		isMemberFn: func(teamID, userID int64) (bool, error) { calls++; return false, nil },
 	}
 	svc := newCompetitionServiceForTest(dao)
@@ -328,7 +335,7 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	var capturedParticipants []int64
 	ownerDao := func(fn func(comp *dbs.Competition, participantIDs []int64) error) *mockCompetitionDAO {
 		return &mockCompetitionDAO{
-			isOwnerFn: func(teamID, userID int64) (bool, error) { return userID == 1, nil },
+			teamOwnerFn: func(teamID int64) (int64, error) { return 1, nil },
 			countMembersFn: func(teamID int64, userIDs []int64) (int64, error) {
 				return int64(len(userIDs)), nil
 			},
@@ -383,10 +390,12 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	assert.Equal(t, []int64{11, 12}, capturedParticipants)
 	assert.Equal(t, competition.StatusActive, resp.Status)
 
-	// Corredor miembro: pending_approval + role runner.
+	// Corredor miembro: pending_approval + role runner; el owner del team
+	// (con filas group_users simuladas vía countMembersFn) queda excluido
+	// de participants SIEMPRE, no solo cuando el caller es el owner (F5).
 	runnerDao := &mockCompetitionDAO{
-		isOwnerFn:  func(teamID, userID int64) (bool, error) { return false, nil },
-		isMemberFn: func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn: func(teamID int64) (int64, error) { return 1, nil },
+		isMemberFn:  func(teamID, userID int64) (bool, error) { return true, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) {
 			return int64(len(userIDs)), nil
 		},
@@ -396,6 +405,14 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, competition.StatusPendingApproval, resp.Status)
 	assert.Equal(t, competition.CreatorRoleRunner, resp.CreatedByRole)
+
+	createCallsAntes := runnerDao.createCalls
+	reqIncluyeOwner := validMetricCreateReq()
+	reqIncluyeOwner.ParticipantIDs = []int64{1, 12}
+	_, err = svc.Create(nil, 77, 10, reqIncluyeOwner)
+	require.ErrorIs(t, err, ErrCompetitionInvalid)
+	assert.Contains(t, err.Error(), "el entrenador no compite")
+	assert.Equal(t, createCallsAntes, runnerDao.createCalls)
 }
 
 func ptrInt64(v int64) *int64 { return &v }
@@ -438,6 +455,7 @@ func TestCompetitionService_Moderacion(t *testing.T) {
 	_, err := svc.Approve(nil, 99, 5)
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
 	assert.Zero(t, dao.approveCalls)
+	assert.Zero(t, dao.rejectCalls)
 
 	// Owner sobre pending: approve feliz.
 	dao = moderationDao(competition.StatusPendingApproval)
@@ -522,6 +540,16 @@ func TestCompetitionService_Cancel(t *testing.T) {
 	svc = newCompetitionServiceForTest(dao)
 	_, err = svc.Cancel(nil, 77, 5)
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
+
+	// Carrera cancel-vs-approve (F1): entre el FindByID y el Delete el owner
+	// aprobó — el guard de status del DAO ve 0 filas y el service lo mapea al
+	// mismo 400 que Approve usa para transiciones inválidas.
+	dao = cancelDao(competition.StatusPendingApproval, competition.CreatorRoleRunner)
+	dao.deleteFn = func(competitionID int64) (bool, error) { return false, nil }
+	svc = newCompetitionServiceForTest(dao)
+	_, err = svc.Cancel(nil, 77, 5)
+	require.ErrorIs(t, err, ErrCompetitionConflict)
+	assert.Equal(t, 1, dao.deleteCalls)
 
 	// Competencia ajena.
 	dao = cancelDao(competition.StatusPendingApproval, competition.CreatorRoleRunner)
@@ -793,7 +821,7 @@ func TestCompetitionService_ModeracionPushAlCreador(t *testing.T) {
 // Haversine y rango del radius — y el happy path en el límite exacto.
 func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
 	svc := newCompetitionServiceForTest(&mockCompetitionDAO{
-		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
 	})
 
@@ -855,7 +883,7 @@ func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
 	// Happy path en el límite: 500 vértices y ~100 km exactos pasan.
 	req := routeReqWith(polylineGeoJSON(happyVertices(500)), fptr(500))
 	dao := &mockCompetitionDAO{
-		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
 	}
 	svcLimit := newCompetitionServiceForTest(dao)
