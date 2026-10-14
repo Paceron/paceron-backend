@@ -394,6 +394,36 @@ func TestDashboardDao_FindSeriesIncluyeInstanciasResueltas(t *testing.T) {
 	assert.Equal(t, orphan.ID, rows[0].ExerciseInstanceID)
 }
 
+// 7.2b: una instancia sin objetivo (minutes y distance_m en NULL) tiene que
+// llegar a la fila con los dos objetivos en nil, para que el dominio la marque
+// has_target = false en vez de inventar un cero. El catálogo del seed SIEMPRE
+// tiene objetivo, así que el caso no se puede cubrir con datos sembrados: vive
+// acá, con una fila de prueba.
+func TestDashboardDao_FindSeries_InstanciaSinObjetivo(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "sinojetivo")
+	sinObjetivo := &dbs.ExerciseInstance{Name: "Ritmo sin objetivo", Kind: string(constants.ExerciseKindRitmoContinuo)}
+	require.NoError(t, db.Create(sinObjetivo).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: fixture.sessionInst, ExerciseInstanceID: sinObjetivo.ID, Role: "main",
+	}).Error)
+	require.NoError(t, db.Create(&dbs.WorkoutFeedback{
+		TeamID: &fixture.teamID, AssignedSessionID: fixture.sessionInst, AssignedExerciseID: sinObjetivo.ID,
+		AthleteUserID: fixture.athleteID, FeedbackOwnerUserID: fixture.athleteID, ReportSource: "corredor",
+		SessionDate: fixture.calendarDay, SetNumber: 1, DurationMs: int64PtrDAO(1500000),
+		ActiveDurationMs: int64PtrDAO(1500000), DistanceMeters: floatPtrDAO(6000),
+		MediaURLs: emptyMediaURLs(t),
+	}).Error)
+
+	rows, err := fixture.dao.FindSeries(nil, fixture.filter())
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Nil(t, rows[0].TargetMinutes, "un objetivo ausente tiene que venir nil y no 0")
+	assert.Nil(t, rows[0].TargetDistanceM, "un objetivo ausente tiene que venir nil y no 0")
+	assert.NotNil(t, rows[0].DistanceMeters, "lo logrado sí viene: la serie es medible aunque no tenga con qué compararse")
+}
+
 func TestDashboardDao_CatalogoPorDuenoYTipo(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewDashboardDao(db)

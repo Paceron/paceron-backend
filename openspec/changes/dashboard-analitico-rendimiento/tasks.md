@@ -88,8 +88,8 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 
 ## 7. Seed
 
-- [ ] 7.1 `cmd/api/scripts/seed_dashboard/main.go` con `TEAM_ID = 29` y `GROUP_ID = 39` como constantes en el **top del archivo**, reusables para otro scope.
-- [ ] 7.2 Catálogo de 12 ejercicios respetando la matriz de tipos vigente:
+- [x] 7.1 `cmd/api/scripts/seed_dashboard/main.go` con `TEAM_ID = 29` y `GROUP_ID = 39` como constantes en el **top del archivo**, reusables para otro scope.
+- [x] 7.2 Catálogo de 12 ejercicios respetando la matriz de tipos vigente:
   - `liviano` — Sparring (10 min / 1.2 km) y Trote Vuelta a la Calma (15 min / 1.2 km).
   - `elongacion` — Elongación (10 min, sin distancia).
   - `ritmo_continuo` — Distancia 4/6/8/10/21 km. Necesitan distancia **y** tiempo, que es justo lo que tienen.
@@ -97,31 +97,31 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 
   **Por qué las series de velocidad máxima van como `velocidad_distancia` y no como `velocidad_tiempo`:** `minutes` es `INT`, y un sprint de 100 m son ~12 s = **0,2 minutos**, que no es representable — redondeado da 0, que el validador de tiempo del front rechaza (`> 0`). Como `velocidad_distancia` tiene el **tiempo opcional**, 100 m se declara con `distance_m = 100` y `minutes` en `null`, que sí es exacto y además lo puede crear un entrenador desde el form. El KPI relevante —mejor tiempo y velocidad derivada— sigue disponible vía `best_time_ms` y `speed_kph`.
 
-- [ ] 7.2b **Consecuencia para la validación:** el seed **no ejercita la paleta B** (sin objetivo cargado), porque los 12 ejercicios tienen objetivo. La paleta B queda como robustez del dashboard, para datos que lleguen sin objetivo —filas previas a la migración de tipos, o un ejercicio que el entrenador dejó incompleto—. El seed debe **incluir al menos un caso con `has_target: false`** para probar esa rama: agregar un ejercicio de `velocidad_distancia` con `distance_m` en `null` es inválido, así que el caso se cubre en los **tests** del DAO (fila de prueba, no del catálogo).
-- [ ] 7.3 Nombres: **"Sparring"** y no "Calentamiento" — el rol lo define `session_exercises.role`, no el nombre. Un `liviano` puede ser calentamiento, recuperación o trote suelto.
-- [ ] 7.4 Composición de sesión: siempre Sparring → Elongación → bloque principal → Vuelta a la calma. Si entra distancia ≥8 km, ese es el **único** bloque principal.
-- [ ] 7.5 Planes de 14 días aplicados vía el mecanismo de stamp existente (con `SEEDING_ENABLED`), **nunca insertando a mano por saltarse la instanciación**. 2 sesiones presenciales por semana (martes y jueves) usando `exclude_dates` para saltear el resto.
-- [ ] 7.6 `group_users` con `date_start` correcta: sin ella el calendario del corredor sale vacío aunque el `group_calendar_days` exista.
-- [ ] 7.7 Series: `duration_ms`/`active_duration_ms`/`distance_meters`/`set_number` por corredor, ejercicio y día, con `runner_session` en `finished`.
-- [ ] 7.8 Generador con arquetipos (velocista, fondista, resistente, regular, en progreso), 2–3 destacados por especialidad, ruido ±3–7 %, fatiga intra-ejercicio, progresión semanal, ~10 % de series fuera de objetivo.
-- [ ] 7.9 Feedback contextual al ejercicio y al corredor. **Prohibido el genérico.**
-- [ ] 7.10 `--dry-run` obligatorio, log de cantidades por tabla e IDs, y guard de scope que **aborta** si `GROUP_ID` no pertenece a `TEAM_ID`.
-- [ ] 7.11 Idempotente: correrlo dos veces no duplica nada.
+- [x] 7.2b **Consecuencia para la validación:** el seed **no ejercita la paleta B** (sin objetivo cargado), porque los 12 ejercicios tienen objetivo. La paleta B queda como robustez del dashboard, para datos que lleguen sin objetivo —filas previas a la migración de tipos, o un ejercicio que el entrenador dejó incompleto—. El seed debe **incluir al menos un caso con `has_target: false`** para probar esa rama: agregar un ejercicio de `velocidad_distancia` con `distance_m` en `null` es inválido, así que el caso se cubre en los **tests** del DAO (fila de prueba, no del catálogo).
+- [x] 7.3 Nombres: **"Sparring"** y no "Calentamiento" — el rol lo define `session_exercises.role`, no el nombre. Un `liviano` puede ser calentamiento, recuperación o trote suelto.
+- [x] 7.4 Composición de sesión: siempre Sparring → Elongación → bloque principal → Vuelta a la calma. Si entra distancia ≥8 km, ese es el **único** bloque principal.
+- [x] 7.5 Planes de 14 días aplicados vía el mecanismo de stamp existente (con `SEEDING_ENABLED`), **nunca insertando a mano por saltarse la instanciación**. 2 sesiones presenciales por semana (martes y jueves) usando `exclude_dates` para saltear el resto.
+- [x] 7.6 `group_users` con `date_start` correcta: sin ella el calendario del corredor sale vacío aunque el `group_calendar_days` exista.
+- [x] 7.7 Series: `duration_ms`/`active_duration_ms`/`distance_meters`/`set_number` por corredor, ejercicio y día, con `runner_session` en `finished`.
+- [x] 7.8 Generador con arquetipos (velocista, fondista, resistente, regular, en progreso), 2–3 destacados por especialidad, ruido ±3–7 %, fatiga intra-ejercicio, progresión semanal, ~10 % de series fuera de objetivo.
+- [x] 7.9 Feedback contextual al ejercicio y al corredor. **Prohibido el genérico.**
+- [x] 7.10 `--dry-run` obligatorio, log de cantidades por tabla e IDs, y guard de scope que **aborta** si `GROUP_ID` no pertenece a `TEAM_ID`.
+- [x] 7.11 Idempotente: correrlo dos veces no duplica nada.
 
 ## 8. Limpieza
 
-- [ ] 8.1 `cmd/api/scripts/seed_dashboard/cleanup.go` — borrado en orden inverso de FK: `runner_session` → `workout_feedback_points` → `workout_feedback` → `session_exercise_instances` → `exercise_instances` → `session_instances` → `group_calendar_days` → `plan_days` → `training_plans` → `sessions`/`session_exercises` → `exercises`
+- [x] 8.1 `cmd/api/scripts/seed_dashboard/cleanup.go` — borrado en orden inverso de FK: `runner_session` → `workout_feedback_points` → `workout_feedback` → `session_exercise_instances` → `exercise_instances` → `session_instances` → `group_calendar_days` → `plan_days` → `training_plans` → `sessions`/`session_exercises` → `exercises`
 
    **`runner_session` va primero, y es obligatorio**: el seed crea filas en `finished` (task 7.7), y borrarlas al final dejaría huérfanas apuntando a `session_instances` inexistentes. `group_users` NO se borra: el seed solo **ajusta** `date_start` (task 7.6) y restaurarlo sería más riesgoso que dejarlo — se documenta en el runbook que el seed mueve la membresía del grupo y que hay que revertirla a mano si se quiere el estado previo.
-- [ ] 8.2 Restringido **estrictamente** a `TEAM_ID`, `GROUP_ID` y la ventana temporal. Prohibido tocar datos fuera de ese scope.
-- [ ] 8.3 Conteo previo, `--dry-run`, confirmación explícita y transacción con rollback.
-- [ ] 8.4 Test que verifica que la limpieza no deja residuos y no toca filas fuera del scope.
+- [x] 8.2 Restringido **estrictamente** a `TEAM_ID`, `GROUP_ID` y la ventana temporal. Prohibido tocar datos fuera de ese scope.
+- [x] 8.3 Conteo previo, `--dry-run`, confirmación explícita y transacción con rollback.
+- [x] 8.4 Test que verifica que la limpieza no deja residuos y no toca filas fuera del scope.
 
 ## 9. Cierre
 
-- [ ] 9.1 `go build ./...` y `go vet` verdes.
-- [ ] 9.1b Los tests que necesitan Postgres real (5.5, 6.9, 6.9b, 6.10, 6.11, 7.2b, 8.4) **se skipean en silencio** sin `TEST_DB_HOST` (`testutils/db.go:42-45`), y "suite verde" con skips no es verde. El repo tiene `make test-with-db` (`Makefile:112`): el cierre tiene que correrlo, no `go test ./...` a secas.
-- [ ] 9.2 Suite completa verde, incluyendo los tests de permisos (`propio → 200`, `ajeno → 403`).
-- [ ] 9.3 Guardar en el repo el dataset generado (o el generador con su semilla fija) para que el frontend pueda desarrollar contra mocks.
-- [ ] 9.4 Documentar en el change las fórmulas de KPI por tipificación, para que el frontend no las reimplemente.
-- [ ] 9.5 `openspec validate dashboard-analitico-rendimiento` en verde antes de archivar.
+- [x] 9.1 `go build ./...` y `go vet` verdes.
+- [x] 9.1b Los tests que necesitan Postgres real (5.5, 6.9, 6.9b, 6.10, 6.11, 7.2b, 8.4) **se skipean en silencio** sin `TEST_DB_HOST` (`testutils/db.go:42-45`), y "suite verde" con skips no es verde. El repo tiene `make test-with-db` (`Makefile:112`): el cierre tiene que correrlo, no `go test ./...` a secas.
+- [x] 9.2 Suite completa verde, incluyendo los tests de permisos (`propio → 200`, `ajeno → 403`).
+- [x] 9.3 Guardar en el repo el dataset generado (o el generador con su semilla fija) para que el frontend pueda desarrollar contra mocks.
+- [x] 9.4 Documentar en el change las fórmulas de KPI por tipificación, para que el frontend no las reimplemente.
+- [x] 9.5 `openspec validate dashboard-analitico-rendimiento` en verde antes de archivar.
