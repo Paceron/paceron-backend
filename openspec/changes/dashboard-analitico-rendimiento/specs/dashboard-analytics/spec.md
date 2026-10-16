@@ -71,18 +71,31 @@ El filtro es **por ejercicio**, y hay exactamente tres formas de elegirlo:
 |---|---|---|
 | **Un ejercicio** | `exercise_id` (catalog) | es lo más común, y lo que emite el selector |
 | **Varios ejercicios** | `exercise_ids[]` | comparar dos ejercicios entre sí |
-| **Un tipo entero** | `kinds[]` | el tablist de tipos del front: el catálogo tiene 5 `ritmo_continuo` y 4 `velocidad_distancia`, así que el tipo no cabe en un `exercise_id` |
+| **Un tipo** | `kind` | el desplegable de tipos del front |
 
-Exactamente uno de los tres SHALL venir, y el sistema SHALL rechazar con `400` los casos inválidos: ninguno, más de uno, un `exercise_id` inexistente, o un `kind` fuera de los cinco vigentes.
+Exactamente uno de los tres SHALL venir, y el sistema SHALL rechazar con `400` los casos inválidos: ninguno, más de uno, un `exercise_id` inexistente, o un `kind` fuera de los **tres tipos con métrica**.
 
-**`kinds[]` agrega los ejercicios de esos tipos ya resueltos en el backend.** El front tiene prohibido agregar (non-goal de no recalcular KPIs), así que un `ritmo_continuo` de 4 km y uno de 21 km llegan en la misma fila con sus KPIs ya agregados, y el backend declara cómo: **ponderación por volumen**, es decir `achieved_speed_kph` es la media de las velocidades **ponderada por distancia**, y `best_time_ms` es el mínimo entre ejercicios.
+**`kind` es un valor único, no una lista.** El filtro de tipo del front es de selección única con una opción "todos" que viaja como **ausencia del parámetro**, así que un array sería una contradicción con la UI.
+
+**Los tres tipos con métrica son `ritmo_continuo`, `velocidad_distancia` y `velocidad_tiempo`.** `liviano` y `elongacion` quedan fuera y el backend SHALL rechazar un filtro por ellos con `400`.
+
+No es una preferencia de producto, sale del rol: el dashboard filtra por `role = 'main'` (`design.md` D9), y los bloques `liviano` y `elongacion` de una sesión son `warmup` y `cooldown`. **Un filtro que devuelve siempre cero es peor que no ofrecerlo** — el usuario elige algo, espera números y ve un vacío sin explicación.
+
+`liviano` y `elongacion` **siguen siendo tipos válidos** del modelo: se crean, se estamparán y su `axis` sigue definido. Lo que no es válido es usarlos como filtro de métrica.
+
+**`kind` agrega los ejercicios de ese tipo ya resueltos en el backend.** El front tiene prohibido agregar (non-goal de no recalcular KPIs), así que un `ritmo_continuo` de 4 km y uno de 21 km llegan en la misma fila con sus KPIs ya agregados, y el backend declara cómo: **ponderación por volumen**, es decir `achieved_speed_kph` es la media de las velocidades **ponderada por distancia**, y `best_time_ms` es el mínimo entre ejercicios.
 
 Ponderar por distancia y no hacer media simple no es cosmético: un 21 km a 5 km/h y un 4 km a 15 km/h promedian 10 km/h con media simple, cuando el volumen real está casi entero en el 21 km. El resultado que importa es el del volumen.
 
 #### Scenario: Filtro por tipo
 
-- **WHEN** se pide el resumen con `kinds=ritmo_continuo`
-- **THEN** devuelve los KPIs agregados de los 5 `ritmo_continuo` del grupo, ponderados por distancia
+- **WHEN** se pide el resumen con `kind=ritmo_continuo`
+- **THEN** devuelve los KPIs agregados de los `ritmo_continuo` del grupo, ponderados por distancia
+
+#### Scenario: Tipo sin métrica
+
+- **WHEN** se pide el resumen con `kind=liviano`
+- **THEN** el sistema responde `400`: sus series son `warmup`/`cooldown` y el filtro `role = 'main'` las deja todas afuera
 
 #### Scenario: Filtro por un ejercicio
 
@@ -96,8 +109,74 @@ Ponderar por distancia y no hacer media simple no es cosmético: un 21 km a 5 km
 
 #### Scenario: Dos filtros a la vez
 
-- **WHEN** se pide el resumen con `exercise_id=7` y `kinds=ritmo_continuo`
+- **WHEN** se pide el resumen con `exercise_id=7` y `kind=ritmo_continuo`
 - **THEN** el sistema responde `400`, porque son excluyentes
+
+### Requirement: Los filtros de rango acotan qué series entran al cálculo
+
+El filtro de tipo y el de ejercicio eligen **qué ejercicio** se mide. Los de rango eligen **qué series de ese ejercicio cuentan**: es un filtro de datos, no de navegación, y por eso vive en el backend y no en la UI.
+
+Cuatro parámetros, todos opcionales y combinables entre sí:
+
+| Parámetro | Unidad | Significado |
+|---|---|---|
+| `distance_from_m` | metros enteros | serie con `distance_meters >= valor` |
+| `distance_to_m` | metros enteros | serie con `distance_meters <= valor` |
+| `time_from_min` | minutos enteros | serie con tiempo logrado `>= valor × 60000` ms |
+| `time_to_min` | minutos enteros | serie con tiempo logrado `<= valor × 60000` ms |
+
+El tiempo se compara sobre el **tiempo logrado** —`COALESCE(active_duration_ms, duration_ms)`—, que es la misma magnitud que usan los KPIs. Filtrar por `duration_ms` en crudo dejaría fuera series que sí cuentan, y el usuario vería menos datos sin saber por qué.
+
+Las unidades viajan en el nombre del parámetro a propósito. El front trabaja en km y minutos porque es lo que muestra el usuario; que el contrato use metros evita que backend y cliente hablen en sistemas distintos sin que se note.
+
+Reglas de validación, todas `400` con su `code`:
+
+- los cuatro SHALL ser **enteros no negativos**; un decimal o un negativo se rechaza
+- `distance_from_m` SHALL ser `<=` `distance_to_m` si vienen ambos
+- `time_from_min` SHALL ser `<=` `time_to_min` si vienen ambos
+
+Los valores concretos que la pantalla sugiere son un detalle de la UI, no del contrato —el backend acepta cualquier entero— pero quedan fijados para que dos pantallas no inventen listas distintas:
+
+- **Distancia (km):** 1, 2, 3, 5, 7, 10, 15, 21, 42
+- **Tiempo (min):** 5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360
+
+240 y 360 no son relleno: son 4 y 6 horas, y una lista que corta en 180 deja al corredor de fondo sin una opción a un click.
+
+**El rango se aplica en el `WHERE`**, por la misma razón que el filtro de `runner_session.status`: filtrar después de traer la serie significa traer de más y descartar en memoria.
+
+Una serie que el rango excluye **no cuenta como inválida**. `invalid_series` sigue significando "no calculable"; una serie válida fuera de la ventana pedida no es un defecto, es una decisión del usuario. Confundir las dos cosas haría que el banner dijera "tenés datos malos" cuando en realidad pidió una ventana más chica.
+
+Un filtro de rango con `has_target: false` **no invalida** el `has_target`: los targets vienen del ejercicio, no de la serie.
+
+#### Scenario: Rango de distancia
+
+- **WHEN** se pide el resumen con `distance_from_m=5000` y `distance_to_m=42000`
+- **THEN** entran solo las series con distancia entre 5 y 42 km
+
+#### Scenario: Rango invertido
+
+- **WHEN** se pide con `distance_from_m=42000` y `distance_to_m=5000`
+- **THEN** el sistema responde `400`, porque un rango invertido nunca matchea
+
+#### Scenario: La serie excluida no es inválida
+
+- **WHEN** el rango deja afuera 12 series que son perfectamente calculables
+- **THEN** `invalid_series` no cambia y los KPI se calculan sobre las que quedaron
+
+#### Scenario: El rango de tiempo usa el tiempo logrado
+
+- **WHEN** una serie tiene `duration_ms=260000` y `active_duration_ms` en `null`
+- **THEN** con `time_to_min=4` la serie **entra**, porque su tiempo logrado es 260 s y no 260000 minutos
+
+#### Scenario: El rango no cambia el objetivo
+
+- **WHEN** se pide el resumen con `distance_from_m=5000` sobre un ejercicio con objetivo 4000 m
+- **THEN** `has_target` sigue en `true` y el cumplimiento se mide contra el objetivo congelado, no contra el rango pedido
+
+#### Scenario: Rango de un solo lado
+
+- **WHEN** se pide solo `time_from_min=30` y ningún `time_to_min`
+- **THEN** el filtro aplica solo el piso: entra todo lo que lasted 30 minutos o más
 
 ### Requirement: Cada endpoint declara su request completo
 
@@ -108,12 +187,12 @@ Los parámetros que no se listan aquí no se aceptan.
 | Endpoint | Método | Parámetros |
 |---|---|---|
 | `/dashboard/filters` | GET | `team_id` **obligatorio** (el resto del scope sale del token) |
-| `/dashboard/metrics/summary` | GET | `team_id` **obligatorio**, `exercise_id` o `exercise_ids[]` o `kinds[]`, `from` **obligatorio**, `to`, `tolerance` |
+| `/dashboard/metrics/summary` | GET | `team_id` **obligatorio**, `exercise_id` o `exercise_ids[]` o `kind`, `from` **obligatorio**, `to`, `tolerance`, y los 4 de rango (`distance_from_m`, `distance_to_m`, `time_from_min`, `time_to_min`) |
 | `/dashboard/metrics/timeseries` | GET | los de summary, más `granularity` (default `session`) |
 | `/dashboard/leaderboard` | GET | los de summary, más `page`, `page_size`, `sort` (default `best_time_ms`), `order` (default `asc`) |
-| `/dashboard/exercises/{id}/series` | GET | `{id}` de catálogo, más `from`, `to`, `tolerance`, `page`, `page_size` |
-| `/dashboard/comparisons` | POST | body `{ group_id, exercise_id o exercise_ids[] o kinds[], from, to, tolerance, athlete_user_ids[] }` |
-| `/dashboard/comparisons/periods` | POST | body `{ group_id, exercise_id o exercise_ids[] o kinds[], current: { from, to }, tolerance, previous: { from, to } }` |
+| `/dashboard/exercises/{id}/series` | GET | `{id}` de catálogo, `team_id`, más `from`, `to`, `tolerance`, `page`, `page_size` y los 4 de rango |
+| `/dashboard/comparisons` | POST | body `{ group_id, exercise_id o exercise_ids[] o kind, from, to, tolerance, athlete_user_ids[] }` + los 4 de rango |
+| `/dashboard/comparisons/periods` | POST | body `{ group_id, exercise_id o exercise_ids[] o kind, current: { from, to }, tolerance, previous: { from, to } }` + los 4 de rango |
 
 Tres defaults que antes no existían y que cambian lo que se ve: `granularity = session`, `sort = best_time_ms`, `order = asc`. El default de `sort` tiene que ser `best_time_ms` con orden ascendente porque con `mean_speed_kph` el ascendente pondría **primero al más lento**, que es lo contrario de un ranking.
 
