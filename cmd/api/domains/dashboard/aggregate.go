@@ -43,7 +43,7 @@ type setMetrics struct {
 	sumTargetTimeMs    float64
 	sumTargetDistanceM float64
 
-	// Ponderación por DISTANCIA de las velocidades (spec: "kinds[] agrega los
+	// Ponderación por DISTANCIA de las velocidades (spec: "kind agrega los
 	// ejercicios de esos tipos ya resueltos en el backend... ponderación por
 	// volumen"). Ponderar por distancia y no hacer media simple no es cosmético:
 	// un 21 km a 5 km/h y un 4 km a 15 km/h promedian 10 km/h con media simple,
@@ -166,7 +166,7 @@ func (m *setMetrics) TargetSpeedKph() *float64 {
 // `none` aparece cuando no hay ningún tipo vigente en el conjunto.
 //
 // Con varios kinds el agregado es una comparación de velocidad ponderada por
-// distancia —que es lo que la spec declara para `kinds[]`—, así que el eje del
+// distancia —que es lo que la spec declara para `kind`—, así que el eje del
 // agregado es el doble.
 func (m *setMetrics) axisAndHasTarget() (Axis, bool) {
 	switch len(m.kinds) {

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,18 +86,26 @@ type MetricsQuery struct {
 	TeamID     int64
 	GroupID    *int64
 	ExerciseID *int64
-	// ExerciseIDs y Kinds llegan del body en los POST; en GET los arma el
-	// controller desde los query params repetidos.
-	ExerciseIDs    []int64
-	Kinds          []string
-	From           string
-	To             string
-	Granularity    string
-	Tolerance      string
-	Page           string
-	PageSize       string
-	Sort           string
-	Order          string
+	// ExerciseIDs y Kind llegan del body en los POST; en GET los arma el controller
+	// desde los query params.
+	ExerciseIDs []int64
+	// Kind es un valor único: un string vacío es "sin filtro de tipo", que es lo que
+	// viaja cuando el front elige la opción "todos".
+	Kind        string
+	From        string
+	To          string
+	Granularity string
+	Tolerance   string
+	Page        string
+	PageSize    string
+	Sort        string
+	Order       string
+	// Rango de datos: metros y minutos enteros, en nil cuando no viene el filtro.
+	// El service los valida y los pasa al DAO ya en las unidades de las columnas.
+	DistanceFromM  *int64
+	DistanceToM    *int64
+	TimeFromMin    *int64
+	TimeToMin      *int64
 	AthleteUserIDs []int64
 }
 
@@ -113,16 +122,21 @@ type validatedMetricsQuery struct {
 	// (tarea 4.1b): sin ellas, /exercises/{id}/series perdería en silencio todo el
 	// histórico anterior al change de instancia-referencia-catálogo.
 	LegacyExerciseInstanceIDs []int64
-	Kinds                     []string
-	From                      time.Time
-	To                        time.Time
-	Granularity               string
-	Tolerance                 float64
-	Page                      int
-	PageSize                  int
-	Sort                      string
-	Order                     string
-	AthleteUserIDs            []int64
+	// Rango de datos ya en las unidades de las columnas: metros como float y tiempo
+	// en ms, porque es contra el tiempo logrado que se compara.
+	DistanceFromM  *float64
+	DistanceToM    *float64
+	TimeFromMs     *int64
+	TimeToMs       *int64
+	From           time.Time
+	To             time.Time
+	Granularity    string
+	Tolerance      float64
+	Page           int
+	PageSize       int
+	Sort           string
+	Order          string
+	AthleteUserIDs []int64
 }
 
 // DashboardServiceInterface expone los siete endpoints del dashboard.
@@ -356,10 +370,14 @@ func (s *dashboardService) Comparisons(ctx *gin.Context, callerID int64, request
 		GroupID:        request.GroupID,
 		ExerciseID:     request.ExerciseID,
 		ExerciseIDs:    request.ExerciseIDs,
-		Kinds:          request.Kinds,
+		Kind:           derefString(request.Kind),
 		From:           request.From,
 		To:             request.To,
 		Tolerance:      formatOptionalFloat(request.Tolerance),
+		DistanceFromM:  request.DistanceFromM,
+		DistanceToM:    request.DistanceToM,
+		TimeFromMin:    request.TimeFromMin,
+		TimeToMin:      request.TimeToMin,
 		AthleteUserIDs: request.AthleteUserIDs,
 	}, true)
 	if err != nil {
@@ -402,12 +420,16 @@ func (s *dashboardService) Periods(ctx *gin.Context, callerID int64, request das
 		return nil, ErrDashboardForbidden
 	}
 	base, err := s.validate(ctx, scope, MetricsQuery{
-		TeamID:      request.TeamID,
-		GroupID:     request.GroupID,
-		ExerciseID:  request.ExerciseID,
-		ExerciseIDs: request.ExerciseIDs,
-		Kinds:       request.Kinds,
-		Tolerance:   formatOptionalFloat(request.Tolerance),
+		TeamID:        request.TeamID,
+		GroupID:       request.GroupID,
+		ExerciseID:    request.ExerciseID,
+		ExerciseIDs:   request.ExerciseIDs,
+		Kind:          derefString(request.Kind),
+		Tolerance:     formatOptionalFloat(request.Tolerance),
+		DistanceFromM: request.DistanceFromM,
+		DistanceToM:   request.DistanceToM,
+		TimeFromMin:   request.TimeFromMin,
+		TimeToMin:     request.TimeToMin,
 	}, false)
 	if err != nil {
 		return nil, err
@@ -467,7 +489,9 @@ func (s *dashboardService) prepare(ctx *gin.Context, callerID int64, query Metri
 }
 
 // validate aplica la whitelist y las cotas ANTES de tocar la DB (spec "Los
-// parámetros inválidos se rechazan con 400 y sin consulta").
+// parámetros inválidos se rechazan con 400 y sin consulta"). El rango de datos se
+// valida antes de resolver el filtro de ejercicio, que sí consulta el catálogo: un
+// rango inválido no tiene por qué llegar a mirar un solo ejercicio.
 //
 // requireRange es false en /comparisons/periods, que valida sus dos períodos por
 // su cuenta: el `from`/`to` de la query compartida no aplica ahí.
@@ -510,6 +534,10 @@ func (s *dashboardService) validate(ctx *gin.Context, scope *DashboardScope, que
 	if err != nil {
 		return nil, err
 	}
+	seriesRange, err := parseDashboardSeriesRange(query)
+	if err != nil {
+		return nil, err
+	}
 
 	exerciseIDs, err := s.resolveExerciseFilter(ctx, scope, query)
 	if err != nil {
@@ -521,6 +549,10 @@ func (s *dashboardService) validate(ctx *gin.Context, scope *DashboardScope, que
 		TeamID:         query.TeamID,
 		GroupIDs:       groupIDs,
 		ExerciseIDs:    exerciseIDs,
+		DistanceFromM:  seriesRange.DistanceFromM,
+		DistanceToM:    seriesRange.DistanceToM,
+		TimeFromMs:     seriesRange.TimeFromMs,
+		TimeToMs:       seriesRange.TimeToMs,
 		From:           from,
 		To:             to,
 		Granularity:    granularity,
@@ -630,15 +662,97 @@ func parseDashboardPaging(pageRaw, pageSizeRaw string) (int, int, error) {
 	return page, pageSize, nil
 }
 
+// ---------- filtros de rango de datos ----------
+
+// dashboardMillisPerMinute es la conversión del contrato de los filtros de tiempo:
+// llegan en minutos y las columnas están en milisegundos.
+const dashboardMillisPerMinute = 60000
+
+// dashboardSeriesRange es el rango de datos ya normalizado a las unidades de las
+// columnas: metros como float —distance_meters es float— y tiempo en ms.
+type dashboardSeriesRange struct {
+	DistanceFromM *float64
+	DistanceToM   *float64
+	TimeFromMs    *int64
+	TimeToMs      *int64
+}
+
+// parseDashboardSeriesRange aplica las reglas de los cuatro filtros de rango:
+// enteros no negativos y, si vienen los dos lados de la misma magnitud, el piso no
+// puede superar al techo — un rango invertido no matchea nunca, así que es un 400 y
+// no un filtro que siempre viene vacío.
+//
+// La conversión de minutos a ms vive acá y no en el DAO para que el wrap de int64
+// sea un 400 conocido: un techo que da negativo dejaría entrar TODAS las series, que
+// es justo lo contrario de lo que pidió el cliente.
+func parseDashboardSeriesRange(query MetricsQuery) (dashboardSeriesRange, error) {
+	out := dashboardSeriesRange{}
+	for _, bound := range []struct {
+		name  string
+		value *int64
+	}{
+		{"distance_from_m", query.DistanceFromM},
+		{"distance_to_m", query.DistanceToM},
+		{"time_from_min", query.TimeFromMin},
+		{"time_to_min", query.TimeToMin},
+	} {
+		if bound.value != nil && *bound.value < 0 {
+			return out, newDashboardParamError(constants.ErrorCodeInvalidRangeFilter,
+				"%s no puede ser negativo", bound.name)
+		}
+	}
+	if query.DistanceFromM != nil {
+		from := float64(*query.DistanceFromM)
+		out.DistanceFromM = &from
+	}
+	if query.DistanceToM != nil {
+		to := float64(*query.DistanceToM)
+		out.DistanceToM = &to
+	}
+	if query.DistanceFromM != nil && query.DistanceToM != nil && *query.DistanceFromM > *query.DistanceToM {
+		return out, newDashboardParamError(constants.ErrorCodeInvalidRangeFilter,
+			"distance_from_m no puede ser mayor que distance_to_m")
+	}
+	if query.TimeFromMin != nil && query.TimeToMin != nil && *query.TimeFromMin > *query.TimeToMin {
+		return out, newDashboardParamError(constants.ErrorCodeInvalidRangeFilter,
+			"time_from_min no puede ser mayor que time_to_min")
+	}
+	timeFrom, err := dashboardMinutesToMs("time_from_min", query.TimeFromMin)
+	if err != nil {
+		return out, err
+	}
+	timeTo, err := dashboardMinutesToMs("time_to_min", query.TimeToMin)
+	if err != nil {
+		return out, err
+	}
+	out.TimeFromMs, out.TimeToMs = timeFrom, timeTo
+	return out, nil
+}
+
+// dashboardMinutesToMs convierte los minutos del contrato a milisegundos. El contrato
+// acepta cualquier entero, así que el único valor que se rechaza es el que no se
+// puede expresar en ms: multiplicarlo dejaría un negativo.
+func dashboardMinutesToMs(name string, minutes *int64) (*int64, error) {
+	if minutes == nil {
+		return nil, nil
+	}
+	if *minutes > math.MaxInt64/dashboardMillisPerMinute {
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidRangeFilter,
+			"%s es demasiado grande para expresarse en milisegundos", name)
+	}
+	milliseconds := *minutes * dashboardMillisPerMinute
+	return &milliseconds, nil
+}
+
 // ---------- resolución de filtros ----------
 
 // resolveExerciseFilter aplica las tres formas excluyentes de elegir ejercicio
 // (spec "Los endpoints de métricas declaran sus filtros"): exactamente una de
-// exercise_id, exercise_ids[] o kinds[], o ninguna.
+// exercise_id, exercise_ids[] o kind, o ninguna.
 //
-// kinds[] se resuelve a los ids de catálogo de esos tipos YA en el backend: el
-// front tiene prohibido recalcular KPIs, así que un ritmo_continuo de 4 km y uno
-// de 21 km llegan en la misma fila con sus KPIs agregados por volumen.
+// kind se resuelve a los ids de catálogo de ese tipo YA en el backend: el front tiene
+// prohibido recalcular KPIs, así que un ritmo_continuo de 4 km y uno de 21 km llegan
+// en la misma fila con sus KPIs agregados por volumen.
 func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *DashboardScope, query MetricsQuery) ([]int64, error) {
 	selected := 0
 	if query.ExerciseID != nil {
@@ -647,12 +761,12 @@ func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *Dashbo
 	if len(query.ExerciseIDs) > 0 {
 		selected++
 	}
-	if len(query.Kinds) > 0 {
+	if query.Kind != "" {
 		selected++
 	}
 	if selected > 1 {
 		return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
-			"exercise_id, exercise_ids y kinds son excluyentes: mandá solo uno")
+			"exercise_id, exercise_ids y kind son excluyentes: mandá solo uno")
 	}
 
 	switch {
@@ -660,14 +774,13 @@ func (s *dashboardService) resolveExerciseFilter(ctx *gin.Context, scope *Dashbo
 		return s.catalogExercisesInScope(ctx, scope, query.TeamID, []int64{*query.ExerciseID}, nil)
 	case len(query.ExerciseIDs) > 0:
 		return s.catalogExercisesInScope(ctx, scope, query.TeamID, query.ExerciseIDs, nil)
-	case len(query.Kinds) > 0:
-		for _, kind := range query.Kinds {
-			if !constants.IsCurrentExerciseKind(kind) {
-				return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
-					"kind %q no es un tipo vigente", kind)
-			}
+	case query.Kind != "":
+		if !constants.IsDashboardMetricKind(query.Kind) {
+			return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
+				"kind %q no es un tipo con métrica: el dashboard mide %s",
+				query.Kind, strings.Join(constants.DashboardMetricKinds(), ", "))
 		}
-		return s.catalogExercisesInScope(ctx, scope, query.TeamID, nil, query.Kinds)
+		return s.catalogExercisesInScope(ctx, scope, query.TeamID, nil, []string{query.Kind})
 	default:
 		return nil, nil
 	}
@@ -709,10 +822,14 @@ func (s *dashboardService) catalogExercisesInScope(ctx *gin.Context, scope *Dash
 	if len(resolved) == 0 {
 		return nil, ErrDashboardNotFound
 	}
-	if len(resolved) != len(dedupeIDs(ids)) {
+	if len(ids) > 0 && len(resolved) != len(dedupeIDs(ids)) {
 		// Pediste N ejercicios y solo N-k están en el scope: 404 en vez de devolver
 		// silenciosamente los que sí, que es lo que haría creer al cliente que el
 		// ejercicio pedido existe.
+		//
+		// La comparación es solo para el filtro por id: con `kind` no hay ids que
+		// comparar, y pedir que el set resuelto tenga el tamaño de una lista vacía
+		// convertía TODO filtro por tipo en un 404.
 		return nil, ErrDashboardNotFound
 	}
 	sort.Slice(resolved, func(i, j int) bool { return resolved[i] < resolved[j] })
@@ -786,6 +903,10 @@ func (s *dashboardService) fetchSeries(ctx *gin.Context, prepared *validatedMetr
 		ExerciseIDs:               prepared.ExerciseIDs,
 		LegacyExerciseInstanceIDs: prepared.LegacyExerciseInstanceIDs,
 		AthleteUserIDs:            prepared.AthleteUserIDs,
+		DistanceFromM:             prepared.DistanceFromM,
+		DistanceToM:               prepared.DistanceToM,
+		TimeFromMs:                prepared.TimeFromMs,
+		TimeToMs:                  prepared.TimeToMs,
 	})
 	if err != nil {
 		customlogger.Error(ctx, "error finding dashboard series", err,
@@ -1003,6 +1124,15 @@ func formatOptionalFloat(value *float64) string {
 		return ""
 	}
 	return strconv.FormatFloat(*value, 'f', -1, 64)
+}
+
+// derefString aplana un string opcional del body a la forma que maneja MetricsQuery:
+// un string vacío es "el filtro no vino", que es como lo trata resolveExerciseFilter.
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func trimFloat(value float64) string {

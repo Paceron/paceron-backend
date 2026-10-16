@@ -318,15 +318,23 @@ type PeriodRange struct {
 // filtros de scope opcionales que se resuelven del scope del solicitante cuando
 // faltan. group_id explícito NO amplía el scope.
 type ComparisonsRequest struct {
-	TeamID         int64    `json:"team_id" binding:"required"`
-	GroupID        *int64   `json:"group_id"`
-	ExerciseID     *int64   `json:"exercise_id"`
-	ExerciseIDs    []int64  `json:"exercise_ids"`
-	Kinds          []string `json:"kinds"`
+	TeamID      int64   `json:"team_id" binding:"required"`
+	GroupID     *int64  `json:"group_id"`
+	ExerciseID  *int64  `json:"exercise_id"`
+	ExerciseIDs []int64 `json:"exercise_ids"`
+	// Kind es un valor único, no una lista: el filtro de tipo del front es de
+	// selección única y su opción "todos" viaja como ausencia del parámetro. Solo
+	// admiten los tres tipos con métrica.
+	Kind           *string  `json:"kind"`
 	From           string   `json:"from"`
 	To             string   `json:"to"`
 	Tolerance      *float64 `json:"tolerance"`
 	AthleteUserIDs []int64  `json:"athlete_user_ids"`
+	// Rango de datos: metros y minutos enteros, igual que en los GET.
+	DistanceFromM *int64 `json:"distance_from_m"`
+	DistanceToM   *int64 `json:"distance_to_m"`
+	TimeFromMin   *int64 `json:"time_from_min"`
+	TimeToMin     *int64 `json:"time_to_min"`
 }
 
 type PeriodsRequest struct {
@@ -334,10 +342,17 @@ type PeriodsRequest struct {
 	GroupID     *int64      `json:"group_id"`
 	ExerciseID  *int64      `json:"exercise_id"`
 	ExerciseIDs []int64     `json:"exercise_ids"`
-	Kinds       []string    `json:"kinds"`
+	Kind        *string     `json:"kind"`
 	Current     PeriodRange `json:"current" binding:"required"`
 	// Previous es opcional: si no viene, el backend lo deriva desplazando current
 	// hacia atrás exactamente su misma cantidad de días.
 	Previous  *PeriodRange `json:"previous"`
 	Tolerance *float64     `json:"tolerance"`
+	// El rango de datos acota las series de los DOS períodos por igual: si el
+	// current y el previous midieran ventanas distintas, el delta compararía dos
+	// cosas que el usuario no pidió comparar.
+	DistanceFromM *int64 `json:"distance_from_m"`
+	DistanceToM   *int64 `json:"distance_to_m"`
+	TimeFromMin   *int64 `json:"time_from_min"`
+	TimeToMin     *int64 `json:"time_to_min"`
 }

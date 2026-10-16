@@ -544,6 +544,107 @@ func TestDashboardDao_ScopeVacioNoConsulta(t *testing.T) {
 	assert.Empty(t, athletes)
 }
 
+// El rango de datos acota qué series entran, y lo hace en la consulta: dentro y fuera
+// de la ventana, con las dos magnitudes a la vez.
+func TestDashboardDao_FindSeries_RangoDeDistanciaYTiempo(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "rango")
+	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 1, 1200000, floatPtrDAO(3000))
+	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 2, 420000, floatPtrDAO(6000))
+	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 3, 600000, floatPtrDAO(50000))
+
+	all, err := fixture.dao.FindSeries(nil, fixture.filter())
+	require.NoError(t, err)
+	require.Len(t, all, 3, "sin rango entran las tres")
+
+	filter := fixture.filter()
+	filter.DistanceFromM, filter.DistanceToM = float64PtrDAO(5000), float64PtrDAO(42000)
+	filter.TimeFromMs, filter.TimeToMs = int64PtrDAO(300000), int64PtrDAO(900000)
+
+	rows, err := fixture.dao.FindSeries(nil, filter)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "solo la de 6 km en 7 min cae en las dos ventanas")
+	assert.Equal(t, 2, rows[0].SetNumber)
+}
+
+// El tiempo del rango se compara sobre el TIEMPO LOGRADO —COALESCE(active,
+// duration)— y las unidades del contrato son minutos. Los dos errores posibles se
+// comen con estas tres series: uno compara el crudo y deja afuera la que cuenta, el
+// otro trata los minutos como milisegundos y deja entrar todo.
+func TestDashboardDao_FindSeries_FiltroDeTiempoUsaElTiempoLogrado(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "tiemofiltro")
+	// 260 s sin tiempo activo: 4,33 min. Entra en "hasta 5 min" y queda afuera de
+	// "desde 5 min".
+	persistFeedbackWithTimes(t, fixture, 1, nil, int64PtrDAO(260000), floatPtrDAO(6000))
+	// Tiempo activo de 60 s con duration_ms de una hora: el logrado es el activo, así
+	// que entra en "hasta 2 min". Filtrando por duration_ms en crudo quedaría afuera.
+	persistFeedbackWithTimes(t, fixture, 2, int64PtrDAO(60000), int64PtrDAO(3600000), floatPtrDAO(1000))
+
+	atMost, err := fixture.dao.FindSeries(nil, filterWithTimeRange(fixture.filter(), nil, int64PtrDAO(300000)))
+	require.NoError(t, err)
+	require.Len(t, atMost, 2, "los 260 s entran en una ventana de hasta 5 min")
+
+	atLeast, err := fixture.dao.FindSeries(nil, filterWithTimeRange(fixture.filter(), int64PtrDAO(300000), nil))
+	require.NoError(t, err)
+	assert.Empty(t, atLeast, "ninguna de las dos lasted 5 min: 260 s son 4,33 y el tiempo activo es de 60 s")
+
+	// El tiempo activo manda sobre duration_ms: esta serie tiene una hora de duración
+	// en crudo, así que entrarla o no dice de qué columna leyó el filtro.
+	fromTwoMinutes, err := fixture.dao.FindSeries(nil, filterWithTimeRange(fixture.filter(), int64PtrDAO(120000), nil))
+	require.NoError(t, err)
+	require.Len(t, fromTwoMinutes, 1, "solo los 260 s alcanzan los 2 min")
+	assert.Equal(t, 1, fromTwoMinutes[0].SetNumber)
+
+	// Una serie sin ningún tiempo no se puede comparar contra una ventana de tiempo:
+	// queda afuera, no entra como inválida.
+	persistFeedbackWithTimes(t, fixture, 3, nil, nil, floatPtrDAO(6000))
+	withNoTime, err := fixture.dao.FindSeries(nil, filterWithTimeRange(fixture.filter(), nil, int64PtrDAO(300000)))
+	require.NoError(t, err)
+	assert.Len(t, withNoTime, 2, "sin tiempo no hay contra qué comparar el rango")
+}
+
+// El rango se arma como WHERE: las condiciones y sus argumentos tienen que venir en el
+// mismo orden, y sin rango no hay nada que agregar.
+func TestDashboardDao_RangoDeSerieArmaElWhere(t *testing.T) {
+	conditions, args := DashboardScopeFilter{
+		DistanceFromM: float64PtrDAO(5000),
+		DistanceToM:   float64PtrDAO(42000),
+		TimeFromMs:    int64PtrDAO(240000),
+		TimeToMs:      int64PtrDAO(5400000),
+	}.rangeConditions()
+
+	assert.Equal(t, []string{
+		"wf.distance_meters >= ?",
+		"wf.distance_meters <= ?",
+		achievedTimeSQL + " >= ?",
+		achievedTimeSQL + " <= ?",
+	}, conditions)
+	assert.Equal(t, []interface{}{float64(5000), float64(42000), int64(240000), int64(5400000)}, args)
+	assert.Contains(t, achievedTimeSQL, "active_duration_ms", "el tiempo del rango es el logrado, no el crudo")
+
+	empty, emptyArgs := DashboardScopeFilter{}.rangeConditions()
+	assert.Empty(t, empty)
+	assert.Empty(t, emptyArgs, "sin rango no se agrega nada a la consulta")
+}
+
+// CountOpenSessions cuenta sesiones, no series: el rango de datos no lo toca.
+func TestDashboardDao_OpenSessionsIgnoraElRangoDeSerie(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "openrango")
+	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 1, 240000, floatPtrDAO(4000))
+	fixture.persistRunnerSession(t, fixture.athleteID, runnersession.RunnerSessionStatusWip)
+
+	filter := fixture.filter()
+	filter.DistanceFromM = float64PtrDAO(9000000)
+
+	open, err := fixture.dao.CountOpenSessions(nil, filter)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, open.Sessions)
+}
+
 // Prohibido SELECT *: el SQL de la query core nombra columnas una por una.
 func TestDashboardDao_QueryCoreNoUsaSelectAsterisk(t *testing.T) {
 	for name, query := range map[string]string{
@@ -562,6 +663,36 @@ func TestDashboardDao_QueryCoreNoUsaSelectAsterisk(t *testing.T) {
 }
 
 func int64PtrDAO(v int64) *int64 { return &v }
+func float64PtrDAO(v float64) *float64 {
+	return &v
+}
+
+// persistFeedbackWithTimes crea una serie con tiempo activo y duration_ms por
+// separado, o con cualquiera de los dos en null, para poder probar el tiempo LOGRADO.
+func persistFeedbackWithTimes(t *testing.T, f *dashboardFixture, setNumber int, active, duration *int64, distanceM *float64) {
+	t.Helper()
+	require.NoError(t, f.db.Create(&dbs.WorkoutFeedback{
+		TeamID:              &f.teamID,
+		AssignedSessionID:   f.sessionInst,
+		AssignedExerciseID:  f.mainEx,
+		AthleteUserID:       f.athleteID,
+		FeedbackOwnerUserID: f.athleteID,
+		ReportSource:        "atleta",
+		SessionDate:         f.calendarDay,
+		SetNumber:           setNumber,
+		DurationMs:          duration,
+		ActiveDurationMs:    active,
+		DistanceMeters:      distanceM,
+		CompletionStatus:    strPtrDAO("completa"),
+		MediaURLs:           emptyMediaURLs(t),
+	}).Error)
+}
+
+func filterWithTimeRange(filter DashboardScopeFilter, from, to *int64) DashboardScopeFilter {
+	filter.TimeFromMs = from
+	filter.TimeToMs = to
+	return filter
+}
 
 // emptyMediaURLs inicializa el TextArray que la migración deja NOT NULL: sin esto
 // el insert falla con "cannot encode status undefined" y el error no dice nada de

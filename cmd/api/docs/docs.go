@@ -838,7 +838,7 @@ const docTemplate = `{
         },
         "/api/v1/dashboard/comparisons": {
             "post": {
-                "description": "Una fila por corredor comparable del scope, con su tendencia y el ` + "`" + `data_quality` + "`" + ` común. Solo el dueño del equipo. Cada ` + "`" + `athlete_user_id` + "`" + ` se valida por separado: si uno está fuera de scope responde 403 nombrándolo, sin devolver los datos de los válidos.",
+                "description": "Una fila por corredor comparable del scope, con su tendencia y el ` + "`" + `data_quality` + "`" + ` común. Solo el dueño del equipo. Cada ` + "`" + `athlete_user_id` + "`" + ` se valida por separado: si uno está fuera de scope responde 403 nombrándolo, sin devolver los datos de los válidos. ` + "`" + `kind` + "`" + ` es un valor único entre los tres tipos con métrica, y los cuatro filtros de rango acotan las series igual que en los GET.",
                 "consumes": [
                     "application/json"
                 ],
@@ -896,7 +896,7 @@ const docTemplate = `{
         },
         "/api/v1/dashboard/comparisons/periods": {
             "post": {
-                "description": "Compara el período actual contra el anterior de la misma longitud; sin ` + "`" + `previous` + "`" + `, el backend lo deriva desplazando ` + "`" + `current` + "`" + ` hacia atrás. ` + "`" + `compliance_pp` + "`" + ` son puntos porcentuales y ` + "`" + `best_time_pct` + "`" + ` tiene el signo invertido: bajar el tiempo es mejorar. Solo el dueño del equipo.",
+                "description": "Compara el período actual contra el anterior de la misma longitud; sin ` + "`" + `previous` + "`" + `, el backend lo deriva desplazando ` + "`" + `current` + "`" + ` hacia atrás. ` + "`" + `compliance_pp` + "`" + ` son puntos porcentuales y ` + "`" + `best_time_pct` + "`" + ` tiene el signo invertido: bajar el tiempo es mejorar. Solo el dueño del equipo. Los cuatro filtros de rango acotan las series de los dos períodos por igual.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1003,6 +1003,34 @@ const docTemplate = `{
                         "type": "number",
                         "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
                         "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
                         "in": "query"
                     },
                     {
@@ -1129,7 +1157,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "format": "int64",
-                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
                         "name": "exercise_id",
                         "in": "query"
                     },
@@ -1140,25 +1168,19 @@ const docTemplate = `{
                             "format": "int64"
                         },
                         "collectionFormat": "csv",
-                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
                         "name": "exercise_ids",
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "enum": [
-                                "liviano",
-                                "elongacion",
-                                "ritmo_continuo",
-                                "velocidad_tiempo",
-                                "velocidad_distancia"
-                            ],
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Tipos vigentes (excluyente con exercise_id y exercise_ids)",
-                        "name": "kinds",
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
                         "in": "query"
                     },
                     {
@@ -1178,6 +1200,34 @@ const docTemplate = `{
                         "type": "number",
                         "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
                         "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
                         "in": "query"
                     },
                     {
@@ -1251,7 +1301,7 @@ const docTemplate = `{
         },
         "/api/v1/dashboard/metrics/summary": {
             "get": {
-                "description": "KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor tiempo, consistencia, tendencia y estado de los datos. ` + "`" + `compliance_rate` + "`" + ` es porcentaje y ` + "`" + `delta_pct` + "`" + ` va con signo positivo hacia la mejora, incluso en el eje temporal.",
+                "description": "KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor tiempo, consistencia, tendencia y estado de los datos. ` + "`" + `compliance_rate` + "`" + ` es porcentaje y ` + "`" + `delta_pct` + "`" + ` va con signo positivo hacia la mejora, incluso en el eje temporal. Los cuatro filtros de rango acotan qué series entran al cálculo y se aplican sobre el tiempo logrado y la distancia lograda; una serie que queda afuera no cuenta como inválida.",
                 "produces": [
                     "application/json"
                 ],
@@ -1278,7 +1328,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "format": "int64",
-                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
                         "name": "exercise_id",
                         "in": "query"
                     },
@@ -1289,25 +1339,19 @@ const docTemplate = `{
                             "format": "int64"
                         },
                         "collectionFormat": "csv",
-                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
                         "name": "exercise_ids",
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "enum": [
-                                "liviano",
-                                "elongacion",
-                                "ritmo_continuo",
-                                "velocidad_tiempo",
-                                "velocidad_distancia"
-                            ],
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Tipos vigentes (excluyente con exercise_id y exercise_ids)",
-                        "name": "kinds",
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
                         "in": "query"
                     },
                     {
@@ -1327,6 +1371,34 @@ const docTemplate = `{
                         "type": "number",
                         "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
                         "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
                         "in": "query"
                     }
                 ],
@@ -1393,7 +1465,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "format": "int64",
-                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
                         "name": "exercise_id",
                         "in": "query"
                     },
@@ -1404,25 +1476,19 @@ const docTemplate = `{
                             "format": "int64"
                         },
                         "collectionFormat": "csv",
-                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
                         "name": "exercise_ids",
                         "in": "query"
                     },
                     {
-                        "type": "array",
-                        "items": {
-                            "enum": [
-                                "liviano",
-                                "elongacion",
-                                "ritmo_continuo",
-                                "velocidad_tiempo",
-                                "velocidad_distancia"
-                            ],
-                            "type": "string"
-                        },
-                        "collectionFormat": "csv",
-                        "description": "Tipos vigentes (excluyente con exercise_id y exercise_ids)",
-                        "name": "kinds",
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
                         "in": "query"
                     },
                     {
@@ -1442,6 +1508,34 @@ const docTemplate = `{
                         "type": "number",
                         "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
                         "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
                         "in": "query"
                     },
                     {
@@ -9376,6 +9470,13 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "distance_from_m": {
+                    "description": "Rango de datos: metros y minutos enteros, igual que en los GET.",
+                    "type": "integer"
+                },
+                "distance_to_m": {
+                    "type": "integer"
+                },
                 "exercise_id": {
                     "type": "integer"
                 },
@@ -9391,13 +9492,17 @@ const docTemplate = `{
                 "group_id": {
                     "type": "integer"
                 },
-                "kinds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "kind": {
+                    "description": "Kind es un valor único, no una lista: el filtro de tipo del front es de\nselección única y su opción \"todos\" viaja como ausencia del parámetro. Solo\nadmiten los tres tipos con métrica.",
+                    "type": "string"
                 },
                 "team_id": {
+                    "type": "integer"
+                },
+                "time_from_min": {
+                    "type": "integer"
+                },
+                "time_to_min": {
                     "type": "integer"
                 },
                 "to": {
@@ -9712,6 +9817,13 @@ const docTemplate = `{
                 "current": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange"
                 },
+                "distance_from_m": {
+                    "description": "El rango de datos acota las series de los DOS períodos por igual: si el\ncurrent y el previous midieran ventanas distintas, el delta compararía dos\ncosas que el usuario no pidió comparar.",
+                    "type": "integer"
+                },
+                "distance_to_m": {
+                    "type": "integer"
+                },
                 "exercise_id": {
                     "type": "integer"
                 },
@@ -9724,11 +9836,8 @@ const docTemplate = `{
                 "group_id": {
                     "type": "integer"
                 },
-                "kinds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "kind": {
+                    "type": "string"
                 },
                 "previous": {
                     "description": "Previous es opcional: si no viene, el backend lo deriva desplazando current\nhacia atrás exactamente su misma cantidad de días.",
@@ -9739,6 +9848,12 @@ const docTemplate = `{
                     ]
                 },
                 "team_id": {
+                    "type": "integer"
+                },
+                "time_from_min": {
+                    "type": "integer"
+                },
+                "time_to_min": {
                     "type": "integer"
                 },
                 "tolerance": {

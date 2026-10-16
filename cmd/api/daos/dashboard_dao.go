@@ -31,6 +31,17 @@ type DashboardScopeFilter struct {
 	LegacyExerciseInstanceIDs []int64
 	// AthleteUserIDs acota a ciertos corredores (leaderboard, comparisons).
 	AthleteUserIDs []int64
+	// Rango de datos: acota qué SERIES entran al cálculo, no qué ejercicio se mide.
+	// Las unidades viajan en el nombre porque las columnas no coinciden: la distancia
+	// es float y el tiempo se compara en ms.
+	//
+	// Van en el WHERE por la misma razón que role = 'main' y el status de
+	// runner_session: filtrar después de traer la serie significa traer de más y
+	// descartar en memoria.
+	DistanceFromM *float64
+	DistanceToM   *float64
+	TimeFromMs    *int64
+	TimeToMs      *int64
 }
 
 // DashboardSeriesRow es una fila de feedback con el contexto que las fórmulas del
@@ -129,6 +140,41 @@ const membershipWindowEXISTS = `
 	  AND gu.date_start::date <= gcd.date::date
 	  AND (gu.date_end IS NULL OR gu.date_end::date >= gcd.date::date)
   )`
+
+// achievedTimeSQL es el TIEMPO LOGRADO de la serie, la misma magnitud con la que
+// calculan los KPIs (design.md D4). Los filtros de tiempo la comparan contra este
+// COALESCE y no contra duration_ms en crudo: con el crudo, una serie que trae
+// active_duration_ms —y que sí cuenta para todo lo demás— quedaría afuera de la
+// ventana sin que el usuario tuviera por qué.
+const achievedTimeSQL = "COALESCE(wf.active_duration_ms, wf.duration_ms)"
+
+// rangeConditions arma el WHERE del rango de datos y sus argumentos, en el MISMO
+// orden: los ? se bindean en el orden en que se armaron las condiciones.
+//
+// El tiempo se compara contra el tiempo logrado (achievedTimeSQL) y no contra
+// duration_ms en crudo, y el rango no toca CountOpenSessions: una sesión a medias no
+// tiene series válidas que acotar, y el contador describe sesiones, no series.
+func (f DashboardScopeFilter) rangeConditions() ([]string, []interface{}) {
+	conditions := []string{}
+	args := []interface{}{}
+	if f.DistanceFromM != nil {
+		conditions = append(conditions, "wf.distance_meters >= ?")
+		args = append(args, *f.DistanceFromM)
+	}
+	if f.DistanceToM != nil {
+		conditions = append(conditions, "wf.distance_meters <= ?")
+		args = append(args, *f.DistanceToM)
+	}
+	if f.TimeFromMs != nil {
+		conditions = append(conditions, achievedTimeSQL+" >= ?")
+		args = append(args, *f.TimeFromMs)
+	}
+	if f.TimeToMs != nil {
+		conditions = append(conditions, achievedTimeSQL+" <= ?")
+		args = append(args, *f.TimeToMs)
+	}
+	return conditions, args
+}
 
 // countOpenSessionsSQL cuenta sesiones wip del mismo scope. Los mismos cuatro
 // joins y el mismo filtro de rol: una sesión a medias no es un dato que el
@@ -280,6 +326,12 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		}
 		conditions = append(conditions, "("+strings.Join(catalogRefs, " OR ")+")")
 	}
+	// El rango de datos va en el WHERE y no en un recorte sobre las filas: una serie
+	// excluida por la ventana es una decisión del usuario, no un defecto, así que
+	// tampoco llega a contarse en invalid_series.
+	rangeConditions, rangeArgs := filter.rangeConditions()
+	conditions = append(conditions, rangeConditions...)
+	args = append(args, rangeArgs...)
 
 	query := "SELECT " + strings.Join(selected, ", ") + seriesFromClause + membershipWindowEXISTS
 	if len(conditions) > 0 {

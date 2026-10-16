@@ -64,6 +64,8 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 - [x] 5.3 Whitelist de `sort`: `best_time_ms`, `mean_speed_kph`, `total_distance_m`, `compliance_rate`. Fuera de ella → `400` (rechazar **antes** de tocar la DB).
 - [x] 5.4 Límites: `from` obligatorio, rango máximo 2 años, `page_size` máximo 100, **`tolerance` dentro de `[0.01, 0.20]`**, **`granularity` dentro de `{session, week, month, quarter}`** y **`order` dentro de `{asc, desc}`**. Cada violación responde `400` con su `code` de `error_code.go`, no un `400` genérico.
 - [x] 5.5 Test que verifica que el filtro `sei.role = 'main'` está presente (regresión de D9).
+- [x] 5.6 **Filtros de rango de datos** (`distance_from_m`, `distance_to_m`, `time_from_min`, `time_to_min`), spec "Los filtros de rango acotan qué series entran al cálculo": en el `WHERE` de la query de series (`DashboardScopeFilter.rangeConditions`), el tiempo contra `COALESCE(active_duration_ms, duration_ms)` —el tiempo LOGRADO— y en las unidades del contrato (metros, minutos) hasta el DAO. **No tocan `CountOpenSessions`**: ese contador cuenta sesiones, no series. Una serie que el rango excluye no llega a `invalid_series` porque nunca sale de la consulta.
+- [x] 5.7 `kind` pasó de `kinds[]` a **valor único**, y solo admite los **tres tipos con métrica** (`constants.DashboardMetricKinds`): `liviano` y `elongacion` son 400 porque el filtro `role = 'main'` deja sus series todas afuera. El `kinds` viejo se rechaza en vez de ignorarse (en GET y en los dos POST), porque ignorarlo devolvería el scope entero haciéndole creer al cliente que filtró. Arreglado de paso el 404 que devolvía **todo** filtro por tipo: la comparación de "resolví todos los que pediste" corría contra la lista de ids, que con `kind` es vacía.
 
 ## 6. Endpoints + swagger
 
@@ -85,6 +87,7 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 - [x] 6.9b Test de los cinco rechazos de parámetro con su `code`: `tolerance` fuera de `[0.01, 0.20]`, `granularity` fuera de `{session, week, month, quarter}`, `order` fuera de `{asc, desc}`, `page_size` > 100 y rango > 2 años. Los cinco son normativos en el spec y hoy solo `sort` tiene dónde implementarse.
 - [x] 6.10 Test de que un `sort` fuera de whitelist devuelve `400` sin ejecutar la query.
 - [x] 6.11 Test de que un rango de 12 años devuelve `400`.
+- [x] 6.12 Tests de los cuatro filtros de rango y del `kind` escalar: ventana de distancia y de tiempo con series dentro y fuera (DAO), rango invertido y negativo (`400 INVALID_RANGE_FILTER` sin tocar la DB), tiempo del rango sobre `active_duration_ms` presente, serie excluida por rango que **no** suma a `invalid_series` (service + DAO reales), `kind=liviano` → `400`, y `kinds`/`kinds[]`/`kind` repetido → `400`.
 
 ## 7. Seed
 
@@ -120,7 +123,7 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 ## 9. Cierre
 
 - [x] 9.1 `go build ./...` y `go vet` verdes.
-- [x] 9.1b Los tests que necesitan Postgres real (5.5, 6.9, 6.9b, 6.10, 6.11, 7.2b, 8.4) **se skipean en silencio** sin `TEST_DB_HOST` (`testutils/db.go:42-45`), y "suite verde" con skips no es verde. El repo tiene `make test-with-db` (`Makefile:112`): el cierre tiene que correrlo, no `go test ./...` a secas.
+- [x] 9.1b Los tests que necesitan Postgres real (5.5, 6.9, 6.9b, 6.10, 6.11, 6.12, 7.2b, 8.4) **se skipean en silencio** sin `TEST_DB_HOST` (`testutils/db.go:42-45`), y "suite verde" con skips no es verde. El repo tiene `make test-with-db` (`Makefile:112`): el cierre tiene que correrlo, no `go test ./...` a secas.
 - [x] 9.2 Suite completa verde, incluyendo los tests de permisos (`propio → 200`, `ajeno → 403`).
 - [x] 9.3 Guardar en el repo el dataset generado (o el generador con su semilla fija) para que el frontend pueda desarrollar contra mocks.
 - [x] 9.4 Documentar en el change las fórmulas de KPI por tipificación, para que el frontend no las reimplemente.

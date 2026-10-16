@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dashboard"
@@ -77,17 +79,21 @@ func (dc *dashboardController) Filters(c *gin.Context) {
 
 // Summary godoc
 // @Summary      Resumen de métricas
-// @Description  KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor tiempo, consistencia, tendencia y estado de los datos. `compliance_rate` es porcentaje y `delta_pct` va con signo positivo hacia la mejora, incluso en el eje temporal.
+// @Description  KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor tiempo, consistencia, tendencia y estado de los datos. `compliance_rate` es porcentaje y `delta_pct` va con signo positivo hacia la mejora, incluso en el eje temporal. Los cuatro filtros de rango acotan qué series entran al cálculo y se aplican sobre el tiempo logrado y la distancia lograda; una serie que queda afuera no cuenta como inválida.
 // @Tags         dashboard
 // @Produce      json
-// @Param        team_id       query     int64    true   "Equipo del que se está mirando el dashboard"
-// @Param        group_id      query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
-// @Param        exercise_id   query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)"
-// @Param        exercise_ids  query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)"
-// @Param        kinds         query     []string false  "Tipos vigentes (excluyente con exercise_id y exercise_ids)"  Enums(liviano, elongacion, ritmo_continuo, velocidad_tiempo, velocidad_distancia)
-// @Param        from          query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
-// @Param        to            query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
-// @Param        tolerance     query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
+// @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
+// @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
+// @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
+// @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
+// @Param        from             query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
+// @Param        to               query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
+// @Param        tolerance        query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
+// @Param        distance_from_m  query     int64    false  "Distancia mínima de la serie, en metros enteros"
+// @Param        distance_to_m    query     int64    false  "Distancia máxima de la serie, en metros enteros"
+// @Param        time_from_min    query     int64    false  "Tiempo logrado mínimo, en minutos enteros"
+// @Param        time_to_min      query     int64    false  "Tiempo logrado máximo, en minutos enteros"
 // @Success      200  {object}  dashboard.SummaryResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -112,15 +118,19 @@ func (dc *dashboardController) Summary(c *gin.Context) {
 // @Description  Buckets de calendario (session/week/month/quarter) con los mismos KPIs del resumen. Los anclajes son de calendario: un bucket puede empezar antes del `from` y el recorte nunca parte una semana ni un trimestre por la mitad.
 // @Tags         dashboard
 // @Produce      json
-// @Param        team_id       query     int64    true   "Equipo del que se está mirando el dashboard"
-// @Param        group_id      query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
-// @Param        exercise_id   query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)"
-// @Param        exercise_ids  query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)"
-// @Param        kinds         query     []string false  "Tipos vigentes (excluyente con exercise_id y exercise_ids)"  Enums(liviano, elongacion, ritmo_continuo, velocidad_tiempo, velocidad_distancia)
-// @Param        from          query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
-// @Param        to            query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
-// @Param        tolerance     query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
-// @Param        granularity   query     string   false  "Anclaje del bucket (default session)"  Enums(session, week, month, quarter)
+// @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
+// @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
+// @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
+// @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
+// @Param        from             query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
+// @Param        to               query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
+// @Param        tolerance        query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
+// @Param        distance_from_m  query     int64    false  "Distancia mínima de la serie, en metros enteros"
+// @Param        distance_to_m    query     int64    false  "Distancia máxima de la serie, en metros enteros"
+// @Param        time_from_min    query     int64    false  "Tiempo logrado mínimo, en minutos enteros"
+// @Param        time_to_min      query     int64    false  "Tiempo logrado máximo, en minutos enteros"
+// @Param        granularity      query     string   false  "Anclaje del bucket (default session)"  Enums(session, week, month, quarter)
 // @Success      200  {object}  dashboard.TimeseriesResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -145,18 +155,22 @@ func (dc *dashboardController) TimeSeries(c *gin.Context) {
 // @Description  Ranking paginado del scope con la posición global de cada corredor (`position`), calculada sobre todas las filas y con el mismo criterio de orden que la página. Solo el dueño del equipo.
 // @Tags         dashboard
 // @Produce      json
-// @Param        team_id       query     int64    true   "Equipo del que se está mirando el dashboard"
-// @Param        group_id      query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
-// @Param        exercise_id   query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kinds)"
-// @Param        exercise_ids  query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kinds)"
-// @Param        kinds         query     []string false  "Tipos vigentes (excluyente con exercise_id y exercise_ids)"  Enums(liviano, elongacion, ritmo_continuo, velocidad_tiempo, velocidad_distancia)
-// @Param        from          query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
-// @Param        to            query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
-// @Param        tolerance     query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
-// @Param        page          query     int      false  "Página (default 1)"
-// @Param        page_size     query     int      false  "Tamaño de página, máximo 100 (default 20)"
-// @Param        sort          query     string   false  "Columna de orden (default best_time_ms)"  Enums(best_time_ms, mean_speed_kph, total_distance_m, compliance_rate)
-// @Param        order         query     string   false  "Sentido del orden (default asc)"  Enums(asc, desc)
+// @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
+// @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
+// @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
+// @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
+// @Param        from             query     string   true   "Desde (YYYY-MM-DD, obligatorio)"
+// @Param        to               query     string   false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
+// @Param        tolerance        query     number   false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
+// @Param        distance_from_m  query     int64    false  "Distancia mínima de la serie, en metros enteros"
+// @Param        distance_to_m    query     int64    false  "Distancia máxima de la serie, en metros enteros"
+// @Param        time_from_min    query     int64    false  "Tiempo logrado mínimo, en minutos enteros"
+// @Param        time_to_min      query     int64    false  "Tiempo logrado máximo, en minutos enteros"
+// @Param        page             query     int      false  "Página (default 1)"
+// @Param        page_size        query     int      false  "Tamaño de página, máximo 100 (default 20)"
+// @Param        sort             query     string   false  "Columna de orden (default best_time_ms)"  Enums(best_time_ms, mean_speed_kph, total_distance_m, compliance_rate)
+// @Param        order            query     string   false  "Sentido del orden (default asc)"  Enums(asc, desc)
 // @Success      200  {object}  dashboard.LeaderboardResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -186,14 +200,18 @@ func (dc *dashboardController) Leaderboard(c *gin.Context) {
 // @Description  Serie por serie con objetivo congelado, cumplimiento, banda y calidad de tiempo. El `{id}` es el `exercises.id` de catálogo, el mismo que expone `/dashboard/filters`. Las instancias anteriores al change de instancia-referencia-catálogo se resuelven por nombre normalizado contra el catálogo del mismo dueño.
 // @Tags         dashboard
 // @Produce      json
-// @Param        id         path      int64   true   "Ejercicio de catálogo (exercises.id)"
-// @Param        team_id    query     int64   true   "Equipo del que se está mirando el dashboard"
-// @Param        group_id   query     int64   false  "Acotar a un grupo del scope (no lo amplía)"
-// @Param        from       query     string  true   "Desde (YYYY-MM-DD, obligatorio)"
-// @Param        to         query     string  false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
-// @Param        tolerance  query     number  false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
-// @Param        page       query     int     false  "Página (default 1)"
-// @Param        page_size  query     int     false  "Tamaño de página, máximo 100 (default 20)"
+// @Param        id              path      int64   true   "Ejercicio de catálogo (exercises.id)"
+// @Param        team_id         query     int64   true   "Equipo del que se está mirando el dashboard"
+// @Param        group_id        query     int64   false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        from            query     string  true   "Desde (YYYY-MM-DD, obligatorio)"
+// @Param        to              query     string  false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
+// @Param        tolerance       query     number  false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
+// @Param        distance_from_m query     int64   false  "Distancia mínima de la serie, en metros enteros"
+// @Param        distance_to_m   query     int64   false  "Distancia máxima de la serie, en metros enteros"
+// @Param        time_from_min   query     int64   false  "Tiempo logrado mínimo, en minutos enteros"
+// @Param        time_to_min     query     int64   false  "Tiempo logrado máximo, en minutos enteros"
+// @Param        page            query     int     false  "Página (default 1)"
+// @Param        page_size       query     int     false  "Tamaño de página, máximo 100 (default 20)"
 // @Success      200  {object}  dashboard.SeriesResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -223,7 +241,7 @@ func (dc *dashboardController) ExerciseSeries(c *gin.Context) {
 
 // Comparisons godoc
 // @Summary      Comparación entre corredores
-// @Description  Una fila por corredor comparable del scope, con su tendencia y el `data_quality` común. Solo el dueño del equipo. Cada `athlete_user_id` se valida por separado: si uno está fuera de scope responde 403 nombrándolo, sin devolver los datos de los válidos.
+// @Description  Una fila por corredor comparable del scope, con su tendencia y el `data_quality` común. Solo el dueño del equipo. Cada `athlete_user_id` se valida por separado: si uno está fuera de scope responde 403 nombrándolo, sin devolver los datos de los válidos. `kind` es un valor único entre los tres tipos con métrica, y los cuatro filtros de rango acotan las series igual que en los GET.
 // @Tags         dashboard
 // @Accept       json
 // @Produce      json
@@ -241,7 +259,7 @@ func (dc *dashboardController) Comparisons(c *gin.Context) {
 		return
 	}
 	var request dashboard.ComparisonsRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := bindDashboardBody(c, &request); err != nil {
 		respondDashboardParamError(c, "INVALID_REQUEST", "body inválido: %s", err.Error())
 		return
 	}
@@ -256,7 +274,7 @@ func (dc *dashboardController) Comparisons(c *gin.Context) {
 
 // Periods godoc
 // @Summary      Comparación de períodos
-// @Description  Compara el período actual contra el anterior de la misma longitud; sin `previous`, el backend lo deriva desplazando `current` hacia atrás. `compliance_pp` son puntos porcentuales y `best_time_pct` tiene el signo invertido: bajar el tiempo es mejorar. Solo el dueño del equipo.
+// @Description  Compara el período actual contra el anterior de la misma longitud; sin `previous`, el backend lo deriva desplazando `current` hacia atrás. `compliance_pp` son puntos porcentuales y `best_time_pct` tiene el signo invertido: bajar el tiempo es mejorar. Solo el dueño del equipo. Los cuatro filtros de rango acotan las series de los dos períodos por igual.
 // @Tags         dashboard
 // @Accept       json
 // @Produce      json
@@ -274,7 +292,7 @@ func (dc *dashboardController) Periods(c *gin.Context) {
 		return
 	}
 	var request dashboard.PeriodsRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := bindDashboardBody(c, &request); err != nil {
 		respondDashboardParamError(c, "INVALID_REQUEST", "body inválido: %s", err.Error())
 		return
 	}
@@ -288,6 +306,23 @@ func (dc *dashboardController) Periods(c *gin.Context) {
 }
 
 // ---------- helpers ----------
+
+// bindDashboardBody decodifica el body de los dos POST rechazando los campos que no
+// existen en el DTO. ShouldBindJSON los ignoraba en silencio, y para un filtro eso es
+// lo peor que puede pasar: un `kinds` viejo —o cualquier otro nombre mal escrito—
+// devolvía el scope entero y el cliente creía que había filtrado.
+//
+// La validación de `binding:"required"` la hace binding.Validator a mano porque
+// ShouldBindJSON la corría en el mismo paso: sin ella, un team_id ausente pasaría de
+// 400 a 403.
+func bindDashboardBody(c *gin.Context, target any) error {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	return binding.Validator.ValidateStruct(target)
+}
 
 // dashboardRequest arma la query común de los endpoints GET: team_id
 // obligatorio, filtro de ejercicio y rango. Los parámetros ausentes se dejan vacíos
@@ -326,8 +361,79 @@ func dashboardRequest(c *gin.Context) (int64, services.MetricsQuery, bool) {
 		query.ExerciseID = &exerciseID
 	}
 	query.ExerciseIDs = int64Query(c, "exercise_ids")
-	query.Kinds = trimmedQuery(c, "kinds")
+	kind, ok := singleKindQuery(c)
+	if !ok {
+		return 0, services.MetricsQuery{}, false
+	}
+	query.Kind = kind
+	if !seriesRangeQuery(c, &query) {
+		return 0, services.MetricsQuery{}, false
+	}
 	return callerID, query, true
+}
+
+// seriesRangeQuery lee los cuatro filtros de rango de datos. Comparten la misma regla
+// —entero opcional, y el 0 es un valor legítimo—, así que van en una sola pasada y
+// en orden fijo para que un request con dos parámetros malos siempre reporte el
+// mismo.
+func seriesRangeQuery(c *gin.Context, query *services.MetricsQuery) bool {
+	for _, bound := range []struct {
+		name   string
+		target **int64
+	}{
+		{"distance_from_m", &query.DistanceFromM},
+		{"distance_to_m", &query.DistanceToM},
+		{"time_from_min", &query.TimeFromMin},
+		{"time_to_min", &query.TimeToMin},
+	} {
+		value, ok := optionalIntQuery(c, bound.name)
+		if !ok {
+			return false
+		}
+		*bound.target = value
+	}
+	return true
+}
+
+// singleKindQuery lee el filtro de tipo, que es un valor único. Repetido es el array
+// que el contrato no tiene, y el `kinds` viejo —con o sin corchetes— tampoco se
+// ignora en silencio: ignorarlo devolvería el scope entero y el cliente creería que
+// filtró por tipo.
+func singleKindQuery(c *gin.Context) (string, bool) {
+	for name := range c.Request.URL.Query() {
+		if strings.TrimSuffix(name, "[]") == "kinds" {
+			respondDashboardParamError(c, "INVALID_REQUEST",
+				"kinds ya no es un parámetro: el filtro de tipo es `kind`, y es un valor único")
+			return "", false
+		}
+	}
+	values := c.QueryArray("kind")
+	switch len(values) {
+	case 0:
+		return "", true
+	case 1:
+		return strings.TrimSpace(values[0]), true
+	default:
+		respondDashboardParamError(c, "INVALID_REQUEST",
+			"kind es un valor único: mandá un solo tipo")
+		return "", false
+	}
+}
+
+// optionalIntQuery lee un entero opcional. El 0 es un valor válido —"cualquier
+// distancia" se puede pedir explícitamente—, así que lo que marca la ausencia es el
+// parámetro vacío, no el valor.
+func optionalIntQuery(c *gin.Context, name string) (*int64, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return nil, true
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		respondDashboardParamError(c, "INVALID_RANGE_FILTER", "%s debe ser un entero", name)
+		return nil, false
+	}
+	return &value, true
 }
 
 func requiredInt64Query(c *gin.Context, name string) (int64, bool) {
@@ -353,19 +459,6 @@ func int64Query(c *gin.Context, name string) []int64 {
 			continue
 		}
 		out = append(out, parsed)
-	}
-	return out
-}
-
-func trimmedQuery(c *gin.Context, name string) []string {
-	values := c.QueryArray(name)
-	out := make([]string, 0, len(values))
-	for _, raw := range values {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			continue
-		}
-		out = append(out, trimmed)
 	}
 	return out
 }

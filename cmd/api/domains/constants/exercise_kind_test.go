@@ -145,3 +145,60 @@ func TestMigrateExerciseKind_CubreTodosLosOriginales(t *testing.T) {
 		}
 	}
 }
+
+func TestIsDashboardMetricKind(t *testing.T) {
+	tests := []struct {
+		kind  string
+		valid bool
+		why   string
+	}{
+		{"ritmo_continuo", true, "tiene distancia y tiempo"},
+		{"velocidad_tiempo", true, "tiene tiempo"},
+		{"velocidad_distancia", true, "tiene distancia"},
+
+		// Válidos del modelo, pero NO filtrables: son bloques warmup/cooldown, y el
+		// filtro role = 'main' del dashboard deja sus series todas afuera.
+		{"liviano", false, "el dashboard no puede medir un calentamiento"},
+		{"elongacion", false, "el dashboard no puede medir una elongación"},
+
+		// Legacy e inventados.
+		{"running", false, "los legacy no se miden"},
+		{"volando", false, "un tipo que no existe"},
+		{"", false, "el kind vacío no se filtra"},
+	}
+	for _, tt := range tests {
+		if got := IsDashboardMetricKind(tt.kind); got != tt.valid {
+			t.Errorf("IsDashboardMetricKind(%q) = %v, esperaba %v (%s)", tt.kind, got, tt.valid, tt.why)
+		}
+	}
+}
+
+// El filtro de tipo del dashboard y la lista de tipos que el front muestra son listas
+// DISTINTAS y no puede pasar a ser la misma: /filters.exercise_types ofrece los cinco
+// tipos vigentes, pero el filtro solo acepta los tres con métrica.
+func TestDashboardMetricKindsEsSubconjuntoDeLosVigentes(t *testing.T) {
+	if len(DashboardMetricKinds()) != 3 {
+		t.Errorf("esperaba 3 tipos con métrica, obtuve %d: %v", len(DashboardMetricKinds()), DashboardMetricKinds())
+	}
+	seen := map[string]bool{}
+	for _, kind := range DashboardMetricKinds() {
+		if seen[kind] {
+			t.Errorf("tipo duplicado en DashboardMetricKinds: %q", kind)
+		}
+		seen[kind] = true
+		if !IsCurrentExerciseKind(kind) {
+			t.Errorf("%q tiene métrica pero no es un tipo vigente", kind)
+		}
+		if !IsValidExerciseKind(kind) {
+			t.Errorf("%q tiene métrica pero no es un tipo válido para escribir", kind)
+		}
+	}
+	for _, kind := range CurrentExerciseKinds() {
+		if IsDashboardMetricKind(kind) {
+			continue
+		}
+		if !IsValidExerciseKind(kind) {
+			t.Errorf("%q quedó fuera de la métrica y además no es un tipo válido", kind)
+		}
+	}
+}

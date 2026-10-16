@@ -190,7 +190,8 @@ func TestDashboardController_TeamIDObligatorio(t *testing.T) {
 func TestDashboardController_ArmaLaQuery(t *testing.T) {
 	service := &stubDashboardService{}
 	ctx, _ := dashboardTestContext(t, http.MethodGet,
-		"/?team_id=29&group_id=39&exercise_id=7&kinds=ritmo_continuo&from=2026-09-01&to=2026-09-30&tolerance=0.1&granularity=week&page=2&page_size=50&sort=mean_speed_kph&order=desc", "", true)
+		"/?team_id=29&group_id=39&exercise_id=7&kind=ritmo_continuo&from=2026-09-01&to=2026-09-30&tolerance=0.1&granularity=week&page=2&page_size=50&sort=mean_speed_kph&order=desc"+
+			"&distance_from_m=5000&distance_to_m=42000&time_from_min=5&time_to_min=360", "", true)
 
 	NewDashboardController(service).Leaderboard(ctx)
 
@@ -200,7 +201,7 @@ func TestDashboardController_ArmaLaQuery(t *testing.T) {
 	assert.Equal(t, int64(39), *service.lastQuery.GroupID)
 	require.NotNil(t, service.lastQuery.ExerciseID)
 	assert.Equal(t, int64(7), *service.lastQuery.ExerciseID)
-	assert.Equal(t, []string{"ritmo_continuo"}, service.lastQuery.Kinds)
+	assert.Equal(t, "ritmo_continuo", service.lastQuery.Kind)
 	assert.Equal(t, "2026-09-01", service.lastQuery.From)
 	assert.Equal(t, "2026-09-30", service.lastQuery.To)
 	assert.Equal(t, "0.1", service.lastQuery.Tolerance)
@@ -209,18 +210,68 @@ func TestDashboardController_ArmaLaQuery(t *testing.T) {
 	assert.Equal(t, "50", service.lastQuery.PageSize)
 	assert.Equal(t, "mean_speed_kph", service.lastQuery.Sort)
 	assert.Equal(t, "desc", service.lastQuery.Order)
+	require.NotNil(t, service.lastQuery.DistanceFromM)
+	assert.Equal(t, int64(5000), *service.lastQuery.DistanceFromM)
+	require.NotNil(t, service.lastQuery.DistanceToM)
+	assert.Equal(t, int64(42000), *service.lastQuery.DistanceToM)
+	require.NotNil(t, service.lastQuery.TimeFromMin)
+	assert.Equal(t, int64(5), *service.lastQuery.TimeFromMin)
+	require.NotNil(t, service.lastQuery.TimeToMin)
+	assert.Equal(t, int64(360), *service.lastQuery.TimeToMin)
 }
 
-// exercise_ids[] y kinds[] llegan como query params repetidos.
+// exercise_ids[] llega como query params repetidos; el filtro de tipo no, porque es
+// un valor único.
 func TestDashboardController_QueryParamsRepetidos(t *testing.T) {
 	service := &stubDashboardService{}
 	ctx, _ := dashboardTestContext(t, http.MethodGet,
-		"/?team_id=29&from=2026-09-01&exercise_ids=7&exercise_ids=8&kinds=ritmo_continuo&kinds=elongacion", "", true)
+		"/?team_id=29&from=2026-09-01&exercise_ids=7&exercise_ids=8&kind=ritmo_continuo", "", true)
 
 	NewDashboardController(service).Summary(ctx)
 
 	assert.Equal(t, []int64{7, 8}, service.lastQuery.ExerciseIDs)
-	assert.Equal(t, []string{"ritmo_continuo", "elongacion"}, service.lastQuery.Kinds)
+	assert.Equal(t, "ritmo_continuo", service.lastQuery.Kind)
+}
+
+// El filtro de tipo es un valor único: el array viejo (`kinds`) y el repetido son 400.
+// Ignorarlos en silencio devolvería el scope entero y el cliente creería que filtró.
+func TestDashboardController_KindArrayEs400(t *testing.T) {
+	cases := map[string]string{
+		"kinds":    "/?team_id=29&from=2026-09-01&kinds=ritmo_continuo&kinds=elongacion",
+		"kinds[]":  "/?team_id=29&from=2026-09-01&kinds[]=ritmo_continuo",
+		"repetido": "/?team_id=29&from=2026-09-01&kind=ritmo_continuo&kind=velocidad_tiempo",
+	}
+	for name, target := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &stubDashboardService{}
+			ctx, recorder := dashboardTestContext(t, http.MethodGet, target, "", true)
+
+			NewDashboardController(service).Summary(ctx)
+
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, "INVALID_REQUEST", decodeAPIError(t, recorder).Code)
+			assert.Nil(t, service.lastRequest)
+		})
+	}
+}
+
+// Un filtro de rango que no es entero se rechaza en el controller, antes de llegar al
+// service. El decimal entra por la misma puerta: `strconv.ParseInt` no lo acepta.
+func TestDashboardController_RangoDeSerieNoEnteroEs400(t *testing.T) {
+	for name, target := range map[string]string{
+		"decimal":   "/?team_id=29&from=2026-09-01&distance_from_m=4.5",
+		"texto":     "/?team_id=29&from=2026-09-01&time_to_min=una-hora",
+		"distancia": "/?team_id=29&from=2026-09-01&distance_to_m=abc",
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, recorder := dashboardTestContext(t, http.MethodGet, target, "", true)
+
+			NewDashboardController(&stubDashboardService{}).Summary(ctx)
+
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, "INVALID_RANGE_FILTER", decodeAPIError(t, recorder).Code)
+		})
+	}
 }
 
 // /exercises/{id}/series: el id del path es el de catálogo y llega como int64.
@@ -247,9 +298,11 @@ func TestDashboardController_ExerciseSeriesIDInvalido(t *testing.T) {
 func TestDashboardController_BodyDeComparisons(t *testing.T) {
 	service := &stubDashboardService{}
 	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{
-		"team_id": 29, "group_id": 39, "kinds": ["ritmo_continuo"],
+		"team_id": 29, "group_id": 39, "kind": "ritmo_continuo",
 		"from": "2026-09-01", "to": "2026-09-30", "tolerance": 0.1,
-		"athlete_user_ids": [1, 2]
+		"athlete_user_ids": [1, 2],
+		"distance_from_m": 5000, "distance_to_m": 42000,
+		"time_from_min": 5, "time_to_min": 360
 	}`, true)
 
 	NewDashboardController(service).Comparisons(ctx)
@@ -260,17 +313,55 @@ func TestDashboardController_BodyDeComparisons(t *testing.T) {
 	assert.Equal(t, int64(29), request.TeamID)
 	require.NotNil(t, request.GroupID)
 	assert.Equal(t, int64(39), *request.GroupID)
-	assert.Equal(t, []string{"ritmo_continuo"}, request.Kinds)
+	require.NotNil(t, request.Kind)
+	assert.Equal(t, "ritmo_continuo", *request.Kind)
 	assert.Equal(t, []int64{1, 2}, request.AthleteUserIDs)
 	require.NotNil(t, request.Tolerance)
 	assert.InDelta(t, 0.1, *request.Tolerance, 0.0001)
+	require.NotNil(t, request.DistanceFromM)
+	assert.Equal(t, int64(5000), *request.DistanceFromM)
+	require.NotNil(t, request.DistanceToM)
+	assert.Equal(t, int64(42000), *request.DistanceToM)
+	require.NotNil(t, request.TimeFromMin)
+	assert.Equal(t, int64(5), *request.TimeFromMin)
+	require.NotNil(t, request.TimeToMin)
+	assert.Equal(t, int64(360), *request.TimeToMin)
+}
+
+// Un campo que no existe en el DTO es 400 y no se ignora en silencio: el `kinds` viejo
+// en el body devolvería el scope entero haciéndole creer al cliente que filtró.
+func TestDashboardController_BodyConCampoDesconocidoEs400(t *testing.T) {
+	service := &stubDashboardService{}
+	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{
+		"team_id": 29, "from": "2026-09-01", "to": "2026-09-30", "kinds": ["ritmo_continuo"]
+	}`, true)
+
+	NewDashboardController(service).Comparisons(ctx)
+
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Equal(t, "INVALID_REQUEST", decodeAPIError(t, recorder).Code)
+	assert.Nil(t, service.lastRequest)
+}
+
+// La validación de `binding:"required"` sigue viva: un team_id ausente es 400, no un
+// 403 de scope. ShouldBindJSON la corría y el decoder a mano no.
+func TestDashboardController_BodySinTeamIDEs400(t *testing.T) {
+	service := &stubDashboardService{}
+	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{"from": "2026-09-01", "to": "2026-09-30"}`, true)
+
+	NewDashboardController(service).Comparisons(ctx)
+
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.Equal(t, "INVALID_REQUEST", decodeAPIError(t, recorder).Code)
 }
 
 func TestDashboardController_BodyDePeriods(t *testing.T) {
 	service := &stubDashboardService{}
 	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{
 		"team_id": 29,
-		"current": {"from": "2026-09-01", "to": "2026-09-30"}
+		"kind": "velocidad_distancia",
+		"current": {"from": "2026-09-01", "to": "2026-09-30"},
+		"time_from_min": 30
 	}`, true)
 
 	NewDashboardController(service).Periods(ctx)
@@ -280,6 +371,10 @@ func TestDashboardController_BodyDePeriods(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "2026-09-01", request.Current.From)
 	assert.Nil(t, request.Previous, "previous es opcional: sin él lo deriva el service")
+	require.NotNil(t, request.Kind)
+	assert.Equal(t, "velocidad_distancia", *request.Kind)
+	require.NotNil(t, request.TimeFromMin)
+	assert.Equal(t, int64(30), *request.TimeFromMin)
 }
 
 // Sin token, 401 y nada de consulta.

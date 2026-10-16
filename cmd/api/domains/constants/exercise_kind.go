@@ -48,10 +48,9 @@ func GetValidExerciseKinds() []string {
 
 // CurrentExerciseKinds son los CINCO tipos vigentes, sin los legacy. Es la lista
 // para cualquier superficie que muestre tipos al usuario —el tablist del
-// dashboard, `/dashboard/filters.exercise_types`, los filtros de `kinds[]`—:
-// reusar GetValidExerciseKinds() ahí devolvería los 10 valores válidos (5
-// vigentes + 5 legacy) y el usuario vería tipos que ya no existen en el catálogo
-// (tarea 6.2b).
+// dashboard, `/dashboard/filters.exercise_types`—: reusar GetValidExerciseKinds()
+// ahí devolvería los 10 valores válidos (5 vigentes + 5 legacy) y el usuario vería
+// tipos que ya no existen en el catálogo (tarea 6.2b).
 func CurrentExerciseKinds() []string {
 	return []string{
 		string(ExerciseKindLiviano),
@@ -62,11 +61,38 @@ func CurrentExerciseKinds() []string {
 	}
 }
 
-// IsCurrentExerciseKind es la validación de `kinds[]` del dashboard: solo los
-// vigentes. Un kind legacy o inventado en el filtro es un 400, no un filtro sin
-// resultados.
+// IsCurrentExerciseKind valida los tipos vigentes. La usa el dominio del dashboard
+// para decidir el eje del objetivo de un conjunto: un legacy no cuenta, porque
+// objectiveAxisForKind lo devuelve como none y ensuciaría el agregado.
 func IsCurrentExerciseKind(kind string) bool {
 	for _, k := range CurrentExerciseKinds() {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// DashboardMetricKinds son los TRES tipos con métrica, o sea los únicos que acepta
+// el filtro `kind` del dashboard.
+//
+// `liviano` y `elongacion` siguen siendo tipos válidos del modelo —se crean, se
+// estampan y su eje sigue definido—, pero no son filtrables: sus bloques son
+// warmup/cooldown y el filtro role = 'main' deja sus series todas afuera. Un filtro
+// que siempre devuelve cero es peor que no ofrecerlo, porque el usuario elige algo,
+// espera números y ve un vacío sin explicación.
+func DashboardMetricKinds() []string {
+	return []string{
+		string(ExerciseKindRitmoContinuo),
+		string(ExerciseKindVelocidadTiempo),
+		string(ExerciseKindVelocidadDistancia),
+	}
+}
+
+// IsDashboardMetricKind valida el `kind` del dashboard: un tipo sin métrica, un
+// legacy o un inventado es un 400, no un filtro sin resultados.
+func IsDashboardMetricKind(kind string) bool {
+	for _, k := range DashboardMetricKinds() {
 		if k == kind {
 			return true
 		}

@@ -223,7 +223,7 @@ func TestBuildSummary_KindLegacyNoEntra(t *testing.T) {
 	assert.Nil(t, summary.Totals.ComplianceRate)
 }
 
-// kinds[] agrega ponderado por volumen: el 21 km a 5 km/h pesa mucho más que el
+// kind agrega ponderado por volumen: el 21 km a 5 km/h pesa mucho más que el
 // 4 km a 15 km/h. Con media simple darían 10 km/h.
 func TestBuildSummary_KindsAgregaPonderadoPorDistancia(t *testing.T) {
 	rows := []ScopedSeries{

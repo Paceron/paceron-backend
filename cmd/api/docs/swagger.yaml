@@ -654,6 +654,11 @@ definitions:
         items:
           type: integer
         type: array
+      distance_from_m:
+        description: 'Rango de datos: metros y minutos enteros, igual que en los GET.'
+        type: integer
+      distance_to_m:
+        type: integer
       exercise_id:
         type: integer
       exercise_ids:
@@ -664,11 +669,17 @@ definitions:
         type: string
       group_id:
         type: integer
-      kinds:
-        items:
-          type: string
-        type: array
+      kind:
+        description: |-
+          Kind es un valor único, no una lista: el filtro de tipo del front es de
+          selección única y su opción "todos" viaja como ausencia del parámetro. Solo
+          admiten los tres tipos con métrica.
+        type: string
       team_id:
+        type: integer
+      time_from_min:
+        type: integer
+      time_to_min:
         type: integer
       to:
         type: string
@@ -875,6 +886,14 @@ definitions:
     properties:
       current:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange'
+      distance_from_m:
+        description: |-
+          El rango de datos acota las series de los DOS períodos por igual: si el
+          current y el previous midieran ventanas distintas, el delta compararía dos
+          cosas que el usuario no pidió comparar.
+        type: integer
+      distance_to_m:
+        type: integer
       exercise_id:
         type: integer
       exercise_ids:
@@ -883,10 +902,8 @@ definitions:
         type: array
       group_id:
         type: integer
-      kinds:
-        items:
-          type: string
-        type: array
+      kind:
+        type: string
       previous:
         allOf:
         - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange'
@@ -894,6 +911,10 @@ definitions:
           Previous es opcional: si no viene, el backend lo deriva desplazando current
           hacia atrás exactamente su misma cantidad de días.
       team_id:
+        type: integer
+      time_from_min:
+        type: integer
+      time_to_min:
         type: integer
       tolerance:
         type: number
@@ -3902,7 +3923,9 @@ paths:
       description: 'Una fila por corredor comparable del scope, con su tendencia y
         el `data_quality` común. Solo el dueño del equipo. Cada `athlete_user_id`
         se valida por separado: si uno está fuera de scope responde 403 nombrándolo,
-        sin devolver los datos de los válidos.'
+        sin devolver los datos de los válidos. `kind` es un valor único entre los
+        tres tipos con métrica, y los cuatro filtros de rango acotan las series igual
+        que en los GET.'
       parameters:
       - description: Filtros de la comparación
         in: body
@@ -3943,7 +3966,8 @@ paths:
       description: 'Compara el período actual contra el anterior de la misma longitud;
         sin `previous`, el backend lo deriva desplazando `current` hacia atrás. `compliance_pp`
         son puntos porcentuales y `best_time_pct` tiene el signo invertido: bajar
-        el tiempo es mejorar. Solo el dueño del equipo.'
+        el tiempo es mejorar. Solo el dueño del equipo. Los cuatro filtros de rango
+        acotan las series de los dos períodos por igual.'
       parameters:
       - description: Períodos y filtros de la comparación
         in: body
@@ -4014,6 +4038,26 @@ paths:
         in: query
         name: tolerance
         type: number
+      - description: Distancia mínima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_from_m
+        type: integer
+      - description: Distancia máxima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_to_m
+        type: integer
+      - description: Tiempo logrado mínimo, en minutos enteros
+        format: int64
+        in: query
+        name: time_from_min
+        type: integer
+      - description: Tiempo logrado máximo, en minutos enteros
+        format: int64
+        in: query
+        name: time_to_min
+        type: integer
       - description: Página (default 1)
         in: query
         name: page
@@ -4100,32 +4144,27 @@ paths:
         in: query
         name: group_id
         type: integer
-      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kind)
         format: int64
         in: query
         name: exercise_id
         type: integer
       - collectionFormat: csv
-        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kind)
         in: query
         items:
           format: int64
           type: integer
         name: exercise_ids
         type: array
-      - collectionFormat: csv
-        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+      - description: Un tipo con métrica (excluyente con exercise_id y exercise_ids)
+        enum:
+        - ritmo_continuo
+        - velocidad_tiempo
+        - velocidad_distancia
         in: query
-        items:
-          enum:
-          - liviano
-          - elongacion
-          - ritmo_continuo
-          - velocidad_tiempo
-          - velocidad_distancia
-          type: string
-        name: kinds
-        type: array
+        name: kind
+        type: string
       - description: Desde (YYYY-MM-DD, obligatorio)
         in: query
         name: from
@@ -4139,6 +4178,26 @@ paths:
         in: query
         name: tolerance
         type: number
+      - description: Distancia mínima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_from_m
+        type: integer
+      - description: Distancia máxima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_to_m
+        type: integer
+      - description: Tiempo logrado mínimo, en minutos enteros
+        format: int64
+        in: query
+        name: time_from_min
+        type: integer
+      - description: Tiempo logrado máximo, en minutos enteros
+        format: int64
+        in: query
+        name: time_to_min
+        type: integer
       - description: Página (default 1)
         in: query
         name: page
@@ -4194,7 +4253,9 @@ paths:
       description: 'KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor
         tiempo, consistencia, tendencia y estado de los datos. `compliance_rate` es
         porcentaje y `delta_pct` va con signo positivo hacia la mejora, incluso en
-        el eje temporal.'
+        el eje temporal. Los cuatro filtros de rango acotan qué series entran al cálculo
+        y se aplican sobre el tiempo logrado y la distancia lograda; una serie que
+        queda afuera no cuenta como inválida.'
       parameters:
       - description: Equipo del que se está mirando el dashboard
         format: int64
@@ -4207,32 +4268,27 @@ paths:
         in: query
         name: group_id
         type: integer
-      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kind)
         format: int64
         in: query
         name: exercise_id
         type: integer
       - collectionFormat: csv
-        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kind)
         in: query
         items:
           format: int64
           type: integer
         name: exercise_ids
         type: array
-      - collectionFormat: csv
-        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+      - description: Un tipo con métrica (excluyente con exercise_id y exercise_ids)
+        enum:
+        - ritmo_continuo
+        - velocidad_tiempo
+        - velocidad_distancia
         in: query
-        items:
-          enum:
-          - liviano
-          - elongacion
-          - ritmo_continuo
-          - velocidad_tiempo
-          - velocidad_distancia
-          type: string
-        name: kinds
-        type: array
+        name: kind
+        type: string
       - description: Desde (YYYY-MM-DD, obligatorio)
         in: query
         name: from
@@ -4246,6 +4302,26 @@ paths:
         in: query
         name: tolerance
         type: number
+      - description: Distancia mínima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_from_m
+        type: integer
+      - description: Distancia máxima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_to_m
+        type: integer
+      - description: Tiempo logrado mínimo, en minutos enteros
+        format: int64
+        in: query
+        name: time_from_min
+        type: integer
+      - description: Tiempo logrado máximo, en minutos enteros
+        format: int64
+        in: query
+        name: time_to_min
+        type: integer
       produces:
       - application/json
       responses:
@@ -4290,32 +4366,27 @@ paths:
         in: query
         name: group_id
         type: integer
-      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kinds)
+      - description: Un ejercicio de catálogo (excluyente con exercise_ids y kind)
         format: int64
         in: query
         name: exercise_id
         type: integer
       - collectionFormat: csv
-        description: Varios ejercicios de catálogo (excluyente con exercise_id y kinds)
+        description: Varios ejercicios de catálogo (excluyente con exercise_id y kind)
         in: query
         items:
           format: int64
           type: integer
         name: exercise_ids
         type: array
-      - collectionFormat: csv
-        description: Tipos vigentes (excluyente con exercise_id y exercise_ids)
+      - description: Un tipo con métrica (excluyente con exercise_id y exercise_ids)
+        enum:
+        - ritmo_continuo
+        - velocidad_tiempo
+        - velocidad_distancia
         in: query
-        items:
-          enum:
-          - liviano
-          - elongacion
-          - ritmo_continuo
-          - velocidad_tiempo
-          - velocidad_distancia
-          type: string
-        name: kinds
-        type: array
+        name: kind
+        type: string
       - description: Desde (YYYY-MM-DD, obligatorio)
         in: query
         name: from
@@ -4329,6 +4400,26 @@ paths:
         in: query
         name: tolerance
         type: number
+      - description: Distancia mínima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_from_m
+        type: integer
+      - description: Distancia máxima de la serie, en metros enteros
+        format: int64
+        in: query
+        name: distance_to_m
+        type: integer
+      - description: Tiempo logrado mínimo, en minutos enteros
+        format: int64
+        in: query
+        name: time_from_min
+        type: integer
+      - description: Tiempo logrado máximo, en minutos enteros
+        format: int64
+        in: query
+        name: time_to_min
+        type: integer
       - description: Anclaje del bucket (default session)
         enum:
         - session

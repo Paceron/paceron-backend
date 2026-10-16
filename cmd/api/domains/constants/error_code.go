@@ -27,4 +27,9 @@ const (
 	ErrorCodeInvalidGranularity = "INVALID_GRANULARITY"
 	ErrorCodeMissingFrom        = "MISSING_FROM"
 	ErrorCodeInvalidPageSize    = "INVALID_PAGE_SIZE"
+	// ErrorCodeInvalidRangeFilter es el 400 de los cuatro filtros de rango de serie
+	// (distance_from_m, distance_to_m, time_from_min, time_to_min). Code propio y no
+	// ErrorCodeInvalidRange porque ese ya significa "el rango de FECHAS del período",
+	// y el cliente los corrige en lugares distintos de la pantalla.
+	ErrorCodeInvalidRangeFilter = "INVALID_RANGE_FILTER"
 )
