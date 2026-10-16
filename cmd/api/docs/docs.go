@@ -962,6 +962,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/competitions/{id}/attempts": {
+            "post": {
+                "description": "Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip sobre la instancia sintética de la competencia tagueado con competition_id. Un único intento por participante (400 si ya registró uno, único garantizado por el constraint (session_instance_id, athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Registrar el intento del atleta en una competencia de ruta",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_runnersession.MutationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/competitions/{id}/cancel": {
             "delete": {
                 "description": "Solo el creador corredor, solo sobre pending_approval: borra físicamente la competencia junto con sus participantes.",
@@ -1017,7 +1070,7 @@ const docTemplate = `{
         },
         "/api/v1/competitions/{id}/close": {
             "patch": {
-                "description": "Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active y con la ventana terminada si end_at está seteado: status finished + finished_at + winners calculados (metric: mejor valor en ventana con empate exacto = todos ganan; route: mejor % de match con tie-break de menor duración). El ganador recibe stamp; a todos los participantes llegan unseen y push best-effort; a los canales de los intentos registrados sale control:competition_finished.",
+                "description": "Cierre SIEMPRE manual (caller creador — trainer o runner — u owner del team). Solo sobre active; type=metric exige además ventana terminada (end_at pasado), route se cierra cuando el caller decide: status finished + finished_at + winners calculados (metric: mejor valor en ventana con empate exacto = todos ganan; route: mejor % de match con tie-break de menor duración). El ganador recibe stamp; a todos los participantes llegan unseen y push best-effort; a los canales de los intentos registrados sale control:competition_finished.",
                 "produces": [
                     "application/json"
                 ],
@@ -4979,7 +5032,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "El creador entrenador (owner del team) crea con status active directo; el creador corredor (miembro del team) propone con status pending_approval. type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior a start_at; type=route exige route_geojson y acceptance_radius_meters \u003e 0. Al menos 2 participantes, todos miembros activos del team, sin incluir al trainer.",
+                "description": "El creador entrenador (owner del team) crea con status active directo; el creador corredor (miembro del team) propone con status pending_approval. type=metric exige metric (distance, duration, pace, peak_speed) y end_at posterior a start_at; type=route exige route_geojson LineString (máx 500 vértices, máx 100 km) y acceptance_radius_meters en [5, 500]. Al menos 2 participantes, todos miembros activos del team, sin incluir al trainer.",
                 "consumes": [
                     "application/json"
                 ],

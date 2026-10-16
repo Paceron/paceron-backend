@@ -1,6 +1,8 @@
 package services
 
 import (
+	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/utils/gametime"
+	"simple-arq-golang/cmd/api/utils/routematch"
 )
 
 // Tests del service de competencias (E4.1, D9) con DAO mockeado: guards,
@@ -20,23 +23,29 @@ import (
 type mockCompetitionDAO struct {
 	isOwnerFn          func(teamID, userID int64) (bool, error)
 	isMemberFn         func(teamID, userID int64) (bool, error)
+	teamOwnerFn        func(teamID int64) (int64, error)
 	countMembersFn     func(teamID int64, userIDs []int64) (int64, error)
 	groupBelongsToFn   func(groupID, teamID int64) (bool, error)
 	createFn           func(comp *dbs.Competition, participantIDs []int64) error
+	createWithInstFn   func(comp *dbs.Competition, participantIDs []int64) error
 	findByIDFn         func(id int64) (*dbs.Competition, error)
+	findByRouteInstFn  func(instanceID int64) (*dbs.Competition, error)
 	listParticipantsFn func(ids []int64) ([]dbs.CompetitionParticipant, error)
 	listByTeamFn       func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
 	isParticipantFn    func(competitionID, userID int64) (bool, error)
+	existsAttemptFn    func(competitionID, userID int64) (bool, error)
 	approveFn          func(competitionID, approvedBy int64) (bool, error)
 	rejectFn           func(competitionID int64, reason *string) (bool, error)
 	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
-	deleteFn           func(competitionID int64) error
+	deleteFn           func(competitionID int64) (bool, error)
 	hasUnseenFn        func(userID, teamID int64) (bool, error)
 	aggregateWindowFn  func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
 	attemptSessionsFn  func(competitionID int64) ([]dbs.RunnerSession, error)
 	attemptPointsFn    func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
+	createWithInstCalls, existsAttemptCalls                          int
+	findByRouteInstCalls                                             int
 	lastFinishWinners                                                []int64
 	lastFinishUnseenCount, lastFinishStampsCount                     int
 }
@@ -46,6 +55,13 @@ func (m *mockCompetitionDAO) IsTeamOwner(ctx *gin.Context, teamID, userID int64)
 		return m.isOwnerFn(teamID, userID)
 	}
 	return false, nil
+}
+
+func (m *mockCompetitionDAO) TeamOwnerID(ctx *gin.Context, teamID int64) (int64, error) {
+	if m.teamOwnerFn != nil {
+		return m.teamOwnerFn(teamID)
+	}
+	return 0, nil
 }
 
 func (m *mockCompetitionDAO) IsTeamGroupMember(ctx *gin.Context, teamID, userID int64) (bool, error) {
@@ -77,9 +93,35 @@ func (m *mockCompetitionDAO) Create(ctx *gin.Context, comp *dbs.Competition, par
 	return nil
 }
 
+// CreateWithInstance: fn propio si lo define el test, si no delega en Create
+// (los tests históricos del create route siguen viendo el mismo createFn).
+func (m *mockCompetitionDAO) CreateWithInstance(ctx *gin.Context, comp *dbs.Competition, participantIDs []int64) error {
+	m.createWithInstCalls++
+	if m.createWithInstFn != nil {
+		return m.createWithInstFn(comp, participantIDs)
+	}
+	return m.Create(ctx, comp, participantIDs)
+}
+
+func (m *mockCompetitionDAO) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, competitionID, userID int64) (bool, error) {
+	m.existsAttemptCalls++
+	if m.existsAttemptFn != nil {
+		return m.existsAttemptFn(competitionID, userID)
+	}
+	return false, nil
+}
+
 func (m *mockCompetitionDAO) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(id)
+	}
+	return nil, daos.ErrCompetitionNotFound
+}
+
+func (m *mockCompetitionDAO) FindByRouteSessionInstance(ctx *gin.Context, sessionInstanceID int64) (*dbs.Competition, error) {
+	m.findByRouteInstCalls++
+	if m.findByRouteInstFn != nil {
+		return m.findByRouteInstFn(sessionInstanceID)
 	}
 	return nil, daos.ErrCompetitionNotFound
 }
@@ -136,12 +178,12 @@ func (m *mockCompetitionDAO) Finish(ctx *gin.Context, competitionID int64, finis
 	return true, nil
 }
 
-func (m *mockCompetitionDAO) Delete(ctx *gin.Context, competitionID int64) error {
+func (m *mockCompetitionDAO) Delete(ctx *gin.Context, competitionID int64) (bool, error) {
 	m.deleteCalls++
 	if m.deleteFn != nil {
 		return m.deleteFn(competitionID)
 	}
-	return nil
+	return true, nil
 }
 
 func (m *mockCompetitionDAO) HasUnseenTeam(ctx *gin.Context, userID, teamID int64) (bool, error) {
@@ -203,7 +245,7 @@ func fptr(v float64) *float64 { return &v }
 
 func TestCompetitionService_CreateValidaciones(t *testing.T) {
 	svc := newCompetitionServiceForTest(&mockCompetitionDAO{
-		isOwnerFn:      func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
 	})
 
@@ -280,7 +322,6 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	// Caller fuera del team: 403 y DAO de escritura sin tocar.
 	var calls int
 	dao := &mockCompetitionDAO{
-		isOwnerFn:  func(teamID, userID int64) (bool, error) { return false, nil },
 		isMemberFn: func(teamID, userID int64) (bool, error) { calls++; return false, nil },
 	}
 	svc := newCompetitionServiceForTest(dao)
@@ -294,7 +335,7 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	var capturedParticipants []int64
 	ownerDao := func(fn func(comp *dbs.Competition, participantIDs []int64) error) *mockCompetitionDAO {
 		return &mockCompetitionDAO{
-			isOwnerFn: func(teamID, userID int64) (bool, error) { return userID == 1, nil },
+			teamOwnerFn: func(teamID int64) (int64, error) { return 1, nil },
 			countMembersFn: func(teamID int64, userIDs []int64) (int64, error) {
 				return int64(len(userIDs)), nil
 			},
@@ -349,10 +390,12 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	assert.Equal(t, []int64{11, 12}, capturedParticipants)
 	assert.Equal(t, competition.StatusActive, resp.Status)
 
-	// Corredor miembro: pending_approval + role runner.
+	// Corredor miembro: pending_approval + role runner; el owner del team
+	// (con filas group_users simuladas vía countMembersFn) queda excluido
+	// de participants SIEMPRE, no solo cuando el caller es el owner (F5).
 	runnerDao := &mockCompetitionDAO{
-		isOwnerFn:  func(teamID, userID int64) (bool, error) { return false, nil },
-		isMemberFn: func(teamID, userID int64) (bool, error) { return true, nil },
+		teamOwnerFn: func(teamID int64) (int64, error) { return 1, nil },
+		isMemberFn:  func(teamID, userID int64) (bool, error) { return true, nil },
 		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) {
 			return int64(len(userIDs)), nil
 		},
@@ -362,6 +405,14 @@ func TestCompetitionService_GuardsDeCreate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, competition.StatusPendingApproval, resp.Status)
 	assert.Equal(t, competition.CreatorRoleRunner, resp.CreatedByRole)
+
+	createCallsAntes := runnerDao.createCalls
+	reqIncluyeOwner := validMetricCreateReq()
+	reqIncluyeOwner.ParticipantIDs = []int64{1, 12}
+	_, err = svc.Create(nil, 77, 10, reqIncluyeOwner)
+	require.ErrorIs(t, err, ErrCompetitionInvalid)
+	assert.Contains(t, err.Error(), "el entrenador no compite")
+	assert.Equal(t, createCallsAntes, runnerDao.createCalls)
 }
 
 func ptrInt64(v int64) *int64 { return &v }
@@ -404,6 +455,7 @@ func TestCompetitionService_Moderacion(t *testing.T) {
 	_, err := svc.Approve(nil, 99, 5)
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
 	assert.Zero(t, dao.approveCalls)
+	assert.Zero(t, dao.rejectCalls)
 
 	// Owner sobre pending: approve feliz.
 	dao = moderationDao(competition.StatusPendingApproval)
@@ -488,6 +540,16 @@ func TestCompetitionService_Cancel(t *testing.T) {
 	svc = newCompetitionServiceForTest(dao)
 	_, err = svc.Cancel(nil, 77, 5)
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
+
+	// Carrera cancel-vs-approve (F1): entre el FindByID y el Delete el owner
+	// aprobó — el guard de status del DAO ve 0 filas y el service lo mapea al
+	// mismo 400 que Approve usa para transiciones inválidas.
+	dao = cancelDao(competition.StatusPendingApproval, competition.CreatorRoleRunner)
+	dao.deleteFn = func(competitionID int64) (bool, error) { return false, nil }
+	svc = newCompetitionServiceForTest(dao)
+	_, err = svc.Cancel(nil, 77, 5)
+	require.ErrorIs(t, err, ErrCompetitionConflict)
+	assert.Equal(t, 1, dao.deleteCalls)
 
 	// Competencia ajena.
 	dao = cancelDao(competition.StatusPendingApproval, competition.CreatorRoleRunner)
@@ -752,4 +814,84 @@ func TestCompetitionService_ModeracionPushAlCreador(t *testing.T) {
 	assert.Equal(t, competition.StatusActive, resp.Status)
 	assert.Equal(t, 1, client.sendCallCount)
 	assert.Equal(t, "/teams/10", client.lastData["route"])
+}
+
+// TestCompetitionService_CreateValidacionesRuta cubre el endurecido del create
+// type=route (spec 4b, D4/D5): parse GeoJSON, límite de vértices, longitud
+// Haversine y rango del radius — y el happy path en el límite exacto.
+func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
+	svc := newCompetitionServiceForTest(&mockCompetitionDAO{
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	})
+
+	polylineGeoJSON := func(points []routematch.Point) string {
+		coords := make([][]float64, len(points))
+		for i, p := range points {
+			coords[i] = []float64{p.Lng, p.Lat}
+		}
+		b, err := json.Marshal(map[string]any{"type": "LineString", "coordinates": coords})
+		require.NoError(t, err)
+		return string(b)
+	}
+
+	// Vértices al nivel (lat 0, pasos de lat constante): la Haversine del
+	// service por segmento es earthRadiusMeters * dLat, sin influencia de cos.
+	repeatVertex := func(n int) []routematch.Point {
+		out := make([]routematch.Point, n)
+		for i := range out {
+			out[i] = routematch.Point{Lat: float64(i), Lng: 0}
+		}
+		return out
+	}
+	happyVertices := func(n int) []routematch.Point {
+		// ~99,995 km en n-1 segmentos: pasa el gate de 100 km.
+		stepDeg := (99990.0 / float64(n-1)) * (math.Pi / 180) / routematch.EarthRadiusMeters
+		out := make([]routematch.Point, n)
+		for i := range out {
+			out[i] = routematch.Point{Lat: float64(i) * stepDeg, Lng: 0}
+		}
+		return out
+	}
+
+	routeReqWith := func(geo string, radius *float64) competition.CreateCompetitionRequest {
+		req := routeCreateReq()
+		req.RouteGeoJSON = &geo
+		req.AcceptanceRadiusMeters = radius
+		return req
+	}
+
+	cases := []struct {
+		name    string
+		req     competition.CreateCompetitionRequest
+		wantMsg string
+	}{
+		{"geojson inválido", routeReqWith("{}", fptr(50)), "la ruta GeoJSON no es válida"},
+		{"geojson no Parseable", routeReqWith("no-json", fptr(50)), "la ruta GeoJSON no es válida"},
+		{"501 vértices", routeReqWith(polylineGeoJSON(repeatVertex(501)), fptr(50)), "la ruta admite hasta 500 puntos"},
+		{"más de 100 km", routeReqWith(polylineGeoJSON([]routematch.Point{{Lat: 0, Lng: 0}, {Lat: 0.95, Lng: 0}}), fptr(50)), "la ruta no puede superar los 100 km"},
+		{"radius bajo", routeReqWith(polylineGeoJSON(happyVertices(2)), fptr(3)), "el radio de aceptación debe estar entre 5 y 500 metros"},
+		{"radius alto", routeReqWith(polylineGeoJSON(happyVertices(2)), fptr(600)), "el radio de aceptación debe estar entre 5 y 500 metros"},
+		{"radius faltante", routeReqWith(polylineGeoJSON(happyVertices(2)), nil), "el radio de aceptación debe estar entre 5 y 500 metros"},
+	}
+	for _, tc := range cases {
+		_, err := svc.Create(nil, 1, 10, tc.req)
+		require.ErrorIs(t, err, ErrCompetitionInvalid, tc.name)
+		assert.Contains(t, err.Error(), tc.wantMsg, tc.name)
+	}
+
+	// Happy path en el límite: 500 vértices y ~100 km exactos pasan.
+	req := routeReqWith(polylineGeoJSON(happyVertices(500)), fptr(500))
+	dao := &mockCompetitionDAO{
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	}
+	svcLimit := newCompetitionServiceForTest(dao)
+	_, err := svcLimit.Create(nil, 1, 10, req)
+	require.NoError(t, err)
+	assert.Equal(t, 1, dao.createCalls)
+
+	// 5 m = floor del rango de radius y vértice único degenerado: pasan.
+	_, err = svc.Create(nil, 1, 10, routeReqWith("{\"type\":\"LineString\",\"coordinates\":[[0,0]]}", fptr(5)))
+	require.NoError(t, err)
 }

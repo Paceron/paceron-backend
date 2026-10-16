@@ -136,3 +136,103 @@ func TestRunnerSessionService_Create_CompetitionRechazos(t *testing.T) {
 		require.ErrorIs(t, err, ErrRunnerSessionInvalid, tc.name)
 	}
 }
+
+// Anclaje de instancia (competencias-ruta-intake, review extra I1): una
+// competencia route solo taguea sobre su propia instancia sintética y una
+// instancia sintética solo acepta a su dueña. Cross-metric fuera de alcance:
+// el guard cubre también el mixeo de tipos.
+func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
+	origNow := gametime.Now
+	t.Cleanup(func() { gametime.Now = origNow })
+	gametime.Now = func() time.Time { return time.Date(2026, 10, 5, 12, 0, 0, 0, gametime.Location) }
+
+	instA, instB := int64(100), int64(200)
+	inWindow := func() *time.Time {
+		end := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+		return &end
+	}
+	routeFor := func(id, instID int64) *dbs.Competition {
+		return &dbs.Competition{
+			ID: id, TeamID: 10, Type: competition.TypeRoute,
+			RouteSessionInstanceID: &instID,
+			Status:                 competition.StatusActive,
+			StartAt:                time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			EndAt:                  inWindow(),
+		}
+	}
+	compA, compB := routeFor(9, instA), routeFor(11, instB)
+	compMetric := &dbs.Competition{
+		ID: 5, TeamID: 10, Type: competition.TypeMetric, Metric: strPtr("distance"),
+		Status:  competition.StatusActive,
+		StartAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+		EndAt:   inWindow(),
+	}
+	byID := map[int64]*dbs.Competition{9: compA, 11: compB, 5: compMetric}
+	compDAO := func() *mockCompetitionDAO {
+		return &mockCompetitionDAO{
+			findByIDFn: func(id int64) (*dbs.Competition, error) { return byID[id], nil },
+			isParticipantFn: func(competitionID, userID int64) (bool, error) {
+				return userID == 7, nil
+			},
+			findByRouteInstFn: func(instanceID int64) (*dbs.Competition, error) {
+				if instanceID == instA {
+					return compA, nil
+				}
+				if instanceID == instB {
+					return compB, nil
+				}
+				return nil, daos.ErrCompetitionNotFound
+			},
+		}
+	}
+
+	newSvc := func() (*mockCompetitionDAO, *mockRunnerSessionDao, **int64, *int) {
+		dao := compDAO()
+		var captured *int64
+		createCalls := 0
+		mock := &mockRunnerSessionDao{
+			sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
+			createFn: func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
+				createCalls++
+				captured = rs.CompetitionID
+				return true, nil
+			},
+		}
+		return dao, mock, &captured, &createCalls
+	}
+
+	comp9, comp11, comp5 := int64(9), int64(11), int64(5)
+
+	// A: instancia sintética de comp A tagueada con comp B (otra route,
+	// atleta participante de ambas): 400 y sin fila creada.
+	dao, mock, _, createCalls := newSvc()
+	svc := NewRunnerSessionService(mock, nil, dao)
+	_, _, _, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+		StartDate: sessionDate, CompetitionID: &comp11,
+	})
+	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
+	assert.Equal(t, 0, *createCalls, "el rechazo tiene que ser antes del write")
+
+	// B: tagueo type-inconsistente: comp metric sobre la instancia
+	// sintética de una route, misma comparación inversa: 400.
+	dao, mock, _, createCalls = newSvc()
+	svc = NewRunnerSessionService(mock, nil, dao)
+	_, _, _, err = svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+		StartDate: sessionDate, CompetitionID: &comp5,
+	})
+	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
+	assert.Equal(t, 0, *createCalls)
+
+	// C (happy de regresión): la competencia dueña sobre su propia
+	// instancia sintética sigue creando el intento.
+	dao, mock, captured, _ := newSvc()
+	svc = NewRunnerSessionService(mock, nil, dao)
+	_, _, created, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+		StartDate: sessionDate, CompetitionID: &comp9,
+	})
+	require.NoError(t, err)
+	assert.True(t, created)
+	require.NotNil(t, *captured)
+	assert.Equal(t, comp9, **captured)
+	assert.Equal(t, 1, dao.findByRouteInstCalls)
+}

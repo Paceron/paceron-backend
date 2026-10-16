@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 
 	"simple-arq-golang/cmd/api/testutils"
@@ -128,6 +129,14 @@ func TestCompetitionDAO_GuardsDeMembresia(t *testing.T) {
 	owner, err := dao.IsTeamOwner(nil, fx.team.ID, fx.owner.ID)
 	require.NoError(t, err)
 	assert.True(t, owner)
+
+	// F5: resuelve el owner del team para excluirlo de participants.
+	ownerID, err := dao.TeamOwnerID(nil, fx.team.ID)
+	require.NoError(t, err)
+	assert.Equal(t, fx.owner.ID, ownerID)
+	ownerID, err = dao.TeamOwnerID(nil, 999999)
+	require.NoError(t, err)
+	assert.Zero(t, ownerID)
 
 	member, err := dao.IsTeamGroupMember(nil, fx.team.ID, fx.runnerA.ID)
 	require.NoError(t, err)
@@ -254,14 +263,106 @@ func TestCompetitionDAO_DeleteFisico(t *testing.T) {
 	fx := newCompetitionFixture(t, db, "05")
 
 	comp := newMetricCompetition(t, db, fx, competition.StatusPendingApproval, "a", nil)
-	err := dao.Delete(nil, comp.ID)
+	deleted, err := dao.Delete(nil, comp.ID)
 	require.NoError(t, err)
+	assert.True(t, deleted)
 
 	_, err = dao.FindByID(nil, comp.ID)
 	assert.ErrorIs(t, err, ErrCompetitionNotFound)
 	parts, err := dao.ListParticipantsByCompetitionIDs(nil, []int64{comp.ID})
 	require.NoError(t, err)
 	assert.Empty(t, parts)
+}
+
+// Carrera cancel-vs-approve (F1): el owner aprovó la competencia entre el
+// FindByID del creador y su Delete. El guard de status del DELETE arbitra:
+// 0 filas, la competencia sobrevive active con sus participantes.
+func TestCompetitionDAO_CancelVsApproveRace(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "09")
+
+	comp := newMetricCompetition(t, db, fx, competition.StatusPendingApproval, "race", nil)
+
+	// La carrera simulada: Approve primero (exitoso), luego Cancel.
+	updated, err := dao.Approve(nil, comp.ID, fx.owner.ID)
+	require.NoError(t, err)
+	require.True(t, updated)
+
+	deleted, err := dao.Delete(nil, comp.ID)
+	require.NoError(t, err)
+	assert.False(t, deleted, "cancel perdió la carrera: no borra una active")
+
+	loaded, err := dao.FindByID(nil, comp.ID)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusActive, loaded.Status)
+	parts, err := dao.ListParticipantsByCompetitionIDs(nil, []int64{comp.ID})
+	require.NoError(t, err)
+	assert.Len(t, parts, 2)
+}
+
+// Cancel de una competencia route (F6): el DELETE limpia en la misma tx las
+// piezas sintéticas del intento (links, exercise_instances y session_instance)
+// sin tocar instancias regulares de contenido ajeno.
+func TestCompetitionDAO_DeleteLimpiaInstanciaRoute(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "10")
+
+	geo := strPtr(`{"type":"LineString","coordinates":[[0,0]]}`)
+	radius := 50.0
+	comp := &dbs.Competition{
+		TeamID: fx.team.ID, Type: competition.TypeRoute, RouteGeoJSON: geo,
+		AcceptanceRadiusMeters: &radius,
+		StartAt:                time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+		CreatedByUserID:        fx.runnerA.ID, CreatedByRole: competition.CreatorRoleRunner,
+		Status: competition.StatusPendingApproval,
+	}
+	require.NoError(t, dao.CreateWithInstance(nil, comp, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+	require.NotNil(t, comp.RouteSessionInstanceID)
+	instID := *comp.RouteSessionInstanceID
+
+	var exerciseIDs []int64
+	require.NoError(t, db.Model(&dbs.SessionExerciseInstance{}).
+		Where("session_instance_id = ?", instID).
+		Pluck("exercise_instance_id", &exerciseIDs).Error)
+	require.Len(t, exerciseIDs, 1)
+
+	// Instancia regular de otro contenido (día de calendario): debe sobrevivir.
+	decoySession := &dbs.SessionInstance{Name: "sesion_regular"}
+	require.NoError(t, db.Create(decoySession).Error)
+	decoyExercise := &dbs.ExerciseInstance{Name: "Trote", Kind: string(constants.ExerciseKindLiviano)}
+	require.NoError(t, db.Create(decoyExercise).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: decoySession.ID, ExerciseInstanceID: decoyExercise.ID,
+		Role: string(constants.SessionExerciseRoleMain), RepeatCount: 1,
+	}).Error)
+
+	deleted, err := dao.Delete(nil, comp.ID)
+	require.NoError(t, err)
+	require.True(t, deleted)
+
+	// Cancel doble: la fila ya no existe, 0 filas (guard también por id).
+	deleted, err = dao.Delete(nil, comp.ID)
+	require.NoError(t, err)
+	assert.False(t, deleted)
+
+	var n int64
+	require.NoError(t, db.Model(&dbs.Competition{}).Where("id = ?", comp.ID).Count(&n).Error)
+	assert.Zero(t, n)
+	require.NoError(t, db.Model(&dbs.CompetitionParticipant{}).Where("competition_id = ?", comp.ID).Count(&n).Error)
+	assert.Zero(t, n)
+	require.NoError(t, db.Model(&dbs.SessionInstance{}).Where("id = ?", instID).Count(&n).Error)
+	assert.Zero(t, n, "session_instance sintética borrada")
+	require.NoError(t, db.Model(&dbs.SessionExerciseInstance{}).Where("session_instance_id = ?", instID).Count(&n).Error)
+	assert.Zero(t, n, "links de la instancia sintética borrados")
+	require.NoError(t, db.Model(&dbs.ExerciseInstance{}).Where("id IN ?", exerciseIDs).Count(&n).Error)
+	assert.Zero(t, n, "exercise_instances sintéticos borrados")
+
+	require.NoError(t, db.Model(&dbs.SessionInstance{}).Where("id = ?", decoySession.ID).Count(&n).Error)
+	assert.Equal(t, int64(1), n, "instancia regular ajena sobrevive")
+	require.NoError(t, db.Model(&dbs.ExerciseInstance{}).Where("id = ?", decoyExercise.ID).Count(&n).Error)
+	assert.Equal(t, int64(1), n, "exercise instance regular sobrevive")
 }
 
 func TestCompetitionDAO_UnseenYVentana(t *testing.T) {

@@ -8,7 +8,11 @@ import "time"
 // texto genérico. La FK opaca runner_session.competition_id apunta acá (BIGINT > 0
 // sin constraint, igual que attendances.training_session_id).
 type Competition struct {
-	ID                     int64      `gorm:"column:id;primaryKey"`
+	ID int64 `gorm:"column:id;primaryKey"`
+	// RouteSessionInstanceID es la sesión instanciada sintética del intento de
+	// una competencia type=route (competencias-ruta-intake D1). FK opaca
+	// (BIGINT nullable, sin constraint de DB, app-managed): nil para metric.
+	RouteSessionInstanceID *int64     `gorm:"column:route_session_instance_id"`
 	TeamID                 int64      `gorm:"column:team_id;not null;index:idx_competition_team,priority:1"`
 	GroupID                *int64     `gorm:"column:group_id;index:idx_competition_team,priority:2"`
 	Type                   string     `gorm:"column:type;type:varchar(16);not null"`

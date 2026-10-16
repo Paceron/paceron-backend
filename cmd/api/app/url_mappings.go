@@ -203,6 +203,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.PATCH("/api/v1/competitions/:id/close", app.competitionController.Close)
 	r.DELETE("/api/v1/competitions/:id/cancel", app.competitionController.Cancel)
 	r.GET("/api/v1/competitions/:id", app.competitionController.GetDetail)
+	// Intake de intentos de competencias de ruta (competencias-ruta-intake D2).
+	r.POST("/api/v1/competitions/:id/attempts", app.competitionController.CreateAttempt)
 
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
