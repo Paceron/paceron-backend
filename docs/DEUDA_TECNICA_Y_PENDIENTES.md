@@ -178,6 +178,8 @@ El comentario del struct dice que las tablas `assigned_*` todavía no existen. H
 
 El test de `app/docs_handler_test.go` arma rutas con `/` y `filepath` usa `\` en Windows, así que falla al correr `go test ./...` en una máquina Windows. En CI (Linux) pasa. Hacerlo independiente del separador.
 
+Mismo caso, otro motivo: `TestAttendanceMigration_ScriptDeclaresSessionInstanceForeignKey` (`daos/attendance_migration_test.go`) busca fragmentos con `\n` dentro del `.sql`, y con `core.autocrlf` en Windows el archivo queda con `\r\n`. Normalizar los saltos de línea antes de comparar, o fijar `*.sql text eol=lf` en `.gitattributes`.
+
 ## Cobertura de tests
 
 > Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).

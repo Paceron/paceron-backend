@@ -35,3 +35,7 @@
 - [x] 7.1 `go vet ./...` y `go test ./...` (en Windows falla `TestSanitizeRelativePath_BlocksTraversal`, preexistente y ajeno; registrado en la deuda).
 - [ ] 7.2 `make coverage-with-db`: total de 85% o más y archivos nuevos de 90% o más.
 - [x] 7.3 Probar contra la base de testing con la ejecución sembrada del 2026-10-12 (sesión 455, corredor 19): 50,1%.
+
+## 8. Ajuste del promedio del rango
+
+- [x] 8.1 Excluir del promedio las sesiones de hoy que no terminaron (`counts_for_average`, `sessions_averaged`; design.md D9), con tests del service y swagger regenerado.

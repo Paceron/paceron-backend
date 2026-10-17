@@ -129,6 +129,20 @@ Antes de comparar:
   presenciales del día.
 - Estado: el del `runner_session` (`wip`, `finished`, `interrupted`) o `none`.
 
+### D9. Qué sesiones entran en el promedio del rango
+
+Una sesión de hoy que todavía no terminó se lista, pero no entra en
+`avg_compliance_pct`: el corredor todavía puede hacerla, y contarla con 0% bajaba
+el promedio todo el día (pedido del equipo al probar la pantalla). Entran:
+
+- las sesiones de días anteriores a hoy (hora argentina), con cualquier estado,
+  incluidas las no ejecutadas, que cuentan 0%;
+- las de hoy con estado `finished`.
+
+Cada sesión trae `counts_for_average` para que el front pueda mostrarlo, y el
+resumen trae `sessions_averaged`, el divisor del promedio. `sessions_planned` y
+`sessions_with_activity` siguen contando todas las sesiones de la lista.
+
 ## Contrato
 
 ```
@@ -157,8 +171,10 @@ GET /api/v1/activities/comparison?date_from&date_to&team_id&group_id&kind&athlet
                  group_id, group_name, is_presencial, kinds[], status,
                  planned_sets, completed_sets, skipped_sets, unregistered_sets,
                  planned_duration_ms, actual_duration_ms,
-                 planned_distance_m, actual_distance_m, compliance_pct }],
-    summary: { sessions_planned, sessions_with_activity, avg_compliance_pct } }
+                 planned_distance_m, actual_distance_m, compliance_pct,
+                 counts_for_average }],
+    summary: { sessions_planned, sessions_with_activity, sessions_averaged,
+               avg_compliance_pct } }
 → 400 INVALID_QUERY · 401 · 403 Forbidden · 500
 ```
 

@@ -97,13 +97,19 @@ type SessionComparisonSummary struct {
 	SessionHeader
 	SessionTotals
 	CompliancePct float64 `json:"compliance_pct"`
+	// CountsForAverage es false para una sesión de hoy que todavía no terminó:
+	// se lista, pero no entra en avg_compliance_pct.
+	CountsForAverage bool `json:"counts_for_average"`
 }
 
 // RangeSummary resume el cumplimiento de las sesiones de la lista.
 type RangeSummary struct {
-	SessionsPlanned      int     `json:"sessions_planned"`
-	SessionsWithActivity int     `json:"sessions_with_activity"`
-	AvgCompliancePct     float64 `json:"avg_compliance_pct"`
+	SessionsPlanned      int `json:"sessions_planned"`
+	SessionsWithActivity int `json:"sessions_with_activity"`
+	// SessionsAveraged son las sesiones que entran en el promedio: las de días
+	// anteriores a hoy y las de hoy ya terminadas.
+	SessionsAveraged int     `json:"sessions_averaged"`
+	AvgCompliancePct float64 `json:"avg_compliance_pct"`
 }
 
 // ComparisonListResponse es la respuesta de GET /api/v1/activities/comparison.

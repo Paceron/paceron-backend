@@ -255,8 +255,39 @@ func TestActivityComparisonService_ListComparisons_MergesPlannedAndFeedbackSessi
 	assert.Equal(t, comparison.SessionStatusNone, resp.Sessions[2].Status)
 	assert.Equal(t, 3, resp.Summary.SessionsPlanned)
 	assert.Equal(t, 1, resp.Summary.SessionsWithActivity)
-	assert.Equal(t, 16.7, resp.Summary.AvgCompliancePct) // (50,1 + 0 + 0) / 3
+	// La 454 es de hoy (13/10) y no se ejecutó: se lista, pero no entra al promedio.
+	assert.True(t, resp.Sessions[0].CountsForAverage)
+	assert.True(t, resp.Sessions[1].CountsForAverage)
+	assert.False(t, resp.Sessions[2].CountsForAverage)
+	assert.Equal(t, 2, resp.Summary.SessionsAveraged)
+	assert.Equal(t, 25.1, resp.Summary.AvgCompliancePct) // (50,1 + 0) / 2
 	assert.Equal(t, int64(19), dao.lastFilter.AthleteUserID)
+}
+
+// Hoy cuenta solo si ya terminó; los días anteriores cuentan siempre, aunque
+// la sesión siga en curso o no se haya ejecutado.
+func TestActivityComparisonService_ListComparisons_TodayCountsOnlyWhenFinished(t *testing.T) {
+	pastWip := seededDay(453, 12, true)
+	todayFinished := seededDay(455, 13, true)
+	todayWip := seededDay(456, 13, true)
+	dao := &mockComparisonDao{
+		plannedDays:    []daos.ComparisonSessionDay{pastWip, todayFinished, todayWip},
+		exercises:      append(seededExercises(455), seededExercises(456)...),
+		feedback:       seededFeedback(455),
+		runnerSessions: []dbs.RunnerSession{{SessionInstanceID: 453, Status: "wip"}, {SessionInstanceID: 455, Status: "finished"}, {SessionInstanceID: 456, Status: "wip"}},
+	}
+	svc := comparisonServiceFor(dao, accessDao(nil, nil))
+
+	resp, err := svc.ListComparisons(nil, 19, comparison.ListQuery{DateFrom: "2026-10-01", DateTo: "2026-10-13"})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 3)
+	assert.True(t, resp.Sessions[0].CountsForAverage)  // 453: ayer, en curso
+	assert.True(t, resp.Sessions[1].CountsForAverage)  // 455: hoy, terminada
+	assert.False(t, resp.Sessions[2].CountsForAverage) // 456: hoy, en curso
+	assert.Equal(t, 3, resp.Summary.SessionsPlanned)
+	assert.Equal(t, 2, resp.Summary.SessionsAveraged)
+	assert.Equal(t, 25.1, resp.Summary.AvgCompliancePct) // (0 + 50,1) / 2
 }
 
 func TestActivityComparisonService_ListComparisons_GroupFilterSkipsFeedbackSessions(t *testing.T) {

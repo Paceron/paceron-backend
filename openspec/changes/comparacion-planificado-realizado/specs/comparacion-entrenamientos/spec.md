@@ -1,8 +1,3 @@
-# Spec: Comparación de entrenamientos planificados y realizados
-
-Consulta del cumplimiento de un corredor: por sesión, comparando lo planificado
-con lo registrado serie por serie, y por rango de fechas.
-
 ## ADDED Requirements
 
 ### Requirement: Detalle planificado vs realizado de una sesión
@@ -69,12 +64,23 @@ El sistema MUST ignorar el feedback borrado, MUST pasar a base 1 las series de u
 
 ### Requirement: Listar el cumplimiento de un rango de fechas
 
-El sistema MUST devolver las sesiones de los días de entrenamiento del rango de los grupos donde el atleta era miembro en cada fecha, más las sesiones con feedback del atleta en el rango que no tengan un día así. Cada sesión MUST incluir su cumplimiento y sus totales, y la respuesta MUST incluir la cantidad de sesiones, la cantidad con actividad y el cumplimiento promedio.
+El sistema MUST devolver las sesiones de los días de entrenamiento del rango de los grupos donde el atleta era miembro en cada fecha, más las sesiones con feedback del atleta en el rango que no tengan un día así. Cada sesión MUST incluir su cumplimiento y sus totales, y la respuesta MUST incluir la cantidad de sesiones, la cantidad con actividad y el cumplimiento promedio. El promedio MUST tomar solo las sesiones de días anteriores a hoy y las de hoy que ya terminaron.
 
 #### Scenario: Sesión planificada que no se hizo
 
-- **WHEN** el atleta tenía un día de entrenamiento y no registró nada
-- **THEN** la sesión aparece con cumplimiento 0% y estado `none`
+- **WHEN** el atleta tenía un día de entrenamiento anterior a hoy y no registró nada
+- **THEN** la sesión aparece con cumplimiento 0%, estado `none` y `counts_for_average = true`
+
+#### Scenario: Sesión de hoy todavía no terminada
+
+- **WHEN** la sesión es de hoy y su estado no es `finished`
+- **THEN** aparece en la lista con `counts_for_average = false`
+- **AND** no entra en `avg_compliance_pct` ni en `sessions_averaged`
+
+#### Scenario: Sesión de hoy terminada
+
+- **WHEN** la sesión es de hoy y su estado es `finished`
+- **THEN** entra en el promedio como las de días anteriores
 
 #### Scenario: Día cancelado
 

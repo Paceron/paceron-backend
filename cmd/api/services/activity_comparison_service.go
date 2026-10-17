@@ -12,6 +12,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/comparison"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
 
@@ -194,27 +195,42 @@ func (s *activityComparisonService) ListComparisons(ctx *gin.Context, callerID i
 		DateTo:   to.Format(comparisonDateLayout),
 		Sessions: make([]comparison.SessionComparisonSummary, 0, len(sessions)),
 	}
+	today := s.now().In(argentinaTZ).Format(comparisonDateLayout)
 	complianceSum := 0.0
 	for _, sess := range sessions {
 		calc := compareSession(exercisesBySession[sess.SessionInstanceID], feedbackBySession[sess.SessionInstanceID], athleteID)
 		if query.Kind != "" && !containsString(calc.kinds, query.Kind) {
 			continue
 		}
+		header := buildHeader(sess, calc.kinds, runnerSessionFor(runnerSessions, sess.SessionInstanceID))
+		counts := countsForAverage(header, today)
 		resp.Sessions = append(resp.Sessions, comparison.SessionComparisonSummary{
-			SessionHeader: buildHeader(sess, calc.kinds, runnerSessionFor(runnerSessions, sess.SessionInstanceID)),
-			SessionTotals: calc.totals,
-			CompliancePct: calc.compliancePct,
+			SessionHeader:    header,
+			SessionTotals:    calc.totals,
+			CompliancePct:    calc.compliancePct,
+			CountsForAverage: counts,
 		})
-		complianceSum += calc.compliancePct
+		if counts {
+			complianceSum += calc.compliancePct
+			resp.Summary.SessionsAveraged++
+		}
 		if calc.totals.CompletedSets > 0 {
 			resp.Summary.SessionsWithActivity++
 		}
 	}
 	resp.Summary.SessionsPlanned = len(resp.Sessions)
-	if resp.Summary.SessionsPlanned > 0 {
-		resp.Summary.AvgCompliancePct = round1(complianceSum / float64(resp.Summary.SessionsPlanned))
+	if resp.Summary.SessionsAveraged > 0 {
+		resp.Summary.AvgCompliancePct = round1(complianceSum / float64(resp.Summary.SessionsAveraged))
 	}
 	return resp, nil
+}
+
+// countsForAverage dice si una sesión entra en el promedio del rango (design.md
+// D9): las de días anteriores a hoy siempre, aunque no se hayan ejecutado; las
+// de hoy solo si ya terminaron, para no bajar el promedio con algo que el
+// corredor todavía puede hacer.
+func countsForAverage(header comparison.SessionHeader, today string) bool {
+	return header.Date < today || header.Status == runnersession.RunnerSessionStatusFinished
 }
 
 // collectSessions junta los días planificados con las sesiones que solo

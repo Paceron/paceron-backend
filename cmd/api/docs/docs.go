@@ -9614,6 +9614,10 @@ const docTemplate = `{
                 "avg_compliance_pct": {
                     "type": "number"
                 },
+                "sessions_averaged": {
+                    "description": "SessionsAveraged son las sesiones que entran en el promedio: las de días\nanteriores a hoy y las de hoy ya terminadas.",
+                    "type": "integer"
+                },
                 "sessions_planned": {
                     "type": "integer"
                 },
@@ -9695,6 +9699,10 @@ const docTemplate = `{
                 },
                 "compliance_pct": {
                     "type": "number"
+                },
+                "counts_for_average": {
+                    "description": "CountsForAverage es false para una sesión de hoy que todavía no terminó:\nse lista, pero no entra en avg_compliance_pct.",
+                    "type": "boolean"
                 },
                 "date": {
                     "type": "string"
