@@ -23,32 +23,33 @@ import (
 )
 
 type Application struct {
-	pingController             controllers.PingController
-	userController             controllers.UserController
-	authController             controllers.AuthController
-	exampleWeatherController   controllers.ExampleWeatherController
-	userWeatherController      controllers.UserWeatherController
-	permissionController       controllers.PermissionController
-	tierController             controllers.TierController
-	roleController             controllers.RoleController
-	tierPermissionController   controllers.TierPermissionController
-	userRoleController         controllers.UserRoleController
-	permissionsQueryController controllers.PermissionsQueryController
-	passwordResetController    controllers.PasswordResetController
-	teamController             controllers.TeamController
-	groupController            controllers.GroupController
-	teamUserController         controllers.TeamUserController
-	groupUserController        controllers.GroupUserController
-	invitationController       controllers.InvitationController
-	joinRequestController      controllers.JoinRequestController
-	exerciseController         controllers.ExerciseController
-	sessionController          controllers.SessionController
-	trainingPlanController     controllers.TrainingPlanController
-	calendarController         controllers.CalendarController
-	pushTokenController        controllers.PushTokenController
-	paymentController          controllers.PaymentController
-	paymentHistoryController   controllers.PaymentHistoryController
-	tierSubscriptionController controllers.TierSubscriptionController
+	pingController               controllers.PingController
+	userController               controllers.UserController
+	authController               controllers.AuthController
+	exampleWeatherController     controllers.ExampleWeatherController
+	userWeatherController        controllers.UserWeatherController
+	permissionController         controllers.PermissionController
+	tierController               controllers.TierController
+	roleController               controllers.RoleController
+	tierPermissionController     controllers.TierPermissionController
+	userRoleController           controllers.UserRoleController
+	permissionsQueryController   controllers.PermissionsQueryController
+	passwordResetController      controllers.PasswordResetController
+	teamController               controllers.TeamController
+	groupController              controllers.GroupController
+	teamUserController           controllers.TeamUserController
+	groupUserController          controllers.GroupUserController
+	invitationController         controllers.InvitationController
+	joinRequestController        controllers.JoinRequestController
+	exerciseController           controllers.ExerciseController
+	sessionController            controllers.SessionController
+	trainingPlanController       controllers.TrainingPlanController
+	calendarController           controllers.CalendarController
+	pushTokenController          controllers.PushTokenController
+	paymentController            controllers.PaymentController
+	paymentHistoryController     controllers.PaymentHistoryController
+	activityComparisonController controllers.ActivityComparisonController
+	tierSubscriptionController   controllers.TierSubscriptionController
 	// suscripcion-teams-split
 	mpConnectController         controllers.MPConnectControllerInterface
 	platformSettingController   controllers.PlatformSettingControllerInterface
@@ -313,6 +314,12 @@ func NewApplication() *Application {
 	// Realtime WS gateway (ws-gateway-sesiones D8): hub en memoria + authorizer
 	// session:{id} (delega HasInstanceAccess) + mismos orígenes que el middleware CORS.
 	sessionInstanceDao := daos.NewSessionInstanceDao(db)
+
+	// Comparación planificado vs realizado (comparacion-planificado-realizado):
+	// DAO de solo lectura propio + HasInstanceAccess para el acceso.
+	activityComparisonDao := daos.NewActivityComparisonDao(db)
+	activityComparisonService := services.NewActivityComparisonService(activityComparisonDao, sessionInstanceDao)
+	activityComparisonController := controllers.NewActivityComparisonController(activityComparisonService)
 	realtimeHub := realtime.NewHub()
 	realtimeGateway := realtime.NewGateway(realtimeHub, newChannelAuthorizer(sessionInstanceDao), allowedOrigins())
 
@@ -367,45 +374,46 @@ func NewApplication() *Application {
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)
 
 	return &Application{
-		pingController:              controllers.NewPingController(),
-		userController:              userController,
-		authController:              authController,
-		exampleWeatherController:    exampleWeatherController,
-		userWeatherController:       userWeatherController,
-		permissionController:        permissionController,
-		tierController:              tierController,
-		roleController:              roleController,
-		tierPermissionController:    tierPermissionController,
-		userRoleController:          userRoleController,
-		permissionsQueryController:  permissionsQueryController,
-		passwordResetController:     passwordResetController,
-		teamController:              teamController,
-		groupController:             groupController,
-		teamUserController:          teamUserController,
-		groupUserController:         groupUserController,
-		invitationController:        invitationController,
-		joinRequestController:       joinRequestController,
-		exerciseController:          exerciseController,
-		sessionController:           sessionController,
-		trainingPlanController:      trainingPlanController,
-		calendarController:          calendarController,
-		pushTokenController:         pushTokenController,
-		paymentController:           paymentController,
-		paymentHistoryController:    paymentHistoryController,
-		tierSubscriptionController:  tierSubscriptionController,
-		mpConnectController:         mpConnectController,
-		platformSettingController:   platformSettingController,
-		teamSubscriptionController:  teamSubscriptionController,
-		teamConfigurationController: teamConfigurationController,
-		attendanceController:        attendanceController,
-		workoutFeedbackController:   workoutFeedbackController,
-		sessionMessageController:    sessionMessageController,
-		runnerSessionController:     runnerSessionController,
-		streakController:            streakController,
-		gamificationSeenController:  gamificationSeenController,
-		achievementsController:      achievementsController,
-		leaderboardController:       leaderboardController,
-		competitionController:       competitionController,
-		realtimeGateway:             realtimeGateway,
+		pingController:               controllers.NewPingController(),
+		userController:               userController,
+		authController:               authController,
+		exampleWeatherController:     exampleWeatherController,
+		userWeatherController:        userWeatherController,
+		permissionController:         permissionController,
+		tierController:               tierController,
+		roleController:               roleController,
+		tierPermissionController:     tierPermissionController,
+		userRoleController:           userRoleController,
+		permissionsQueryController:   permissionsQueryController,
+		passwordResetController:      passwordResetController,
+		teamController:               teamController,
+		groupController:              groupController,
+		teamUserController:           teamUserController,
+		groupUserController:          groupUserController,
+		invitationController:         invitationController,
+		joinRequestController:        joinRequestController,
+		exerciseController:           exerciseController,
+		sessionController:            sessionController,
+		trainingPlanController:       trainingPlanController,
+		calendarController:           calendarController,
+		pushTokenController:          pushTokenController,
+		paymentController:            paymentController,
+		paymentHistoryController:     paymentHistoryController,
+		activityComparisonController: activityComparisonController,
+		tierSubscriptionController:   tierSubscriptionController,
+		mpConnectController:          mpConnectController,
+		platformSettingController:    platformSettingController,
+		teamSubscriptionController:   teamSubscriptionController,
+		teamConfigurationController:  teamConfigurationController,
+		attendanceController:         attendanceController,
+		workoutFeedbackController:    workoutFeedbackController,
+		sessionMessageController:     sessionMessageController,
+		runnerSessionController:      runnerSessionController,
+		streakController:             streakController,
+		gamificationSeenController:   gamificationSeenController,
+		achievementsController:       achievementsController,
+		leaderboardController:        leaderboardController,
+		competitionController:        competitionController,
+		realtimeGateway:              realtimeGateway,
 	}
 }

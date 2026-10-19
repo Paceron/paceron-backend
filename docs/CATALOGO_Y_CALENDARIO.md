@@ -628,6 +628,16 @@ Mecánica de dominio del módulo de gamificación. Shapes JSON, códigos HTTP y 
 - **Cierre route sin guard de ventana (D3):** el guard "end_at ya pasado → 400" ahora es **metric-only**; route se cierra cuando el creador/owner decide (la ventana temporal no aplica a ruta). El resto del Close queda byte-idéntico.
 - **WS sin canal nuevo (D6):** los frames de competencia reutilizan el canal **común** `session:{route_session_instance_id}` — `update:competition_progress` al terminar cada intento, `control:competition_finished` al cerrar. Sin broadcast en vivo durante el intento `wip` (leaderboard mid-attempt = deuda).
 
+### 8.15 Comparación planificado vs realizado (Gap 35 — change `comparacion-planificado-realizado`)
+
+Cruza lo que planificó el entrenador con lo que registró el corredor. Contrato completo en `openspec/changes/comparacion-planificado-realizado/design.md`.
+
+- **Detalle:** `GET /activities/comparison/{sessionInstanceId}`. Por cada `session_exercise_instance`, en el orden de la sesión: el objetivo de su `exercise_instance` (`minutes`, `distance_m`, `speed_kph`, `kind`, `intensity`) y una fila por serie planificada (`repeat_count`, mínimo 1) con lo registrado en `workout_feedback` (`assigned_exercise_id = exercise_instances.id`). Las series registradas de más vuelven con `extra = true` y no suman al cumplimiento.
+- **Lista:** `GET /activities/comparison?date_from&date_to`. Los días `training` del rango de los grupos donde el atleta era miembro **en esa fecha** (`date_start`, `date_end` y `deleted_at` comparados contra la fecha del día, no contra hoy), más las sesiones con feedback del atleta que no salieron por esa regla. Una sesión planificada sin registros entra con 0% y estado `none`. El promedio del rango (`avg_compliance_pct`) toma las sesiones de días anteriores a hoy y las de hoy ya terminadas: una de hoy sin terminar se lista con `counts_for_average = false` y no lo baja (D9).
+- **Cumplimiento:** por serie, con tope de 100%. Con minutos: duración (activa si existe) sobre `minutes · 60000`; si no, distancia sobre `distance_m`; sin objetivo, 100% si se completó. Salteada o sin registro: 0%. Ejercicio y sesión: promedio de sus series planificadas, a 1 decimal.
+- **Normalización:** se ignora el feedback borrado, los ejercicios con alguna serie 0 se pasan a base 1, y si una serie tiene filas del atleta y del entrenador gana la del atleta (si no, la más reciente).
+- **Acceso:** el detalle propio usa `HasInstanceAccess`. Para otro atleta, el usuario tiene que ser dueño del equipo de la sesión (por el día o por el feedback) y el atleta tener acceso; en la lista, `team_id` es obligatorio y el atleta tiene que ser integrante.
+- **Rango:** obligatorio, de 366 días como máximo y sin pasar de hoy en hora argentina.
 
 ## 9. Detalles de implementación relevantes
 
