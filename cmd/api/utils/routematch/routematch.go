@@ -10,7 +10,7 @@ import (
 	"math"
 )
 
-const earthRadiusMeters = 6371000.0
+const EarthRadiusMeters = 6371000.0
 
 // SampleStepMeters es el paso fijo del sampleo de la ruta (D10: ~30-50 m por
 // segmento).
@@ -30,7 +30,7 @@ func HaversineMeters(lat1, lon1, lat2, lon2 float64) float64 {
 	dLon := (lon2 - lon1) * rad
 	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
 		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
-	return earthRadiusMeters * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return EarthRadiusMeters * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
 // ParseLineString parsea un GeoJSON LineString ("coordinates": [[lng, lat],
@@ -61,6 +61,16 @@ func ParseLineString(raw string) ([]Point, error) {
 		points = append(points, Point{Lat: c[1], Lng: c[0]})
 	}
 	return points, nil
+}
+
+// LineStringLength suma la distancia Haversine entre vértices consecutivos:
+// longitud total de la ruta cruda (sin samplear).
+func LineStringLength(route []Point) float64 {
+	total := 0.0
+	for i := 1; i < len(route); i++ {
+		total += HaversineMeters(route[i-1].Lat, route[i-1].Lng, route[i].Lat, route[i].Lng)
+	}
+	return total
 }
 
 // SampleRoute sub-divide cada segmento: emite cada vértice más los puntos

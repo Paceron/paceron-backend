@@ -32,6 +32,14 @@ var (
 // métricas válidas para type=metric: las mismas fuente de feedback (D6/D7).
 var validCompetitionMetrics = []string{"distance", "duration", "pace", "peak_speed"}
 
+// límites de rutas y radius (spec 4b, D4/D5).
+const (
+	maxRouteVertices     = 500
+	maxRouteLengthMeters = 100000.0
+	minAcceptanceRadiusM = 5.0
+	maxAcceptanceRadiusM = 500.0
+)
+
 type CompetitionServiceInterface interface {
 	Create(ctx *gin.Context, callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error)
 	Approve(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
@@ -44,16 +52,31 @@ type CompetitionServiceInterface interface {
 	// para el control:competition_finished del controller (D9); sin intentos
 	// = slice vacío.
 	Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
+	// CreateAttempt registra el intento de una competencia route
+	// (competencias-ruta-intake D2): guards en orden 404 → 400 type → 400
+	// status → 403 → 400 doble intento, luego insert runner_session wip
+	// tagueado con competition_id y la instancia sintética (compartida). NO
+	// pasa por el service/gate presencial de runner sessions: la instancia
+	// sintética no tiene día de calendario y ese gate no aplica.
+	CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error)
 }
 
 type competitionService struct {
-	dao          daos.CompetitionDAOInterface
-	pushTokenDao daos.PushTokenDaoInterface
-	pushClient   expopushclient.ExpoPushClientInterface
+	dao              daos.CompetitionDAOInterface
+	pushTokenDao     daos.PushTokenDaoInterface
+	pushClient       expopushclient.ExpoPushClientInterface
+	runnerSessionDao daos.RunnerSessionDAOInterface
 }
 
-func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface) CompetitionServiceInterface {
-	return &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
+// NewCompetitionService crea el service de competencias. runnerSessionDao es
+// variadic opcional (competencias-ruta-intake D2): los call sites históricos
+// de tres argumentos quedan intactos; CreateAttempt lo exige en runtime.
+func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface, runnerSessionDao ...daos.RunnerSessionDAOInterface) CompetitionServiceInterface {
+	svc := &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
+	if len(runnerSessionDao) > 0 && runnerSessionDao[0] != nil {
+		svc.runnerSessionDao = runnerSessionDao[0]
+	}
+	return svc
 }
 
 func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error) {
@@ -71,13 +94,15 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 	}
 
 	// Guard: sin ser owner ni miembro el DAO de competencias no se toca (403).
-	isOwner, err := s.dao.IsTeamOwner(ctx, teamID, callerID)
+	// El owner_id del team resuelve también si el caller es el entrenador
+	// (F5: la exclusión del owner de participants no depende del caller).
+	teamOwnerID, err := s.dao.TeamOwnerID(ctx, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("error al crear la competencia")
 	}
 	status := competition.StatusPendingApproval
 	role := competition.CreatorRoleRunner
-	if isOwner {
+	if callerID == teamOwnerID {
 		status = competition.StatusActive
 		role = competition.CreatorRoleTrainer
 	} else {
@@ -111,9 +136,11 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		return nil, fmt.Errorf("%w: todos los participantes deben ser miembros activos del equipo", ErrCompetitionInvalid)
 	}
 
-	if isOwner {
+	// El owner del team (el entrenador) no compite: excluido de los
+	// participants siempre —también cuando el creador es un corredor (F5).
+	if teamOwnerID > 0 {
 		for _, id := range unique {
-			if id == callerID {
+			if id == teamOwnerID {
 				return nil, fmt.Errorf("%w: el entrenador no compite (no puede estar entre los participantes)", ErrCompetitionInvalid)
 			}
 		}
@@ -132,15 +159,82 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		CreatedByRole:          role,
 		Status:                 status,
 	}
-	if err := s.dao.Create(ctx, comp, unique); err != nil {
+	if req.Type == competition.TypeRoute {
+		// Branch route (competencias-ruta-intake D1): el Create tx-extendido
+		// del DAO arma dentro de la MISMA transacción la instancia sintética
+		// del intento y persiste route_session_instance_id. Un fallo en la
+		// instancia revierte también competencia + participantes.
+		err = s.dao.CreateWithInstance(ctx, comp, unique)
+	} else {
+		err = s.dao.Create(ctx, comp, unique)
+	}
+	if err != nil {
 		customlogger.Error(ctx, "error creating competition", err, customlogger.TagMethod("CompetitionCreate"))
 		return nil, fmt.Errorf("error al crear la competencia")
 	}
 	return toCompetitionResponse(comp, unique, nil), nil
 }
 
+// CreateAttempt registra el intento de una competencia route (D2): los 5
+// guards en orden, cada uno sin tocar la escritura, y el insert de
+// runner_session reusando el DAO de runner sessions (mismo ON CONFLICT DO
+// NOTHING: si un intento concurrente ganó la carrera, RowsAffected=0 también
+// es doble intento — el uq (session_instance_id, athlete_user_id) arbitra).
+// Sin gate presencial ni rango temporal: la instancia sintética no tiene día
+// y route no usa ventana.
+func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error) {
+	comp, err := s.dao.FindByID(ctx, competitionID)
+	if err != nil {
+		return nil, err
+	}
+	if comp.Type != competition.TypeRoute {
+		return nil, fmt.Errorf("%w: solo las competencias de ruta admiten intentos", ErrCompetitionInvalid)
+	}
+	if comp.Status != competition.StatusActive {
+		return nil, fmt.Errorf("%w: la competencia no está activa", ErrCompetitionInvalid)
+	}
+	isParticipant, err := s.dao.IsParticipant(ctx, competitionID, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if !isParticipant {
+		return nil, ErrCompetitionForbidden
+	}
+	attempt, err := s.dao.ExistsAttemptByCompetitionAndAthlete(ctx, competitionID, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if attempt {
+		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
+	}
+	if s.runnerSessionDao == nil {
+		customlogger.Error(ctx, "competition attempt without runner session dao", nil, customlogger.TagMethod("CompetitionCreateAttempt"))
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if comp.RouteSessionInstanceID == nil {
+		return nil, fmt.Errorf("%w: la competencia no tiene instancia de ruta asignada", ErrCompetitionInvalid)
+	}
+	rs := &dbs.RunnerSession{
+		SessionInstanceID: *comp.RouteSessionInstanceID,
+		AthleteUserID:     callerID,
+		Status:            runnersession.RunnerSessionStatusWip,
+		StartDate:         gametime.Now(),
+		CompetitionID:     &comp.ID,
+	}
+	created, err := s.runnerSessionDao.Create(ctx, rs)
+	if err != nil {
+		customlogger.Error(ctx, "error creating competition attempt", err, customlogger.TagMethod("CompetitionCreateAttempt"))
+		return nil, fmt.Errorf("error al registrar el intento")
+	}
+	if !created {
+		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
+	}
+	return rs, nil
+}
+
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige
-// metric + end_at > start_at; route exige route_geojson + radius > 0.
+// metric + end_at > start_at; route exige route_geojson (parseable, ≤500
+// vértices, ≤100 km) + radius en [5, 500].
 func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 	if req.Type != competition.TypeMetric && req.Type != competition.TypeRoute {
 		return fmt.Errorf("%w: type debe ser metric o route", ErrCompetitionInvalid)
@@ -175,8 +269,20 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		if req.RouteGeoJSON == nil || *req.RouteGeoJSON == "" {
 			return fmt.Errorf("%w: type=route exige route_geojson", ErrCompetitionInvalid)
 		}
-		if req.AcceptanceRadiusMeters == nil || *req.AcceptanceRadiusMeters <= 0 {
-			return fmt.Errorf("%w: type=route exige acceptance_radius_meters > 0", ErrCompetitionInvalid)
+		vertices, err := routematch.ParseLineString(*req.RouteGeoJSON)
+		if err != nil {
+			return fmt.Errorf("%w: la ruta GeoJSON no es válida", ErrCompetitionInvalid)
+		}
+		if len(vertices) > maxRouteVertices {
+			return fmt.Errorf("%w: la ruta admite hasta 500 puntos", ErrCompetitionInvalid)
+		}
+		if routematch.LineStringLength(vertices) > maxRouteLengthMeters {
+			return fmt.Errorf("%w: la ruta no puede superar los 100 km", ErrCompetitionInvalid)
+		}
+		if req.AcceptanceRadiusMeters == nil ||
+			*req.AcceptanceRadiusMeters < minAcceptanceRadiusM ||
+			*req.AcceptanceRadiusMeters > maxAcceptanceRadiusM {
+			return fmt.Errorf("%w: el radio de aceptación debe estar entre 5 y 500 metros", ErrCompetitionInvalid)
 		}
 		if req.Metric != nil {
 			return fmt.Errorf("%w: type=route no admite metric", ErrCompetitionInvalid)
@@ -311,9 +417,15 @@ func (s *competitionService) Cancel(ctx *gin.Context, callerID, competitionID in
 	if comp.Status != competition.StatusPendingApproval {
 		return nil, fmt.Errorf("%w: solo se puede cancelar una competencia en pending_approval", ErrCompetitionConflict)
 	}
-	if err := s.dao.Delete(ctx, competitionID); err != nil {
+	// Race-safe igual que Approve: el DELETE del DAO lleva el guard de status
+	// en el SQL; 0 filas = el owner aprobó la competencia interleavado (F1).
+	deleted, err := s.dao.Delete(ctx, competitionID)
+	if err != nil {
 		customlogger.Error(ctx, "error deleting competition", err, customlogger.TagMethod("CompetitionCancel"))
 		return nil, fmt.Errorf("error al cancelar la competencia")
+	}
+	if !deleted {
+		return nil, fmt.Errorf("%w: solo se puede cancelar una competencia en pending_approval", ErrCompetitionConflict)
 	}
 	return nil, nil
 }
@@ -587,9 +699,10 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 	if bundle.comp.Status != competition.StatusActive {
 		return nil, nil, fmt.Errorf("%w: solo se puede cerrar una competencia active", ErrCompetitionConflict)
 	}
-	// Cierre manual pedido antes de que el end_at pase (D9: manual; si el
-	// front lo intenta antes de que la ventana termine, 400).
-	if bundle.comp.EndAt != nil && gametime.Now().Before(*bundle.comp.EndAt) {
+	// Cierre manual pedido antes de que el end_at pase (D9: manual). El
+	// guard de ventana aplica solo a metric: route se cierra cuando el
+	// creador/owner decide (D3, sin ventana).
+	if bundle.comp.Type == competition.TypeMetric && bundle.comp.EndAt != nil && gametime.Now().Before(*bundle.comp.EndAt) {
 		return nil, nil, fmt.Errorf("%w: competencia no puede cerrarse todavía", ErrCompetitionInvalid)
 	}
 

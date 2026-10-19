@@ -371,7 +371,8 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best match %; member or owner) |
 | PATCH | `/api/v1/competitions/:id/approve` | Approve a pending competition (team owner only) |
 | PATCH | `/api/v1/competitions/:id/reject` | Reject a pending competition with optional `reason` (team owner only) |
-| PATCH | `/api/v1/competitions/:id/close` | Manually close an active competition once its window ended (creator or owner); computes winners, stamps, unseen and pushes |
+| PATCH | `/api/v1/competitions/:id/close` | Manually close an active competition (creator or owner); `type=metric` requires its window ended, `route` can close anytime; computes winners, stamps, unseen and pushes |
+| POST | `/api/v1/competitions/:id/attempts` | Register the route competition attempt of the authenticated participant (`type=route` + `active` only; `400` if already attempted). Creates a `wip` runner session tagged `competition_id` on the competition's shared synthetic route instance, without the presencial gate; finish is the existing `PATCH /session-instances/:id/runner` |
 | DELETE | `/api/v1/competitions/:id/cancel` | Cancel own pending competition (runner creator only; physical delete) |
 
 ## Run

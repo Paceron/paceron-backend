@@ -5,6 +5,7 @@ package controllers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/testutils"
@@ -26,18 +28,19 @@ import (
 )
 
 type mockCompetitionService struct {
-	createFn  func(callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error)
-	approveFn func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
-	rejectFn  func(callerID, competitionID int64, reason *string) (*competition.CompetitionResponse, error)
-	cancelFn  func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
-	listFn    func(callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
-	getFn     func(callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
-	closeFn   func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
+	createFn      func(callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error)
+	approveFn     func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
+	rejectFn      func(callerID, competitionID int64, reason *string) (*competition.CompetitionResponse, error)
+	cancelFn      func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
+	listFn        func(callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
+	getFn         func(callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
+	closeFn       func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
+	createAttempt func(callerID, competitionID int64) (*dbs.RunnerSession, error)
 
-	createCalls, approveCalls, rejectCalls, cancelCalls, listCalls, getCalls, closeCalls int
-	lastReason                                                                           *string
-	lastStatus                                                                           string
-	lastGroupID                                                                          *int64
+	createCalls, approveCalls, rejectCalls, cancelCalls, listCalls, getCalls, closeCalls, attemptCalls int
+	lastReason                                                                                         *string
+	lastStatus                                                                                         string
+	lastGroupID                                                                                        *int64
 }
 
 func (m *mockCompetitionService) Create(ctx *gin.Context, callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error) {
@@ -99,6 +102,18 @@ func (m *mockCompetitionService) Close(ctx *gin.Context, callerID, competitionID
 	return &competition.CompetitionResponse{ID: competitionID, Status: competition.StatusFinished}, nil, nil
 }
 
+func (m *mockCompetitionService) CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error) {
+	m.attemptCalls++
+	if m.createAttempt != nil {
+		return m.createAttempt(callerID, competitionID)
+	}
+	instanceID := int64(42)
+	return &dbs.RunnerSession{
+		ID: 77, SessionInstanceID: instanceID, AthleteUserID: callerID,
+		Status: "wip", CompetitionID: &competitionID,
+	}, nil
+}
+
 func setupCompetitionRouterS(t *testing.T, svc services.CompetitionServiceInterface, authUserID int64) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -117,6 +132,7 @@ func setupCompetitionRouterS(t *testing.T, svc services.CompetitionServiceInterf
 	router.PATCH("/api/v1/competitions/:id/close", cc.Close)
 	router.DELETE("/api/v1/competitions/:id/cancel", cc.Cancel)
 	router.GET("/api/v1/competitions/:id", cc.GetDetail)
+	router.POST("/api/v1/competitions/:id/attempts", cc.CreateAttempt)
 	return router
 }
 
@@ -424,4 +440,86 @@ func TestCompetitionController_Close_FailingDB_NoLeak(t *testing.T) {
 	assert.Equal(t, "error interno", competitionErrorMessage(t, resp))
 	assert.NotContains(t, resp.Body.String(), "inyectado")
 	assert.NotContains(t, resp.Body.String(), "FailingDB")
+}
+
+// Intake de intentos (competencias-ruta-intake D2): guard order del controller
+// y shape 201 partag typical {message, data} del POST runner.
+func TestCompetitionController_CreateAttempt(t *testing.T) {
+	instanceID := int64(42)
+
+	t.Run("201 happy", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusCreated, resp.Result().StatusCode)
+		var body struct {
+			Message string `json:"message"`
+			Data    struct {
+				ID                int64  `json:"id"`
+				SessionInstanceID int64  `json:"session_instance_id"`
+				Status            string `json:"status"`
+				CompetitionID     *int64 `json:"competition_id"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+		assert.Equal(t, "intento registrado", body.Message)
+		assert.Equal(t, instanceID, body.Data.SessionInstanceID)
+		assert.Equal(t, "wip", body.Data.Status)
+		require.NotNil(t, body.Data.CompetitionID)
+		assert.Equal(t, int64(5), *body.Data.CompetitionID)
+		assert.Equal(t, 1, svc.attemptCalls)
+	})
+
+	t.Run("400 type no route", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+			return nil, fmt.Errorf("%w: solo las competencias de ruta admiten intentos", services.ErrCompetitionInvalid)
+		}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
+		assert.Contains(t, competitionErrorMessage(t, resp), "solo las competencias de ruta admiten intentos")
+	})
+
+	t.Run("403 no participante", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+			return nil, services.ErrCompetitionForbidden
+		}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusForbidden, resp.Result().StatusCode)
+	})
+
+	t.Run("404 inexistente", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+			return nil, daos.ErrCompetitionNotFound
+		}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusNotFound, resp.Result().StatusCode)
+	})
+
+	t.Run("path no numérico", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/abc/attempts", "")
+		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
+		assert.Zero(t, svc.attemptCalls)
+	})
+}
+
+// Guard order del handler: la respuesta del service llega tal cual; el error
+// genérico (db caída) no queda en el body con detalles internos.
+func TestCompetitionController_CreateAttempt_InternalErrorNoLeak(t *testing.T) {
+	svc := &mockCompetitionService{}
+	svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+		return nil, errors.New("punto de falla interno")
+	}
+	router := setupCompetitionRouterS(t, svc, 7)
+	resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+	require.Equal(t, http.StatusInternalServerError, resp.Result().StatusCode)
+	assert.Contains(t, competitionErrorMessage(t, resp), "error interno")
+	assert.NotContains(t, resp.Body.String(), "punto de falla interno")
 }

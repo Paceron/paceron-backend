@@ -18,6 +18,11 @@ const (
 	// Rol del creador.
 	CreatorRoleTrainer = "trainer"
 	CreatorRoleRunner  = "runner"
+
+	// Mensajes de respuesta del intake de intentos (competencias-ruta-intake
+	// D2). El body data es el shape runner-session (MutationResponse del
+	// módulo runnersession).
+	MsgCompetitionAttemptCreated = "intento registrado"
 )
 
 // GetValidStatuses devuelve la whitelist del filtro status del listado.
