@@ -15,6 +15,7 @@ import (
 type mockSessionDao struct {
 	createFn      func(ctx *gin.Context, s *dbs.Session) error
 	findByIDFn    func(ctx *gin.Context, id int64) (*dbs.Session, error)
+	findByIDsFn   func(ctx *gin.Context, ids []int64) ([]dbs.Session, error)
 	findByOwnerFn func(ctx *gin.Context, ownerID int64) ([]dbs.Session, error)
 	updateFn      func(ctx *gin.Context, s *dbs.Session) error
 	softDeleteFn  func(ctx *gin.Context, id int64) error
@@ -40,6 +41,9 @@ func (m *mockSessionDao) FindByOwner(ctx *gin.Context, ownerID int64) ([]dbs.Ses
 	return nil, nil
 }
 func (m *mockSessionDao) FindByIDs(_ *gin.Context, ids []int64) ([]dbs.Session, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(nil, ids)
+	}
 	rows := make([]dbs.Session, 0, len(ids))
 	for _, id := range ids {
 		rows = append(rows, dbs.Session{ID: id})
@@ -130,7 +134,7 @@ func TestSessionService_Create_InvalidRole(t *testing.T) {
 }
 
 func TestSessionService_Create_ExerciseNotFound(t *testing.T) {
-	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, nil }}
+	exerciseDao := &mockExerciseDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error) { return nil, nil }}
 	svc := NewSessionService(&mockSessionDao{}, &mockSessionExerciseDao{}, exerciseDao)
 
 	_, err := svc.Create(nil, 7, session.SessionRequest{OwnerID: 7, Name: "X", Exercises: validSessionExercises()})
@@ -337,7 +341,7 @@ func TestSessionService_CloneInternal_ReplaceError(t *testing.T) {
 
 func TestSessionService_ValidateExercises_FindError(t *testing.T) {
 	err := NewSessionService(&mockSessionDao{}, &mockSessionExerciseDao{}, &mockExerciseDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) { return nil, errors.New("db down") },
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error) { return nil, errors.New("db down") },
 	}).(*sessionService).validateExercises(nil, validSessionExercises())
 
 	assert.EqualError(t, err, "error al validar ejercicios de la sesión")

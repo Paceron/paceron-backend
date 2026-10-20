@@ -101,6 +101,10 @@ func (m *mockRoleDaoForTier) FindByID(ctx *gin.Context, id int64) (*dbs.Role, er
 	return nil, nil
 }
 
+func (m *mockRoleDaoForTier) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+	return nil, nil
+}
+
 func (m *mockRoleDaoForTier) FindByName(ctx *gin.Context, name string) (*dbs.Role, error) {
 	if m.findByNameFn != nil {
 		return m.findByNameFn(ctx, name)

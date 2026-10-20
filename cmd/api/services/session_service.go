@@ -81,16 +81,24 @@ func cloneSessionInternal(sessionDao daos.SessionDaoInterface, sessionExerciseDa
 
 func (s *sessionService) validateExercises(ctx *gin.Context, items []session.SessionExerciseRequest) error {
 	roleCounts := map[string]int{}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		roleCounts[item.Role]++
+		ids = append(ids, item.ExerciseID)
+	}
+	found, err := s.exerciseDao.FindByIDs(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("error al validar ejercicios de la sesión")
+	}
+	exists := make(map[int64]bool, len(found))
+	for _, e := range found {
+		exists[e.ID] = true
+	}
 	for _, item := range items {
 		if !constants.IsValidSessionExerciseRole(item.Role) {
 			return ErrSessionInvalidRole
 		}
-		roleCounts[item.Role]++
-		ex, err := s.exerciseDao.FindByID(ctx, item.ExerciseID)
-		if err != nil {
-			return fmt.Errorf("error al validar ejercicios de la sesión")
-		}
-		if ex == nil {
+		if !exists[item.ExerciseID] {
 			return ErrSessionExerciseNotFound
 		}
 	}

@@ -15,6 +15,7 @@ import (
 type mockExerciseDao struct {
 	createFn      func(ctx *gin.Context, e *dbs.Exercise) error
 	findByIDFn    func(ctx *gin.Context, id int64) (*dbs.Exercise, error)
+	findByIDsFn   func(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error)
 	findByOwnerFn func(ctx *gin.Context, ownerID int64) ([]dbs.Exercise, error)
 	updateFn      func(ctx *gin.Context, e *dbs.Exercise) error
 	softDeleteFn  func(ctx *gin.Context, id int64) error
@@ -34,6 +35,9 @@ func (m *mockExerciseDao) FindByID(ctx *gin.Context, id int64) (*dbs.Exercise, e
 	return nil, nil
 }
 func (m *mockExerciseDao) FindByIDs(_ *gin.Context, ids []int64) ([]dbs.Exercise, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(nil, ids)
+	}
 	rows := make([]dbs.Exercise, 0, len(ids))
 	for _, id := range ids {
 		rows = append(rows, dbs.Exercise{ID: id})

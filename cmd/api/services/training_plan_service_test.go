@@ -125,7 +125,7 @@ func TestTrainingPlanService_Create_TrainingWithoutSessionID(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_TrainingSessionNotFound(t *testing.T) {
-	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return nil, nil }}
+	sessionDao := &mockSessionDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Session, error) { return nil, nil }}
 	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, sessionDao, &mockGroupCalendarDao{})
 	sessionID := int64(5)
 

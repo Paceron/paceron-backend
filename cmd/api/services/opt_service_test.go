@@ -52,11 +52,13 @@ func (m *mockStorageClient) Delete(ctx context.Context, key string) error {
 type mockExpoPushClient struct {
 	sendCallCount int
 	lastToken     string
+	lastTokens    []string
 	lastTitle     string
 	lastBody      string
 	lastData      map[string]string
 
-	mockSend func(ctx context.Context, token, title, body string, data map[string]string) error
+	mockSend      func(ctx context.Context, token, title, body string, data map[string]string) error
+	mockSendBatch func(ctx context.Context, tokens []string, title, body string, data map[string]string) error
 }
 
 func (m *mockExpoPushClient) Send(ctx context.Context, token, title, body string, data map[string]string) error {
@@ -68,6 +70,22 @@ func (m *mockExpoPushClient) Send(ctx context.Context, token, title, body string
 
 	if m.mockSend != nil {
 		return m.mockSend(ctx, token, title, body, data)
+	}
+	return nil
+}
+
+func (m *mockExpoPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	m.sendCallCount++
+	m.lastTokens = tokens
+	if len(tokens) > 0 {
+		m.lastToken = tokens[0]
+	}
+	m.lastTitle = title
+	m.lastBody = body
+	m.lastData = data
+
+	if m.mockSendBatch != nil {
+		return m.mockSendBatch(ctx, tokens, title, body, data)
 	}
 	return nil
 }

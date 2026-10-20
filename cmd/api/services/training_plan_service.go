@@ -66,6 +66,23 @@ func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trai
 		seen[d.SequenceNo] = true
 	}
 
+	sessionIDs := make([]int64, 0, n)
+	seenSessions := make(map[int64]bool, n)
+	for _, d := range days {
+		if d.Kind == string(constants.PlanDayKindTraining) && d.SessionID != nil && !seenSessions[*d.SessionID] {
+			sessionIDs = append(sessionIDs, *d.SessionID)
+			seenSessions[*d.SessionID] = true
+		}
+	}
+	sessionsFound, err := s.sessionDao.FindByIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error al validar sesión del día")
+	}
+	sessionExists := make(map[int64]bool, len(sessionsFound))
+	for _, s := range sessionsFound {
+		sessionExists[s.ID] = true
+	}
+
 	rows := make([]dbs.PlanDay, n)
 	for i, d := range days {
 		if !constants.IsValidPlanDayKind(d.Kind) {
@@ -76,11 +93,7 @@ func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trai
 			if d.SessionID == nil || d.OtherName != nil {
 				return nil, ErrPlanDayFieldMismatch
 			}
-			sessionDB, err := s.sessionDao.FindByID(ctx, *d.SessionID)
-			if err != nil {
-				return nil, fmt.Errorf("error al validar sesión del día")
-			}
-			if sessionDB == nil {
+			if !sessionExists[*d.SessionID] {
 				return nil, ErrPlanSessionNotFound
 			}
 		case string(constants.PlanDayKindOther):

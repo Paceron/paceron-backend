@@ -13,6 +13,7 @@ const sendPath = "/--/api/v2/push/send"
 // restclient de este repo (ver exampleweatherclient).
 type ExpoPushClientInterface interface {
 	Send(ctx context.Context, token, title, body string, data map[string]string) error
+	SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error
 }
 
 type expoPushClient struct {
@@ -32,9 +33,29 @@ type sendPushRequest struct {
 	Data  map[string]string `json:"data,omitempty"`
 }
 
+// sendPushBatchRequest usa el mismo endpoint con `to` como array — la API de
+// Expo acepta string o []string y responde un ticket por token en orden.
+type sendPushBatchRequest struct {
+	To    []string          `json:"to"`
+	Title string            `json:"title"`
+	Body  string            `json:"body"`
+	Data  map[string]string `json:"data,omitempty"`
+}
+
 func (c *expoPushClient) Send(ctx context.Context, token, title, body string, data map[string]string) error {
 	req := sendPushRequest{
 		To:    token,
+		Title: title,
+		Body:  body,
+		Data:  data,
+	}
+
+	return c.httpClient.Post(ctx, sendPath, req, nil)
+}
+
+func (c *expoPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	req := sendPushBatchRequest{
+		To:    tokens,
 		Title: title,
 		Body:  body,
 		Data:  data,
