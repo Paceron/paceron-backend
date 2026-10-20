@@ -4,13 +4,13 @@
 
 ### D1 — Listings batch (P1/P2)
 
-`session_service.go` `List` (~:236): hoy `toResponse` llama `sessionExerciseDao.FindBySession` por sesión. Fix: colectar IDs → `FindBySessions(ids)` (ya existe, `session_exercise_dao.go:38`) → agrupar en memoria → `toResponse` variante que recibe los links precargados. `training_plan_service.go` `List` (~:303): mismo patrón con nuevo `plan_day_dao.FindByPlanIDs` (patrón `FindBySessions`, early-return vacío, `Order("id")`). Respuesta byte-idéntica (mismo orden, misma forma). Sin DB el path mock mantiene comportamiento.
+`session_service.go` `List` (~:236): hoy `toResponse` llama `sessionExerciseDao.FindBySession` por sesión. Fix: colectar IDs → `FindBySessions(ids)` (ya existe, `session_exercise_dao.go:38`) → agrupar en memoria → `toResponse` variante que recibe los links precargados. `training_plan_service.go` `List` (~:303): mismo patrón con nuevo `plan_day_dao.FindByPlanIDs` (patrón `FindBySessions`, early-return vacío, `Order("plan_id, sequence_no")`). Respuesta byte-idéntica (mismo orden, misma forma). Sin DB el path mock mantiene comportamiento.
 
 ### D2 — Mensajería: tope + batch de acceso (P3)
 
 `session_message_service.go`:
 - `validateSendMessage` (~:149): nuevo tope `maxRecipientsPerMessage = 100` — `recipient_user_ids` con más de 100 → 400 `ErrSessionMessageInvalid` con mensaje "los destinatarios no pueden superar 100". Aplica solo a `multiple` (en `all` y `direct` el costo es constante).
-- `validateRecipients` (~:193): hoy 1 `HasInstanceAccess` por destinatario. Fix: variante batch `HasInstanceAccessBatch(ctx, instanceID, userIDs []int64) (map[int64]bool, error)` en `SessionInstanceDaoInterface` (1 corrida de las 2 existence-queries con `IN`, o 2 queries totales para todos) → map de acceso. Los no autorizados → 403 igual que hoy, mismo mensaje. `HasInstanceAccess` singular se mantiene (lo usan WS guard y otros callers).
+- `validateRecipients` (~:193): hoy 1 `HasInstanceAccess` por destinatario. Fix: variante batch `HasInstanceAccessBatch(ctx, instanceID, userIDs []int64) (map[int64]bool, error)` en `SessionInstanceDaoInterface` (misma regla del singular: día, feedback y competencia-route; hasta 3 queries totales con `IN`) → map de acceso. Los no autorizados → 400 igual que hoy (mismo sentinel y mensaje de detalle previos) (comportamiento pre-task intacto — constraint stage 1). `HasInstanceAccess` singular se mantiene (lo usan WS guard y otros callers).
 
 ### D3 — Pagos: cuota reutilizada (P5)
 

@@ -628,6 +628,24 @@ Mecánica de dominio del módulo de gamificación. Shapes JSON, códigos HTTP y 
 - **Cierre route sin guard de ventana (D3):** el guard "end_at ya pasado → 400" ahora es **metric-only**; route se cierra cuando el creador/owner decide (la ventana temporal no aplica a ruta). El resto del Close queda byte-idéntico.
 - **WS sin canal nuevo (D6):** los frames de competencia reutilizan el canal **común** `session:{route_session_instance_id}` — `update:competition_progress` al terminar cada intento, `control:competition_finished` al cerrar. Sin broadcast en vivo durante el intento `wip` (leaderboard mid-attempt = deuda).
 
+### 8.15 Pagos: ownership de consulta y firma HMAC de webhooks (change `optimizaciones-y-seguridad-api`)
+
+Endurecimiento del módulo de pagos. Contratos frontend: `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §18.
+
+#### Ownership de `GET /payments/:id` y `GET /payments/mp/:id`
+
+- Ambos endpoints de consulta exigen que el caller sea **parte del pago**: pagador (`payment.user_id`, o el dueño de la cuota vía `installment.user_id` cuando el pago viene de una suscripción de equipo) o vendedor (`payment.seller_user_id`). Cualquier otro usuario autenticado → `404` "payment not found" (**no 403**: no se confirma la existencia del recurso a un ajeno).
+- `GET /payments/mp/:id` resuelve el pago local **antes** de llamar a Mercado Pago (por `payment_id`, con fallback a `external_reference` para pagos legacy; solo cuenta si el `payment_id` local coincide exactamente) y aplica el mismo guard: ajeno o inexistente → `404` con **cero llamadas HTTP a MP**.
+- El polling del pagador no cambia: su ownership viaja por la cuota (`installment.user_id`) — un pago de team_subscription lo ve el corredor que paga aunque el `user_id` del pago no sea el suyo.
+
+#### Firma HMAC de los webhooks de MP
+
+Ambos webhooks (`POST /api/v1/payments/webhook` y `POST /api/v1/mercadopago/webhook/connect`) validan la firma HMAC-SHA256 que MP manda en `X-Signature` (`ts=...,v1=...`), vía el SDK oficial (`mercadopago/sdk-go/pkg/webhook`): recalcula el HMAC del manifest `id:<data.id>;request-id:<X-Request-Id>;ts:<ts>` con el secret y compara en tiempo constante. En el webhook de deauth el id firmado es el `user_id` del payload (no hay `data.id` de pago).
+
+- **Activación gradual:** con `MERCADOPAGO_WEBHOOK_SECRET` seteado, firma inválida/faltante → `401` (`apierror.APIError` code "Unauthorized", message "Firma de webhook inválida", sin leak del motivo del rechazo). Con el secret **sin configurar** → comportamiento anterior (acepta sin validar) + warning en el log una vez por proceso — permite cargar el secret en el panel de MP sin ventana de rechazos. Los `200` de procesamiento no cambian.
+- De `X-Signature` se loguea presencia/longitud, nunca el valor.
+- Sin tolerancia temporal configurada (`WithTolerance` del SDK no se usa): un replay dentro de la validez de la firma no se bloquea — deuda documentada en `docs/DEUDA_TECNICA_Y_PENDIENTES.md`.
+
 
 ## 9. Detalles de implementación relevantes
 

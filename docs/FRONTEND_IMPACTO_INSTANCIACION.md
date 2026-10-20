@@ -746,3 +746,41 @@ Los 2 frames de §16.7 siguen siendo todos los del intento; **no se agrega canal
 - `control:competition_finished {competitionId}` — al cerrar, por el canal de la instancia (único, compartido por los intentos).
 - **Sin leaderboard en vivo mid-attempt**: mientras el intento está en `wip` no hay broadcast de nada (ni ranking ni traza GPS); el resultado live del detalle sale on-demand en `GET /competitions/{id}` (§16.5) y el resultado final viaja post-close con `control:competition_finished` + refetch.
 
+## 18. Seguridad y límites: pagos, rate limit, body limit y revocación de sesiones (change `optimizaciones-y-seguridad-api`)
+
+Cambios de comportamiento que el front puede chocar. Verificados contra el código final de la rama. **Todo lo que no está acá NO cambia**: `/auth/user` sigue público y con su shape, `POST /payments/test-card-token` sigue vivo (sandbox), los webhooks de MP siguen exentos de rate limit, y ninguna respuesta de éxito cambió de shape.
+
+### 18.1 `GET /payments/:id` y `GET /payments/mp/:id`: nuevo `404` para pagos ajenos
+
+Estos GET ahora exigen que el caller sea parte del pago (pagador o vendedor). Un usuario autenticado que consulta el pago de otro recibe `404` "payment not found" (no 403 — no se confirma la existencia).
+
+- **El polling del pagador NO cambia**: su ownership viaja por la cuota (`installment.user_id`), así que el flujo de Checkout Brick (consultar el estado de un pago recién creado) sigue funcionando igual.
+- Dónde SÍ puede chocar: si el front usa estos endpoints para mostrar pagos de un **tercero** (ej. listados del entrenador ya cubiertos por `GET /payments/received` — no tocar), hoy recibiría 404. No hay caso legítimo conocido; los 404 nuevos solo afectan consultas de pagos ajenos.
+
+### 18.2 Rate limit en rutas públicas sensibles: `429`
+
+`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /auth/user`, `POST /auth/forgot-password` y `POST /auth/reset-password` llevan un rate limiter por IP: **30 requests/minuto, burst 10** (hardcodeado, sin env). Superado el cupo → `429`:
+
+```json
+HTTP 429
+{"StatusCode": 429, "Code": "too_many_requests", "Message": "demasiadas solicitudes, intentá de nuevo más tarde"}
+```
+
+- La cuenta es **por IP y en memoria del proceso**: un deploy/restart la resetea, y retries automáticos del front ante 429 deben ir con backoff (el límite es fijo, no negociable por request).
+- Webhooks de MP (`/payments/webhook`, `/mercadopago/webhook/connect`) y el gateway WS **no** pasan por el limiter — sin cambio ahí.
+
+### 18.3 Body > 10MB: `413` crudo (sin shape `apierror`)
+
+Todo request con body de más de **10 MB** es rechazado globalmente por middleware antes del routing. El `413` lo emite gin directamente con **body vacío** (no el shape `apierror.APIError` habitual): el front no debe intentar parsear el body del error como APIError. Los uploads de foto/ícono tienen su propio límite menor (5 MB) que sigue cortando antes — para ellos nada cambia.
+
+### 18.4 Cambio/restablecimiento de contraseña revoca TODOS los refresh tokens
+
+`PATCH /users/{id}/password` (cambio con sesión) y `POST /auth/reset-password` (restablecimiento por OTP) ahora revocan todos los refresh tokens activos del usuario (todos los dispositivos). El refresh siguiente → rechazo genérico (mismo error que un token inválido cualquiera).
+
+- El front debe: al fallar el refresh, **cerrar sesión y mandar a re-loguear** (no reintentar).
+- Si el usuario cambia su contraseña, sus **otros dispositivos** también quedan fuera: es a propósito (S6). Si la UI muestra "cambiaste tu contraseña", puede avisar que se cerraron las demás sesiones.
+
+### 18.5 Mensajería de sesión: tope de 100 destinatarios
+
+`POST /session-instances/:id/messages` con `recipient_mode="multiple"` y más de **100** `recipient_user_ids` → `400` con message `"los destinatarios no pueden superar 100"`. Antes no había tope. `all` y `direct` sin cambio.
+
