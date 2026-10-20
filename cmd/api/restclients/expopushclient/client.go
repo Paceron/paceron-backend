@@ -54,6 +54,10 @@ func (c *expoPushClient) Send(ctx context.Context, token, title, body string, da
 }
 
 func (c *expoPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	if len(tokens) == 0 {
+		return nil
+	}
+
 	req := sendPushBatchRequest{
 		To:    tokens,
 		Title: title,

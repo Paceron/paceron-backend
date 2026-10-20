@@ -75,6 +75,15 @@ func (m *mockExpoPushClient) Send(ctx context.Context, token, title, body string
 }
 
 func (m *mockExpoPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	// Sin mockSendBatch explícito, cae al per-token mockSend para que los tests
+	// que inyectaban fallo por Send sigan ejercitando el mismo path de prod.
+	if m.mockSendBatch == nil && m.mockSend != nil {
+		for _, token := range tokens {
+			_ = m.Send(ctx, token, title, body, data)
+		}
+		return nil
+	}
+
 	m.sendCallCount++
 	m.lastTokens = tokens
 	if len(tokens) > 0 {

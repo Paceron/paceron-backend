@@ -42,6 +42,9 @@ func sendPushToUser(
 	for i, t := range tokens {
 		tokenStrings[i] = t.Token
 	}
+	if len(tokenStrings) == 0 {
+		return
+	}
 
 	if err := pushClient.SendBatch(ctx, tokenStrings, title, body, data); err != nil {
 		customlogger.Error(ctx, "error sending push notification", err,

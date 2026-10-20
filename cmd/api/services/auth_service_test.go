@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
 	"simple-arq-golang/cmd/api/config"
@@ -862,8 +863,8 @@ func TestLogin_PersistsRefreshTokenAndRoles(t *testing.T) {
 		},
 	}
 	roleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "corredor"}}, nil
 		},
 	}
 	createCalled := false
@@ -1067,4 +1068,58 @@ func TestLogin_FindByEmailError(t *testing.T) {
 	_, err := svc.Login(nil, "john@test.com", "securePass123")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "No se pudo autenticar")
+}
+
+func TestLogin_RoleDaoError_LoginStillSucceeds(t *testing.T) {
+	config.JWTSecret = "test-secret-key-for-testing"
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("securePass123"), bcrypt.DefaultCost)
+
+	mockDao := mockAuthDao{
+		mockFindByEmail: func(ctx *gin.Context, email string) (*dbs.User, error) {
+			return &dbs.User{
+				ID:        1,
+				Name:      "John",
+				Email:     "john@test.com",
+				Password:  string(hashedPassword),
+				Status:    "active",
+				BirthDate: time.Date(1990, 4, 15, 0, 0, 0, 0, time.UTC),
+			}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	roleDao := &mockRoleDao{
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return nil, errors.New("db down")
+		},
+	}
+
+	svc := NewAuthService(mockDao, userRoleDao, roleDao, &mockRefreshTokenDao{}, nil)
+	resp, err := svc.Login(nil, "john@test.com", "securePass123")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.NotEmpty(t, resp.AccessToken)
+}
+
+func TestRoleNamesForUser_DaoError_ReturnsEmptyNoError(t *testing.T) {
+	roleDao := &mockRoleDao{
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return nil, errors.New("db down")
+		},
+	}
+	userRoleDao := &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}}, nil
+		},
+	}
+	svc := NewAuthService(&mockAuthDao{}, userRoleDao, roleDao, &mockRefreshTokenDao{}, nil).(*authService)
+
+	names, err := svc.roleNamesForUser(nil, 1)
+
+	require.NoError(t, err)
+	assert.Empty(t, names)
 }

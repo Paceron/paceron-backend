@@ -107,6 +107,22 @@ func TestSendBatch_SendsArrayRequest(t *testing.T) {
 	assert.Equal(t, "invitation_received", receivedBody.Data["type"])
 }
 
+func TestSendBatch_EmptyTokens_NoRequest(t *testing.T) {
+	requests := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	httpClient := httpclient.New(httpclient.WithBaseURL(server.URL))
+	client := New(httpClient)
+
+	require.NoError(t, client.SendBatch(context.Background(), []string{}, "t", "b", nil))
+	assert.Equal(t, 0, requests)
+}
+
 func TestNew_ImplementsInterface(t *testing.T) {
 	httpClient := httpclient.New()
 	client := New(httpClient)

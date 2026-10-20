@@ -99,8 +99,12 @@ func validSessionExercises() []session.SessionExerciseRequest {
 func TestSessionService_Create_Success(t *testing.T) {
 	sessionDao := &mockSessionDao{}
 	sessionExerciseDao := &mockSessionExerciseDao{}
-	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
-		return &dbs.Exercise{ID: id}, nil
+	exerciseDao := &mockExerciseDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error) {
+		rows := make([]dbs.Exercise, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, dbs.Exercise{ID: id})
+		}
+		return rows, nil
 	}}
 	svc := NewSessionService(sessionDao, sessionExerciseDao, exerciseDao)
 
@@ -111,8 +115,12 @@ func TestSessionService_Create_Success(t *testing.T) {
 }
 
 func TestSessionService_Create_MissingRole(t *testing.T) {
-	exerciseDao := &mockExerciseDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Exercise, error) {
-		return &dbs.Exercise{ID: id}, nil
+	exerciseDao := &mockExerciseDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Exercise, error) {
+		rows := make([]dbs.Exercise, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, dbs.Exercise{ID: id})
+		}
+		return rows, nil
 	}}
 	svc := NewSessionService(&mockSessionDao{}, &mockSessionExerciseDao{}, exerciseDao)
 

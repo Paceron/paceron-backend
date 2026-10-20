@@ -9,6 +9,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/session"
+	"simple-arq-golang/cmd/api/domains/trainingplan"
 )
 
 // Tests de conteo para los batches de las optimizaciones P7/P8/P9:
@@ -104,4 +105,52 @@ func TestValidateExercises_SingleQueryForAllExercises(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, exerciseDao.findByIDsCalls)
 	assert.Equal(t, 0, exerciseDao.findByIDCalls)
+}
+
+func TestSendPushToUser_NoTokens_NoRequest(t *testing.T) {
+	pushTokenDao := &mockPushTokenDao{mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+		return nil, nil
+	}}
+	pushClient := &mockExpoPushClient{}
+
+	sendPushToUser(nil, pushTokenDao, pushClient, 1, "Título", "Cuerpo", "invitation_received", "/invitations")
+
+	assert.Equal(t, 0, pushClient.sendCallCount)
+}
+
+// countingSessionDao envuelve mockSessionDao para contar queries por método.
+type countingSessionDao struct {
+	*mockSessionDao
+	findByIDCalls  int
+	findByIDsCalls int
+}
+
+func (c *countingSessionDao) FindByID(ctx *gin.Context, id int64) (*dbs.Session, error) {
+	c.findByIDCalls++
+	return c.mockSessionDao.FindByID(ctx, id)
+}
+
+func (c *countingSessionDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Session, error) {
+	c.findByIDsCalls++
+	return c.mockSessionDao.FindByIDs(ctx, ids)
+}
+
+func TestValidateAndBuildDays_SingleQueryForAllSessions(t *testing.T) {
+	sessionDao := &countingSessionDao{mockSessionDao: &mockSessionDao{}}
+	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, sessionDao, &mockGroupCalendarDao{}).(*trainingPlanService)
+
+	sessionID1, sessionID2 := int64(1), int64(2)
+	days := []trainingplan.PlanDayRequest{
+		{SequenceNo: 1, Kind: "training", SessionID: &sessionID1},
+		{SequenceNo: 2, Kind: "training", SessionID: &sessionID2},
+		{SequenceNo: 3, Kind: "training", SessionID: &sessionID1},
+		{SequenceNo: 4, Kind: "rest"},
+	}
+
+	rows, err := svc.validateAndBuildDays(nil, days)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+	assert.Equal(t, 1, sessionDao.findByIDsCalls)
+	assert.Equal(t, 0, sessionDao.findByIDCalls)
 }
