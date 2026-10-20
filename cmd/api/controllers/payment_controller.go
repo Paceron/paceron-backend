@@ -264,6 +264,7 @@ func (pc *paymentController) GetPaymentStatus(c *gin.Context) {
 // @Param        id   path      string true "Mercado Pago Payment ID"
 // @Success      200  {object}  payment.MPPaymentStatusResponse
 // @Failure      400  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/payments/mp/{id} [get]
 func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
@@ -279,6 +280,14 @@ func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
 
 	resp, err := pc.paymentService.GetPaymentStatusFromMP(c, mpPaymentID)
 	if err != nil {
+		if err.Error() == "payment not found" {
+			c.JSON(http.StatusNotFound, apierror.APIError{
+				StatusCode: http.StatusNotFound,
+				Code:       "Not found",
+				Message:    "Pago no encontrado",
+			})
+			return
+		}
 		customlogger.Error(c, "error getting payment status from MP", err)
 		c.JSON(http.StatusInternalServerError, apierror.APIError{
 			StatusCode: http.StatusInternalServerError,

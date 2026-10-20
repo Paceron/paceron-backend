@@ -104,6 +104,15 @@ type paymentTypedError struct {
 func (e *paymentTypedError) Error() string { return e.msg }
 func (e *paymentTypedError) Unwrap() error { return e.kind }
 
+// paymentOwnedBy: el caller es el pagador (UserID) o el vendedor (SellerUserID).
+// Ambos campos son nil-ables: un nil nunca matchea.
+func paymentOwnedBy(p *dbs.Payment, callerID int64) bool {
+	if p.UserID != nil && *p.UserID == callerID {
+		return true
+	}
+	return p.SellerUserID != nil && *p.SellerUserID == callerID
+}
+
 func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePreferenceRequest) (*payment.CreatePreferenceResponse, error) {
 	customlogger.Info(ctx, "creating MP preference", customlogger.TagMethod("CreatePreference"))
 
@@ -343,6 +352,12 @@ func (s *paymentService) GetPaymentStatus(ctx *gin.Context, paymentID int64) (*p
 		return nil, fmt.Errorf("payment not found")
 	}
 
+	// Ownership guard (D10, S5): 404 (no 403) para no confirmar existencia a un
+	// usuario ajeno.
+	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !paymentOwnedBy(paymentRecord, callerID) {
+		return nil, fmt.Errorf("payment not found")
+	}
+
 	if paymentRecord.PaymentID != "" {
 		mpID, _ := strconv.Atoi(paymentRecord.PaymentID)
 		result, err := s.mpClient.GetPayment(ctx, s.accessToken, mpID)
@@ -368,6 +383,26 @@ func (s *paymentService) GetPaymentStatusFromMP(ctx *gin.Context, mpPaymentID st
 	mpID, err := strconv.Atoi(mpPaymentID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid payment ID: %w", err)
+	}
+
+	// Resolver el pago local ANTES de llamar a MP (D10, S5): mismo patrón de
+	// resolución que el webhook (payment_id, con fallback a external_reference
+	// por pagos legacy). Sin pago local o ajeno → 404, cero llamadas a MP.
+	localPayment, err := s.paymentDao.FindByPaymentID(ctx, mpPaymentID)
+	if err != nil {
+		return nil, fmt.Errorf("error finding local payment: %w", err)
+	}
+	if localPayment == nil {
+		localPayment, err = s.paymentDao.FindByExternalReference(ctx, mpPaymentID)
+		if err != nil {
+			return nil, fmt.Errorf("error finding local payment: %w", err)
+		}
+	}
+	if localPayment == nil {
+		return nil, fmt.Errorf("payment not found")
+	}
+	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !paymentOwnedBy(localPayment, callerID) {
+		return nil, fmt.Errorf("payment not found")
 	}
 
 	result, err := s.mpClient.GetPayment(ctx, s.accessToken, mpID)

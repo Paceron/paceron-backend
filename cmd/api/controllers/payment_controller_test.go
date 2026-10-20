@@ -521,6 +521,24 @@ func TestGetPaymentStatusFromMP_Error(t *testing.T) {
 	service.AssertExpectations(t)
 }
 
+func TestGetPaymentStatusFromMP_NotFound(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.GET("/api/v1/payments/mp/:id", controller.GetPaymentStatusFromMP)
+
+	service.On("GetPaymentStatusFromMP", mock.AnythingOfType("*gin.Context"), "123").Return(nil, errors.New("payment not found"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/payments/mp/123", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Pago no encontrado")
+	service.AssertExpectations(t)
+}
+
 func TestHandleWebhook_Success(t *testing.T) {
 	service := new(mockPaymentService)
 	controller := NewPaymentController(service)

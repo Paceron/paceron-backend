@@ -627,6 +627,7 @@ func TestGetPaymentStatus_Success(t *testing.T) {
 	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
 	paymentRecord := &dbs.Payment{
 		ID:           1,
 		PaymentID:    "12345",
@@ -637,6 +638,7 @@ func TestGetPaymentStatus_Success(t *testing.T) {
 		Amount:       500,
 		CurrencyID:   "ARS",
 		PayerEmail:   "payer@example.com",
+		UserID:       int64Ptr(100),
 	}
 
 	dao.On("FindByID", ctx, int64(1)).Return(paymentRecord, nil)
@@ -670,13 +672,54 @@ func TestGetPaymentStatus_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "payment not found")
 }
 
+func TestGetPaymentStatus_NotOwner_ReturnsNotFoundWithoutMP(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(200))
+	paymentRecord := &dbs.Payment{ID: 1, PaymentID: "12345", Status: "approved", UserID: int64Ptr(100)}
+
+	dao.On("FindByID", ctx, int64(1)).Return(paymentRecord, nil)
+
+	resp, err := svc.GetPaymentStatus(ctx, 1)
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "payment not found")
+	dao.AssertNumberOfCalls(t, "FindByID", 1)
+	dao.AssertNotCalled(t, "UpdateStatus")
+	client.AssertNotCalled(t, "GetPayment")
+}
+
+func TestGetPaymentStatus_SellerSeesPayment(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(77))
+	paymentRecord := &dbs.Payment{ID: 1, Status: "approved", UserID: int64Ptr(100), SellerUserID: int64Ptr(77)}
+
+	dao.On("FindByID", ctx, int64(1)).Return(paymentRecord, nil)
+
+	resp, err := svc.GetPaymentStatus(ctx, 1)
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "approved", resp.Status)
+}
+
 func TestGetPaymentStatusFromMP_Success(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
 	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := config.GetTestContext()
-
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+	dao.On("FindByPaymentID", ctx, "1351279383").Return(&dbs.Payment{ID: 7, PaymentID: "1351279383", UserID: int64Ptr(100)}, nil)
+	dao.On("FindByExternalReference", ctx, "1351279383").Return(nil, nil)
 	expMonth := 11
 	expYear := 2030
 	client.On("GetPayment", ctx, "test-access-token", 1351279383).Return(&mpsdk.Response{
@@ -744,6 +787,65 @@ func TestGetPaymentStatusFromMP_InvalidID(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Contains(t, err.Error(), "invalid payment ID")
+}
+
+func TestGetPaymentStatusFromMP_NotOwner_ReturnsNotFoundWithoutMP(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(200))
+	localPayment := &dbs.Payment{ID: 7, PaymentID: "1351279383", UserID: int64Ptr(100)}
+
+	dao.On("FindByPaymentID", ctx, "1351279383").Return(localPayment, nil)
+
+	resp, err := svc.GetPaymentStatusFromMP(ctx, "1351279383")
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "payment not found")
+	dao.AssertNotCalled(t, "FindByExternalReference")
+	client.AssertNotCalled(t, "GetPayment")
+}
+
+func TestGetPaymentStatusFromMP_UnknownLocalPayment_ReturnsNotFoundWithoutMP(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+
+	dao.On("FindByPaymentID", ctx, "1351279383").Return(nil, nil)
+	dao.On("FindByExternalReference", ctx, "1351279383").Return(nil, nil)
+
+	resp, err := svc.GetPaymentStatusFromMP(ctx, "1351279383")
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "payment not found")
+	dao.AssertNumberOfCalls(t, "FindByExternalReference", 1)
+	client.AssertNotCalled(t, "GetPayment")
+}
+
+func TestGetPaymentStatusFromMP_FallsBackToExternalReferenceAndAllowsOwner(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+
+	dao.On("FindByPaymentID", ctx, "1351279383").Return(nil, nil)
+	dao.On("FindByExternalReference", ctx, "1351279383").Return(&dbs.Payment{ID: 7, UserID: int64Ptr(100)}, nil)
+	client.On("GetPayment", ctx, "test-access-token", 1351279383).Return(&mpsdk.Response{ID: 1351279383, Status: "approved"}, nil)
+
+	resp, err := svc.GetPaymentStatusFromMP(ctx, "1351279383")
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "approved", resp.Status)
 }
 
 func TestHandleWebhook_IgnoresNonPaymentType(t *testing.T) {
