@@ -1,8 +1,8 @@
 package daos
 
 import (
-	"database/sql"
 	"context"
+	"database/sql"
 	"sync/atomic"
 	"testing"
 
@@ -60,7 +60,7 @@ func TestSessionInstanceDao_HasInstanceAccessBatch_ConstantQueries(t *testing.T)
 	assert.True(t, access[f.owner.ID])
 	assert.Equal(t, int64(1), *counter, "día resuelve todo en 1 query")
 
-	// Mixto día/feedback/competencia: 3 queries como mínimo posible.
+	// PeorCaso3Queries: instancia inexistente recorre las 3 ramas.
 	*counter = 0
 	access, err = dao.HasInstanceAccessBatch(nil, 999999, []int64{f.athlete.ID, f.stranger.ID})
 	require.NoError(t, err)

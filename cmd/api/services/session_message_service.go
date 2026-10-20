@@ -196,7 +196,7 @@ func validateSendMessage(req sessionmessage.SendMessageRequest) (string, []int64
 }
 
 // validateRecipients chequea que cada destinatario sea participante de la
-// sesión (misma regla dual que el emisor; el fallo es 403, D6).
+// sesión (misma regla dual que el emisor; el fallo es 400, D6).
 func (s *sessionMessageService) validateRecipients(ctx *gin.Context, sessionInstanceID int64, recipientUserIDs []int64) error {
 	access, err := s.sessionInstanceDao.HasInstanceAccessBatch(ctx, sessionInstanceID, recipientUserIDs)
 	if err != nil {
@@ -204,7 +204,7 @@ func (s *sessionMessageService) validateRecipients(ctx *gin.Context, sessionInst
 	}
 	for _, userID := range recipientUserIDs {
 		if !access[userID] {
-			return fmt.Errorf("%w: el destinatario %d no participa de la sesión", ErrSessionMessageForbidden, userID)
+			return fmt.Errorf("%w: el destinatario %d no participa de la sesión", ErrSessionMessageInvalid, userID)
 		}
 	}
 	return nil

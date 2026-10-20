@@ -17,11 +17,11 @@ import (
 
 // mockSessionInstanceDao acumula los lookups del service de mensajes.
 type mockSessionInstanceDao struct {
-	createFn            func(ctx *gin.Context, s *dbs.SessionInstance) error
-	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
-	deleteFn            func(ctx *gin.Context, id int64) error
-	hasFeedbackFn       func(ctx *gin.Context, id int64) (bool, error)
-	hasInstanceAccessFn     func(ctx *gin.Context, instanceID, callerID int64) (bool, error)
+	createFn                 func(ctx *gin.Context, s *dbs.SessionInstance) error
+	findByIDFn               func(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
+	deleteFn                 func(ctx *gin.Context, id int64) error
+	hasFeedbackFn            func(ctx *gin.Context, id int64) (bool, error)
+	hasInstanceAccessFn      func(ctx *gin.Context, instanceID, callerID int64) (bool, error)
 	hasInstanceAccessBatchFn func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
 }
 
@@ -302,7 +302,7 @@ func TestSessionMessageService_Create_RecipientWithoutAccess(t *testing.T) {
 
 	_, err := svc.Create(nil, 7, 88, req)
 
-	require.ErrorIs(t, err, ErrSessionMessageForbidden)
+	require.ErrorIs(t, err, ErrSessionMessageInvalid)
 	assert.Contains(t, err.Error(), "el destinatario 12 no participa de la sesión")
 }
 
