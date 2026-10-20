@@ -104,13 +104,26 @@ type paymentTypedError struct {
 func (e *paymentTypedError) Error() string { return e.msg }
 func (e *paymentTypedError) Unwrap() error { return e.kind }
 
-// paymentOwnedBy: el caller es el pagador (UserID) o el vendedor (SellerUserID).
-// Ambos campos son nil-ables: un nil nunca matchea.
-func paymentOwnedBy(p *dbs.Payment, callerID int64) bool {
+// ownership del pago: UserID NO es el pagador (quedan pagos nil/nil del flujo
+// real, y en CreatePreference contiene el seller_id del cliente); el pagador
+// real de una cuota vive en installments.user_id. SellerUserID sí es el
+// vendedor (dueño del team). La cuota se carga solo si el match directo falló,
+// para que el path feliz no pague la query.
+func (s *paymentService) paymentOwnedBy(ctx *gin.Context, p *dbs.Payment, callerID int64) bool {
 	if p.UserID != nil && *p.UserID == callerID {
 		return true
 	}
-	return p.SellerUserID != nil && *p.SellerUserID == callerID
+	if p.SellerUserID != nil && *p.SellerUserID == callerID {
+		return true
+	}
+	if p.InstallmentID == nil {
+		return false
+	}
+	installment, err := s.installDao.FindByID(ctx, *p.InstallmentID)
+	if err != nil || installment == nil {
+		return false
+	}
+	return installment.UserID == callerID
 }
 
 func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePreferenceRequest) (*payment.CreatePreferenceResponse, error) {
@@ -354,7 +367,7 @@ func (s *paymentService) GetPaymentStatus(ctx *gin.Context, paymentID int64) (*p
 
 	// Ownership guard (D10, S5): 404 (no 403) para no confirmar existencia a un
 	// usuario ajeno.
-	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !paymentOwnedBy(paymentRecord, callerID) {
+	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !s.paymentOwnedBy(ctx, paymentRecord, callerID) {
 		return nil, fmt.Errorf("payment not found")
 	}
 
@@ -397,11 +410,16 @@ func (s *paymentService) GetPaymentStatusFromMP(ctx *gin.Context, mpPaymentID st
 		if err != nil {
 			return nil, fmt.Errorf("error finding local payment: %w", err)
 		}
+		// external_reference también puede ser un id local por casualidad o un
+		// preference_id: solo cuenta si es exactamente ese pago de MP.
+		if localPayment != nil && localPayment.PaymentID != mpPaymentID {
+			return nil, fmt.Errorf("payment not found")
+		}
 	}
 	if localPayment == nil {
 		return nil, fmt.Errorf("payment not found")
 	}
-	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !paymentOwnedBy(localPayment, callerID) {
+	if callerID, ok := utils.GetAuthUserID(ctx); !ok || !s.paymentOwnedBy(ctx, localPayment, callerID) {
 		return nil, fmt.Errorf("payment not found")
 	}
 
