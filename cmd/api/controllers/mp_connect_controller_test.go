@@ -191,7 +191,7 @@ func TestMPConnectController_HandleCallback_Success(t *testing.T) {
 		},
 	}
 
-	c, response := newCallbackRequest("code=CODE&state=" + mpconnect.BuildState(1, 123, mpconnect.TargetWeb))
+	c, response := newCallbackRequest("code=CODE&state=" + mpconnect.BuildState("test-secret", 1, 123, mpconnect.TargetWeb))
 	newTestMPConnectController(mockSvc).HandleCallback(c)
 
 	query := assertRedirect(t, response, testWebReturnURL)
@@ -226,7 +226,7 @@ func TestMPConnectController_HandleCallback_TargetApp(t *testing.T) {
 		},
 	}
 
-	c, response := newCallbackRequest("code=CODE&state=" + mpconnect.BuildState(1, 123, mpconnect.TargetApp))
+	c, response := newCallbackRequest("code=CODE&state=" + mpconnect.BuildState("test-secret", 1, 123, mpconnect.TargetApp))
 	newTestMPConnectController(mockSvc).HandleCallback(c)
 
 	query := assertRedirect(t, response, testAppReturnURL)

@@ -76,7 +76,7 @@ func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64, target str
 	// State CSRF: userID + timestamp + a dónde volver tras el callback. El
 	// target viaja acá porque el redirect_uri registrado en MP es fijo — ver
 	// domains/mpconnect/state.go.
-	state := mpconnect.BuildState(userID, time.Now().UnixNano(), target)
+	state := mpconnect.BuildState(config.JWTSecret, userID, time.Now().UnixNano(), target)
 
 	if s.clientID == "" || s.redirectURI == "" {
 		customlogger.Error(ctx, "MP OAuth client not configured", fmt.Errorf("missing client ID/redirect"),
@@ -304,7 +304,7 @@ func (s *mpConnectService) HandleDeauthorization(ctx *gin.Context, mpUserID int6
 
 // validateState valida que el state pertenece al usuario y no es muy viejo.
 func (s *mpConnectService) validateState(ctx *gin.Context, state string) (int64, error) {
-	userID, ts, _, err := mpconnect.ParseState(state)
+	userID, ts, _, err := mpconnect.ParseState(config.JWTSecret, state)
 	if err != nil {
 		return 0, err
 	}
