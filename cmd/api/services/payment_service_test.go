@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -517,6 +518,69 @@ func TestProcessPayment_TeamSubscription_SendsApplicationFee(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "approved", resp.Status)
+	client.AssertExpectations(t)
+}
+
+// P5: ProcessPayment reutiliza la cuota ya validada en resolveTeamSplitConfig —
+// un solo FindByID sobre installDao por request, no dos.
+func TestProcessPayment_TeamSubscription_SingleInstallmentLookup(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+
+	var lookups atomic.Int64
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			lookups.Add(1)
+			teamID := int64(20)
+			return &dbs.Installment{ID: id, UserID: 100, TeamID: &teamID, Amount: 1500}, nil
+		},
+	}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, OwnerID: 3}, nil
+		},
+	}
+	connDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{
+				UserID:      userID,
+				AccessToken: "enc(seller-access)",
+				PublicKey:   "TEST-seller-public-key",
+				Status:      string(constants.SellerConnectionStatusAuthorized),
+			}, nil
+		},
+	}
+	settingDao := &mockPlatformSettingDao{}
+	enc := &mockEncryptor{}
+
+	svc := NewPaymentService(dao, client, nil, connDao, teamDao, nil, settingDao, installDao, enc)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+	insID := int64(5)
+	req := payment.ProcessPaymentRequest{
+		Token:             "tok_master",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "master",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		PreferenceID:      "pref-team-count",
+		InstallmentID:     &insID,
+		Concept:           string(constants.PaymentConceptTeamSubscription),
+	}
+
+	dao.On("FindByExternalReference", ctx, "pref-team-count").Return(nil, nil)
+	dao.On("Create", ctx, mock.Anything).Return(nil)
+	client.On("CreatePayment", ctx, "seller-access", mock.AnythingOfType("mercadopagoclient.CreatePaymentRequest")).Return(&mercadopagoclient.PaymentResult{ID: 999, Status: "approved", StatusDetail: "accredited"}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "999").Return(nil)
+	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
+	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+
+	resp, err := svc.ProcessPayment(ctx, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int64(1), lookups.Load())
 	client.AssertExpectations(t)
 }
 
@@ -1100,33 +1164,33 @@ func TestCreatePreference_TeamSubscription_ErrorMatrix(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
+		name          string
 		installmentID *int64
-		installDao   *mockInstallmentDao
-		teamDao      *mockTeamDao
-		connDao      *mockSellerConnectionDao
-		wantErr      error
-		wantMessage  string
+		installDao    *mockInstallmentDao
+		teamDao       *mockTeamDao
+		connDao       *mockSellerConnectionDao
+		wantErr       error
+		wantMessage   string
 	}{
 		{
-			name: "installment_id requerido",
-			installDao: &mockInstallmentDao{},
-			teamDao:    &mockTeamDao{},
-			connDao:    &mockSellerConnectionDao{},
-			wantErr:    ErrPaymentInvalid,
+			name:        "installment_id requerido",
+			installDao:  &mockInstallmentDao{},
+			teamDao:     &mockTeamDao{},
+			connDao:     &mockSellerConnectionDao{},
+			wantErr:     ErrPaymentInvalid,
 			wantMessage: "installment_id requerido para team_subscription",
 		},
 		{
-			name:         "cuota no encontrada",
+			name:          "cuota no encontrada",
 			installmentID: int64Ptr(5),
-			installDao:   &mockInstallmentDao{},
-			teamDao:      &mockTeamDao{},
-			connDao:      &mockSellerConnectionDao{},
-			wantErr:      ErrPaymentInstallmentNotFound,
-			wantMessage:  "cuota no encontrada",
+			installDao:    &mockInstallmentDao{},
+			teamDao:       &mockTeamDao{},
+			connDao:       &mockSellerConnectionDao{},
+			wantErr:       ErrPaymentInstallmentNotFound,
+			wantMessage:   "cuota no encontrada",
 		},
 		{
-			name:         "cuota de tier (sin team)",
+			name:          "cuota de tier (sin team)",
 			installmentID: int64Ptr(5),
 			installDao: &mockInstallmentDao{
 				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
@@ -1139,7 +1203,7 @@ func TestCreatePreference_TeamSubscription_ErrorMatrix(t *testing.T) {
 			wantMessage: "la cuota no pertenece a un equipo",
 		},
 		{
-			name:         "equipo no encontrado",
+			name:          "equipo no encontrado",
 			installmentID: int64Ptr(5),
 			installDao: &mockInstallmentDao{
 				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
@@ -1152,7 +1216,7 @@ func TestCreatePreference_TeamSubscription_ErrorMatrix(t *testing.T) {
 			wantMessage: "equipo no encontrado",
 		},
 		{
-			name:         "dueño sin conexión MP",
+			name:          "dueño sin conexión MP",
 			installmentID: int64Ptr(5),
 			installDao: &mockInstallmentDao{
 				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
@@ -1169,7 +1233,7 @@ func TestCreatePreference_TeamSubscription_ErrorMatrix(t *testing.T) {
 			wantMessage: "el entrenador debe conectar su cuenta de Mercado Pago",
 		},
 		{
-			name:         "dueño conectado sin public_key",
+			name:          "dueño conectado sin public_key",
 			installmentID: int64Ptr(5),
 			installDao: &mockInstallmentDao{
 				findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {

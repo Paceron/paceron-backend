@@ -112,7 +112,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	// Si es suscripción de equipo (team_subscription), usar token del dueño y aplicar split
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -187,10 +187,13 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	// Validación de propiedad de la cuota (D6): si el pago está vinculado a una
 	// cuota de suscripción (tier o equipo), la cuota debe existir y pertenecer
 	// al usuario autenticado ANTES de contactar a Mercado Pago.
+	var validatedInstallment *dbs.Installment
 	if req.InstallmentID != nil {
-		if err := s.validateOwnedInstallment(ctx, *req.InstallmentID); err != nil {
+		ins, err := s.validateOwnedInstallment(ctx, *req.InstallmentID)
+		if err != nil {
 			return nil, err
 		}
+		validatedInstallment = ins
 	}
 
 	var mpAccessToken string
@@ -200,7 +203,7 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	// Resolver configuración de split si es team_subscription
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) && req.InstallmentID != nil {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, _, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		mpAccessToken, marketplaceFee, sellerUserID, _, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, validatedInstallment)
 		if err != nil {
 			return nil, err
 		}
@@ -552,24 +555,24 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 // (`subscription_id`) y de membresía de equipo (`team_id`), ya que `Installment`
 // guarda el dueño en `user_id` en ambos casos. Se ejecuta antes de contactar a
 // Mercado Pago para evitar pagos de cuotas inexistentes o ajenas (IDOR).
-func (s *paymentService) validateOwnedInstallment(ctx *gin.Context, installmentID int64) error {
+func (s *paymentService) validateOwnedInstallment(ctx *gin.Context, installmentID int64) (*dbs.Installment, error) {
 	installment, err := s.installDao.FindByID(ctx, installmentID)
 	if err != nil {
-		return fmt.Errorf("error finding installment: %w", err)
+		return nil, fmt.Errorf("error finding installment: %w", err)
 	}
 	if installment == nil {
-		return fmt.Errorf("cuota de suscripcion no encontrada")
+		return nil, fmt.Errorf("cuota de suscripcion no encontrada")
 	}
 
 	authUserID, ok := utils.GetAuthUserID(ctx)
 	if !ok {
-		return fmt.Errorf("usuario autenticado no encontrado en el contexto")
+		return nil, fmt.Errorf("usuario autenticado no encontrado en el contexto")
 	}
 	if installment.UserID != authUserID {
-		return fmt.Errorf("la cuota no pertenece al usuario autenticado")
+		return nil, fmt.Errorf("la cuota no pertenece al usuario autenticado")
 	}
 
-	return nil
+	return installment, nil
 }
 
 // applyApprovedInstallment confirma una cuota pagada y genera la siguiente (D6/D7),
@@ -761,17 +764,20 @@ func (s *paymentService) mapPaymentResponse(p *dbs.Payment) *payment.PaymentResp
 // resolveTeamSplitConfig obtiene el token del dueño del equipo, su public_key y
 // calcula la comisión marketplace_fee. Debe llamarse con un installment_id válido
 // de tipo team_subscription.
-func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64) (accessToken string, marketplaceFee float64, sellerUserID int64, sellerPublicKey string, err error) {
+func (s *paymentService) resolveTeamSplitConfig(ctx *gin.Context, installmentID *int64, preloaded *dbs.Installment) (accessToken string, marketplaceFee float64, sellerUserID int64, sellerPublicKey string, err error) {
 	if installmentID == nil {
 		return "", 0, 0, "", &paymentTypedError{kind: ErrPaymentInvalid, msg: "installment_id requerido para team_subscription"}
 	}
 
-	installment, err := s.installDao.FindByID(ctx, *installmentID)
-	if err != nil {
-		customlogger.Error(ctx, "error finding installment for split", err,
-			customlogger.Tag("installment_id", fmt.Sprintf("%d", *installmentID)),
-			customlogger.TagMethod("resolveTeamSplitConfig"))
-		return "", 0, 0, "", fmt.Errorf("error consultando cuota")
+	installment := preloaded
+	if installment == nil {
+		installment, err = s.installDao.FindByID(ctx, *installmentID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding installment for split", err,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *installmentID)),
+				customlogger.TagMethod("resolveTeamSplitConfig"))
+			return "", 0, 0, "", fmt.Errorf("error consultando cuota")
+		}
 	}
 	if installment == nil {
 		return "", 0, 0, "", ErrPaymentInstallmentNotFound
@@ -851,7 +857,7 @@ func (s *paymentService) GenerateTestCardToken(ctx *gin.Context, req payment.Tes
 	// integrador en el resto. Mezclarlas produce "Invalid users involved".
 	publicKey := s.publicKey
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
-		_, _, _, sellerPublicKey, err := s.resolveTeamSplitConfig(ctx, req.InstallmentID)
+		_, _, _, sellerPublicKey, err := s.resolveTeamSplitConfig(ctx, req.InstallmentID, nil)
 		if err != nil {
 			return nil, err
 		}
