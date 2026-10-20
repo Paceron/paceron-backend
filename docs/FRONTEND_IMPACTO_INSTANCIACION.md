@@ -695,7 +695,7 @@ Estas validaciones sustituyen el enunciado anterior "`acceptance_radius_meters >
 
 ### 17.2 NUEVO — instancia sintética compartida de la competencia route
 
-Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **NO viaja en `CompetitionResponse`**: el front conoce la instancia a través del `session_instance_id` de la respuesta del intento.
+Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **viaja en `CompetitionResponse` como `session_instance_id` (nullable, `null` en metric — Gap 35, 2026-10-20)**: sirve para pedir `GET /session-instances/:id/feedback` de un intento viejo ya sincronizado (borrado de SQLite local) desde cualquier dispositivo. En listado y detalle.
 
 Consecuencia clave: **todos los participantes corren sobre la MISMA session_instance** → el canal WS de la competencia es común — suscribirse a `session:{route_session_instance_id}` alcanza a todos los intentos (frames de §17.5).
 

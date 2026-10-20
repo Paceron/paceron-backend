@@ -895,3 +895,19 @@ func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
 	_, err = svc.Create(nil, 1, 10, routeReqWith("{\"type\":\"LineString\",\"coordinates\":[[0,0]]}", fptr(5)))
 	require.NoError(t, err)
 }
+
+func TestCompetitionResponse_ExposesSessionInstanceID(t *testing.T) {
+	// Gap 35: el detalle de intento viejo necesita el id de la instancia
+	// sintética — route lo expone, metric queda null.
+	instID := int64(42)
+	compRoute := &dbs.Competition{
+		ID: 1, TeamID: 10, Type: competition.TypeRoute, Status: competition.StatusActive,
+		RouteSessionInstanceID: &instID,
+	}
+	resp := toCompetitionResponse(compRoute, []int64{11}, nil)
+	require.NotNil(t, resp.SessionInstanceID)
+	assert.Equal(t, instID, *resp.SessionInstanceID)
+
+	compMetric := &dbs.Competition{ID: 2, TeamID: 10, Type: competition.TypeMetric, Status: competition.StatusActive}
+	assert.Nil(t, toCompetitionResponse(compMetric, []int64{11}, nil).SessionInstanceID)
+}

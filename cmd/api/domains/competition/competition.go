@@ -54,7 +54,8 @@ type CompetitionProgressItem struct {
 
 // CompetitionResponse es el shape de competencia para detalle y listado
 // (spec: {id, team_id, group_id, type, metric?, ...}). progress solo en el
-// detalle (omitempty en el listado).
+// detalle (omitempty en el listado). session_instance_id = instancia
+// sintética del intento (Gap 35): solo type=route, null en metric.
 type CompetitionResponse struct {
 	ID                     int64                     `json:"id"`
 	TeamID                 int64                     `json:"team_id"`
@@ -65,6 +66,7 @@ type CompetitionResponse struct {
 	EndAt                  *time.Time                `json:"end_at"`
 	Route                  *string                   `json:"route,omitempty"`
 	AcceptanceRadiusMeters *float64                  `json:"acceptance_radius_meters"`
+	SessionInstanceID      *int64                    `json:"session_instance_id"`
 	Participants           []int64                   `json:"participants"`
 	CreatedByUserID        int64                     `json:"created_by_user_id"`
 	CreatedByRole          string                    `json:"created_by_role"`

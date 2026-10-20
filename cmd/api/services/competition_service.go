@@ -906,6 +906,7 @@ func toCompetitionResponse(comp *dbs.Competition, participants, winners []int64)
 		EndAt:                  comp.EndAt,
 		Route:                  comp.RouteGeoJSON,
 		AcceptanceRadiusMeters: comp.AcceptanceRadiusMeters,
+		SessionInstanceID:      comp.RouteSessionInstanceID,
 		Participants:           participants,
 		CreatedByUserID:        comp.CreatedByUserID,
 		CreatedByRole:          comp.CreatedByRole,

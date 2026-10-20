@@ -9524,6 +9524,9 @@ const docTemplate = `{
                 "route": {
                     "type": "string"
                 },
+                "session_instance_id": {
+                    "type": "integer"
+                },
                 "start_at": {
                     "type": "string"
                 },
