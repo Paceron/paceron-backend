@@ -51,12 +51,12 @@ type UserServiceInterface interface {
 }
 
 type userService struct {
-	userDao       daos.UserDaoInterface
-	mailer        mailer.MailerInterface
-	pushTokenDao       daos.PushTokenDaoInterface
-	refreshTokenDao    daos.RefreshTokenDaoInterface
-	pushClient         expopushclient.ExpoPushClientInterface
-	storageClient      storageclient.StorageClientInterface
+	userDao         daos.UserDaoInterface
+	mailer          mailer.MailerInterface
+	pushTokenDao    daos.PushTokenDaoInterface
+	refreshTokenDao daos.RefreshTokenDaoInterface
+	pushClient      expopushclient.ExpoPushClientInterface
+	storageClient   storageclient.StorageClientInterface
 }
 
 func NewUserService(
@@ -68,12 +68,12 @@ func NewUserService(
 	storageClient storageclient.StorageClientInterface,
 ) UserServiceInterface {
 	return &userService{
-		userDao:          userDao,
-		mailer:           mailerClient,
-		pushTokenDao:     pushTokenDao,
-		refreshTokenDao:  refreshTokenDao,
-		pushClient:       pushClient,
-		storageClient:    storageClient,
+		userDao:         userDao,
+		mailer:          mailerClient,
+		pushTokenDao:    pushTokenDao,
+		refreshTokenDao: refreshTokenDao,
+		pushClient:      pushClient,
+		storageClient:   storageClient,
 	}
 }
 
