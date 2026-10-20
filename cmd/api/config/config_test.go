@@ -412,3 +412,10 @@ func TestLoadValues_MissingDotEnvLocalIsNotFatal(t *testing.T) {
 		withStage(t, []string{"paceron-backend", "--stage=local"}, LoadValues)
 	})
 }
+
+func TestNormalizeWebhookSecret(t *testing.T) {
+	assert.Equal(t, "", normalizeWebhookSecret("tu-webhook-secret-aqui"))
+	assert.Equal(t, "", normalizeWebhookSecret("  tu-webhook-secret-aqui  "))
+	assert.Equal(t, "", normalizeWebhookSecret(""))
+	assert.Equal(t, "secret-real", normalizeWebhookSecret("secret-real"))
+}
