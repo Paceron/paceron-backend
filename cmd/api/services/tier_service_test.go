@@ -607,9 +607,9 @@ func TestTierService_GetAll_Error(t *testing.T) {
 
 func TestTierRulesByName(t *testing.T) {
 	testCases := []struct {
-		name       string
-		wantLevel  int
-		wantForce  bool
+		name      string
+		wantLevel int
+		wantForce bool
 	}{
 		{name: "base", wantLevel: 1, wantForce: true},
 		{name: "medium", wantLevel: 2, wantForce: false},
