@@ -5,6 +5,8 @@ import (
 )
 
 func mapUrls(r *gin.Engine, app *Application) {
+	// S9: tope global de body (10 MB) antes de cualquier otro middleware/route.
+	r.Use(MaxBodySize())
 	r.Use(CORSMiddleware())
 	r.Use(SetRequestID())
 
@@ -17,13 +19,17 @@ func mapUrls(r *gin.Engine, app *Application) {
 	// remove-legacy-user-routes.
 	r.GET("/ping", app.pingController.Ping)
 	r.GET("/callbackauth", app.pingController.CallbackTkn)
-	r.POST("/api/v1/auth/register", app.authController.Register)
-	r.POST("/api/v1/auth/login", app.authController.Login)
-	r.POST("/api/v1/auth/refresh", app.authController.Refresh)
+
+	// S10: rate limiter por IP SOLO en las rutas públicas de usuario (son las
+	// ataquesables por fuerza bruta). Excluidos explícitamente: webhooks de MP
+	// (MP reentiende y no debe recibir 429), ws handshake y lookup de weather.
+	r.POST("/api/v1/auth/register", IPRateLimiter(), app.authController.Register)
+	r.POST("/api/v1/auth/login", IPRateLimiter(), app.authController.Login)
+	r.POST("/api/v1/auth/refresh", IPRateLimiter(), app.authController.Refresh)
 	r.POST("/api/v1/auth/logout", app.authController.Logout)
-	r.GET("/api/v1/auth/user", app.authController.GetUser)
-	r.POST("/api/v1/auth/forgot-password", app.passwordResetController.ForgotPassword)
-	r.POST("/api/v1/auth/reset-password", app.passwordResetController.ResetPassword)
+	r.GET("/api/v1/auth/user", IPRateLimiter(), app.authController.GetUser)
+	r.POST("/api/v1/auth/forgot-password", IPRateLimiter(), app.passwordResetController.ForgotPassword)
+	r.POST("/api/v1/auth/reset-password", IPRateLimiter(), app.passwordResetController.ResetPassword)
 	r.GET("/example/weather", app.exampleWeatherController.GetWeather)
 	r.GET("/user/:user_id/weather", app.userWeatherController.GetUserWithWeather)
 
