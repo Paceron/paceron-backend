@@ -6,7 +6,7 @@ import "time"
 // SessionExercise (tabla propia, no array embebido).
 type Session struct {
 	ID          int64      `gorm:"column:id;primaryKey"`
-	OwnerID     int64      `gorm:"column:owner_id;not null"`
+	OwnerID     int64      `gorm:"column:owner_id;not null;index"`
 	Name        string     `gorm:"column:name;not null"`
 	Description *string    `gorm:"column:description"`
 	DeletedAt   *time.Time `gorm:"column:deleted_at"`

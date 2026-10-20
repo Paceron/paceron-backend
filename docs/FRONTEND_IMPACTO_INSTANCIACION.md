@@ -695,7 +695,7 @@ Estas validaciones sustituyen el enunciado anterior "`acceptance_radius_meters >
 
 ### 17.2 NUEVO — instancia sintética compartida de la competencia route
 
-Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **NO viaja en `CompetitionResponse`**: el front conoce la instancia a través del `session_instance_id` de la respuesta del intento.
+Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **viaja en `CompetitionResponse` como `session_instance_id` (nullable, `null` en metric — Gap 35, 2026-10-20)**: sirve para pedir `GET /session-instances/:id/feedback` de un intento viejo ya sincronizado (borrado de SQLite local) desde cualquier dispositivo. En listado y detalle.
 
 Consecuencia clave: **todos los participantes corren sobre la MISMA session_instance** → el canal WS de la competencia es común — suscribirse a `session:{route_session_instance_id}` alcanza a todos los intentos (frames de §17.5).
 
@@ -745,4 +745,42 @@ Los 2 frames de §16.7 siguen siendo todos los del intento; **no se agrega canal
 - `update:competition_progress {competition_id, user_id}` — al terminar cada intento, por el canal común `session:{route_session_instance_id}` (todos los participes lo ven, sin exclusión del emisor).
 - `control:competition_finished {competitionId}` — al cerrar, por el canal de la instancia (único, compartido por los intentos).
 - **Sin leaderboard en vivo mid-attempt**: mientras el intento está en `wip` no hay broadcast de nada (ni ranking ni traza GPS); el resultado live del detalle sale on-demand en `GET /competitions/{id}` (§16.5) y el resultado final viaja post-close con `control:competition_finished` + refetch.
+
+## 18. Seguridad y límites: pagos, rate limit, body limit y revocación de sesiones (change `optimizaciones-y-seguridad-api`)
+
+Cambios de comportamiento que el front puede chocar. Verificados contra el código final de la rama. **Todo lo que no está acá NO cambia**: `/auth/user` sigue público y con su shape, `POST /payments/test-card-token` sigue vivo (sandbox), los webhooks de MP siguen exentos de rate limit, y ninguna respuesta de éxito cambió de shape.
+
+### 18.1 `GET /payments/:id` y `GET /payments/mp/:id`: nuevo `404` para pagos ajenos
+
+Estos GET ahora exigen que el caller sea parte del pago (pagador o vendedor). Un usuario autenticado que consulta el pago de otro recibe `404` `"Pago no encontrado"` (no 403 — no se confirma la existencia).
+
+- **El polling del pagador NO cambia**: su ownership viaja por la cuota (`installment.user_id`), así que el flujo de Checkout Brick (consultar el estado de un pago recién creado) sigue funcionando igual.
+- Dónde SÍ puede chocar: si el front usa estos endpoints para mostrar pagos de un **tercero** (ej. listados del entrenador ya cubiertos por `GET /payments/received` — no tocar), hoy recibiría 404. No hay caso legítimo conocido; los 404 nuevos solo afectan consultas de pagos ajenos.
+
+### 18.2 Rate limit en rutas públicas sensibles: `429`
+
+`POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `GET /auth/user`, `POST /auth/forgot-password` y `POST /auth/reset-password` llevan un rate limiter por IP: **30 requests/minuto, burst 10** (hardcodeado, sin env). Superado el cupo → `429`:
+
+```json
+HTTP 429
+{"status_code": 429, "code": "too_many_requests", "message": "demasiadas solicitudes, intentá de nuevo más tarde"}
+```
+
+- La cuenta es **por IP y en memoria del proceso**: un deploy/restart la resetea, y retries automáticos del front ante 429 deben ir con backoff (el límite es fijo, no negociable por request).
+- Webhooks de MP (`/payments/webhook`, `/mercadopago/webhook/connect`) y el gateway WS **no** pasan por el limiter — sin cambio ahí.
+
+### 18.3 Body > 10MB: `413` crudo (sin shape `apierror`)
+
+Todo request con body de más de **10 MB** es rechazado globalmente por middleware antes del routing. El `413` lo emite gin directamente con **body vacío** (no el shape `apierror.APIError` habitual): el front no debe intentar parsear el body del error como APIError. Los uploads de foto/ícono tienen su propio límite menor (5 MB) que sigue cortando antes — para ellos nada cambia.
+
+### 18.4 Cambio/restablecimiento de contraseña revoca TODOS los refresh tokens
+
+`PATCH /users/{id}/password` (cambio con sesión) y `POST /auth/reset-password` (restablecimiento por OTP) ahora revocan todos los refresh tokens activos del usuario (todos los dispositivos). El refresh siguiente → rechazo genérico (mismo error que un token inválido cualquiera).
+
+- El front debe: al fallar el refresh, **cerrar sesión y mandar a re-loguear** (no reintentar).
+- Si el usuario cambia su contraseña, sus **otros dispositivos** también quedan fuera: es a propósito (S6). Si la UI muestra "cambiaste tu contraseña", puede avisar que se cerraron las demás sesiones.
+
+### 18.5 Mensajería de sesión: tope de 100 destinatarios
+
+`POST /session-instances/:id/messages` con `recipient_mode="multiple"` y más de **100** `recipient_user_ids` → `400` con message `"datos inválidos: los destinatarios no pueden superar 100"`. Antes no había tope. `all` y `direct` sin cambio.
 

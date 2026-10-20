@@ -38,11 +38,17 @@ func sendPushToUser(
 		data["route"] = route
 	}
 
-	for _, token := range tokens {
-		if err := pushClient.Send(ctx, token.Token, title, body, data); err != nil {
-			customlogger.Error(ctx, "error sending push notification", err,
-				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-				customlogger.Tag("notif_type", notifType))
-		}
+	tokenStrings := make([]string, len(tokens))
+	for i, t := range tokens {
+		tokenStrings[i] = t.Token
+	}
+	if len(tokenStrings) == 0 {
+		return
+	}
+
+	if err := pushClient.SendBatch(ctx, tokenStrings, title, body, data); err != nil {
+		customlogger.Error(ctx, "error sending push notification", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.Tag("notif_type", notifType))
 	}
 }

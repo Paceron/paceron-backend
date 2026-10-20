@@ -23,6 +23,10 @@ import (
 	"simple-arq-golang/cmd/api/utils"
 )
 
+// mpHTTPClient aplica timeout a los endpoints crudos HTTP contra MP; el SDK
+// (CreatePayment) no lo usa porque ya trae su propio manejo.
+var mpHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 type MercadoPagoClientInterface interface {
 	CreatePreference(ctx context.Context, accessToken string, items []PreferenceItem, externalRef, notificationURL, marketplaceFee string, currencyID string) (string, error)
 	CreatePayment(ctx context.Context, accessToken string, req CreatePaymentRequest) (*PaymentResult, error)
@@ -279,7 +283,7 @@ func (c *mpClient) GenerateCardToken(ctx context.Context, publicKey string, card
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	httpClient := &http.Client{}
+	httpClient := mpHTTPClient
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("error sending card token request: %w", err)
@@ -339,7 +343,7 @@ func (c *mpClient) ExchangeCodeForToken(ctx context.Context, clientID, clientSec
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	httpClient := &http.Client{}
+	httpClient := mpHTTPClient
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending token request: %w", err)
@@ -391,7 +395,7 @@ func (c *mpClient) RefreshAccessToken(ctx context.Context, clientID, clientSecre
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	httpClient := &http.Client{}
+	httpClient := mpHTTPClient
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending refresh request: %w", err)
@@ -436,7 +440,7 @@ func (c *mpClient) GetUserInfo(ctx context.Context, accessToken string) (*UserIn
 	}
 	req.Header.Set("Accept", "application/json")
 
-	httpClient := &http.Client{}
+	httpClient := mpHTTPClient
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending user info request: %w", err)

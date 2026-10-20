@@ -11,6 +11,10 @@ import (
 
 type PlanDayDaoInterface interface {
 	FindByPlan(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error)
+	// FindByPlanIDs son los días de varios planes en una sola query —
+	// el orden (plan_id, sequence_no) replica el per-plan FindByPlan
+	// para que el agrupado en memoria dé respuesta idéntica.
+	FindByPlanIDs(ctx *gin.Context, planIDs []int64) ([]dbs.PlanDay, error)
 	ReplaceForPlan(ctx *gin.Context, planID int64, rows []dbs.PlanDay) error
 }
 
@@ -27,6 +31,18 @@ func (d *planDayDao) FindByPlan(ctx *gin.Context, planID int64) ([]dbs.PlanDay, 
 	err := d.DB.Where("plan_id = ?", planID).Order("sequence_no").Find(&days).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing plan days: %w", err)
+	}
+	return days, nil
+}
+
+func (d *planDayDao) FindByPlanIDs(ctx *gin.Context, planIDs []int64) ([]dbs.PlanDay, error) {
+	if len(planIDs) == 0 {
+		return nil, nil
+	}
+	var days []dbs.PlanDay
+	err := d.DB.Where("plan_id IN ?", planIDs).Order("plan_id, sequence_no").Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing plan days by plans: %w", err)
 	}
 	return days, nil
 }

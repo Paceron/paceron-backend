@@ -1,6 +1,6 @@
 module simple-arq-golang
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
@@ -20,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.54.0
+	golang.org/x/time v0.16.0
 	gorm.io/driver/postgres v1.4.5
 	gorm.io/gorm v1.24.3
 )

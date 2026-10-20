@@ -14,9 +14,7 @@ Dos alternativas, a decidir:
 
 ### `HandleWebhook` de Mercado Pago no valida la firma HMAC
 
-`mercadopagoclient.ValidateWebhookSignature` existe (wrapea el SDK de MP, HMAC-SHA256) y `payment_service.go` carga `webhookSecret`, pero `HandleWebhook` nunca la llama — el controller solo chequea que `X-Signature`/`X-Request-Id` estén presentes, no que la firma sea válida.
-
-Riesgo acotado: el webhook siempre re-consulta el estado real del pago vía `GET /v1/payments/:id` a la API de MP por ID, así que un atacante no puede forjar un "approved" falso, solo disparar un re-fetch de un pago real conocido. Deferido a propósito por decisión del usuario mientras un compañero trabajaba activamente en pagos/tiers — **antes de arreglarlo, revisar si ese trabajo ya lo cubrió** (`grep HandleWebhook\|ValidateWebhookSignature` en `payment_service.go`). Si sigue faltando, el fix es chico: llamar `mpClient.ValidateWebhookSignature(xSignature, xRequestID, notification.Data.ID, s.webhookSecret)` en `HandleWebhook` antes de procesar.
+**RESUELTO** (change `optimizaciones-y-seguridad-api`, 2026-10-19, Task 7): ambos webhooks MP (pagos y deauth) validan la firma con `MERCADOPAGO_WEBHOOK_SECRET`; sin secret configurado aceptan sin validar + warning (rollout gradual). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.15. Residual: tolerancia temporal no configurada — ver sección "Seguridad" de esta lista.
 
 ### El webhook lee los pagos de equipo con el token de la plataforma
 
@@ -65,7 +63,9 @@ Hoy solo se acepta/rechaza in-app (`POST /api/v1/invitations/:id/accept|reject` 
 
 ### Rol "admin" global (post-MVP)
 
-Planeado para después del MVP: moderación a nivel plataforma (banear usuarios, soporte) — distinto del rol `entrenador` (rol de negocio, no de plataforma). Por eso `/api/v1/roles`, `/api/v1/tiers`, `/api/v1/permissions`, `/api/v1/auth/permissions` hoy solo exigen login, sin role-gating (deuda documentada en `docs/AUTH_MIGRATION.md` §6). No inventar un check de admin ad-hoc para tapar ese gap — cuando se aborde, es su propio change de OpenSpec (qué puede hacer, cómo se otorga, audit trail). No tiene relación con la auto-activación de entrenador (`POST/DELETE /api/v1/users/:id/entrenador-role`), que es una transacción del propio usuario sobre su cuenta, no una acción de moderación sobre la cuenta de otro.
+Planeado para después del MVP: moderación a nivel plataforma (banear usuarios, soporte) — distinto del rol `entrenador` (rol de negocio, no de plataforma). Por eso `/api/v1/roles`, `/api/v1/tiers`, `/api/v1/permissions`, `/api/v1/auth/permissions` y `/api/v1/platform-settings/marketplace-fee` (GET y PUT) hoy solo exigen login, sin role-gating (deuda documentada en `docs/AUTH_MIGRATION.md` §6). No inventar un check de admin ad-hoc para tapar ese gap — cuando se aborde, es su propio change de OpenSpec (qué puede hacer, cómo se otorga, audit trail). No tiene relación con la auto-activación de entrenador (`POST/DELETE /api/v1/users/:id/entrenador-role`), que es una transacción del propio usuario sobre su cuenta, no una acción de moderación sobre la cuenta de otro.
+
+Re-auditado en la ronda de seguridad del change `optimizaciones-y-seguridad-api` (2026-10-16): los guards de roles/permissions/tiers y de platform-settings-fee siguen sin autorización — **esperan el módulo admin**, no se tapan ad-hoc.
 
 ### Persistencia de mensajes WS críticos (deferida — Gap 27)
 
@@ -225,9 +225,9 @@ Backend NO aplica default: el campo es requerido en [5, 500] metros (`400` "el r
 
 Dos recomputos que un memo por request/bundle ahorraría, documentados como mejora futura (no afectan correncta DIR): (a) `Close` de route corre `routeAttempts`/matching **2×** y `ListAttemptSessions` 3× (para canales WS + winners + respuesta final) — un campo memo en el bundle del request lo reduciría 1 query + 1 matching completo; (b) el progreso route del `GET /competitions/{id}` recomputa todo el matching O(samples×points) por GET aunque la ruta es inmutable — los samples son cacheables por competencia indefinidamente (hoy ~2500 allocs por GET). Bound actual aceptable (≤500 vértices / ≤100 km / ≤5000 puntos por bulk).
 
-### Sin MaxBytesReader ni rate-limit en los POST de competencias (ronda seguridad 2026-10-14)
+### Sin rate-limit en los POST de competencias (ronda seguridad 2026-10-14)
 
-`POST /teams/{id}/competitions` bindea el body completo sin `http.MaxBytesReader` (ni rate-limit repo-wide; fotos es lo único con MaxBytes en el repo). El pico de memoria por request queda acotado en persistencia por las validaciones (500 vértices/100 km) pero el parseo/unmarshal ocurre ANTES de las validaciones. Follow-up transversal si algún día se generaliza límite de body/cuota en el repo.
+**MaxBytesReader: resuelto** (change `optimizaciones-y-seguridad-api`, S9): el límite global de 10 MB (`MaxBodySize()` en `middleware.go`) cubre todos los routes incluidos los POST de competencias; el 413 de gin corta el parseo antes de las validaciones. **Rate-limit: sigue ausente** en esta ruta — el `IPRateLimiter` solo cubre las 6 rutas públicas de usuario (register/login/refresh/auth-user/forgot/reset; logout queda sin limiter); las rutas autenticadas (entre ellas `POST /teams/{id}/competitions`) no tienen cuota.
 
 ## Resueltos (change `competencias-ruta-intake`, 2026-10-13)
 
@@ -235,3 +235,31 @@ Dos recomputos que un memo por request/bundle ahorraría, documentados como mejo
 - **Exclusión del owner como participante** (ronda seguridad 2026-10-14): solo se bloqueaba cuando el caller era owner; un corredor creador podía incluir al owner en participants. Ahora el owner se excluye SIEMPRE (resolución `TeamOwnerID` + guard incondicional), con test del 400 "el entrenador no compite". Resuelto en `5aed0e4` (mezcla: commit `f71c713` cerró antes el I1 de competencia rota tagueada sobre instancia ajena, guard bidireccional con `FindByRouteSessionInstance`)
 
 - **Validación de `route_geojson` en Create solo estructural** (deuda de `gamificacion-core`, entry eliminada de las Gamificación): Create ahora parsea el LineString y rechaza con `400` inválido / >500 vértices / >100 km Haversine (`routematch.ParseLineString` + `LineStringLength`) — el passthrough al `500` fail-safe en el matching ya no aplica en el alta (el matching sobre una competencia creada siempre tiene ruta confiable). Resuelto en `3e6d0c3`.
+
+## Seguridad (change `optimizaciones-y-seguridad-api`, 2026-10-19)
+
+Limitaciones conscientes y pendientes de la ronda de endurecimiento. Ownership de pagos y firma HMAC de webhooks quedaron implementados (mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.15); lo que sigue quedó a propósito o deferido.
+
+### Rate limiter en memoria, single-instance, sin cap duro
+
+El `IPRateLimiter` acumula un bucket por IP en un `map` en memoria del proceso (con `sync.Mutex`): suficiente mientras Render corra **una sola instancia** — escalar a multi-instancia lo invalida (cada réplica contaría su propio bucket; necesitaría Redis o similar). La **poda** del map corre cada 256 requests y borra entradas inactivas hace más de 1 hora, **sin cap duro de entradas**: un ataque con IPs espúreas puede inflar el map entre podas (cada entrada es ~un puntero a `rate.Limiter`, acotado en la práctica por el TTL de 1 hora, pero no hay tope explícito).
+
+### El access token sobrevive la revocación de sesiones (limitación estructural)
+
+El access token es JWT stateless sin chequeo de DB: revocar refresh tokens (logout, cambio/reset de contraseña — Task 10) mata la **renovación**, pero un access token ya emitido sigue válido hasta expirar en los endpoints que solo miran el JWT. Es estructural al diseño stateless (no hay denylist); la ventana es la TTL del access token. Si algún día hiciera falta revocación inmediata, es su propio change (denylist por `auth_session_id` o tokens de corta vida).
+
+### Replay de webhook dentro de la tolerancia no bloqueado
+
+La validación HMAC del SDK de MP corre **sin `WithTolerance`**: la firma de una notificación vieja (capturada/reenviada) sigue verificando — el ts del header no se compara contra el reloj. El SDK lo soporta (`webhook.WithTolerance(d)` como option de `ValidateSignature`); configurar la ventana es un one-liner cuando se decida el valor (los webhooks son idempotentes, por eso el riesgo es bajo).
+
+### `GET /groups` sin scope + `test-card-token` vivo — limpieza futura
+
+Ambos se dejaron a propósito (constraint del change): `GET /api/v1/groups` sigue sin scope (devuelve todos los grupos a cualquier autenticado) y `POST /api/v1/payments/test-card-token` sigue abierto (sandbox). Limpieza que toca contratos — propio change cuando se defina.
+
+### `dataID` del webhook de deauth usa `user_id`
+
+El manifest firmado del deauth lleva `fmt.Sprintf("%d", req.UserID)` del payload — MP firma el id del **user** conectado, no hay `data.id` de pago ahí. Funciona, pero si MP agrega formato de notificación con `data.id`, el fallback a ese campo conviene a futuro (hoy el binding exige `user_id != 0`, payload sin él → 400).
+
+### Posible degradación al bucket del LB si el peer de Render no fuera RFC1918
+
+`trustedProxies` fija los peers de confianza a los rangos RFC1918 (`10/8`, `172.16/12`, `192.168/16`): `c.ClientIP()` camina el `X-Forwarded-For` desde la derecha solo si el peer directo es un IP privado (el LB interno de Render). Si Render cambiara a un peer de egress **público**, gin lo trataría como cliente final y todos los requests compartirían el bucket de ese IP — degradaría a rate limit global. No verificado contra producción: **chequear con un smoke post-deploy** (un login sano desde el front no debe dar 429).

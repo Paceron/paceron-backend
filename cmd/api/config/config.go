@@ -305,10 +305,21 @@ func loadMailerConfig() {
 	MyMailer.From = os.Getenv("RESEND_FROM_ADDRESS")
 }
 
+const webhookSecretPlaceholder = "tu-webhook-secret-aqui"
+
+func normalizeWebhookSecret(v string) string {
+	if strings.TrimSpace(v) == webhookSecretPlaceholder {
+		return ""
+	}
+	return strings.TrimSpace(v)
+}
+
 func loadMercadoPagoConfig() {
 	MyMP.AccessToken = os.Getenv("MERCADOPAGO_ACCESS_TOKEN")
 	MyMP.PublicKey = os.Getenv("MERCADOPAGO_PUBLIC_KEY")
-	MyMP.WebhookSecret = os.Getenv("MERCADOPAGO_WEBHOOK_SECRET")
+	// placeholder de .env viejos se interpreta como vacío: activar enforcement
+	// con un secret falso invalidaría TODAS las firmas de MP (401 fail-closed)
+	MyMP.WebhookSecret = normalizeWebhookSecret(os.Getenv("MERCADOPAGO_WEBHOOK_SECRET"))
 	MyMP.WebhookURL = getEnvOrDefault("MERCADOPAGO_WEBHOOK_URL", "")
 	MyMP.CurrencyID = getEnvOrDefault("MERCADOPAGO_CURRENCY_ID", "ARS")
 	MyMP.OAuthClientID = os.Getenv("MP_OAUTH_CLIENT_ID")

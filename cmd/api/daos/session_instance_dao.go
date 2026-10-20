@@ -41,6 +41,11 @@ type SessionInstanceDaoInterface interface {
 	// filtro de status (el front suscribe el canal session:{id} del intento en
 	// el pre-start, antes de que exista feedback).
 	HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error)
+	// HasInstanceAccessBatch: espejo en lote de HasInstanceAccess (misma regla,
+	// incluida la rama de competencias route). Cantidad de queries independiente
+	// de la lista; todo userIDs queda en el map (false si sin acceso). Lote
+	// vacío no toca la DB.
+	HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
 }
 
 type sessionInstanceDao struct {
@@ -167,4 +172,124 @@ func (d *sessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID, cal
 		return false, fmt.Errorf("error checking session instance competition access: %w", err)
 	}
 	return compCount > 0, nil
+}
+
+// hasAccessBatchSQL: misma condición que HasInstanceAccess, lista via unnest.
+const hasAccessBatchDaySQL = `
+SELECT u.user_id
+FROM unnest($1::bigint[]) AS u(user_id)
+WHERE EXISTS (
+    SELECT 1
+    FROM group_calendar_days
+    JOIN groups g ON g.id = group_calendar_days.group_id AND g.deleted_at IS NULL
+    JOIN teams t ON t.id = g.team_id AND t.deleted_at IS NULL
+    WHERE group_calendar_days.session_instance_id = $2
+      AND (t.owner_id = u.user_id
+        OR EXISTS (
+            SELECT 1 FROM group_users gu
+            WHERE gu.group_id = g.id
+              AND gu.user_id = u.user_id
+              AND gu.deleted_at IS NULL
+              AND (gu.date_end IS NULL OR gu.date_end > NOW())
+        ))
+)`
+
+const hasAccessBatchFeedbackSQL = `
+SELECT u.user_id
+FROM unnest($1::bigint[]) AS u(user_id)
+WHERE EXISTS (
+    SELECT 1
+    FROM workout_feedback
+    LEFT JOIN teams t ON t.id = workout_feedback.team_id
+    WHERE workout_feedback.assigned_session_id = $2
+      AND workout_feedback.deleted_at IS NULL
+      AND (workout_feedback.athlete_user_id = u.user_id
+        OR workout_feedback.feedback_owner_user_id = u.user_id
+        OR t.owner_id = u.user_id)
+)`
+
+const hasAccessBatchCompetitionSQL = `
+SELECT u.user_id
+FROM unnest($1::bigint[]) AS u(user_id)
+WHERE EXISTS (
+    SELECT 1
+    FROM competition c
+    JOIN competition_participant cp ON cp.competition_id = c.id AND cp.user_id = u.user_id
+    WHERE c.route_session_instance_id = $2
+      AND c.type = $3
+)`
+
+// batchAccessIDs corre una query EXISTS sobre los usuarios pendientes.
+func (d *sessionInstanceDao) batchAccessIDs(query string, pending []int64, args ...any) ([]int64, error) {
+	authorized := []int64{}
+	all := append([]any{pending}, args...)
+	err := d.DB.Raw(query, all...).Scan(&authorized).Error
+	if err != nil {
+		return nil, fmt.Errorf("error checking session instance access batch: %w", err)
+	}
+	return authorized, nil
+}
+
+// remainingPending: usuarios de pending no presentes en authorized.
+func remainingPending(pending, authorized []int64) []int64 {
+	if len(authorized) == 0 {
+		return pending
+	}
+	authSet := make(map[int64]struct{}, len(authorized))
+	for _, id := range authorized {
+		authSet[id] = struct{}{}
+	}
+	out := make([]int64, 0, len(pending)-len(authorized))
+	for _, id := range pending {
+		if _, ok := authSet[id]; !ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (d *sessionInstanceDao) HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+	access := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return access, nil
+	}
+	pending := make([]int64, len(userIDs))
+	copy(pending, userIDs)
+	// Todo el lote arranca en false: solo las ramas autorizadas lo pisan.
+	for _, id := range pending {
+		access[id] = false
+	}
+
+	authorized, err := d.batchAccessIDs(hasAccessBatchDaySQL, pending, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range authorized {
+		access[id] = true
+	}
+	pending = remainingPending(pending, authorized)
+	if len(pending) == 0 {
+		return access, nil
+	}
+
+	authorized, err = d.batchAccessIDs(hasAccessBatchFeedbackSQL, pending, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range authorized {
+		access[id] = true
+	}
+	pending = remainingPending(pending, authorized)
+	if len(pending) == 0 {
+		return access, nil
+	}
+
+	authorized, err = d.batchAccessIDs(hasAccessBatchCompetitionSQL, pending, instanceID, competition.TypeRoute)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range authorized {
+		access[id] = true
+	}
+	return access, nil
 }

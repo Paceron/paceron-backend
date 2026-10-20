@@ -51,26 +51,29 @@ type UserServiceInterface interface {
 }
 
 type userService struct {
-	userDao       daos.UserDaoInterface
-	mailer        mailer.MailerInterface
-	pushTokenDao  daos.PushTokenDaoInterface
-	pushClient    expopushclient.ExpoPushClientInterface
-	storageClient storageclient.StorageClientInterface
+	userDao         daos.UserDaoInterface
+	mailer          mailer.MailerInterface
+	pushTokenDao    daos.PushTokenDaoInterface
+	refreshTokenDao daos.RefreshTokenDaoInterface
+	pushClient      expopushclient.ExpoPushClientInterface
+	storageClient   storageclient.StorageClientInterface
 }
 
 func NewUserService(
 	userDao daos.UserDaoInterface,
 	mailerClient mailer.MailerInterface,
 	pushTokenDao daos.PushTokenDaoInterface,
+	refreshTokenDao daos.RefreshTokenDaoInterface,
 	pushClient expopushclient.ExpoPushClientInterface,
 	storageClient storageclient.StorageClientInterface,
 ) UserServiceInterface {
 	return &userService{
-		userDao:       userDao,
-		mailer:        mailerClient,
-		pushTokenDao:  pushTokenDao,
-		pushClient:    pushClient,
-		storageClient: storageClient,
+		userDao:         userDao,
+		mailer:          mailerClient,
+		pushTokenDao:    pushTokenDao,
+		refreshTokenDao: refreshTokenDao,
+		pushClient:      pushClient,
+		storageClient:   storageClient,
 	}
 }
 
@@ -407,6 +410,17 @@ func (s *userService) ChangePassword(ctx *gin.Context, id int64, currentPassword
 			customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
 			customlogger.Tag("step", "update_user"))
 		return fmt.Errorf("error al cambiar la contraseña")
+	}
+
+	// La contraseña ya cambió (estado autoritativo), pero si la revocación falla se
+	// propaga: sesiones sobrevivientes es exactamente el riesgo que este cambio cubre.
+	if s.refreshTokenDao != nil {
+		if err := s.refreshTokenDao.RevokeByUserID(ctx, id); err != nil {
+			customlogger.Error(ctx, "error revoking refresh tokens after password change", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", id)),
+				customlogger.Tag("step", "revoke_refresh_tokens"))
+			return fmt.Errorf("error al cambiar la contraseña")
+		}
 	}
 
 	customlogger.Info(ctx, "password changed successfully",

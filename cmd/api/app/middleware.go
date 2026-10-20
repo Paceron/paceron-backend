@@ -6,10 +6,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/time/rate"
 
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/utils"
@@ -20,6 +23,91 @@ const (
 	_Flow        = "Flow"
 	_StringEmpty = ""
 )
+
+// maxRequestBodyBytes limita globalmente el tamaño de cualquier body (S9).
+// 10 MB queda por encima del tope propio de fotos/ícono (5 MB + overhead),
+// así que su MaxBytesReader interno sigue marcando el corte antes.
+const maxRequestBodyBytes = 10 << 20
+
+func MaxBodySize() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request != nil && c.Request.Body != nil {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBodyBytes)
+		}
+		c.Next()
+	}
+}
+
+// Acota el abuso de las rutas públicas de usuario (S10): 30 req/min por IP,
+// burst 10. Hardcodeados a propósito (sin env).
+const (
+	ipRateBurst  = 10
+	ipIdleTTL    = time.Hour
+	ipPruneEvery = 256
+)
+
+// ipRateLimit es var porque rate.Every no es constante: 30 req/min.
+var ipRateLimit = rate.Every(time.Minute / 30)
+
+type ipRateEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// ipRateLimiter acumula un limiter por IP en memoria. Single instance (Render)
+// lo hace suficiente; un restart de la app reinicia los contadores, aceptado.
+type ipRateLimiter struct {
+	mu         sync.Mutex
+	entries    map[string]*ipRateEntry
+	sincePrune int
+}
+
+func newIPRateLimiter() *ipRateLimiter {
+	return &ipRateLimiter{entries: make(map[string]*ipRateEntry)}
+}
+
+func (l *ipRateLimiter) allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	entry, ok := l.entries[ip]
+	if !ok {
+		entry = &ipRateEntry{limiter: rate.NewLimiter(ipRateLimit, ipRateBurst)}
+		l.entries[ip] = entry
+	}
+	entry.lastSeen = time.Now()
+
+	l.sincePrune++
+	if l.sincePrune >= ipPruneEvery {
+		l.sincePrune = 0
+		for key, e := range l.entries {
+			if time.Since(e.lastSeen) > ipIdleTTL {
+				delete(l.entries, key)
+			}
+		}
+	}
+	return entry.limiter.Allow()
+}
+
+var publicIPRateLimiter = newIPRateLimiter()
+
+func IPRateLimiter() gin.HandlerFunc {
+	return ipRateLimiterHandler(publicIPRateLimiter)
+}
+
+func ipRateLimiterHandler(limiter *ipRateLimiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !limiter.allow(c.ClientIP()) {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, apierror.APIError{
+				StatusCode: http.StatusTooManyRequests,
+				Code:       "too_many_requests",
+				Message:    "demasiadas solicitudes, intentá de nuevo más tarde",
+			})
+			return
+		}
+		c.Next()
+	}
+}
 
 func SetRequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {

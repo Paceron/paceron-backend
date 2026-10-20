@@ -8,8 +8,8 @@ import "time"
 // parcial creado con SQL crudo en la migración); el resto es historial.
 type UserRoleTierSubscription struct {
 	ID               int64      `gorm:"column:id;primaryKey"`
-	UserID           int64      `gorm:"column:user_id;not null"`
-	RoleID           int64      `gorm:"column:role_id;not null"`
+	UserID           int64      `gorm:"column:user_id;not null;index:idx_user_role_tier_subscriptions_user_id_role_id,priority:1"`
+	RoleID           int64      `gorm:"column:role_id;not null;index:idx_user_role_tier_subscriptions_user_id_role_id,priority:2"`
 	TierID           int64      `gorm:"column:tier_id;not null"`
 	Status           string     `gorm:"column:status;not null"` // first_payment_pending / active / ended / canceled
 	InitAmount       float64    `gorm:"column:init_amount;not null;default:0"`

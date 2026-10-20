@@ -353,14 +353,27 @@ func (s *authService) roleNamesForUser(ctx *gin.Context, userID int64) ([]string
 		return nil, err
 	}
 
+	roleIDs := make([]int64, len(userRoles))
+	for i, ur := range userRoles {
+		roleIDs[i] = ur.RoleID
+	}
+	roles, err := s.roleDao.FindByIDs(ctx, roleIDs)
+	if err != nil {
+		// Semántica pre-batch: fallo de lectura de roles no bloquea login/refresh.
+		customlogger.Error(ctx, "error resolving user roles", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("roleNamesForUser"))
+		return nil, nil
+	}
+	roleByID := make(map[int64]string, len(roles))
+	for _, role := range roles {
+		roleByID[role.ID] = role.Name
+	}
+
 	names := make([]string, 0, len(userRoles))
 	for _, ur := range userRoles {
-		role, err := s.roleDao.FindByID(ctx, ur.RoleID)
-		if err != nil {
-			continue
-		}
-		if role != nil {
-			names = append(names, role.Name)
+		if name, ok := roleByID[ur.RoleID]; ok {
+			names = append(names, name)
 		}
 	}
 	return names, nil

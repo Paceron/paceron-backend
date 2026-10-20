@@ -291,6 +291,21 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
+	// 10. Índices parciales que GORM no expresa por tags (implementación de
+	// intendencia: intentos de competencia y sesión de ruta del intento).
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_runner_session_competition
+		ON runner_session (competition_id)
+		WHERE competition_id IS NOT NULL;`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial index on runner_session competition attempts", err)
+		return nil, err
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_competition_route_session_instance
+		ON competition (route_session_instance_id)
+		WHERE route_session_instance_id IS NOT NULL;`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial unique index on competition route session instance", err)
+		return nil, err
+	}
+
 	customlogger.Info(nil, "DB initialized successfully",
 		customlogger.Tag("db_name", configDB.Name))
 

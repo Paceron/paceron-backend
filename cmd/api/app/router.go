@@ -52,6 +52,22 @@ const bannerLocal = `
   No tenes flag? estas pegando contra Supabase. Ver docs/ENTORNO_LOCAL.md
 `
 
+// Router único de la app: además de Recovery, fija los proxies de confianza
+// RFC1918 — determina qué peers pueden mover el resultado de c.ClientIP() vía
+// X-Forwarded-For. Sin esto Gin confía en 0.0.0.0/0 y el rate limiter por IP
+// es evadible (XFF forjado = bucket nuevo por request). El LB de Render es
+// interno (RFC1918), así que camina el XFF desde la derecha y quedan a la
+// vista el IP real del cliente y las entradas forjadas a la izquierda.
+// Loopback NO está en la lista: un request directo de localhost ignora su XFF.
+var trustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+
+func newRouter() *gin.Engine {
+	router := gin.New()
+	_ = router.SetTrustedProxies(trustedProxies)
+	router.Use(gin.Recovery())
+	return router
+}
+
 func StartApp() {
 	fmt.Print(banner)
 	if config.IsLocalStage() {
@@ -73,8 +89,7 @@ func StartApp() {
 	}
 	customlogger.Info(nil, "stage resolved", customlogger.Tag("stage", stage))
 
-	router := gin.New()
-	router.Use(gin.Recovery())
+	router := newRouter()
 	app := NewApplication()
 	mapUrls(router, app)
 

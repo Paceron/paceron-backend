@@ -187,6 +187,7 @@ func (c *mpConnectController) GetStatus(ctx *gin.Context) {
 // @Param        body  body      mpconnect.DeauthWebhookRequest  true  "Deauthorization notification"
 // @Success      200   {object}  map[string]string
 // @Failure      400   {object}  apierror.APIError
+// @Failure      401   {object}  apierror.APIError
 // @Failure      500   {object}  apierror.APIError
 // @Router       /api/v1/mercadopago/webhook/connect [post]
 func (c *mpConnectController) HandleDeauthWebhook(ctx *gin.Context) {
@@ -196,6 +197,21 @@ func (c *mpConnectController) HandleDeauthWebhook(ctx *gin.Context) {
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
 			Message:    "user_id (de MP) requerido",
+		})
+		return
+	}
+
+	// El id firmado por MP acá es el mp user id (no hay data.id de pago), así
+	// que el manifest lleva ese valor.
+	if err := c.service.ValidateWebhookSignature(
+		ctx.GetHeader("X-Signature"), ctx.GetHeader("X-Request-Id"), fmt.Sprintf("%d", req.UserID)); err != nil {
+		customlogger.Warn(ctx, "MP deauth webhook signature validation failed",
+			customlogger.Tag("mp_user_id", fmt.Sprintf("%d", req.UserID)),
+			customlogger.TagMethod("HandleDeauthWebhook"))
+		ctx.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "Unauthorized",
+			Message:    "Firma de webhook inválida",
 		})
 		return
 	}

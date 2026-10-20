@@ -50,6 +50,8 @@ MERCADOPAGO_WEBHOOK_URL=https://tu-backend.ngrok.io/api/v1/payments/webhook
 MERCADOPAGO_CURRENCY_ID=ARS
 ```
 
+Nota: `MERCADOPAGO_WEBHOOK_SECRET` debe quedar **vacío** si no vas a validar firmas. Un placeholder activa la validación de firma y rechaza todos los webhooks con 401.
+
 > **¿Por qué `MERCADOPAGO_WEBHOOK_URL`?** Mercado Pago necesita una URL pública donde enviar las notificaciones de pago. En local, usás ngrok para exponer tu backend. En producción, es la URL de Render.
 
 ---
