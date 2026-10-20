@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -262,4 +263,72 @@ func TestOversizedJSONRouteGives413Not500(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+}
+
+func newIPRateTestRouter(limiter *ipRateLimiter) *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	_ = router.SetTrustedProxies(trustedProxies)
+	router.POST("/check", ipRateLimiterHandler(limiter), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"client_ip": c.ClientIP()})
+	})
+	return router
+}
+
+// El algoritmo de Gin: XFF solo se consulta si RemoteAddr es proxy de
+// confianza; el walk va de derecha a izquierda saltando entradas
+// privadas/loopback (proxy interno del LB) y devuelve el primer IP público.
+func TestIPRateLimiter_ForgedXFFFromUntrustedPeerDoesNotEvade(t *testing.T) {
+	router := newIPRateTestRouter(newIPRateLimiter())
+
+	var lastRecorder *httptest.ResponseRecorder
+	var lastBody string
+	for i := 0; i <= ipRateBurst; i++ {
+		// Peer remota NO confiable (no es RFC1918 ni loopback). Cada request
+		// forja un XFF distinto: si el limiter usara el XFF, cada una caería en
+		// un bucket distinto y nunca habría 429.
+		req := httptest.NewRequest(http.MethodPost, "/check", nil)
+		req.RemoteAddr = "203.0.113.50:1000"
+		req.Header.Set("X-Forwarded-For", "1.1.1."+strconv.Itoa(i))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		lastRecorder = w
+		lastBody = w.Body.String()
+	}
+
+	assert.Equal(t, http.StatusTooManyRequests, lastRecorder.Code, "el XFF forjado no debe dar bucket nuevo: %s", lastBody)
+
+	// La misma RemoteAddr sin forjar XFF comparte el mismo bucket.
+	req := httptest.NewRequest(http.MethodPost, "/check", nil)
+	req.RemoteAddr = "203.0.113.50:1000"
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+}
+
+func TestIPRateLimiter_PrivateProxyXFFResolvesRealClient(t *testing.T) {
+	router := newIPRateTestRouter(newIPRateLimiter())
+
+	// Proxy interno RFC1918 (peers confiables) que ya appendió el IP real del
+	// cliente a la derecha: con walk-from-right se recupera 203.0.113.7.
+	req := httptest.NewRequest(http.MethodPost, "/check", nil)
+	req.RemoteAddr = "10.42.0.7:1000"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 10.42.0.7")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "203.0.113.7")
+
+	// Request directa desde localhost con XFF forjado: loopback NO está en los
+	// proxies de confianza (RFC1918), así que el XFF se ignora y ClientIP
+	// queda en 127.0.0.1 — el spoofing de IP lejana no rota bucket.
+	req = httptest.NewRequest(http.MethodPost, "/check", nil)
+	req.RemoteAddr = "127.0.0.1:1000"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "127.0.0.1")
 }
