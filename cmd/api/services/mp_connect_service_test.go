@@ -1,6 +1,9 @@
 package services
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -489,4 +492,39 @@ func TestServiceMPConnectImplementsInterface(t *testing.T) {
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
 	var iface MPConnectServiceInterface = svc
 	_ = iface
+}
+
+// TestMPConnectService_ValidateWebhookSignature matrices: mismo patrón que
+// payment_service — secret seteado → valida el SDK; secret ausente → nil sin
+// tocar MP (rollout gradual).dataID de deauth es el mp user id.
+func TestMPConnectService_ValidateWebhookSignature_SecretConfigured_PassesThrough(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	client.On("ValidateWebhookSignature", "ts=123,v1=abc", "req-id", "987", "secret-connect").Return(nil)
+
+	svc := &mpConnectService{mpClient: client, webhookSecret: "secret-connect"}
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "987"))
+	client.AssertExpectations(t)
+}
+
+func TestMPConnectService_ValidateWebhookSignature_SecretMissing_SkipsValidation(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	svc := &mpConnectService{mpClient: client, webhookSecret: ""}
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "987"))
+	client.AssertNotCalled(t, "ValidateWebhookSignature", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestMPConnectService_ValidateWebhookSignature_RealHMAC_SignatureVerification(t *testing.T) {
+	secret := "secret-deauth-e2e"
+	manifest := fmt.Sprintf("id:987;request-id:req-abc;ts:1770000000000;")
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(manifest))
+	sig := fmt.Sprintf("ts=1770000000000,v1=%s", hex.EncodeToString(mac.Sum(nil)))
+
+	svc := &mpConnectService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+	assert.NoError(t, svc.ValidateWebhookSignature(sig, "req-abc", "987"))
+
+	tampered := "ts=1770000000000,v1=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	assert.Error(t, svc.ValidateWebhookSignature(tampered, "req-abc", "987"))
 }

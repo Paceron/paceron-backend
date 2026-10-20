@@ -2,6 +2,9 @@ package services
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -1495,4 +1498,85 @@ func TestGenerateTestCardToken_TeamSubscription_InstallmentNotFound(t *testing.T
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Contains(t, err.Error(), "cuota no encontrada")
+}
+
+// TestValidateWebhookSignature_SecretConfigured_PassesThrough: con secret seteado
+// el servicio delega tal cual en el validador del SDK (passthrough puro).
+func TestValidateWebhookSignature_SecretConfigured_PassesThrough(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	client.On("ValidateWebhookSignature", "ts=123,v1=abc", "req-id", "12345", "test-secret").Return(nil)
+
+	// TestMain deja config.MyMP.WebhookSecret = "test-secret".
+	svc := NewPaymentService(new(mockPaymentDao), client, nil, nil, nil, nil, nil, nil, nil)
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "12345"))
+	client.AssertExpectations(t)
+}
+
+func TestValidateWebhookSignature_SecretConfigured_InvalidSignaturePropagates(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	sentinel := errors.New("webhook: invalid signature: SignatureMismatch")
+	client.On("ValidateWebhookSignature", "ts=123,v1=deadbeef", "req-id", "12345", "test-secret").Return(sentinel)
+
+	svc := NewPaymentService(new(mockPaymentDao), client, nil, nil, nil, nil, nil, nil, nil)
+
+	assert.ErrorIs(t, svc.ValidateWebhookSignature("ts=123,v1=deadbeef", "req-id", "12345"), sentinel)
+}
+
+func TestValidateWebhookSignature_SecretConfigured_MissingSignaturePropagates(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	sentinel := errors.New("webhook: invalid signature: MissingSignatureHeader")
+	client.On("ValidateWebhookSignature", "", "", "12345", "test-secret").Return(sentinel)
+
+	svc := NewPaymentService(new(mockPaymentDao), client, nil, nil, nil, nil, nil, nil, nil)
+
+	assert.ErrorIs(t, svc.ValidateWebhookSignature("", "", "12345"), sentinel)
+}
+
+func TestValidateWebhookSignature_SecretMissing_SkipsValidation(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	svc := &paymentService{mpClient: client, webhookSecret: ""}
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "12345"))
+	client.AssertNotCalled(t, "ValidateWebhookSignature", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestValidateWebhookSignature_RealHMAC_SignatureVerification: end-to-end contra
+// el validador real del SDK — certifica que el wiring controller→service→SDK es
+// el mecanismo ts,v1 correcto (manifest id/request-id/ts firmado con HMAC-SHA256).
+func TestValidateWebhookSignature_RealHMAC_SignatureVerification(t *testing.T) {
+	secret := "secret-e2e-task7"
+	dataID := "12345"
+	xReqID := "req-id-abc"
+	ts := "1770000000000"
+
+	buildSig := func(dataID, reqID, ts, secret string) string {
+		manifest := fmt.Sprintf("id:%s;request-id:%s;ts:%s;", dataID, reqID, ts)
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write([]byte(manifest))
+		return fmt.Sprintf("ts=%s,v1=%s", ts, hex.EncodeToString(mac.Sum(nil)))
+	}
+
+	t.Run("valida", func(t *testing.T) {
+		svc := &paymentService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+		sig := buildSig(dataID, xReqID, ts, secret)
+		assert.NoError(t, svc.ValidateWebhookSignature(sig, xReqID, dataID))
+	})
+
+	t.Run("invalida (secret distinto)", func(t *testing.T) {
+		svc := &paymentService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+		sig := buildSig(dataID, xReqID, ts, "otro-secret")
+		assert.Error(t, svc.ValidateWebhookSignature(sig, xReqID, dataID))
+	})
+
+	t.Run("faltante", func(t *testing.T) {
+		svc := &paymentService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+		assert.Error(t, svc.ValidateWebhookSignature("", xReqID, dataID))
+	})
+
+	t.Run("id incorrecto en manifest (mp user id vs payment id)", func(t *testing.T) {
+		svc := &paymentService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+		sig := buildSig("999", xReqID, ts, secret)
+		assert.Error(t, svc.ValidateWebhookSignature(sig, xReqID, dataID))
+	})
 }

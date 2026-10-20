@@ -20,6 +20,8 @@ type mockMPConnectService struct {
 	handleCallbackFn      func(ctx *gin.Context, req *mpconnect.CallbackRequest) (*mpconnect.CallbackResponse, error)
 	getStatusFn           func(ctx *gin.Context, userID int64) (*mpconnect.StatusResponse, error)
 	handleDeauthWebhookFn func(ctx *gin.Context, mpUserID int64) error
+	validateSigFn         func(xSignature, xRequestID, dataID string) error
+	validateSigCalls      int
 }
 
 func (m *mockMPConnectService) GetAuthURL(ctx *gin.Context, userID int64, target string) (*mpconnect.AuthURLResponse, error) {
@@ -46,6 +48,14 @@ func (m *mockMPConnectService) GetStatus(ctx *gin.Context, userID int64) (*mpcon
 func (m *mockMPConnectService) HandleDeauthorization(ctx *gin.Context, mpUserID int64) error {
 	if m.handleDeauthWebhookFn != nil {
 		return m.handleDeauthWebhookFn(ctx, mpUserID)
+	}
+	return nil
+}
+
+func (m *mockMPConnectService) ValidateWebhookSignature(xSignature, xRequestID, dataID string) error {
+	m.validateSigCalls++
+	if m.validateSigFn != nil {
+		return m.validateSigFn(xSignature, xRequestID, dataID)
 	}
 	return nil
 }
@@ -368,6 +378,94 @@ func TestMPConnectController_HandleDeauthWebhook_Success(t *testing.T) {
 }
 
 func TestMPConnectController_HandleDeauthWebhook_InvalidBody(t *testing.T) {
+	controller := newTestMPConnectController(&mockMPConnectService{})
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/mercadopago/webhook/connect", strings.NewReader(`{"user_id":0}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.HandleDeauthWebhook(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+func TestMPConnectController_HandleDeauthWebhook_InvalidSignature_Returns401(t *testing.T) {
+	mockSvc := &mockMPConnectService{
+		validateSigFn: func(xSignature, xRequestID, dataID string) error {
+			assert.Equal(t, "ts=123,v1=bad", xSignature)
+			assert.Equal(t, "req-id", xRequestID)
+			assert.Equal(t, "987", dataID)
+			return errors.New("webhook: invalid signature: SignatureMismatch")
+		},
+		handleDeauthWebhookFn: func(ctx *gin.Context, mpUserID int64) error {
+			t.Fatal("devuelve el 401 antes de tocar el service")
+			return nil
+		},
+	}
+
+	controller := newTestMPConnectController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/mercadopago/webhook/connect", strings.NewReader(`{"user_id":987}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Signature", "ts=123,v1=bad")
+	c.Request.Header.Set("X-Request-Id", "req-id")
+
+	controller.HandleDeauthWebhook(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+	assert.Contains(t, response.Body.String(), "Firma de webhook inválida")
+	assert.Equal(t, 1, mockSvc.validateSigCalls)
+}
+
+func TestMPConnectController_HandleDeauthWebhook_MissingSignature_WithSecret_Returns401(t *testing.T) {
+	mockSvc := &mockMPConnectService{
+		validateSigFn: func(xSignature, xRequestID, dataID string) error {
+			return errors.New("webhook: invalid signature: MissingSignatureHeader")
+		},
+		handleDeauthWebhookFn: func(ctx *gin.Context, mpUserID int64) error {
+			t.Fatal("devuelve el 401 antes de tocar el service")
+			return nil
+		},
+	}
+
+	controller := newTestMPConnectController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/mercadopago/webhook/connect", strings.NewReader(`{"user_id":987}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.HandleDeauthWebhook(c)
+
+	assert.Equal(t, http.StatusUnauthorized, response.Code)
+}
+
+func TestMPConnectController_HandleDeauthWebhook_ValidSignature_Returns200(t *testing.T) {
+	mockSvc := &mockMPConnectService{
+		validateSigFn: func(xSignature, xRequestID, dataID string) error {
+			return nil
+		},
+		handleDeauthWebhookFn: func(ctx *gin.Context, mpUserID int64) error {
+			assert.Equal(t, int64(987), mpUserID)
+			return nil
+		},
+	}
+
+	controller := newTestMPConnectController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/mercadopago/webhook/connect", strings.NewReader(`{"user_id":987}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Signature", "ts=123,v1=ok")
+	c.Request.Header.Set("X-Request-Id", "req-id")
+
+	controller.HandleDeauthWebhook(c)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, 1, mockSvc.validateSigCalls)
+}
+
+func TestMPConnectController_HandleDeauthWebhook_SignatureValidatorNotCalledWhenFailuresUpstream(t *testing.T) {
 	controller := newTestMPConnectController(&mockMPConnectService{})
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

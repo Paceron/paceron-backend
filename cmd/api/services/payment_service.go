@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,10 @@ type PaymentServiceInterface interface {
 	GetPaymentStatus(ctx *gin.Context, paymentID int64) (*payment.PaymentResponse, error)
 	GetPaymentStatusFromMP(ctx *gin.Context, mpPaymentID string) (*payment.MPPaymentStatusResponse, error)
 	HandleWebhook(ctx *gin.Context, notification payment.WebhookNotification) error
+	// ValidateWebhookSignature valida la firma HMAC del webhook contra el secret
+	// configurado. Si no hay secret configurado el rollout gradual sigue el
+	// comportamiento previo: nil sin llamar al validador.
+	ValidateWebhookSignature(xSignature, xRequestID, dataID string) error
 	GenerateTestCardToken(ctx *gin.Context, req payment.TestCardTokenRequest) (*payment.TestCardTokenResponse, error)
 }
 
@@ -46,6 +51,9 @@ type paymentService struct {
 	settingDao    daos.PlatformSettingDaoInterface
 	installDao    daos.InstallmentDaoInterface
 	encryptor     crypto.EncryptorInterface
+	// rollout gradual del webhook secret: el warning "sin secret" se emite una
+	// sola vez por proceso, no por request.
+	warnNoWebhookSecretOnce sync.Once
 }
 
 func NewPaymentService(
@@ -437,6 +445,17 @@ func (s *paymentService) GetPaymentStatusFromMP(ctx *gin.Context, mpPaymentID st
 			OverpaidAmount:    result.TransactionDetails.OverpaidAmount,
 		},
 	}, nil
+}
+
+func (s *paymentService) ValidateWebhookSignature(xSignature, xRequestID, dataID string) error {
+	if s.webhookSecret == "" {
+		s.warnNoWebhookSecretOnce.Do(func() {
+			customlogger.Warn(nil, "MERCADOPAGO_WEBHOOK_SECRET sin configurar, webhook de pagos aceptando notificaciones sin validar firma",
+				customlogger.TagMethod("ValidateWebhookSignature"))
+		})
+		return nil
+	}
+	return s.mpClient.ValidateWebhookSignature(xSignature, xRequestID, dataID, s.webhookSecret)
 }
 
 func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.WebhookNotification) error {
