@@ -124,6 +124,10 @@ func (s *sessionService) toResponse(ctx *gin.Context, sessionDB *dbs.Session) (*
 		customlogger.Error(ctx, "error loading session exercises", err, customlogger.TagMethod("toResponse"))
 		return nil, fmt.Errorf("error al armar la respuesta de la sesión")
 	}
+	return s.responseFromRows(sessionDB, rows), nil
+}
+
+func (s *sessionService) responseFromRows(sessionDB *dbs.Session, rows []dbs.SessionExercise) *session.SessionResponse {
 	exercises := make([]session.SessionExerciseResponse, len(rows))
 	for i, r := range rows {
 		exercises[i] = session.SessionExerciseResponse{ID: r.ID, ExerciseID: r.ExerciseID, Role: r.Role, RepeatCount: r.RepeatCount, RestMinutes: r.RestMinutes}
@@ -131,7 +135,7 @@ func (s *sessionService) toResponse(ctx *gin.Context, sessionDB *dbs.Session) (*
 	return &session.SessionResponse{
 		ID: sessionDB.ID, OwnerID: sessionDB.OwnerID, Name: sessionDB.Name, Description: sessionDB.Description,
 		Exercises: exercises, CreatedAt: sessionDB.CreatedAt, UpdatedAt: sessionDB.UpdatedAt,
-	}, nil
+	}
 }
 
 func (s *sessionService) Create(ctx *gin.Context, callerID int64, req session.SessionRequest) (*session.SessionResponse, error) {
@@ -239,13 +243,22 @@ func (s *sessionService) List(ctx *gin.Context, ownerID int64) ([]session.Sessio
 		customlogger.Error(ctx, "error listing sessions", err, customlogger.TagMethod("List"))
 		return nil, fmt.Errorf("error al listar sesiones")
 	}
+	ids := make([]int64, len(sessions))
+	for i := range sessions {
+		ids[i] = sessions[i].ID
+	}
+	links, err := s.sessionExerciseDao.FindBySessions(ctx, ids)
+	if err != nil {
+		customlogger.Error(ctx, "error listing session exercises", err, customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al armar la respuesta de la sesión")
+	}
+	linksBySession := make(map[int64][]dbs.SessionExercise, len(ids))
+	for _, r := range links {
+		linksBySession[r.SessionID] = append(linksBySession[r.SessionID], r)
+	}
 	responses := make([]session.SessionResponse, len(sessions))
 	for i := range sessions {
-		resp, err := s.toResponse(ctx, &sessions[i])
-		if err != nil {
-			return nil, err
-		}
-		responses[i] = *resp
+		responses[i] = *s.responseFromRows(&sessions[i], linksBySession[sessions[i].ID])
 	}
 	return responses, nil
 }

@@ -61,6 +61,7 @@ func (m *mockSessionDao) SoftDelete(ctx *gin.Context, id int64) error {
 
 type mockSessionExerciseDao struct {
 	findBySessionFn     func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error)
+	findBySessionsFn    func(ctx *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error)
 	replaceForSessionFn func(ctx *gin.Context, sessionID int64, rows []dbs.SessionExercise) error
 }
 
@@ -76,7 +77,10 @@ func (m *mockSessionExerciseDao) ReplaceForSession(ctx *gin.Context, sessionID i
 	}
 	return nil
 }
-func (m *mockSessionExerciseDao) FindBySessions(_ *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error) {
+func (m *mockSessionExerciseDao) FindBySessions(ctx *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error) {
+	if m.findBySessionsFn != nil {
+		return m.findBySessionsFn(ctx, sessionIDs)
+	}
 	return nil, nil
 }
 
@@ -559,7 +563,7 @@ func TestSessionService_List_ToResponseError(t *testing.T) {
 		return []dbs.Session{{ID: 1, OwnerID: 7, Name: "A"}}, nil
 	}}
 	sessionExerciseDao := &mockSessionExerciseDao{
-		findBySessionFn: func(ctx *gin.Context, sessionID int64) ([]dbs.SessionExercise, error) {
+		findBySessionsFn: func(ctx *gin.Context, sessionIDs []int64) ([]dbs.SessionExercise, error) {
 			return nil, errors.New("db down")
 		},
 	}
