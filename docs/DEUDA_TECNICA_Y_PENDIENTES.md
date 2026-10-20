@@ -227,7 +227,7 @@ Dos recomputos que un memo por request/bundle ahorraría, documentados como mejo
 
 ### Sin rate-limit en los POST de competencias (ronda seguridad 2026-10-14)
 
-**MaxBytesReader: resuelto** (change `optimizaciones-y-seguridad-api`, S9): el límite global de 10 MB (`MaxBodySize()` en `middleware.go`) cubre todos los routes incluidos los POST de competencias; el 413 de gin corta el parseo antes de las validaciones. **Rate-limit: sigue ausente** en esta ruta — el `IPRateLimiter` solo cubre las rutas públicas de auth; las rutas autenticadas (entre ellas `POST /teams/{id}/competitions`) no tienen cuota.
+**MaxBytesReader: resuelto** (change `optimizaciones-y-seguridad-api`, S9): el límite global de 10 MB (`MaxBodySize()` en `middleware.go`) cubre todos los routes incluidos los POST de competencias; el 413 de gin corta el parseo antes de las validaciones. **Rate-limit: sigue ausente** en esta ruta — el `IPRateLimiter` solo cubre las 6 rutas públicas de usuario (register/login/refresh/auth-user/forgot/reset; logout queda sin limiter); las rutas autenticadas (entre ellas `POST /teams/{id}/competitions`) no tienen cuota.
 
 ## Resueltos (change `competencias-ruta-intake`, 2026-10-13)
 

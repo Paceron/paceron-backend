@@ -634,7 +634,7 @@ Endurecimiento del módulo de pagos. Contratos frontend: `docs/FRONTEND_IMPACTO_
 
 #### Ownership de `GET /payments/:id` y `GET /payments/mp/:id`
 
-- Ambos endpoints de consulta exigen que el caller sea **parte del pago**: pagador (`payment.user_id`, o el dueño de la cuota vía `installment.user_id` cuando el pago viene de una suscripción de equipo) o vendedor (`payment.seller_user_id`). Cualquier otro usuario autenticado → `404` "payment not found" (**no 403**: no se confirma la existencia del recurso a un ajeno).
+- Ambos endpoints de consulta exigen que el caller sea **parte del pago**: el dueño del pago (`payment.user_id`, o — fuente real del pagador — el dueño de la cuota vía `installment.user_id`, ya que `payment.user_id` no siempre es el pagador) o el vendedor (`payment.seller_user_id`). Cualquier otro usuario autenticado → `404` `"Pago no encontrado"` (**no 403**: no se confirma la existencia del recurso a un ajeno).
 - `GET /payments/mp/:id` resuelve el pago local **antes** de llamar a Mercado Pago (por `payment_id`, con fallback a `external_reference` para pagos legacy; solo cuenta si el `payment_id` local coincide exactamente) y aplica el mismo guard: ajeno o inexistente → `404` con **cero llamadas HTTP a MP**.
 - El polling del pagador no cambia: su ownership viaja por la cuota (`installment.user_id`) — un pago de team_subscription lo ve el corredor que paga aunque el `user_id` del pago no sea el suyo.
 

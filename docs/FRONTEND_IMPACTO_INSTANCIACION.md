@@ -752,7 +752,7 @@ Cambios de comportamiento que el front puede chocar. Verificados contra el códi
 
 ### 18.1 `GET /payments/:id` y `GET /payments/mp/:id`: nuevo `404` para pagos ajenos
 
-Estos GET ahora exigen que el caller sea parte del pago (pagador o vendedor). Un usuario autenticado que consulta el pago de otro recibe `404` "payment not found" (no 403 — no se confirma la existencia).
+Estos GET ahora exigen que el caller sea parte del pago (pagador o vendedor). Un usuario autenticado que consulta el pago de otro recibe `404` `"Pago no encontrado"` (no 403 — no se confirma la existencia).
 
 - **El polling del pagador NO cambia**: su ownership viaja por la cuota (`installment.user_id`), así que el flujo de Checkout Brick (consultar el estado de un pago recién creado) sigue funcionando igual.
 - Dónde SÍ puede chocar: si el front usa estos endpoints para mostrar pagos de un **tercero** (ej. listados del entrenador ya cubiertos por `GET /payments/received` — no tocar), hoy recibiría 404. No hay caso legítimo conocido; los 404 nuevos solo afectan consultas de pagos ajenos.
@@ -763,7 +763,7 @@ Estos GET ahora exigen que el caller sea parte del pago (pagador o vendedor). Un
 
 ```json
 HTTP 429
-{"StatusCode": 429, "Code": "too_many_requests", "Message": "demasiadas solicitudes, intentá de nuevo más tarde"}
+{"status_code": 429, "code": "too_many_requests", "message": "demasiadas solicitudes, intentá de nuevo más tarde"}
 ```
 
 - La cuenta es **por IP y en memoria del proceso**: un deploy/restart la resetea, y retries automáticos del front ante 429 deben ir con backoff (el límite es fijo, no negociable por request).
@@ -782,5 +782,5 @@ Todo request con body de más de **10 MB** es rechazado globalmente por middlewa
 
 ### 18.5 Mensajería de sesión: tope de 100 destinatarios
 
-`POST /session-instances/:id/messages` con `recipient_mode="multiple"` y más de **100** `recipient_user_ids` → `400` con message `"los destinatarios no pueden superar 100"`. Antes no había tope. `all` y `direct` sin cambio.
+`POST /session-instances/:id/messages` con `recipient_mode="multiple"` y más de **100** `recipient_user_ids` → `400` con message `"datos inválidos: los destinatarios no pueden superar 100"`. Antes no había tope. `all` y `direct` sin cambio.
 

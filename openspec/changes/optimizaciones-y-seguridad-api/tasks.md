@@ -25,7 +25,7 @@
 - [x] 2.1 `validateSendMessage`: const `maxRecipientsPerMessage = 100` → más de 100 en `multiple` → 400 `ErrSessionMessageInvalid` "los destinatarios no pueden superar 100". `all`/`direct` sin tope (costo constante).
 - [x] 2.2 `SessionInstanceDaoInterface` gana `HasInstanceAccessBatch(ctx, instanceID, userIDs []int64) (map[int64]bool, error)` — misma regla de acceso del singular (día, feedback, competencia-route), hasta 3 queries totales con `IN`, map por userID. `HasInstanceAccess` singular intacto (WS y otros callers).
 - [x] 2.3 `validateRecipients` usa el batch; no autorizados → 400 igual que hoy (ErrSessionMessageInvalid, mensaje y detalle previos). Excepción de DAO propaga.
-- [x] 2.4 Tests: DAO batch real Postgres (mixto autorizado/ajeno, mapa completo), service (tope 100 → 400 sin DAO; batch no-autorizado → 403; happy multiple), mocks actualizados.
+- [x] 2.4 Tests: DAO batch real Postgres (mixto autorizado/ajeno, mapa completo), service (tope 100 → 400 sin DAO; batch no-autorizado → 400 (comportamiento pre-task); happy multiple), mocks actualizados.
 - [x] 2.5 `go build ./...` + `go vet` + suites con Postgres real + commit `feat(messages): tope de destinatarios y acceso en batch (P3)`.
 
 ### Task 3: Pagos y MP client (P5/P6)
