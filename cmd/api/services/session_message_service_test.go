@@ -21,7 +21,8 @@ type mockSessionInstanceDao struct {
 	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.SessionInstance, error)
 	deleteFn            func(ctx *gin.Context, id int64) error
 	hasFeedbackFn       func(ctx *gin.Context, id int64) (bool, error)
-	hasInstanceAccessFn func(ctx *gin.Context, instanceID, callerID int64) (bool, error)
+	hasInstanceAccessFn     func(ctx *gin.Context, instanceID, callerID int64) (bool, error)
+	hasInstanceAccessBatchFn func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
 }
 
 func (m *mockSessionInstanceDao) Create(ctx *gin.Context, s *dbs.SessionInstance) error {
@@ -76,6 +77,13 @@ func (m *mockSessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID,
 	return false, nil
 }
 
+func (m *mockSessionInstanceDao) HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+	if m.hasInstanceAccessBatchFn != nil {
+		return m.hasInstanceAccessBatchFn(ctx, instanceID, userIDs)
+	}
+	return map[int64]bool{}, nil
+}
+
 // mockSessionMessageDao simula la persistencia de mensajes y recipients.
 type mockSessionMessageDao struct {
 	createFn           func(ctx *gin.Context, message *dbs.SessionMessage, recipientUserIDs []int64) error
@@ -128,6 +136,13 @@ func baseInstanceDao(access bool) *mockSessionInstanceDao {
 		},
 		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
 			return access, nil
+		},
+		hasInstanceAccessBatchFn: func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+			out := make(map[int64]bool, len(userIDs))
+			for _, id := range userIDs {
+				out[id] = access
+			}
+			return out, nil
 		},
 	}
 }
@@ -272,11 +287,9 @@ func TestSessionMessageService_Create_ValidationErrors(t *testing.T) {
 }
 
 func TestSessionMessageService_Create_RecipientWithoutAccess(t *testing.T) {
-	var accessDenied bool
 	instanceDao := baseInstanceDao(true)
-	instanceDao.hasInstanceAccessFn = func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
-		accessDenied = callerID == 12
-		return !accessDenied, nil
+	instanceDao.hasInstanceAccessBatchFn = func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+		return map[int64]bool{userIDs[0]: false}, nil
 	}
 	dayDao, groupDao, teamDao := dayForOwner(99)
 	svc := sessionMessageSvcWith(&mockSessionMessageDao{}, instanceDao, dayDao, groupDao, teamDao)
@@ -289,7 +302,87 @@ func TestSessionMessageService_Create_RecipientWithoutAccess(t *testing.T) {
 
 	_, err := svc.Create(nil, 7, 88, req)
 
+	require.ErrorIs(t, err, ErrSessionMessageForbidden)
+	assert.Contains(t, err.Error(), "el destinatario 12 no participa de la sesión")
+}
+
+func TestSessionMessageService_Create_RecipientBatchErrorPropagates(t *testing.T) {
+	boom := errors.New("boom db")
+	instanceDao := baseInstanceDao(true)
+	instanceDao.hasInstanceAccessBatchFn = func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+		return nil, boom
+	}
+	dayDao, groupDao, teamDao := dayForOwner(99)
+	svc := sessionMessageSvcWith(&mockSessionMessageDao{}, instanceDao, dayDao, groupDao, teamDao)
+	req := sessionmessage.SendMessageRequest{
+		Type:             sessionmessage.TypeMessageInfo,
+		RecipientMode:    sessionmessage.RecipientModeDirect,
+		RecipientUserIDs: []int64{12},
+		Body:             "che",
+	}
+
+	_, err := svc.Create(nil, 7, 88, req)
+
+	require.ErrorIs(t, err, boom)
+}
+
+func TestSessionMessageService_Create_MultipleOver100_RejectedBeforeDAO(t *testing.T) {
+	var singularCalls, batchCalls int
+	instanceDao := baseInstanceDao(true)
+	instanceDao.hasInstanceAccessFn = func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+		singularCalls++
+		return true, nil
+	}
+	instanceDao.hasInstanceAccessBatchFn = func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+		batchCalls++
+		return nil, nil
+	}
+	dayDao, groupDao, teamDao := dayForOwner(99)
+	svc := sessionMessageSvcWith(&mockSessionMessageDao{}, instanceDao, dayDao, groupDao, teamDao)
+	request := validMessageRequest()
+	request.RecipientMode = sessionmessage.RecipientModeMultiple
+	request.RecipientUserIDs = make([]int64, 0, maxRecipientsPerMessage+1)
+	for i := int64(1); i <= maxRecipientsPerMessage+1; i++ {
+		request.RecipientUserIDs = append(request.RecipientUserIDs, i)
+	}
+
+	_, err := svc.Create(nil, 7, 88, request)
+
 	require.ErrorIs(t, err, ErrSessionMessageInvalid)
+	assert.Contains(t, err.Error(), "los destinatarios no pueden superar 100")
+	assert.Equal(t, 1, singularCalls, "solo el guard del emisor toca el DAO")
+	assert.Equal(t, 0, batchCalls)
+}
+
+func TestSessionMessageService_Create_MultipleSuccess(t *testing.T) {
+	var gotRecipients []int64
+	messageDao := &mockSessionMessageDao{createFn: func(ctx *gin.Context, message *dbs.SessionMessage, recipientUserIDs []int64) error {
+		gotRecipients = recipientUserIDs
+		message.ID = 9
+		return nil
+	}}
+	instanceDao := baseInstanceDao(true)
+	instanceDao.hasInstanceAccessBatchFn = func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error) {
+		out := make(map[int64]bool, len(userIDs))
+		for _, id := range userIDs {
+			out[id] = true
+		}
+		return out, nil
+	}
+	dayDao, groupDao, teamDao := dayForOwner(99)
+	svc := sessionMessageSvcWith(messageDao, instanceDao, dayDao, groupDao, teamDao)
+	req := sessionmessage.SendMessageRequest{
+		Type:             sessionmessage.TypeMessageAviso,
+		RecipientMode:    sessionmessage.RecipientModeMultiple,
+		RecipientUserIDs: []int64{12, 15},
+		Body:             "chaufa",
+	}
+
+	resp, err := svc.Create(nil, 7, 88, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{12, 15}, gotRecipients)
+	assert.Equal(t, "multiple", resp.RecipientMode)
 }
 
 func TestSessionMessageService_Create_DuplicateRecipientsNotPersisted(t *testing.T) {

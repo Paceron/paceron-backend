@@ -23,6 +23,10 @@ var (
 // maxBodyLen es el tope de caracteres del cuerpo del mensaje (D6).
 const maxBodyLen = sessionmessage.MaxBodyLength
 
+// maxRecipientsPerMessage acota el lote del modo multiple; all/direct quedan
+// sin tope (costo constante).
+const maxRecipientsPerMessage = 100
+
 // SessionMessageServiceInterface define las operaciones de mensajería del chat
 // de una sesión instanciada. Toda autorización aplica la regla dual de
 // HasInstanceAccess (session-instance-detail D2): 404 si la instancia no
@@ -166,6 +170,9 @@ func validateSendMessage(req sessionmessage.SendMessageRequest) (string, []int64
 		if len(req.RecipientUserIDs) < 2 {
 			return "", nil, fmt.Errorf("%w: multiple requiere al menos 2 destinatarios", ErrSessionMessageInvalid)
 		}
+		if len(req.RecipientUserIDs) > maxRecipientsPerMessage {
+			return "", nil, fmt.Errorf("%w: los destinatarios no pueden superar %d", ErrSessionMessageInvalid, maxRecipientsPerMessage)
+		}
 	default:
 		return "", nil, fmt.Errorf("%w: recipient_mode debe ser all, multiple o direct", ErrSessionMessageInvalid)
 	}
@@ -189,15 +196,15 @@ func validateSendMessage(req sessionmessage.SendMessageRequest) (string, []int64
 }
 
 // validateRecipients chequea que cada destinatario sea participante de la
-// sesión (misma regla dual que el emisor; el fallo es 400, D6).
+// sesión (misma regla dual que el emisor; el fallo es 403, D6).
 func (s *sessionMessageService) validateRecipients(ctx *gin.Context, sessionInstanceID int64, recipientUserIDs []int64) error {
+	access, err := s.sessionInstanceDao.HasInstanceAccessBatch(ctx, sessionInstanceID, recipientUserIDs)
+	if err != nil {
+		return fmt.Errorf("error al chequear acceso a sesión instancia: %w", err)
+	}
 	for _, userID := range recipientUserIDs {
-		access, err := s.sessionInstanceDao.HasInstanceAccess(ctx, sessionInstanceID, userID)
-		if err != nil {
-			return fmt.Errorf("error al chequear acceso a sesión instancia: %w", err)
-		}
-		if !access {
-			return fmt.Errorf("%w: el destinatario %d no participa de la sesión", ErrSessionMessageInvalid, userID)
+		if !access[userID] {
+			return fmt.Errorf("%w: el destinatario %d no participa de la sesión", ErrSessionMessageForbidden, userID)
 		}
 	}
 	return nil

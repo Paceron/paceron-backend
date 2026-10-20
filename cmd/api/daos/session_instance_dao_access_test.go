@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
 )
@@ -145,5 +146,71 @@ func TestSessionInstanceDao_HasInstanceAccess(t *testing.T) {
 		ok, err := dao.HasInstanceAccess(nil, other.ID, f.athlete.ID)
 		require.NoError(t, err)
 		assert.False(t, ok)
+	})
+}
+
+// Espejo en lote de las ramas del acceso: un map mixto con autorizados por día
+// (atleta/owner), por feedback (atleta, reportante, owner) y por competencia
+// route, más los sin ninguna vía.
+func TestSessionInstanceDao_HasInstanceAccessBatch(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := accessFixtureSetup(t, db)
+	dao := NewSessionInstanceDao(db)
+	teamAID := f.teamA.ID
+
+	reporter := persistUser(db, "access-batch-reporter@test.com", "70000006")
+	competitor := persistUser(db, "access-batch-competitor@test.com", "70000007")
+
+	fbInst := &dbs.SessionInstance{Name: "Batch feedback"}
+	require.NoError(t, db.Create(fbInst).Error)
+	accessFeedback(t, db, f.athlete.ID, reporter.ID, &teamAID, fbInst.ID, false)
+
+	routeInst := &dbs.SessionInstance{Name: "Batch route"}
+	require.NoError(t, db.Create(routeInst).Error)
+	comp := newRouteCompetition()
+	comp.TeamID = f.teamA.ID
+	comp.CreatedByUserID = f.owner.ID
+	comp.CreatedByRole = competition.CreatorRoleTrainer
+	comp.Status = competition.StatusActive
+	comp.RouteSessionInstanceID = &routeInst.ID
+	require.NoError(t, db.Create(comp).Error)
+	require.NoError(t, db.Create(&dbs.CompetitionParticipant{CompetitionID: comp.ID, UserID: competitor.ID}).Error)
+
+	t.Run("mapa_mixto_dia_feedback_competencia", func(t *testing.T) {
+		access, err := dao.HasInstanceAccessBatch(nil, f.instDay.ID, []int64{f.athlete.ID, f.owner.ID, f.exMember.ID, f.stranger.ID})
+		require.NoError(t, err)
+		require.Len(t, access, 4)
+		assert.True(t, access[f.athlete.ID])
+		assert.True(t, access[f.owner.ID])
+		assert.False(t, access[f.exMember.ID])
+		assert.False(t, access[f.stranger.ID])
+
+		access, err = dao.HasInstanceAccessBatch(nil, fbInst.ID, []int64{f.athlete.ID, reporter.ID, f.owner.ID, f.stranger.ID})
+		require.NoError(t, err)
+		require.Len(t, access, 4)
+		assert.True(t, access[f.athlete.ID])
+		assert.True(t, access[reporter.ID])
+		assert.True(t, access[f.owner.ID])
+		assert.False(t, access[f.stranger.ID])
+
+		access, err = dao.HasInstanceAccessBatch(nil, routeInst.ID, []int64{competitor.ID, f.athlete.ID})
+		require.NoError(t, err)
+		require.Len(t, access, 2)
+		assert.True(t, access[competitor.ID])
+		assert.False(t, access[f.athlete.ID])
+	})
+
+	t.Run("instancia_inexistente_todo_falso", func(t *testing.T) {
+		access, err := dao.HasInstanceAccessBatch(nil, 999999, []int64{f.athlete.ID, f.stranger.ID})
+		require.NoError(t, err)
+		require.Len(t, access, 2)
+		assert.False(t, access[f.athlete.ID])
+		assert.False(t, access[f.stranger.ID])
+	})
+
+	t.Run("lote_vacio_sin_queries", func(t *testing.T) {
+		access, err := dao.HasInstanceAccessBatch(nil, f.instDay.ID, nil)
+		require.NoError(t, err)
+		assert.Empty(t, access)
 	})
 }
