@@ -16,6 +16,7 @@ type RefreshTokenDaoInterface interface {
 	FindActiveByHash(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error)
 	Revoke(ctx *gin.Context, id int64, replacedBy *int64) error
 	RevokeBySessionID(ctx *gin.Context, sessionID string) error
+	RevokeByUserID(ctx *gin.Context, userID int64) error
 }
 
 type refreshTokenDao struct {
@@ -63,5 +64,13 @@ func (d *refreshTokenDao) Revoke(ctx *gin.Context, id int64, replacedBy *int64) 
 func (d *refreshTokenDao) RevokeBySessionID(ctx *gin.Context, sessionID string) error {
 	return d.DB.Model(&dbs.RefreshToken{}).
 		Where("session_id = ? AND revoked_at IS NULL", sessionID).
+		Update("revoked_at", time.Now()).Error
+}
+
+// RevokeByUserID revoca todas las sesiones de refresh no revocadas de un usuario
+// (revocar una ya vencida es inocuo). Idempotente: segunda corrida no matchea filas.
+func (d *refreshTokenDao) RevokeByUserID(ctx *gin.Context, userID int64) error {
+	return d.DB.Model(&dbs.RefreshToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
 		Update("revoked_at", time.Now()).Error
 }

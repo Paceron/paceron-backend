@@ -128,3 +128,45 @@ func TestRefreshTokenDao_RevokeBySessionID_Success(t *testing.T) {
 	assert.Nil(t, found1)
 	assert.Nil(t, found2)
 }
+
+func TestRefreshTokenDao_RevokeByUserID_Success(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewRefreshTokenDao(db)
+	user := persistUser(db, "rt-byuser@test.com", "80000007")
+	other := persistUser(db, "rt-byuser-other@test.com", "80000008")
+	token1 := &dbs.RefreshToken{UserID: user.ID, SessionID: "u-session-7a", TokenHash: "hash-u7-1", ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+	token2 := &dbs.RefreshToken{UserID: user.ID, SessionID: "u-session-7b", TokenHash: "hash-u7-2", ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+	otherToken := &dbs.RefreshToken{UserID: other.ID, SessionID: "o-session-8", TokenHash: "hash-8-1", ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+	require.NoError(t, dao.Create(nil, token1))
+	require.NoError(t, dao.Create(nil, token2))
+	require.NoError(t, dao.Create(nil, otherToken))
+
+	err := dao.RevokeByUserID(nil, user.ID)
+
+	require.NoError(t, err)
+	found1, _ := dao.FindActiveByHash(nil, "hash-u7-1")
+	found2, _ := dao.FindActiveByHash(nil, "hash-u7-2")
+	assert.Nil(t, found1)
+	assert.Nil(t, found2)
+	foundOther, _ := dao.FindActiveByHash(nil, "hash-8-1")
+	require.NotNil(t, foundOther)
+	assert.Equal(t, otherToken.ID, foundOther.ID)
+}
+
+func TestRefreshTokenDao_RevokeByUserID_Idempotent(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewRefreshTokenDao(db)
+	user := persistUser(db, "rt-byuser2@test.com", "80000009")
+	token := &dbs.RefreshToken{UserID: user.ID, SessionID: "session-9", TokenHash: "hash-9", ExpiresAt: time.Now().Add(7 * 24 * time.Hour)}
+	require.NoError(t, dao.Create(nil, token))
+	require.NoError(t, dao.RevokeByUserID(nil, user.ID))
+
+	err := dao.RevokeByUserID(nil, user.ID)
+
+	require.NoError(t, err)
+	found, _ := dao.FindActiveByHash(nil, "hash-9")
+	assert.Nil(t, found)
+	var reloaded dbs.RefreshToken
+	require.NoError(t, db.First(&reloaded, token.ID).Error)
+	require.NotNil(t, reloaded.RevokedAt)
+}

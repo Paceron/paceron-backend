@@ -22,6 +22,7 @@ type mockRefreshTokenDao struct {
 	findActiveByHashFn  func(ctx *gin.Context, tokenHash string) (*dbs.RefreshToken, error)
 	revokeFn            func(ctx *gin.Context, id int64, replacedBy *int64) error
 	revokeBySessionIDFn func(ctx *gin.Context, sessionID string) error
+	revokeByUserIDFn    func(ctx *gin.Context, userID int64) error
 }
 
 func (m *mockRefreshTokenDao) Create(ctx *gin.Context, token *dbs.RefreshToken) error {
@@ -48,6 +49,13 @@ func (m *mockRefreshTokenDao) Revoke(ctx *gin.Context, id int64, replacedBy *int
 func (m *mockRefreshTokenDao) RevokeBySessionID(ctx *gin.Context, sessionID string) error {
 	if m.revokeBySessionIDFn != nil {
 		return m.revokeBySessionIDFn(ctx, sessionID)
+	}
+	return nil
+}
+
+func (m *mockRefreshTokenDao) RevokeByUserID(ctx *gin.Context, userID int64) error {
+	if m.revokeByUserIDFn != nil {
+		return m.revokeByUserIDFn(ctx, userID)
 	}
 	return nil
 }
