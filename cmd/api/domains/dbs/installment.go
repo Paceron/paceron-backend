@@ -9,9 +9,9 @@ import "time"
 // entre en vigencia el flujo de equipos (change suscripcion-teams-split).
 type Installment struct {
 	ID                int64      `gorm:"column:id;primaryKey"`
-	SubscriptionID    *int64     `gorm:"column:subscription_id"`
-	TeamID            *int64     `gorm:"column:team_id"`
-	UserID            int64      `gorm:"column:user_id;not null"`
+	SubscriptionID    *int64     `gorm:"column:subscription_id;index"`
+	TeamID            *int64     `gorm:"column:team_id;index:idx_installments_team_id_user_id,priority:1"`
+	UserID            int64      `gorm:"column:user_id;not null;index;index:idx_installments_team_id_user_id,priority:2"`
 	InstallmentNumber int        `gorm:"column:installment_number;not null"` // arranca en 1
 	Status            string     `gorm:"column:status;not null"`             // pending / paid / canceled
 	InternalPaymentID *int64     `gorm:"column:internal_payment_id"`         // FK -> payments.id

@@ -35,6 +35,21 @@ func TestDaos_HotTablesIndexes(t *testing.T) {
 		"idx_competition_team":                                "competition",
 		"idx_competition_participant_user":                    "competition_participant",
 		"idx_competition_winner_user":                         "competition_winner",
+		"idx_user_roles_user_id":                              "user_roles",
+		"idx_installments_user_id":                            "installments",
+		"idx_installments_team_id_user_id":                    "installments",
+		"idx_installments_subscription_id":                    "installments",
+		"idx_payments_installment_id":                         "payments",
+		"idx_session_exercises_session_id":                    "session_exercises",
+		"idx_plan_days_plan_id":                               "plan_days",
+		"idx_join_requests_team_id_status":                    "join_requests",
+		"idx_join_requests_runner_id":                         "join_requests",
+		"idx_user_role_tier_subscriptions_user_id_role_id":    "user_role_tier_subscriptions",
+		"idx_sessions_owner_id":                               "sessions",
+		"idx_exercises_owner_id":                              "exercises",
+		"idx_training_plans_owner_id":                         "training_plans",
+		"idx_runner_session_competition":                      "runner_session",
+		"uq_competition_route_session_instance":               "competition",
 	}
 
 	for indexName, table := range expected {
