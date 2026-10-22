@@ -21,30 +21,32 @@ import (
 // validaciones 400/403, transiciones y shape.
 
 type mockCompetitionDAO struct {
-	isOwnerFn          func(teamID, userID int64) (bool, error)
-	isMemberFn         func(teamID, userID int64) (bool, error)
-	teamOwnerFn        func(teamID int64) (int64, error)
-	countMembersFn     func(teamID int64, userIDs []int64) (int64, error)
-	groupBelongsToFn   func(groupID, teamID int64) (bool, error)
-	createFn           func(comp *dbs.Competition, participantIDs []int64) error
-	createWithInstFn   func(comp *dbs.Competition, participantIDs []int64) error
-	findByIDFn         func(id int64) (*dbs.Competition, error)
-	findByRouteInstFn  func(instanceID int64) (*dbs.Competition, error)
-	listParticipantsFn func(ids []int64) ([]dbs.CompetitionParticipant, error)
-	listByTeamFn       func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
-	isParticipantFn    func(competitionID, userID int64) (bool, error)
-	existsAttemptFn    func(competitionID, userID int64) (bool, error)
-	approveFn          func(competitionID, approvedBy int64) (bool, error)
-	rejectFn           func(competitionID int64, reason *string) (bool, error)
-	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
-	deleteFn           func(competitionID int64) (bool, error)
-	hasUnseenFn        func(userID, teamID int64) (bool, error)
-	aggregateWindowFn  func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
-	attemptSessionsFn  func(competitionID int64) ([]dbs.RunnerSession, error)
-	attemptPointsFn    func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	isOwnerFn              func(teamID, userID int64) (bool, error)
+	isMemberFn             func(teamID, userID int64) (bool, error)
+	teamOwnerFn            func(teamID int64) (int64, error)
+	countMembersFn         func(teamID int64, userIDs []int64) (int64, error)
+	groupBelongsToFn       func(groupID, teamID int64) (bool, error)
+	createFn               func(comp *dbs.Competition, participantIDs []int64) error
+	createWithInstFn       func(comp *dbs.Competition, participantIDs []int64) error
+	findByIDFn             func(id int64) (*dbs.Competition, error)
+	findByRouteInstFn      func(instanceID int64) (*dbs.Competition, error)
+	listParticipantsFn     func(ids []int64) ([]dbs.CompetitionParticipant, error)
+	listByTeamFn           func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
+	isParticipantFn        func(competitionID, userID int64) (bool, error)
+	existsAttemptFn        func(competitionID, userID int64) (bool, error)
+	createAttemptSessionFn func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error)
+	approveFn              func(competitionID, approvedBy int64) (bool, error)
+	rejectFn               func(competitionID int64, reason *string) (bool, error)
+	finishFn               func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
+	deleteFn               func(competitionID int64) (bool, error)
+	hasUnseenFn            func(userID, teamID int64) (bool, error)
+	aggregateWindowFn      func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
+	attemptSessionsFn      func(competitionID int64) ([]dbs.RunnerSession, error)
+	attemptPointsFn        func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
 	createWithInstCalls, existsAttemptCalls                          int
+	createAttemptSessionCalls                                        int
 	findByRouteInstCalls                                             int
 	lastFinishWinners                                                []int64
 	lastFinishUnseenCount, lastFinishStampsCount                     int
@@ -109,6 +111,14 @@ func (m *mockCompetitionDAO) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Conte
 		return m.existsAttemptFn(competitionID, userID)
 	}
 	return false, nil
+}
+
+func (m *mockCompetitionDAO) CreateAttemptSession(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+	m.createAttemptSessionCalls++
+	if m.createAttemptSessionFn != nil {
+		return m.createAttemptSessionFn(comp, athleteUserID)
+	}
+	return nil, nil
 }
 
 func (m *mockCompetitionDAO) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {

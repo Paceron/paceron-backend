@@ -512,6 +512,17 @@ func TestCompetitionController_CreateAttempt(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.Result().StatusCode)
 	})
 
+	t.Run("400 límite de intentos", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+			return nil, fmt.Errorf("%w: %s", services.ErrCompetitionInvalid, daos.ErrCompetitionAttemptLimit.Error())
+		}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
+		assert.Contains(t, competitionErrorMessage(t, resp), "llegaste al límite de intentos de esta competencia")
+	})
+
 	t.Run("path no numérico", func(t *testing.T) {
 		svc := &mockCompetitionService{}
 		router := setupCompetitionRouterS(t, svc, 7)

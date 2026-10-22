@@ -367,7 +367,7 @@ func (cc *competitionController) emitCompetitionFinished(competitionID int64, in
 
 // CreateAttempt godoc
 // @Summary      Registrar el intento del atleta en una competencia de ruta
-// @Description  Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip sobre la instancia sintética de la competencia tagueado con competition_id. Un único intento por participante (400 si ya registró uno, único garantizado por el constraint (session_instance_id, athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.
+// @Description  Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip tagueado con competition_id. El primer intento reusa la instancia sintética compartida de la competencia; los siguientes crean una instancia propia nueva ("Competencia ruta N (intento M)") cada vez, hasta agotar max_attempts si la competencia configuró uno (400 con "llegaste al límite de intentos de esta competencia"). El finish de cada intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.
 // @Tags         gamification
 // @Produce      json
 // @Param        id    path  int  true  "ID de la competencia"

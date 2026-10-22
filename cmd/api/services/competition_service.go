@@ -69,8 +69,9 @@ type competitionService struct {
 }
 
 // NewCompetitionService crea el service de competencias. runnerSessionDao es
-// variadic opcional (competencias-ruta-intake D2): los call sites históricos
-// de tres argumentos quedan intactos; CreateAttempt lo exige en runtime.
+// variadic opcional: los call sites históricos de tres argumentos quedan
+// intactos (el wiring futuro puede dejar de pasarle el runner DAO, el intake
+// del intento no lo usa desde Gap 36).
 func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface, runnerSessionDao ...daos.RunnerSessionDAOInterface) CompetitionServiceInterface {
 	svc := &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
 	if len(runnerSessionDao) > 0 && runnerSessionDao[0] != nil {
@@ -176,13 +177,13 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 	return toCompetitionResponse(comp, unique, nil), nil
 }
 
-// CreateAttempt registra el intento de una competencia route (D2): los 5
-// guards en orden, cada uno sin tocar la escritura, y el insert de
-// runner_session reusando el DAO de runner sessions (mismo ON CONFLICT DO
-// NOTHING: si un intento concurrente ganó la carrera, RowsAffected=0 también
-// es doble intento — el uq (session_instance_id, athlete_user_id) arbitra).
-// Sin gate presencial ni rango temporal: la instancia sintética no tiene día
-// y route no usa ventana.
+// CreateAttempt registra el intento de una competencia route (Gap 36,
+// intentos múltiples): los guards de cabeza quedan (404 → 400 type → 400
+// status → 403 → guard de instancia compartida) y el límite/doble intento lo
+// arbitra el DAO en su transacción (count >= max_attempts / ON CONFLICT) que
+// también materializa la instancia del intento. Sin gate presencial ni rango
+// temporal: la instancia sintética no tiene día y route no usa ventana.
+// Sentinels del DAO → ErrCompetitionInvalid (mismo mapping 400 del controller).
 func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error) {
 	comp, err := s.dao.FindByID(ctx, competitionID)
 	if err != nil {
@@ -201,36 +202,21 @@ func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competiti
 	if !isParticipant {
 		return nil, ErrCompetitionForbidden
 	}
-	attempt, err := s.dao.ExistsAttemptByCompetitionAndAthlete(ctx, competitionID, callerID)
-	if err != nil {
-		return nil, fmt.Errorf("error al registrar el intento")
-	}
-	if attempt {
-		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
-	}
-	if s.runnerSessionDao == nil {
-		customlogger.Error(ctx, "competition attempt without runner session dao", nil, customlogger.TagMethod("CompetitionCreateAttempt"))
-		return nil, fmt.Errorf("error al registrar el intento")
-	}
 	if comp.RouteSessionInstanceID == nil {
 		return nil, fmt.Errorf("%w: la competencia no tiene instancia de ruta asignada", ErrCompetitionInvalid)
 	}
-	rs := &dbs.RunnerSession{
-		SessionInstanceID: *comp.RouteSessionInstanceID,
-		AthleteUserID:     callerID,
-		Status:            runnersession.RunnerSessionStatusWip,
-		StartDate:         gametime.Now(),
-		CompetitionID:     &comp.ID,
-	}
-	created, err := s.runnerSessionDao.Create(ctx, rs)
+	attempt, err := s.dao.CreateAttemptSession(ctx, comp, callerID)
 	if err != nil {
+		if errors.Is(err, daos.ErrCompetitionAttemptLimit) {
+			return nil, fmt.Errorf("%w: %s", ErrCompetitionInvalid, daos.ErrCompetitionAttemptLimit.Error())
+		}
+		if errors.Is(err, daos.ErrCompetitionAttemptConflict) {
+			return nil, fmt.Errorf("%w: %s", ErrCompetitionInvalid, daos.ErrCompetitionAttemptConflict.Error())
+		}
 		customlogger.Error(ctx, "error creating competition attempt", err, customlogger.TagMethod("CompetitionCreateAttempt"))
 		return nil, fmt.Errorf("error al registrar el intento")
 	}
-	if !created {
-		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
-	}
-	return rs, nil
+	return attempt, nil
 }
 
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige
