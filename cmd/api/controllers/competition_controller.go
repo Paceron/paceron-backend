@@ -27,6 +27,7 @@ type CompetitionController interface {
 	Cancel(c *gin.Context)
 	ListByTeam(c *gin.Context)
 	GetDetail(c *gin.Context)
+	ListAttempts(c *gin.Context)
 	Close(c *gin.Context)
 	CreateAttempt(c *gin.Context)
 }
@@ -312,6 +313,54 @@ func (cc *competitionController) GetDetail(c *gin.Context) {
 		return
 	}
 	resp, err := cc.competitionService.Get(c, authUserID, competitionID)
+	if err != nil {
+		respondCompetitionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ListAttempts godoc
+// @Summary      Listar los intentos de un atleta en una competencia
+// @Description  Guard igual que el detalle: 404 si la competencia no existe (antes de todo guard), 403 si el caller no es miembro de grupo del team ni owner. Sin query athlete_user_id lista los intentos del caller; con la query, los de ese atleta (cualquier miembro puede ver los de otro; no-participante = lista vacía). Ítems orden por id ASC: distance_meters del feedback activo (null si no hay), compliance_ratio solo en finished (0 sin puntos GPS, matching on-demand) y duration_ms end-start server-side (null en wip).
+// @Tags         gamification
+// @Produce      json
+// @Param              id              path  int     true  "ID de la competencia"
+// @Param              athlete_user_id query int     false "Atleta cuyos intentos listar (default: el caller)"
+// @Success      200  {object}  competition.CompetitionAttemptsResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/competitions/{id}/attempts [get]
+func (cc *competitionController) ListAttempts(c *gin.Context) {
+	authUserID, ok := requireAuthForCompetition(c)
+	if !ok {
+		return
+	}
+	competitionID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	athleteQuery, err := parseOptionalPositiveQueryParam(c, "athlete_user_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	athleteUserID := authUserID
+	if athleteQuery != nil {
+		athleteUserID = *athleteQuery
+	}
+	resp, err := cc.competitionService.ListAttempts(c, authUserID, competitionID, athleteUserID)
 	if err != nil {
 		respondCompetitionError(c, err)
 		return

@@ -614,6 +614,32 @@ definitions:
     - plan_id
     - start_date
     type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptItem:
+    properties:
+      compliance_ratio:
+        type: number
+      distance_meters:
+        type: number
+      duration_ms:
+        type: integer
+      ended_at:
+        type: string
+      id:
+        type: integer
+      session_instance_id:
+        type: integer
+      started_at:
+        type: string
+      status:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptItem'
+        type: array
+    type: object
   simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse:
     properties:
       message:
@@ -3778,6 +3804,50 @@ paths:
       tags:
       - gamification
   /api/v1/competitions/{id}/attempts:
+    get:
+      description: 'Guard igual que el detalle: 404 si la competencia no existe (antes
+        de todo guard), 403 si el caller no es miembro de grupo del team ni owner.
+        Sin query athlete_user_id lista los intentos del caller; con la query, los
+        de ese atleta (cualquier miembro puede ver los de otro; no-participante =
+        lista vacía). Ítems orden por id ASC: distance_meters del feedback activo
+        (null si no hay), compliance_ratio solo en finished (0 sin puntos GPS, matching
+        on-demand) y duration_ms end-start server-side (null en wip).'
+      parameters:
+      - description: ID de la competencia
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 'Atleta cuyos intentos listar (default: el caller)'
+        in: query
+        name: athlete_user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Listar los intentos de un atleta en una competencia
+      tags:
+      - gamification
     post:
       description: 'Solo competencias type=route en status active y con el caller
         entre los participantes: crea su estado de sesión wip tagueado con competition_id.

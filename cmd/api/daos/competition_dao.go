@@ -99,6 +99,14 @@ type CompetitionDAOInterface interface {
 	// competition_id (intentos registrados de cualquier status; el service
 	// filtra finished para el matching — D9/D10).
 	ListAttemptSessions(ctx *gin.Context, competitionID int64) ([]dbs.RunnerSession, error)
+	// ListAttemptsByCompetitionAndAthlete devuelve los intentos del atleta en
+	// la competencia (cualquier status), ORDER BY id ASC (cronológico =
+	// número de intento, Gap 36 D4).
+	ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error)
+	// SumFeedbackDistanceByInstances suma distance_meters del feedback activo
+	// del atleta sobre las instancias dadas, GROUP BY assigned_session_id
+	// (batch sin N+1, D4). Sin feedback para una instancia no hay fila.
+	SumFeedbackDistanceByInstances(ctx *gin.Context, sessionInstanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error)
 	// ListAttemptPoints trae en una sola query los puntos GPS de los intentos
 	// provistos (join feedback activo del atleta, D10).
 	ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
@@ -635,6 +643,38 @@ func (d *competitionDao) ListAttemptSessions(ctx *gin.Context, competitionID int
 		return nil, fmt.Errorf("error listing competition attempts: %w", err)
 	}
 	return sessions, nil
+}
+
+// ListAttemptsByCompetitionAndAthlete lista los intentos de un atleta
+// (cualquier status) con ORDER BY id ASC: el id es cronológico, así que el
+// intento 1 queda primero.
+func (d *competitionDao) ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error) {
+	var sessions []dbs.RunnerSession
+	err := d.DB.Where("competition_id = ? AND athlete_user_id = ?", competitionID, athleteUserID).
+		Order("id ASC").Find(&sessions).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing competition attempts by athlete: %w", err)
+	}
+	return sessions, nil
+}
+
+// SumFeedbackDistanceByInstances acumula la distancia del feedback ACTIVO del
+// atleta por instancia (soft-deleted no suma): instancia sin feedback no
+// aparece en la respuesta (el service la deja null).
+func (d *competitionDao) SumFeedbackDistanceByInstances(ctx *gin.Context, sessionInstanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error) {
+	if len(sessionInstanceIDs) == 0 {
+		return nil, nil
+	}
+	var rows []dbs.CompetitionInstanceDistanceAgg
+	err := d.DB.Model(&dbs.WorkoutFeedback{}).
+		Select("assigned_session_id, SUM(distance_meters) AS sum_distance").
+		Where("assigned_session_id IN ? AND athlete_user_id = ? AND deleted_at IS NULL", sessionInstanceIDs, athleteUserID).
+		Group("assigned_session_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error summing competition feedback distance: %w", err)
+	}
+	return rows, nil
 }
 
 // ListAttemptPoints une en una query los puntos GPS de los intentos (los

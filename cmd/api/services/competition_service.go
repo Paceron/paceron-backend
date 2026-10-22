@@ -47,6 +47,11 @@ type CompetitionServiceInterface interface {
 	Cancel(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
 	ListByTeam(ctx *gin.Context, callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
 	Get(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
+	// ListAttempts lista los intentos de un atleta en la competencia (Gap 36
+	// D4): guard 404 → miembro-u-owner 403, sin guard de tipo/status. Sin
+	// atleta explícito lista los del caller; un atleta no-participante
+	// devuelve data vacía (la lectura no exige participación).
+	ListAttempts(ctx *gin.Context, callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error)
 	// Close aplica el cierre (status finished + efectos): devuelve la respuesta
 	// y los session_instance_ids de los intentos registrados de la competencia
 	// para el control:competition_finished del controller (D9); sin intentos
@@ -498,6 +503,122 @@ func (s *competitionService) Get(ctx *gin.Context, callerID, competitionID int64
 		}
 	}
 	return &competition.CompetitionDetailResponse{Data: *s.detailResponse(ctx, bundle)}, nil
+}
+
+// attemptItems arma los ítems del listado de intentos (null-rules D4):
+// distance_meters del feedback activo (null sin feedback), compliance_ratio
+// solo finished (0 si finished sin GPS, matching on-demand) y duration_ms
+// end-start server-side (null sin end).
+func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competition, sessions []dbs.RunnerSession) ([]competition.CompetitionAttemptItem, error) {
+	items := make([]competition.CompetitionAttemptItem, 0, len(sessions))
+	if len(sessions) == 0 {
+		return items, nil
+	}
+	athleteID := sessions[0].AthleteUserID
+	instanceIDs := make([]int64, 0, len(sessions))
+	finishedIDs := make([]int64, 0, len(sessions))
+	for _, rs := range sessions {
+		instanceIDs = append(instanceIDs, rs.SessionInstanceID)
+		if rs.Status == runnersession.RunnerSessionStatusFinished {
+			finishedIDs = append(finishedIDs, rs.SessionInstanceID)
+		}
+	}
+	dists, err := s.dao.SumFeedbackDistanceByInstances(ctx, instanceIDs, athleteID)
+	if err != nil {
+		customlogger.Error(ctx, "error summing competition attempt distance", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	sumByInstance := make(map[int64]*float64, len(dists))
+	for _, r := range dists {
+		sumByInstance[r.SessionInstanceID] = r.SumDistance
+	}
+	var samples []routematch.Point
+	radius := 0.0
+	pointsByInstance := make(map[int64][]routematch.Point)
+	if len(finishedIDs) > 0 {
+		samples, err = s.routeSamples(ctx, comp)
+		if err != nil {
+			// Ruta mal cargada no se engaña a null: igual que el cierre, sube.
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		if comp.AcceptanceRadiusMeters != nil {
+			radius = *comp.AcceptanceRadiusMeters
+		}
+		points, err := s.dao.ListAttemptPoints(ctx, finishedIDs, []int64{athleteID})
+		if err != nil {
+			customlogger.Error(ctx, "error listing competition attempt points", err, customlogger.TagMethod("CompetitionListAttempts"))
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		for _, p := range points {
+			pointsByInstance[p.SessionInstanceID] = append(pointsByInstance[p.SessionInstanceID], routematch.Point{Lat: p.Latitude, Lng: p.Longitude})
+		}
+	}
+	for _, rs := range sessions {
+		item := competition.CompetitionAttemptItem{
+			ID:                rs.ID,
+			SessionInstanceID: rs.SessionInstanceID,
+			Status:            rs.Status,
+			StartedAt:         rs.StartDate,
+			EndedAt:           rs.EndDate,
+			DistanceMeters:    sumByInstance[rs.SessionInstanceID],
+		}
+		if rs.Status == runnersession.RunnerSessionStatusFinished {
+			pct := routematch.MatchPercent(samples, radius, pointsByInstance[rs.SessionInstanceID])
+			item.ComplianceRatio = &pct
+		}
+		if rs.EndDate != nil {
+			ms := rs.EndDate.Sub(rs.StartDate).Milliseconds()
+			if ms < 0 {
+				ms = 0
+			}
+			item.DurationMs = &ms
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// ListAttempts guarda 404 → miembro-u-owner 403 (igual que el detalle, sin
+// guard de tipo/status) y arma los ítems del intento. El atleta pedido
+// no-participante devuelve data vacía sin error.
+func (s *competitionService) ListAttempts(ctx *gin.Context, callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+	comp, err := s.dao.FindByID(ctx, competitionID)
+	if err != nil {
+		return nil, err
+	}
+	isOwner, err := s.dao.IsTeamOwner(ctx, comp.TeamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking competition attempts owner", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	if !isOwner {
+		isMember, err := s.dao.IsTeamGroupMember(ctx, comp.TeamID, callerID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking competition attempts member", err, customlogger.TagMethod("CompetitionListAttempts"))
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		if !isMember {
+			return nil, ErrCompetitionForbidden
+		}
+	}
+	isParticipant, err := s.dao.IsParticipant(ctx, competitionID, athleteUserID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking competition attempts participant", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	if !isParticipant {
+		return &competition.CompetitionAttemptsResponse{Data: []competition.CompetitionAttemptItem{}}, nil
+	}
+	sessions, err := s.dao.ListAttemptsByCompetitionAndAthlete(ctx, competitionID, athleteUserID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing competition attempts", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	items, err := s.attemptItems(ctx, comp, sessions)
+	if err != nil {
+		return nil, err
+	}
+	return &competition.CompetitionAttemptsResponse{Data: items}, nil
 }
 
 // detailResponse arma la respuesta del detalle desde el bundle (usada en Get

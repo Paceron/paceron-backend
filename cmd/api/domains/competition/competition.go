@@ -101,6 +101,30 @@ type RejectRequest struct {
 	Reason *string `json:"reason"`
 }
 
+// CompetitionAttemptItem es un intento del listado GET /competitions/{id}/attempts
+// (Gap 36 D4). started_at/ended_at son los nombres del DTO; la fuente es
+// start_date/end_date de runner_session. distance_meters: SUM del feedback
+// activo del atleta sobre la instancia (null si no hay). compliance_ratio:
+// matching on-demand, null salvo finished. duration_ms: end-start server-side
+// (null en wip).
+type CompetitionAttemptItem struct {
+	ID                int64      `json:"id"`
+	SessionInstanceID int64      `json:"session_instance_id"`
+	Status            string     `json:"status"`
+	StartedAt         time.Time  `json:"started_at"`
+	EndedAt           *time.Time `json:"ended_at"`
+	DistanceMeters    *float64   `json:"distance_meters"`
+	ComplianceRatio   *float64   `json:"compliance_ratio"`
+	DurationMs        *int64     `json:"duration_ms"`
+}
+
+// CompetitionAttemptsResponse es la respuesta de GET /competitions/{id}/attempts:
+// envoltura simple {data: [...]}, SIN has_unseen (el unseen de competencias es
+// por team y lo cubre el listado).
+type CompetitionAttemptsResponse struct {
+	Data []CompetitionAttemptItem `json:"data"`
+}
+
 // CompetitionCancelResponse es la respuesta de DELETE /competitions/{id}/cancel
 // (la competencia ya no existe, no hay data).
 type CompetitionCancelResponse struct {

@@ -36,15 +36,18 @@ type SessionInstanceDaoInterface interface {
 	// día con esta instancia donde el caller es miembro activo del grupo u
 	// owner del equipo, O feedback activo sobre la instancia donde el caller
 	// es atleta, reportante u owner del equipo. TERCERA rama
-	// (competencias-ruta-intake D8): si la instancia es la sintética de una
-	// competencia type=route, autoriza al participante de esa competencia sin
-	// filtro de status (el front suscribe el canal session:{id} del intento en
-	// el pre-start, antes de que exista feedback).
+	// (competencias-ruta-intake D8, extendida por
+	// competencias-ruta-intentos-multiples D3): si la instancia es la
+	// sintética de una competencia type=route —anclada por
+	// route_session_instance_id o con algún runner_session tagueado con ella
+	// (intentos 2+, cualquier status)— autoriza al participante de esa
+	// competencia (el front suscribe el canal session:{id} del intento en el
+	// pre-start, antes de que exista feedback).
 	HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error)
 	// HasInstanceAccessBatch: espejo en lote de HasInstanceAccess (misma regla,
-	// incluida la rama de competencias route). Cantidad de queries independiente
-	// de la lista; todo userIDs queda en el map (false si sin acceso). Lote
-	// vacío no toca la DB.
+	// incluida la rama de competencias route con sus dos vías). Cantidad de
+	// queries independiente de la lista; todo userIDs queda en el map (false
+	// si sin acceso). Lote vacío no toca la DB.
 	HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
 }
 
@@ -163,15 +166,36 @@ func (d *sessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID, cal
 	if fbCount > 0 {
 		return true, nil
 	}
-	var compCount int64
-	err = d.DB.Model(&dbs.Competition{}).
-		Joins("JOIN competition_participant ON competition_participant.competition_id = competition.id AND competition_participant.user_id = ?", callerID).
-		Where("competition.route_session_instance_id = ? AND competition.type = ?", instanceID, competition.TypeRoute).
-		Count(&compCount).Error
+	// hasAccessCompetitionSQL: 3ª rama (D3), espejo de
+	// hasAccessBatchCompetitionSQL — no pueden divergir. Dos EXISTS
+	// autocontenidos: la competencia anclada por route_session_instance_id y
+	// la del runner_session del intento pueden ser DIFERENTES, así que cada
+	// lado chequea participante contra SU competencia (un join cruzado
+	// mezclaría la autorización). Sin filtro de status del intento.
+	const hasAccessCompetitionSQL = `
+SELECT EXISTS (
+    SELECT 1
+    FROM competition c
+    JOIN competition_participant cp ON cp.competition_id = c.id AND cp.user_id = $1
+    WHERE c.route_session_instance_id = $2
+      AND c.type = $3
+) OR EXISTS (
+    SELECT 1
+    FROM runner_session rs
+    JOIN competition c2 ON c2.id = rs.competition_id AND c2.type = $3
+    WHERE rs.session_instance_id = $2
+      AND EXISTS (
+          SELECT 1
+          FROM competition_participant cp2
+          WHERE cp2.competition_id = c2.id AND cp2.user_id = $1
+      )
+)`
+	var compAccess bool
+	err = d.DB.Raw(hasAccessCompetitionSQL, callerID, instanceID, competition.TypeRoute).Scan(&compAccess).Error
 	if err != nil {
 		return false, fmt.Errorf("error checking session instance competition access: %w", err)
 	}
-	return compCount > 0, nil
+	return compAccess, nil
 }
 
 // hasAccessBatchSQL: misma condición que HasInstanceAccess, lista via unnest.
@@ -217,6 +241,16 @@ WHERE EXISTS (
     JOIN competition_participant cp ON cp.competition_id = c.id AND cp.user_id = u.user_id
     WHERE c.route_session_instance_id = $2
       AND c.type = $3
+) OR EXISTS (
+    SELECT 1
+    FROM runner_session rs
+    JOIN competition c2 ON c2.id = rs.competition_id AND c2.type = $3
+    WHERE rs.session_instance_id = $2
+      AND EXISTS (
+          SELECT 1
+          FROM competition_participant cp2
+          WHERE cp2.competition_id = c2.id AND cp2.user_id = u.user_id
+      )
 )`
 
 // batchAccessIDs corre una query EXISTS sobre los usuarios pendientes.

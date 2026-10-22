@@ -43,6 +43,8 @@ type mockCompetitionDAO struct {
 	aggregateWindowFn      func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
 	attemptSessionsFn      func(competitionID int64) ([]dbs.RunnerSession, error)
 	attemptPointsFn        func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	listAttemptsFn         func(competitionID, athleteUserID int64) ([]dbs.RunnerSession, error)
+	sumDistanceFn          func(instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
 	createWithInstCalls, existsAttemptCalls                          int
@@ -220,6 +222,20 @@ func (m *mockCompetitionDAO) ListAttemptSessions(ctx *gin.Context, competitionID
 func (m *mockCompetitionDAO) ListAttemptPoints(ctx *gin.Context, instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
 	if m.attemptPointsFn != nil {
 		return m.attemptPointsFn(instanceIDs, athleteIDs)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error) {
+	if m.listAttemptsFn != nil {
+		return m.listAttemptsFn(competitionID, athleteUserID)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) SumFeedbackDistanceByInstances(ctx *gin.Context, instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error) {
+	if m.sumDistanceFn != nil {
+		return m.sumDistanceFn(instanceIDs, athleteUserID)
 	}
 	return nil, nil
 }

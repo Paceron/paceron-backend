@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -245,4 +247,122 @@ func TestCompetitionDAO_FindByRouteSessionInstance(t *testing.T) {
 	// Ni una id inexistente ni la fk opaca vacía de las metric resuelven dueña.
 	_, err = dao.FindByRouteSessionInstance(nil, 999999)
 	require.ErrorIs(t, err, ErrCompetitionNotFound)
+}
+
+// ListAttemptsByCompetitionAndAthlete (Gap 36 D4): solo los intentos del
+// atleta pedido en la competencia, orden id ASC (cronológico = intento 1
+// primero) con cualquier status.
+func TestCompetitionDAO_ListAttemptsByCompetitionAndAthlete(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "rt06")
+
+	comp := newRouteCompetition()
+	comp.TeamID = fx.team.ID
+	comp.CreatedByUserID = fx.owner.ID
+	comp.CreatedByRole = competition.CreatorRoleTrainer
+	comp.Status = competition.StatusActive
+	require.NoError(t, dao.CreateWithInstance(nil, comp, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+	sharedInst := *comp.RouteSessionInstanceID
+
+	inst2 := &dbs.SessionInstance{Name: "Intento 2 de rt06"}
+	require.NoError(t, db.Create(inst2).Error)
+	end := time.Date(2026, 10, 3, 10, 30, 0, 0, time.UTC)
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: inst2.ID, AthleteUserID: fx.runnerB.ID,
+		Status: "finished", StartDate: time.Date(2026, 10, 3, 10, 0, 0, 0, time.UTC), EndDate: &end,
+		CompetitionID: &comp.ID,
+	}).Error)
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: sharedInst, AthleteUserID: fx.runnerA.ID,
+		Status: "wip", StartDate: time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC),
+		CompetitionID: &comp.ID,
+	}).Error)
+
+	rows, err := dao.ListAttemptsByCompetitionAndAthlete(nil, comp.ID, fx.runnerA.ID)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, sharedInst, rows[0].SessionInstanceID)
+	assert.Equal(t, "wip", rows[0].Status)
+
+	finished, err := dao.ListAttemptsByCompetitionAndAthlete(nil, comp.ID, fx.runnerB.ID)
+	require.NoError(t, err)
+	require.Len(t, finished, 1)
+
+	// Otro atleta con 2 intentos: el orden queda por id ASC.
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: sharedInst, AthleteUserID: fx.runnerB.ID,
+		Status: "finished", StartDate: end, EndDate: func() *time.Time { e := end.Add(time.Hour); return &e }(),
+		CompetitionID: &comp.ID,
+	}).Error)
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: inst2.ID, AthleteUserID: fx.runnerA.ID,
+		Status: "wip", StartDate: end, CompetitionID: &comp.ID,
+	}).Error)
+
+	both, err := dao.ListAttemptsByCompetitionAndAthlete(nil, comp.ID, fx.runnerB.ID)
+	require.NoError(t, err)
+	require.Len(t, both, 2)
+	assert.Less(t, both[0].ID, both[1].ID)
+	assert.Equal(t, inst2.ID, both[0].SessionInstanceID)
+	assert.Equal(t, sharedInst, both[1].SessionInstanceID)
+
+	// Sin intentos en la competencia = lista vacía, sin error.
+	empty, err := dao.ListAttemptsByCompetitionAndAthlete(nil, comp.ID, fx.outsider.ID)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+// sumFeedbackRow crea un workout_feedback de sum distance (feedback "de route"
+// con set/distance) para los tests de agregación; deleted simula soft-delete.
+func sumFeedbackRow(t *testing.T, db *gorm.DB, athleteID, reporterID int64, teamID *int64, instanceID int64, setNumber int, distance float64, deleted bool) {
+	t.Helper()
+	var media pgtype.TextArray
+	require.NoError(t, media.Set(nil))
+	fb := &dbs.WorkoutFeedback{
+		TeamID: teamID, AssignedSessionID: instanceID, AssignedExerciseID: 1,
+		AthleteUserID: athleteID, FeedbackOwnerUserID: reporterID,
+		ReportSource: "corredor", SessionDate: time.Now(), SetNumber: setNumber,
+		DistanceMeters: &distance, MediaURLs: media,
+	}
+	if deleted {
+		now := time.Now()
+		fb.DeletedAt = &now
+	}
+	require.NoError(t, db.Create(fb).Error)
+}
+
+// SumFeedbackDistanceByInstances (Gap 36 D4): suma distance_meters del
+// feedback activo del atleta por instancia; soft-deleted no suma; instancia
+// sin feedback no aparece (el service deja el campo null).
+func TestCompetitionDAO_SumFeedbackDistanceByInstances(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "rt07")
+
+	inst1 := &dbs.SessionInstance{Name: "Sum inst1"}
+	inst2 := &dbs.SessionInstance{Name: "Sum inst2"}
+	inst3 := &dbs.SessionInstance{Name: "Sum inst3"}
+	require.NoError(t, db.Create(&[]*dbs.SessionInstance{inst1, inst2, inst3}).Error)
+
+	teamID := fx.team.ID
+	// inst1: dos series activas del atleta (100 + 50).
+	sumFeedbackRow(t, db, fx.runnerA.ID, fx.runnerA.ID, &teamID, inst1.ID, 1, 100, false)
+	sumFeedbackRow(t, db, fx.runnerA.ID, fx.runnerA.ID, &teamID, inst1.ID, 2, 50, false)
+	// inst2: único feedback soft-deleted → no suma (no hay fila).
+	sumFeedbackRow(t, db, fx.runnerA.ID, fx.runnerA.ID, &teamID, inst2.ID, 1, 999, true)
+	// Otro atleta sobre inst1: no entra al atleta pedido.
+	sumFeedbackRow(t, db, fx.runnerB.ID, fx.runnerB.ID, &teamID, inst1.ID, 1, 777, false)
+
+	rows, err := dao.SumFeedbackDistanceByInstances(nil, []int64{inst1.ID, inst2.ID, inst3.ID}, fx.runnerA.ID)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, inst1.ID, rows[0].SessionInstanceID)
+	require.NotNil(t, rows[0].SumDistance)
+	assert.InDelta(t, 150.0, *rows[0].SumDistance, 1e-9)
+
+	// Sin instancias: no toca la DB.
+	rows, err = dao.SumFeedbackDistanceByInstances(nil, nil, fx.runnerA.ID)
+	require.NoError(t, err)
+	assert.Nil(t, rows)
 }

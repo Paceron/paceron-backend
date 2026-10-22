@@ -58,3 +58,11 @@ type CompetitionAttemptPoint struct {
 	Latitude          float64 `gorm:"column:latitude"`
 	Longitude         float64 `gorm:"column:longitude"`
 }
+
+// CompetitionInstanceDistanceAgg agrupa la distancia sumada del feedback
+// activo de UN atleta por instancia (assigned_session_id FK opaca) — fuente
+// de distance_meters en el listado de intentos (Gap 36 D4).
+type CompetitionInstanceDistanceAgg struct {
+	SessionInstanceID int64    `gorm:"column:assigned_session_id"`
+	SumDistance       *float64 `gorm:"column:sum_distance"`
+}
