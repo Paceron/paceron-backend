@@ -964,7 +964,7 @@ const docTemplate = `{
         },
         "/api/v1/competitions/{id}/attempts": {
             "get": {
-                "description": "Guard igual que el detalle: 404 si la competencia no existe (antes de todo guard), 403 si el caller no es miembro de grupo del team ni owner. Sin query athlete_user_id lista los intentos del caller; con la query, los de ese atleta (cualquier miembro puede ver los de otro; no-participante = lista vacía). Ítems orden por id ASC: distance_meters del feedback activo (null si no hay), compliance_ratio solo en finished (0 sin puntos GPS, matching on-demand) y duration_ms end-start server-side (null en wip).",
+                "description": "Guard igual que el detalle: 404 si la competencia no existe (antes de todo guard), 403 si el caller no es miembro de grupo del team ni owner. Sin query athlete_user_id lista los intentos del caller; con la query, los de ese atleta (cualquier miembro puede ver los de otro; no-participante = lista vacía). Ítems orden por id ASC: distance_meters del feedback activo (null si no hay), compliance_ratio solo en finished de route (metric no matchea: null; 0 sin puntos GPS, matching on-demand) y duration_ms end-start server-side (null en wip).",
                 "produces": [
                     "application/json"
                 ],

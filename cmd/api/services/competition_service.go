@@ -534,14 +534,13 @@ func (s *competitionService) Get(ctx *gin.Context, callerID, competitionID int64
 
 // attemptItems arma los ítems del listado de intentos (null-rules D4):
 // distance_meters del feedback activo (null sin feedback), compliance_ratio
-// solo finished (0 si finished sin GPS, matching on-demand) y duration_ms
+// solo finished de route (metric no matchea: null, sin ruta) y duration_ms
 // end-start server-side (null sin end).
-func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competition, sessions []dbs.RunnerSession) ([]competition.CompetitionAttemptItem, error) {
+func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64, sessions []dbs.RunnerSession) ([]competition.CompetitionAttemptItem, error) {
 	items := make([]competition.CompetitionAttemptItem, 0, len(sessions))
 	if len(sessions) == 0 {
 		return items, nil
 	}
-	athleteID := sessions[0].AthleteUserID
 	instanceIDs := make([]int64, 0, len(sessions))
 	finishedIDs := make([]int64, 0, len(sessions))
 	for _, rs := range sessions {
@@ -550,7 +549,7 @@ func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competitio
 			finishedIDs = append(finishedIDs, rs.SessionInstanceID)
 		}
 	}
-	dists, err := s.dao.SumFeedbackDistanceByInstances(ctx, instanceIDs, athleteID)
+	dists, err := s.dao.SumFeedbackDistanceByInstances(ctx, instanceIDs, athleteUserID)
 	if err != nil {
 		customlogger.Error(ctx, "error summing competition attempt distance", err, customlogger.TagMethod("CompetitionListAttempts"))
 		return nil, fmt.Errorf("error al consultar los intentos")
@@ -562,7 +561,8 @@ func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competitio
 	var samples []routematch.Point
 	radius := 0.0
 	pointsByInstance := make(map[int64][]routematch.Point)
-	if len(finishedIDs) > 0 {
+	isRoute := comp.Type == competition.TypeRoute
+	if isRoute && len(finishedIDs) > 0 {
 		samples, err = s.routeSamples(ctx, comp)
 		if err != nil {
 			// Ruta mal cargada no se engaña a null: igual que el cierre, sube.
@@ -571,7 +571,7 @@ func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competitio
 		if comp.AcceptanceRadiusMeters != nil {
 			radius = *comp.AcceptanceRadiusMeters
 		}
-		points, err := s.dao.ListAttemptPoints(ctx, finishedIDs, []int64{athleteID})
+		points, err := s.dao.ListAttemptPoints(ctx, finishedIDs, []int64{athleteUserID})
 		if err != nil {
 			customlogger.Error(ctx, "error listing competition attempt points", err, customlogger.TagMethod("CompetitionListAttempts"))
 			return nil, fmt.Errorf("error al consultar los intentos")
@@ -589,20 +589,27 @@ func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competitio
 			EndedAt:           rs.EndDate,
 			DistanceMeters:    sumByInstance[rs.SessionInstanceID],
 		}
-		if rs.Status == runnersession.RunnerSessionStatusFinished {
+		if isRoute && rs.Status == runnersession.RunnerSessionStatusFinished {
 			pct := routematch.MatchPercent(samples, radius, pointsByInstance[rs.SessionInstanceID])
 			item.ComplianceRatio = &pct
 		}
 		if rs.EndDate != nil {
-			ms := rs.EndDate.Sub(rs.StartDate).Milliseconds()
-			if ms < 0 {
-				ms = 0
-			}
+			ms := attemptDurationMs(rs.StartDate, *rs.EndDate)
 			item.DurationMs = &ms
 		}
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+// attemptDurationMs es la duración de un intento en ms (end-start, 0 si
+// negativa); única forma para attempts, progress y winners (D10).
+func attemptDurationMs(start, end time.Time) int64 {
+	ms := end.Sub(start).Milliseconds()
+	if ms < 0 {
+		return 0
+	}
+	return ms
 }
 
 // ListAttempts guarda 404 → miembro-u-owner 403 (igual que el detalle, sin
@@ -641,7 +648,7 @@ func (s *competitionService) ListAttempts(ctx *gin.Context, callerID, competitio
 		customlogger.Error(ctx, "error listing competition attempts", err, customlogger.TagMethod("CompetitionListAttempts"))
 		return nil, fmt.Errorf("error al consultar los intentos")
 	}
-	items, err := s.attemptItems(ctx, comp, sessions)
+	items, err := s.attemptItems(ctx, comp, athleteUserID, sessions)
 	if err != nil {
 		return nil, err
 	}
@@ -752,7 +759,7 @@ type competitionRouteAttempt struct {
 	userID     int64
 	instanceID int64
 	pct        float64
-	durationMs float64
+	durationMs int64
 }
 
 // bestAttemptByAthlete reduce los intentos finished al MEJOR de cada atleta
@@ -822,11 +829,11 @@ func (s *competitionService) routeAttempts(ctx *gin.Context, bundle *competition
 	attempts = make([]competitionRouteAttempt, 0, len(finished))
 	for _, rs := range finished {
 		pct := routematch.MatchPercent(samples, radius, byAttempt[[2]int64{rs.SessionInstanceID, rs.AthleteUserID}])
-		duration := 0.0
-		if rs.EndDate != nil && rs.EndDate.After(rs.StartDate) {
-			duration = rs.EndDate.Sub(rs.StartDate).Seconds() * 1000
+		durationMs := int64(0)
+		if rs.EndDate != nil {
+			durationMs = attemptDurationMs(rs.StartDate, *rs.EndDate)
 		}
-		attempts = append(attempts, competitionRouteAttempt{userID: rs.AthleteUserID, instanceID: rs.SessionInstanceID, pct: pct, durationMs: duration})
+		attempts = append(attempts, competitionRouteAttempt{userID: rs.AthleteUserID, instanceID: rs.SessionInstanceID, pct: pct, durationMs: durationMs})
 	}
 	return attempts, registeredInstanceIDs, nil
 }
@@ -862,10 +869,7 @@ func (s *competitionService) computeRouteProgress(ctx *gin.Context, bundle *comp
 		item.UserID = uid
 		if a := best[uid]; a != nil {
 			pct := a.pct
-			ms := int64(a.durationMs)
-			if ms < 0 {
-				ms = 0
-			}
+			ms := a.durationMs
 			item.ComplianceRatio = &pct
 			item.DurationMs = &ms
 			inst := a.instanceID
@@ -1018,7 +1022,8 @@ func (s *competitionService) computeWinners(ctx *gin.Context, bundle *competitio
 		// EXACTO en (pct, duración) → todos ganan. Un atleta nunca entra dos
 		// veces aunque sus intentos matcheen el máximo global.
 		best := bestAttemptByAthlete(attempts)
-		var bestPct, bestDur float64
+		var bestPct float64
+		var bestDur int64
 		var seen bool
 		for _, a := range best {
 			if !seen || a.pct > bestPct || (a.pct == bestPct && a.durationMs < bestDur) {

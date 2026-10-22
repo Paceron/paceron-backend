@@ -38,6 +38,23 @@ func listAttemptsRouteDao(status string) (*dbs.Competition, *mockCompetitionDAO)
 	return comp, dao
 }
 
+// listAttemptsMetricDao arma la competencia metric (sin RouteGeoJSON: no
+// hay matching) con los mismos guards/roles que la route.
+func listAttemptsMetricDao(status string) (*dbs.Competition, *mockCompetitionDAO) {
+	comp := &dbs.Competition{
+		ID: 5, TeamID: 10, Type: competition.TypeMetric, Status: status,
+		Metric:  strPtr("distance"),
+		StartAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	}
+	dao := &mockCompetitionDAO{
+		findByIDFn:      func(id int64) (*dbs.Competition, error) { return comp, nil },
+		isOwnerFn:       func(teamID, userID int64) (bool, error) { return userID == 1, nil },
+		isMemberFn:      func(teamID, userID int64) (bool, error) { return userID == 3, nil },
+		isParticipantFn: func(competitionID, userID int64) (bool, error) { return userID == 11 || userID == 12, nil },
+	}
+	return comp, dao
+}
+
 func TestCompetitionService_ListAttempts_Guards(t *testing.T) {
 	// 404 antes de 403: competencia inexistente devuelve el sentinel del DAO
 	// aunque el caller tampoco pertenezca al team.
@@ -232,6 +249,49 @@ func TestCompetitionService_ListAttempts_RutaInvalidaSube(t *testing.T) {
 	resp, err := svc.ListAttempts(nil, 3, 5, 11)
 	require.NoError(t, err)
 	assert.Nil(t, resp.Data[0].ComplianceRatio)
+}
+
+// Competencia metric con intento finished: compliance_ratio null (no hay
+// ruta que matchear; sin el guard de tipo esto era 500 por routeSamples
+// fallando con "sin route_geojson"). wip de metric sigue null.
+func TestCompetitionService_ListAttempts_MetricFinishedSinMatching(t *testing.T) {
+	_, dao := listAttemptsMetricDao(competition.StatusActive)
+	base := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	wip := dbs.RunnerSession{ID: 1, SessionInstanceID: 900, AthleteUserID: 11,
+		Status: runnersession.RunnerSessionStatusWip, StartDate: base, CompetitionID: ptrInt64(5)}
+	fin := routeAttemptFixture(912, 11, 5*time.Minute)
+	fin.ID = 2
+	dao.listAttemptsFn = func(competitionID, athleteUserID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{wip, fin}, nil
+	}
+	var pointsCalled bool
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		pointsCalled = true
+		return nil, nil
+	}
+	dao.sumDistanceFn = func(instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error) {
+		return []dbs.CompetitionInstanceDistanceAgg{{SessionInstanceID: 912, SumDistance: fptr(2500)}}, nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, err := svc.ListAttempts(nil, 3, 5, 11)
+	require.NoError(t, err)
+	require.Len(t, resp.Data, 2)
+
+	// Finished de metric: sin matching (null) pero distance/duration sí.
+	finItem := resp.Data[1]
+	assert.Nil(t, finItem.ComplianceRatio)
+	require.NotNil(t, finItem.DistanceMeters)
+	assert.InDelta(t, 2500.0, *finItem.DistanceMeters, 1e-9)
+	require.NotNil(t, finItem.DurationMs)
+	assert.Equal(t, int64(5*time.Minute/time.Millisecond), *finItem.DurationMs)
+
+	// Wip de metric: todo null, igual que antes.
+	wipItem := resp.Data[0]
+	assert.Nil(t, wipItem.ComplianceRatio)
+	assert.Nil(t, wipItem.DistanceMeters)
+	assert.Nil(t, wipItem.DurationMs)
+
+	assert.False(t, pointsCalled, "metric no debe pedir puntos GPS")
 }
 
 // Errores crudos del DAO → error genérico (500 en controller) sin sentinels.
