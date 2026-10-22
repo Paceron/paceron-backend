@@ -1018,6 +1018,66 @@ func TestCompetitionResponse_MaxAttempts(t *testing.T) {
 	assert.Equal(t, lim, *resp.MaxAttempts)
 }
 
+// Shape de los 3 campos de intentos (Gap 36 D7) en las respuestas de las
+// mutaciones: caller participante con 1 intento → attempts_used 1 y
+// can_attempt según status (true solo en active); max_attempts expuesto.
+func TestCompetitionService_MutacionesExponenCamposDeIntentos(t *testing.T) {
+	fieldsDao := func(status string) *mockCompetitionDAO {
+		maxAttempts := int64(2)
+		inst := int64(900)
+		return &mockCompetitionDAO{
+			findByIDFn: func(id int64) (*dbs.Competition, error) {
+				return &dbs.Competition{
+					ID: id, TeamID: 10, Type: competition.TypeRoute, Status: status,
+					StartAt:                time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+					RouteSessionInstanceID: &inst, MaxAttempts: &maxAttempts,
+					CreatedByUserID: 77, CreatedByRole: competition.CreatorRoleTrainer,
+				}, nil
+			},
+			isOwnerFn: func(teamID, userID int64) (bool, error) { return userID == 1, nil },
+			listParticipantsFn: func(ids []int64) ([]dbs.CompetitionParticipant, error) {
+				return []dbs.CompetitionParticipant{
+					{CompetitionID: ids[0], UserID: 77}, {CompetitionID: ids[0], UserID: 12},
+				}, nil
+			},
+			countAttemptsFn: func(competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+				return map[int64]int64{competitionIDs[0]: 1}, nil
+			},
+		}
+	}
+	caller := int64(77) // trainer creador y participante: pasa los guards de moderación y cierre
+
+	resp, err := newCompetitionServiceForTest(fieldsDao(competition.StatusPendingApproval)).Approve(nil, caller, 5)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusActive, resp.Status)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, int64(2), *resp.MaxAttempts)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.True(t, resp.CanAttempt)
+
+	resp, err = newCompetitionServiceForTest(fieldsDao(competition.StatusPendingApproval)).Reject(nil, caller, 5, strPtr("fuera de fecha"))
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusRejected, resp.Status)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.False(t, resp.CanAttempt)
+
+	resp, instances, err := newCompetitionServiceForTest(func() *mockCompetitionDAO {
+		dao := fieldsDao(competition.StatusActive)
+		dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) { return nil, nil }
+		return dao
+	}()).Close(nil, caller, 5)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusFinished, resp.Status)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, int64(2), *resp.MaxAttempts)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.False(t, resp.CanAttempt, "finished: sin cupo aunque no llegue al límite")
+	assert.Empty(t, instances)
+}
+
 func TestCompetitionResponse_ExposesSessionInstanceID(t *testing.T) {
 	// Gap 35: el detalle de intento viejo necesita el id de la instancia
 	// sintética — route lo expone, metric queda null.
