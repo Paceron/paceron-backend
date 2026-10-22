@@ -650,19 +650,16 @@ definitions:
       data:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionResponse'
     type: object
-  simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem:
-    properties:
-      user_id:
-        type: integer
-      value:
-        type: number
-    type: object
   simple-arq-golang_cmd_api_domains_competition.CompetitionResponse:
     properties:
       acceptance_radius_meters:
         type: number
       approved_by_user_id:
         type: integer
+      attempts_used:
+        type: integer
+      can_attempt:
+        type: boolean
       created_by_role:
         type: string
       created_by_user_id:
@@ -684,8 +681,7 @@ definitions:
           type: integer
         type: array
       progress:
-        items:
-          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem'
+        items: {}
         type: array
       rejection_reason:
         type: string

@@ -110,6 +110,12 @@ type CompetitionDAOInterface interface {
 	// ListAttemptPoints trae en una sola query los puntos GPS de los intentos
 	// provistos (join feedback activo del atleta, D10).
 	ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	// CountAttemptsByCompetitionAndAthlete cuenta los intentos (cualquier
+	// status) del atleta en UNA sola query para todas las competencias pedidas
+	// (Gap 36 D7): LEFT JOIN competition_participant garantiza fila para todo
+	// participante (count 0 sin runner_session) y ninguna fila para el
+	// no-participante — el service mapea fila→0..N y ausencia→null.
+	CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error)
 	// Delete borra físicamente la competencia junto con sus participantes
 	// (DELETE cancel D9; borrado físico). El guard de status corre en el SQL
 	// (solo sobre pending_approval) para arbitrar la carrera cancel-vs-approve:
@@ -693,4 +699,30 @@ func (d *competitionDao) ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs,
 		return nil, fmt.Errorf("error listing competition attempt points: %w", err)
 	}
 	return rows, nil
+}
+
+// CountAttemptsByCompetitionAndAthlete devuelve competencia→cantidad de
+// intentos del atleta, una sola query batch para el listado y el detalle
+// (Gap 36 D7). El LEFT JOIN con competition_participant distingue al
+// participante sin intentos (fila con count 0) del no-participante (no hay
+// fila): attempts_used null solo tiene sentido en el segundo caso.
+func (d *competitionDao) CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+	if len(competitionIDs) == 0 {
+		return map[int64]int64{}, nil
+	}
+	var rows []dbs.CompetitionAttemptCountAgg
+	err := d.DB.Table("competition_participant AS cp").
+		Select("cp.competition_id AS competition_id, COUNT(rs.id) AS attempt_count").
+		Joins("LEFT JOIN runner_session rs ON rs.competition_id = cp.competition_id AND rs.athlete_user_id = cp.user_id").
+		Where("cp.user_id = ? AND cp.competition_id IN ?", athleteUserID, competitionIDs).
+		Group("cp.competition_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error counting competition attempts by athlete: %w", err)
+	}
+	counts := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		counts[r.CompetitionID] = r.AttemptCount
+	}
+	return counts, nil
 }

@@ -345,3 +345,102 @@ func TestCompetitionService_CloseRoute_Ajeno403SinDAOEscritura(t *testing.T) {
 	require.ErrorIs(t, err, ErrCompetitionForbidden)
 	assert.Zero(t, dao.finishCalls)
 }
+
+// Sección intentos múltiples (Gap 36, D6): la reducción por atleta corre
+// PRIMERO (bestAttemptByAthlete), después la comparación entre atletas.
+
+func TestCompetitionService_CloseRoute_MismoAtletaConDosIntentosAlMaximo(t *testing.T) {
+	fixGamNow(t)
+	// A matchea el 100% con DOS intentos idénticos: hoy ambos entrarían
+	// duplicados; con el rework entra una vez. Empate exacto de
+	// (pct, duración) entre A y B → ambos ganan, una vez cada uno.
+	dao := closeRouteDao(50)
+	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{
+			routeAttemptFixture(900, 11, 5*time.Minute),
+			routeAttemptFixture(901, 11, 5*time.Minute),
+			routeAttemptFixture(912, 12, 5*time.Minute),
+		}, nil
+	}
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		points := attemptSpreadGPS(900, 11)
+		points = append(points, attemptSpreadGPS(901, 11)...)
+		points = append(points, attemptSpreadGPS(912, 12)...)
+		return points, nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{11, 12}, resp.WinnerUserIDs)
+	assert.Equal(t, 2, dao.lastFinishStampsCount)
+}
+
+func TestCompetitionService_CloseRoute_MejorIntentoResueltoPorDuracion(t *testing.T) {
+	fixGamNow(t)
+	// A: 100% en 3min y otro 100% en 5min; B: 100% en 7min. El mejor intento
+	// de A es el de 3min (empate intra-atleta de pct → menor duración) y A
+	// gana solo; B no empata ni en pct+duración.
+	dao := closeRouteDao(50)
+	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{
+			routeAttemptFixture(900, 11, 3*time.Minute),
+			routeAttemptFixture(901, 11, 5*time.Minute),
+			routeAttemptFixture(912, 12, 7*time.Minute),
+		}, nil
+	}
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		points := attemptSpreadGPS(900, 11)
+		points = append(points, attemptSpreadGPS(901, 11)...)
+		points = append(points, attemptSpreadGPS(912, 12)...)
+		return points, nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{11}, resp.WinnerUserIDs)
+}
+
+func TestCompetitionService_CloseRoute_IntentoMenorDescartado(t *testing.T) {
+	fixGamNow(t)
+	// Brief D6: A con intentos de 100% (3min) y 60% (3min), B con 100%
+	// (3min) → A y B ganan una vez cada uno (el intento flojo de A no lo
+	// empeora ni duplica).
+	dao := closeRouteDao(50)
+	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{
+			routeAttemptFixture(900, 11, 3*time.Minute),
+			routeAttemptFixture(901, 11, 3*time.Minute),
+			routeAttemptFixture(912, 12, 3*time.Minute),
+		}, nil
+	}
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		points := attemptSpreadGPS(900, 11)
+		// 901: GPS asíncrónico solo en los primeros samples → pct flojo.
+		points = append(points, attemptSpreadGPS(901, 11)[:4]...)
+		points = append(points, attemptSpreadGPS(912, 12)...)
+		return points, nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{11, 12}, resp.WinnerUserIDs)
+	assert.Equal(t, 2, dao.lastFinishStampsCount)
+}
+
+func TestCompetitionService_CloseRoute_ParticipanteSinIntentosFuera(t *testing.T) {
+	fixGamNow(t)
+	// Solo A registró intentos: B (participante sin runner sessions) queda
+	// fuera sin penalizar la comparación.
+	dao := closeRouteDao(50)
+	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
+		return []dbs.RunnerSession{routeAttemptFixture(900, 11, 5*time.Minute)}, nil
+	}
+	dao.attemptPointsFn = func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
+		return attemptSpreadGPS(900, 11), nil
+	}
+	svc := newCompetitionServiceForTest(dao)
+	resp, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{11}, resp.WinnerUserIDs)
+	assert.Equal(t, 1, dao.lastFinishStampsCount)
+}

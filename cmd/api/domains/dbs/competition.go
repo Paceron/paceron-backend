@@ -66,3 +66,12 @@ type CompetitionInstanceDistanceAgg struct {
 	SessionInstanceID int64    `gorm:"column:assigned_session_id"`
 	SumDistance       *float64 `gorm:"column:sum_distance"`
 }
+
+// CompetitionAttemptCountAgg acumula los intentos (cualquier status, Gap 36
+// D7) de UN atleta por competencia: LEFT JOIN en el DAO garantiza fila para
+// todo participante (count 0 sin intentos) y ausencia de fila para el
+// no-participante (el service lo deja null).
+type CompetitionAttemptCountAgg struct {
+	CompetitionID int64 `gorm:"column:competition_id"`
+	AttemptCount  int64 `gorm:"column:attempt_count"`
+}

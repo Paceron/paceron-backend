@@ -45,9 +45,11 @@ type mockCompetitionDAO struct {
 	attemptPointsFn        func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
 	listAttemptsFn         func(competitionID, athleteUserID int64) ([]dbs.RunnerSession, error)
 	sumDistanceFn          func(instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error)
+	countAttemptsFn        func(competitionIDs []int64, athleteUserID int64) (map[int64]int64, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
 	createWithInstCalls, existsAttemptCalls                          int
+	countAttemptsCalls                                               int
 	createAttemptSessionCalls                                        int
 	findByRouteInstCalls                                             int
 	lastFinishWinners                                                []int64
@@ -238,6 +240,15 @@ func (m *mockCompetitionDAO) SumFeedbackDistanceByInstances(ctx *gin.Context, in
 		return m.sumDistanceFn(instanceIDs, athleteUserID)
 	}
 	return nil, nil
+}
+
+func (m *mockCompetitionDAO) CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+	m.countAttemptsCalls++
+	if m.countAttemptsFn != nil {
+		return m.countAttemptsFn(competitionIDs, athleteUserID)
+	}
+	// Default: caller no participante en ninguna (null/false en las respuestas).
+	return map[int64]int64{}, nil
 }
 
 func newCompetitionServiceForTest(dao *mockCompetitionDAO) CompetitionServiceInterface {
@@ -668,13 +679,18 @@ func TestCompetitionService_GetDetalleProgreso(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, competition.StatusActive, resp.Data.Status)
 	require.Len(t, resp.Data.Progress, 2)
-	assert.Equal(t, int64(11), resp.Data.Progress[0].UserID)
-	require.NotNil(t, resp.Data.Progress[0].Value)
-	assert.InDelta(t, 3000.0, *resp.Data.Progress[0].Value, 0.0001)
-	assert.InDelta(t, 7000.0, *resp.Data.Progress[1].Value, 0.0001)
+	item0, ok0 := resp.Data.Progress[0].(competition.CompetitionMetricProgressItem)
+	require.True(t, ok0)
+	item1, ok1 := resp.Data.Progress[1].(competition.CompetitionMetricProgressItem)
+	require.True(t, ok1)
+	assert.Equal(t, int64(11), item0.UserID)
+	require.NotNil(t, item0.Value)
+	assert.InDelta(t, 3000.0, *item0.Value, 0.0001)
+	assert.InDelta(t, 7000.0, *item1.Value, 0.0001)
 
-	// type=route con el matcher de E4.2: sin intentos registrados, cada
-	// participante muestra 0 (y no se pide agregación de métrica).
+	// type=route shape nuevo (Gap 36 D5): sin intentos registrados, cada
+	// participante aparece con los tres valores null (y no se pide agregación
+	// de métrica).
 	comp.Type = competition.TypeRoute
 	comp.Metric = nil
 	dao.aggregateWindowFn = func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error) {
@@ -684,9 +700,12 @@ func TestCompetitionService_GetDetalleProgreso(t *testing.T) {
 	resp, err = svc.Get(nil, 3, 5)
 	require.NoError(t, err)
 	require.Len(t, resp.Data.Progress, 2)
-	for _, item := range resp.Data.Progress {
-		require.NotNil(t, item.Value)
-		assert.InDelta(t, 0.0, *item.Value, 1e-9)
+	for _, p := range resp.Data.Progress {
+		item, ok := p.(competition.CompetitionRouteProgressItem)
+		require.True(t, ok)
+		assert.Nil(t, item.ComplianceRatio)
+		assert.Nil(t, item.DurationMs)
+		assert.Nil(t, item.SessionInstanceID)
 	}
 }
 

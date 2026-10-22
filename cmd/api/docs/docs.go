@@ -9562,17 +9562,6 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem": {
-            "type": "object",
-            "properties": {
-                "user_id": {
-                    "type": "integer"
-                },
-                "value": {
-                    "type": "number"
-                }
-            }
-        },
         "simple-arq-golang_cmd_api_domains_competition.CompetitionResponse": {
             "type": "object",
             "properties": {
@@ -9581,6 +9570,12 @@ const docTemplate = `{
                 },
                 "approved_by_user_id": {
                     "type": "integer"
+                },
+                "attempts_used": {
+                    "type": "integer"
+                },
+                "can_attempt": {
+                    "type": "boolean"
                 },
                 "created_by_role": {
                     "type": "string"
@@ -9614,9 +9609,7 @@ const docTemplate = `{
                 },
                 "progress": {
                     "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem"
-                    }
+                    "items": {}
                 },
                 "rejection_reason": {
                     "type": "string"
