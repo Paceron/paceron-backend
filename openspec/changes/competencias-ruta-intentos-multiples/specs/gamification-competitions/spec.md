@@ -23,7 +23,8 @@ El sistema DEBE cumplir lo siguiente (MUST):
 - `max_attempts` es un campo SOLO de competencias `type=route`, nullable:
   - En el create route es OPCIONAL. Si NO viene → NULL = SIN límite (intentos
     ilimitados). Si viene → entero positivo mínimo 1: 400 si 0, negativo o
-    no-entero (mensaje "max_attempts debe ser un entero mayor o igual a 1").
+    no-entero (para no-entero el 400 es el error de binding de Gin; el mensaje
+    "max_attempts debe ser un entero mayor o igual a 1" aplica a 0/negativo).
     SIN tope superior.
   - En el create metric es rechazado: 400 "type=metric no admite max_attempts".
 - `max_attempts` es inmutable post-create (no existe edición de competencia; no
@@ -47,9 +48,9 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 #### Scenario: max_attempts = 0 rechazado
 
-- **WHEN** el create route envía `max_attempts = 0` (o negativo, o no-entero)
+- **WHEN** el create route envía `max_attempts = 0` (o negativo)
 - **THEN** responde `400` con "max_attempts debe ser un entero mayor o igual a
-  1".
+  1" (con valor no-entero responde `400` con el error de binding de Gin).
 
 #### Scenario: Create metric rechaza max_attempts
 

@@ -841,7 +841,7 @@ Guard: `404` si la competencia no existe (antes de todo), `403` si el caller no 
 Null-rules por ítem:
 
 - `distance_meters`: SUM de la distancia del feedback (workout_feedback activo) del atleta sobre esa instancia; **null si no hay feedback**.
-- `compliance_ratio`: matching on-demand de §17 (mismos samples/MatchPercent), **escala 0..100** (fracción × 100; `100` = match perfecto); **null salvo `status="finished"`**; `0` si terminó sin puntos GPS.
+- `compliance_ratio`: matching on-demand de §17 (mismos samples/MatchPercent), **escala 0..100** (fracción × 100; `100` = match perfecto); **null salvo `status="finished"` y `type=route`** (en competencias metric el matching no computa aunque el intento esté finished — no hay ruta que matchear); `0` si terminó sin puntos GPS.
 - `duration_ms`: `ended_at - started_at` calculado server-side; **null en wip** (o si falta `ended_at`).
 - `started_at`/`ended_at` equivalen a `start_date`/`end_date` de runner session.
 

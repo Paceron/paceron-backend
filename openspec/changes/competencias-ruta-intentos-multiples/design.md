@@ -163,7 +163,7 @@ autoriza (sin filtro de status).
 | `started_at` | time | `runner_session.start_date` |
 | `ended_at` | *time | `runner_session.end_date` (null en wip) |
 | `distance_meters` | *float64 | SUM de `workout_feedback.distance_meters` de las series del atleta sobre la instancia del intento (feedback activo `deleted_at IS NULL`); null si no hay feedback/series |
-| `compliance_ratio` | *float64 | matching Haversine on-demand (mismo cálculo del detalle: samples de la ruta + `MatchPercent`); null salvo intento finished; 0 si finished sin puntos GPS |
+| `compliance_ratio` | *float64 | matching Haversine on-demand (mismo cálculo del detalle: samples de la ruta + `MatchPercent`); null salvo intento finished de `type=route` (un intento finished de competencia metric NO computa: no hay ruta que matchear — queda null); 0 si finished sin puntos GPS |
 | `duration_ms` | *int64 | server-side: `end_date - start_date` en ms (calcularlo en el service, nunca heredar la columna: route no tiene duración persistida); null si `end_date` nil (wip) |
 
   Con nota de nombre: `started_at`/`ended_at` son los nombres del DTO NUEVO; la
