@@ -65,25 +65,25 @@ Files/interfaces:
 - `cmd/api/docs/` (regeneración swagger de create).
 
 Steps:
-- [ ] 1.1 Campo `MaxAttempts *int64` en `CreateCompetitionRequest` y en
+- [x] 1.1 Campo `MaxAttempts *int64` en `CreateCompetitionRequest` y en
       `dbs.Competition` (column `max_attempts`, BIGINT nullable sin
       constraint); el service lo copia al struct de competencia en el create
       (insertado con la fila — cero código de DAO extra).
-- [ ] 1.2 Validación en `validateCreateRequest`: branch route → max_attempts
+- [x] 1.2 Validación en `validateCreateRequest`: branch route → max_attempts
       opcional; si viene debe ser entero ≥ 1 (400 "max_attempts debe ser un
       entero mayor o igual a 1" si 0/negativo; no-entero → 400 de binding);
       SIN tope superior; si no viene → NULL = sin límite. Branch metric → 400
       "type=metric no admite max_attempts" si viene.
-- [ ] 1.3 Inmutable post-create: es un no-agregar (no se crea ninguna vía de
+- [x] 1.3 Inmutable post-create: es un no-agregar (no se crea ninguna vía de
       edición de competencia); nota en aclaración de tests.
-- [ ] 1.4 Tests de validación: route sin max_attempts (persistida null), con
+- [x] 1.4 Tests de validación: route sin max_attempts (persistida null), con
       1, con 3, con 0 → 400, con negativo → 400, no-entero → 400, metric con
       max_attempts → 400, metric sin max_attempts sigue pasando (regresión).
-- [ ] 1.5 DAO round-trip Postgres real: create route con y sin max_attempts
+- [x] 1.5 DAO round-trip Postgres real: create route con y sin max_attempts
       persiste/lee el valor (y null) íntegro; competencia pre-existente (sin
       columna seteada) se lee null.
-- [ ] 1.6 Regenerar swagger (create) + revisar diff limpio.
-- [ ] 1.7 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en
+- [x] 1.6 Regenerar swagger (create) + revisar diff limpio.
+- [x] 1.7 `go clean -cache` + `make coverage-with-db` + vet/gofmt/build en
       verde antes de tildar.
 
 ### Task 2: CreateAttempt rework — límite de intentos e instancia por intento — Tier: juicio
@@ -104,11 +104,11 @@ Files/interfaces:
   guard).
 
 Steps:
-- [ ] 2.1 `createSyntheticRouteInstance` refactorizado para recibir el nombre
+- [x] 2.1 `createSyntheticRouteInstance` refactorizado para recibir el nombre
       parametrizado; las llamadas existentes del create de competencia siguen
       pasando "Competencia ruta %d" (sin cambio de comportamiento, test de
       regresión del create con instancia compartida).
-- [ ] 2.2 DAO `CreateAttemptSession(ctx, comp, athleteUserID, maxAttempts)`:
+- [x] 2.2 DAO `CreateAttemptSession(ctx, comp, athleteUserID, maxAttempts)`:
       transacción única con (a) SELECT FOR UPDATE de la fila de competencia
       (serializa concurrentes — el unique (session_instance_id, athlete_user_id)
       YA NO arbitra el límite porque los intentos 2+ usan instancias distintas),
@@ -120,23 +120,23 @@ Steps:
       "Competencia ruta N (intento M)" (M = count + 1) + ejercicio "Corrida"
       (velocidad_distancia, link main/repeat 1/rest 0) + insert de runner
       session, (f) cualquier fallo → rollback total.
-- [ ] 2.3 Service `CreateAttempt`: mantengo orden de guards 404 → 400 type →
+- [x] 2.3 Service `CreateAttempt`: mantengo orden de guards 404 → 400 type →
       400 status → 403 participante → guard instancia compartida existente;
       el guard "existe intento" se reemplaza por el límite del DAO. Respuesta
       201 con shape runner-session sin cambios (controller/regresión).
-- [ ] 2.4 Tests DAO Postgres real: intento 1 reusa compartida (nombre sin
+- [x] 2.4 Tests DAO Postgres real: intento 1 reusa compartida (nombre sin
       "(intento)"); intento 2 crea instancia nueva con nombre exacto
       "Competencia ruta N (intento 2)"; intento 3 otra instancia más
       ("(intento 3)"); max_attempts = 2 con 2 intentos → error de límite y
       cero filas nuevas; max_attempts = null → N intentos sin rechazo;
       rollback (fallo forzado post-instancia) no deja sesión huérfana.
-- [ ] 2.5 Test de carrera concurrente Postgres real (dos tx en paralelo sobre
+- [x] 2.5 Test de carrera concurrente Postgres real (dos tx en paralelo sobre
       la misma competencia/atleta con límite para 1 intento más): una crea,
       otra recibe el error de límite y no supera max_attempts.
-- [ ] 2.6 Tests de service con mocks: paths de error (404/type/status/403/
+- [x] 2.6 Tests de service con mocks: paths de error (404/type/status/403/
       límite) sin tocar DAO de escritura; y la vía feliz delegando en el DAO
       con los parámetros correctos.
-- [ ] 2.7 Regenerar swagger; verificación gate (coverage/vet/gofmt/build) en
+- [x] 2.7 Regenerar swagger; verificación gate (coverage/vet/gofmt/build) en
       verde antes de tildar.
 
 ### Task 3: WS 3ª rama extendida + GET /competitions/{id}/attempts — Tier: juicio
@@ -166,33 +166,33 @@ Files/interfaces:
 - `cmd/api/docs/` (regeneración por endpoint nuevo).
 
 Steps:
-- [ ] 3.1 Extensión de la 3ª rama `HasInstanceAccess`: OR EXISTS
+- [x] 3.1 Extensión de la 3ª rama `HasInstanceAccess`: OR EXISTS
       (runner_session rs JOIN competition c2 rs.competition_id = c2.id AND
       c2.type='route' WHERE rs.session_instance_id = ? AND caller participante
       de c2) SIN filtro de status del intento. La rama original
       (route_session_instance_id) queda intacta.
-- [ ] 3.2 Mirror idéntico en `hasAccessBatchCompetitionSQL` (espejo batch,
+- [x] 3.2 Mirror idéntico en `hasAccessBatchCompetitionSQL` (espejo batch,
       mismo OR con u.user_id como caller) — singular y batch no pueden
       divergir.
-- [ ] 3.3 Tests DAO Postgres real de la rama nueva (ambos singular y batch):
+- [x] 3.3 Tests DAO Postgres real de la rama nueva (ambos singular y batch):
       participante accede a la instancia de su intento 2 con solo el
       runner_session wip (sin día ni feedback); usuario ajeno no; intento
       finished también autoriza; instancia regular de calendario regida por
       las 2 ramas duales intactas (regresión).
-- [ ] 3.4 DAO helpers `ListAttemptsByCompetitionAndAthlete` + 
+- [x] 3.4 DAO helpers `ListAttemptsByCompetitionAndAthlete` + 
       `SumFeedbackDistanceByInstances` con sus tests Postgres real (orden id
       ASC; sum distance null cuando no hay feedback; feedback soft-deleted no
       suma).
-- [ ] 3.5 Service `ListAttempts` con la lógica de null-rules: distance_meters
+- [x] 3.5 Service `ListAttempts` con la lógica de null-rules: distance_meters
       de feedback (null si no hay), compliance_ratio solo con intento finished
       (0 si finished sin GPS, on-demand matching), duration_ms server-side
       end-start (null si wip). Atleta pedido no-participante → slice vacío
       (sin error). Tests con mocks.
-- [ ] 3.6 Controller + ruta + swagger: 404 antes de 403; guard
+- [x] 3.6 Controller + ruta + swagger: 404 antes de 403; guard
       miembro-u-owner; SIN athlete_user_id → caller; con query de otro (o
       incluso del caller) → intentos de ese atleta. Tests de controller
       (incluye FailingDB no-leak y query inválida → 400).
-- [ ] 3.7 Verificación gate (coverage/vet/gofmt/build) en verde antes de
+- [x] 3.7 Verificación gate (coverage/vet/gofmt/build) en verde antes de
       tildar.
 
 ### Task 4: progress route shape + computeWinners por mejor intento + campos de CompetitionResponse — Tier: juicio
@@ -215,33 +215,33 @@ Files/interfaces:
 - `cmd/api/docs/` (regeneración por campos nuevos en response).
 
 Steps:
-- [ ] 4.1 DTOs: `CompetitionMetricProgressItem {user_id, value}` (JSON
+- [x] 4.1 DTOs: `CompetitionMetricProgressItem {user_id, value}` (JSON
       byte-idéntico al actual) y `CompetitionRouteProgressItem {user_id,
       compliance_ratio, duration_ms, session_instance_id}` (sin `value`);
       campo `Progress` de `CompetitionResponse` tipado con la interfaz común
       (serializa según struct dinámico).
-- [ ] 4.2 Helper compartido `bestAttemptByAthlete(attempts)`: por atleta,
+- [x] 4.2 Helper compartido `bestAttemptByAthlete(attempts)`: por atleta,
       max pct → tie-break menor duration_ms (misma regla para progress y
       winners — una sola fuente de verdad).
-- [ ] 4.3 `computeRouteProgress` route: usa el helper y emite los ítems en el
+- [x] 4.3 `computeRouteProgress` route: usa el helper y emite los ítems en el
       shape nuevo, ordenados por user_id ASC — participante sin intentos
       aparece igual que hoy con los valores null (compliance_ratio/duration_ms/
       session_instance_id null); metric byte-idéntico (regresión).
-- [ ] 4.4 `computeWinners` branch route: reducción por atleta primero, luego
+- [x] 4.4 `computeWinners` branch route: reducción por atleta primero, luego
       comparación entre atletas con empate EXACTO en (pct, duración) → todos
       ganan; un atleta nunca aparece duplicado. Tests de service: el edge del
       atleta con 2 intentos en el mejor pct global (hoy duplicaría), empate
       intra-atleta por duración, empate exacto entre atletas, metric
       byte-idéntico (regresión).
-- [ ] 4.5 DAO `CountAttemptsByCompetitionAndAthlete(batch)` → map
+- [x] 4.5 DAO `CountAttemptsByCompetitionAndAthlete(batch)` → map
       competition_id → count, UNA query para el listado (test Postgres real).
-- [ ] 4.6 `fillAttemptFields` (single) + variante batch: llena
+- [x] 4.6 `fillAttemptFields` (single) + variante batch: llena
       max_attempts/attempts_used/can_attempt en detalle, listado, Create y
       mutaciones, con la regla de null/false de D7. Tests: participante route
       active sin intentos → 0/true; límite cumplido → N/false; caller no
       participante o metric → null/false con bool siempre presente; listado
       batch coherente con el detalle.
-- [ ] 4.7 Regenerar swagger; verificación gate (coverage/vet/gofmt/build) en
+- [x] 4.7 Regenerar swagger; verificación gate (coverage/vet/gofmt/build) en
       verde antes de tildar.
 
 ### Task 5: Docs + tildes + validación openspec + verificación final — Tier: mecánica
