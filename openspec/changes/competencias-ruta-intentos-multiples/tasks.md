@@ -262,21 +262,21 @@ Files/interfaces:
   ÚNICO de artefactos OpenSpec).
 
 Steps:
-- [ ] 5.1 Documentar en CATALOGO §8.14 el flujo de intentos múltiples (D1-D8)
+- [x] 5.1 Documentar en CATALOGO §8.14 el flujo de intentos múltiples (D1-D8)
       con textos en español limpios (sin mojibake), referenciando las
       decisiones cerradas con el frontend y corrigiendo el value/pct de
       progress.
-- [ ] 5.2 Documentar en FRONTEND_IMPACTO el contrato nuevo/firmas cambiadas de
+- [x] 5.2 Documentar en FRONTEND_IMPACTO el contrato nuevo/firmas cambiadas de
       cara al consumo del Gap 36: GET attempts con sus null-rules,
       attempts_used/can_attempt/max_attempts, progress route shape, autorización
       WS por instancia de intento, y lo que explícitamente NO cambia (frames).
-- [ ] 5.3 Si hay deuda específica que documentar en DEUDA (borrado/edición de
+- [x] 5.3 Si hay deuda específica que documentar en DEUDA (borrado/edición de
       intentos v1), dejarla apuntada; si no aplica, no forzar el archivo.
-- [ ] 5.4 Tildar los checkboxes de Task 1-4 en este tasks.md (memoria
+- [x] 5.4 Tildar los checkboxes de Task 1-4 en este tasks.md (memoria
       persistente real) y re-verificar que no quedó ninguna sin cerrar.
-- [ ] 5.5 `openspec validate competencias-ruta-intentos-multiples --strict` →
+- [x] 5.5 `openspec validate competencias-ruta-intentos-multiples --strict` →
       VALID (releer todo el change para corregir cualquier texto corrupto).
-- [ ] 5.6 Verificación final: suite completa contra Postgres real (`docker
+- [x] 5.6 Verificación final: suite completa contra Postgres real (`docker
       start paceron-test-db` + env completo de la sección Global Constraints),
       `go clean -cache` + `make coverage-with-db` con gate ≥ 85, vet/build/
       gofmt en verde, diff de swagger limpio; commit único de artefactos

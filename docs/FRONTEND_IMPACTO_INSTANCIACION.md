@@ -643,7 +643,7 @@ Máquina de estados: `pending_approval → active | rejected` (moderación del o
 - **`PATCH /competitions/{id}/approve`** / **`/reject`** (body opcional `{"reason": "…"}`) → `200` con `{data}`; solo sobre `pending_approval` (`400` otro estado), guard owner del team (`403`). Push best-effort al creador en ambos casos (`competition_approved`/`competition_rejected`, `data.route "/teams/{id}"` placeholder).
 - **`DELETE /competitions/{id}/cancel`** → `200 {"message": "competencia cancelada"}`; **solo el creador corredor**, solo sobre `pending_approval`; borrado físico.
 - **`GET /teams/{id}/competitions?status=&group_id=`** → `200 {data: [CompetitionResponse], has_unseen}` — filtros opcionales (`status` fuera de whitelist `400`); `has_unseen` de la sección competitions **filtrado por ese team_id**. **El listado NO trae `progress`** (solo el detalle).
-- **`GET /competitions/{id}`** → `200 {data: {…, progress}}`; `404` si no existe, `403` ajeno. Progreso en vivo on-demand: `type=metric` acumulado de la métrica por participante en `[start_at, end_at o now]` (`null` si no aportó); `type=route` mejor % de match hasta ahora (`0` sin intentos/GPS). Sin broadcast WS en esta consulta.
+- **`GET /competitions/{id}`** → `200 {data: {…, progress}}`; `404` si no existe, `403` ajeno. Progreso en vivo on-demand: `type=metric` acumulado de la métrica por participante en `[start_at, end_at o now]` (`null` si no aportó); `type=route` mejor % de match hasta ahora (`0` sin intentos/GPS). Sin broadcast WS en esta consulta. **(§19 corrige la parte route:** mejor intento por atleta en el shape `{user_id, compliance_ratio, duration_ms, session_instance_id}`, y **los tres nulls cuando no hay intentos finished** — un `0` solo aparece si terminó sin puntos GPS; ver §19.6.)
 - **`PATCH /competitions/{id}/close`** → `200` con `{data: {…, winner_user_ids, finished_at}}`. **Cierre SIEMPRE manual** (no hay cron): caller creador (trainer o runner) u owner; solo sobre `active` (`400` otro estado) y **solo cuando la ventana ya terminó** si hay `end_at` (`400` "no puede cerrarse todavía"). Winners: metric = mejor valor en ventana (para `pace` el más bajo) con **empate exacto = todos ganan**; route = mejor % de match con tie-break menor duración (duración exacta igual = todos ganan). Sin intentos → `finished` con `winner_user_ids: []` sin stamps ni pushes. El ganador recibe **stamp** (visible en `GET /users/{id}/stamps`, §16.3) y **todos los participantes** reciben unseen + push best-effort (`competition_finished`, `data.route "/competencias/{id}"`).
 
 ### 16.6 MODIFICADO (aditivo) — `POST /session-instances/:id/runner` acepta `competition_id`
@@ -791,11 +791,11 @@ Modifica §17 (`competencias-ruta-intake`): de "un intento por atleta sobre una 
 
 ### 19.1 Create con `max_attempts` (solo route)
 
-`POST /teams/{id}/competitions` con `type="route"` acepta `max_attempts` opcional (entero **≥ 1**, sin tope superior; `0`, negativo o no-entero → `400` "max_attempts debe ser un entero mayor o igual a 1"). **Ausente o null = sin límite.** En `type="metric"` el campo NO puede venir: `400` "type=metric no admite max_attempts". **Inmutable post-create** (no hay edición de competencia).
+`POST /teams/{id}/competitions` con `type="route"` acepta `max_attempts` opcional (entero **≥ 1**, sin tope superior; `0` o negativo → `400` "max_attempts debe ser un entero mayor o igual a 1"; **no-entero → `400` de binding** de Gin, sin el message de validación de negocio). **Ausente o null = sin límite.** En `type="metric"` el campo NO puede venir: `400` "type=metric no admite max_attempts". **Inmutable post-create** (no hay edición de competencia).
 
 ### 19.2 `CompetitionResponse`: `max_attempts`, `attempts_used`, `can_attempt`
 
-Tres campos nuevos en detalle y listado (y en yearly mutations: approve/reject/cancel/close):
+Tres campos nuevos en detalle y listado (y en las mutaciones: approve/reject/close, y en el create — **no** en `DELETE /cancel`, que responde solo `{"message"}`):
 
 - `max_attempts` (`number|null`): el límite seteado en el create; `null` = sin límite; siempre `null` en metric.
 - `attempts_used` (`number|null`): **caller-scoped** — cantidad de intentos (cualquier status) del caller sobre la competencia. `0` si es participante sin intentos; `null` si la competencia no es route **o** el caller no participa. En el listado es batch (1 query extra, mismo significado por competencia).
@@ -831,7 +831,7 @@ Guard: `404` si la competencia no existe (antes de todo), `403` si el caller no 
       "started_at": "2026-10-13T18:30:00Z",
       "ended_at": "2026-10-13T19:05:12Z",
       "distance_meters": 5234.5,
-      "compliance_ratio": 0.92,
+      "compliance_ratio": 92,
       "duration_ms": 2112000
     }
   ]
@@ -841,7 +841,7 @@ Guard: `404` si la competencia no existe (antes de todo), `403` si el caller no 
 Null-rules por ítem:
 
 - `distance_meters`: SUM de la distancia del feedback (workout_feedback activo) del atleta sobre esa instancia; **null si no hay feedback**.
-- `compliance_ratio`: matching on-demand de §17 (mismos samples/MatchPercent); **null salvo `status="finished"`**; `0` si terminó sin puntos GPS.
+- `compliance_ratio`: matching on-demand de §17 (mismos samples/MatchPercent), **escala 0..100** (fracción × 100; `100` = match perfecto); **null salvo `status="finished"`**; `0` si terminó sin puntos GPS.
 - `duration_ms`: `ended_at - started_at` calculado server-side; **null en wip** (o si falta `ended_at`).
 - `started_at`/`ended_at` equivalen a `start_date`/`end_date` de runner session.
 
@@ -854,14 +854,14 @@ En `GET /competitions/{id}` con `type="route"`, cada ítem de `progress` dejó d
 ```json
 {
   "user_id": 31,
-  "compliance_ratio": 0.95,
+  "compliance_ratio": 95,
   "duration_ms": 2112000,
   "session_instance_id": 90
 }
 ```
 
-- Participante sin intentos: `{user_id, compliance_ratio: null, duration_ms: null, session_instance_id: null}` — sigue apareciendo.
-- Ordenado por `user_id` ASC.
+- Participante sin intentos finished (un intento wip/interrupted ya registrado también da los tres nulls): `{user_id, compliance_ratio: null, duration_ms: null, session_instance_id: null}` — sigue apareciendo.
+- Ordenado por `user_id` ASC. `compliance_ratio` en **escala 0..100** (`100` = match perfecto — es una fracción de match × 100).
 - `metric` queda byte-idéntico: `{user_id, value}`.
 
 Como swag no resuelve la interfaz de `progress`, el swagger documenta el shape exacto de ambas variantes en la **description** del endpoint de detalle.

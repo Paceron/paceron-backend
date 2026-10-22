@@ -3739,7 +3739,8 @@ paths:
         ítem de progress es {user_id: int, value: number|null} y para type=route es
         {user_id: int, compliance_ratio: number|null, duration_ms: int|null, session_instance_id:
         int|null} (mejor intento del atleta: máximo compliance_ratio, empate → menor
-        duration_ms; los tres nulls si aún no registró intentos).'
+        duration_ms; los tres nulls si aún no tiene intentos finished (un intento
+        wip/interrupted ya registrado también se ve nulo)).'
       parameters:
       - description: ID de la competencia
         in: path
