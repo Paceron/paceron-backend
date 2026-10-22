@@ -784,3 +784,96 @@ Todo request con body de más de **10 MB** es rechazado globalmente por middlewa
 
 `POST /session-instances/:id/messages` con `recipient_mode="multiple"` y más de **100** `recipient_user_ids` → `400` con message `"datos inválidos: los destinatarios no pueden superar 100"`. Antes no había tope. `all` y `direct` sin cambio.
 
+
+## 19. NUEVOS — intentos múltiples en competencias de ruta (Gap 36, change `competencias-ruta-intentos-multiples`)
+
+Modifica §17 (`competencias-ruta-intake`): de "un intento por atleta sobre una instancia compartida" a "N intentos por atleta (según límite), cada uno su instancia". Shapes verificados contra el código de la rama. Lo de metric NO cambia en nada de esto.
+
+### 19.1 Create con `max_attempts` (solo route)
+
+`POST /teams/{id}/competitions` con `type="route"` acepta `max_attempts` opcional (entero **≥ 1**, sin tope superior; `0`, negativo o no-entero → `400` "max_attempts debe ser un entero mayor o igual a 1"). **Ausente o null = sin límite.** En `type="metric"` el campo NO puede venir: `400` "type=metric no admite max_attempts". **Inmutable post-create** (no hay edición de competencia).
+
+### 19.2 `CompetitionResponse`: `max_attempts`, `attempts_used`, `can_attempt`
+
+Tres campos nuevos en detalle y listado (y en yearly mutations: approve/reject/cancel/close):
+
+- `max_attempts` (`number|null`): el límite seteado en el create; `null` = sin límite; siempre `null` en metric.
+- `attempts_used` (`number|null`): **caller-scoped** — cantidad de intentos (cualquier status) del caller sobre la competencia. `0` si es participante sin intentos; `null` si la competencia no es route **o** el caller no participa. En el listado es batch (1 query extra, mismo significado por competencia).
+- `can_attempt` (`boolean`): **SIEMPRE presente** (nunca omitted). `true` solo si type=route && status=active && caller participante && no llegó al límite. En cualquier otra combinación `false` (incluye metric y no-participante).
+
+### 19.3 `POST /competitions/{id}/attempts`: N intentos
+
+El `400` "doble intento" de §17.3 **desaparece** (solo queda como rama física del ON CONFLICT del intento 1). Mecánica nueva, dentro de UNA transacción:
+
+1. `SELECT ... FOR UPDATE` de la fila de competencia (serializa intentos concurrentes — el límite ya no lo arbitra el unique de runner_session, porque los intentos 2+ viven en instancias distintas).
+2. COUNT de runner sessions con `competition_id` del caller (**cualquier status**: wip, finished, interrupted — un intento trunco consume turno y no hay reset).
+3. Si `max_attempts` está seteado y count ≥ límite → `400` **"llegaste al límite de intentos de esta competencia"**.
+4. Intento 1 (`count == 0`): reuse de la instancia compartida de §17.2, semántica idéntica a antes (incluido el `ON CONFLICT DO NOTHING` como respaldo).
+5. Intento 2+: crea una **session_instance NUEVA** en la misma transacción — name `"Competencia ruta N (intento M)"` (N = id de la competencia, M = count+1), description "Instancia sintética de la competencia de ruta", sin día de calendario, con su propio `exercise_instance` "Corrida" (velocidad_distancia, link main/repeat 1/rest 0) — e inserta la runner session sobre esa instancia nueva.
+
+Cualquier fallo posterior a la creación de la instancia → **rollback total** (no queda instancia huérfana). Respuesta 201 con runner session plano sin cambios (§17.3). La respuesta de intento 2 viaja con el `session_instance_id` de la instancia nueva (no el de la compartida).
+
+### 19.4 Autorización WS por instancia de intento
+
+La 3ª rama de acceso a instancia (`HasInstanceAccess`, §11/§12) se extiende con un `OR EXISTS`: además del ancla `route_session_instance_id` (ruta de siempre), ahora un participante de la competencia accede a cualquier instancia con un runner session tagueado `competition_id` de esa competencia (**cualquier status del intento**, sin filtro). Cada lado del OR mantiene su participant-check propio. Singular y batch espejo idénticos (no pueden divergir). Efecto: el canal `session:{session_instance_id}` de **cada intento 2+** es accesible para sus participantes con la misma suscripción de §11 — un participante corre su intento 2 con live WS normal sobre esa instancia.
+
+### 19.5 NUEVO — `GET /competitions/{id}/attempts`
+
+Guard: `404` si la competencia no existe (antes de todo), `403` si el caller no es miembro del group del team ni owner. Sin query `athlete_user_id` lista los intentos del **caller**; con `?athlete_user_id=X` (entero positivo, `400` si inválido) los de X — cualquier miembro puede consultar los de otro. **Atleta pedido que no es participante** → `200` con `data: []` (no es error). Orden **id ASC** (cronológico = número de intento).
+
+```json
+{
+  "data": [
+    {
+      "id": 120,
+      "session_instance_id": 88,
+      "status": "finished",
+      "started_at": "2026-10-13T18:30:00Z",
+      "ended_at": "2026-10-13T19:05:12Z",
+      "distance_meters": 5234.5,
+      "compliance_ratio": 0.92,
+      "duration_ms": 2112000
+    }
+  ]
+}
+```
+
+Null-rules por ítem:
+
+- `distance_meters`: SUM de la distancia del feedback (workout_feedback activo) del atleta sobre esa instancia; **null si no hay feedback**.
+- `compliance_ratio`: matching on-demand de §17 (mismos samples/MatchPercent); **null salvo `status="finished"`**; `0` si terminó sin puntos GPS.
+- `duration_ms`: `ended_at - started_at` calculado server-side; **null en wip** (o si falta `ended_at`).
+- `started_at`/`ended_at` equivalen a `start_date`/`end_date` de runner session.
+
+Sin `has_unseen` (el unseen de competencias es por team y lo cubre el listado de §16).
+
+### 19.6 `progress` del detalle (route): shape nuevo
+
+En `GET /competitions/{id}` con `type="route"`, cada ítem de `progress` dejó de ser `{user_id, value}` y ahora es **el mejor intento del atleta** (máximo compliance_ratio de sus intentos; empate intra-atleta → menor duration_ms):
+
+```json
+{
+  "user_id": 31,
+  "compliance_ratio": 0.95,
+  "duration_ms": 2112000,
+  "session_instance_id": 90
+}
+```
+
+- Participante sin intentos: `{user_id, compliance_ratio: null, duration_ms: null, session_instance_id: null}` — sigue apareciendo.
+- Ordenado por `user_id` ASC.
+- `metric` queda byte-idéntico: `{user_id, value}`.
+
+Como swag no resuelve la interfaz de `progress`, el swagger documenta el shape exacto de ambas variantes en la **description** del endpoint de detalle.
+
+### 19.7 `winner_user_ids` al cerrar
+
+Close route: primero se reduce al mejor intento de cada atleta (un atleta **nunca** duplica aunque 2 de sus intentos alcancen el mejor pct — antes habría duplicado); comparación entre atletas: mayor pct, empate → menor duración; **empate exacto en (pct, duración) entre atletas → todos ganan**. `winner_user_ids` es **determinista, ordenado por user_id ASC**.
+
+### 19.8 Lo que NO cambia
+
+- **Frames WS de competencia** (§17.5): ni canal ni frame nuevos; siguen `update:competition_progress` post-finish y `control:competition_finished` al close, por el canal de la instancia implicada (post-19.4 el participante puede estar suscripto a la de su propio intento).
+- **Finish del intento**: sigue `PATCH /session-instances/:id/runner`; nada nuevo en feedback/runner (§12.1/§16.6).
+- **Cancel/reject**: solo sobre `pending_approval`; limpian ÚNICAMENTE la instancia compartida (para entonces nunca hubo intentos — intentos solo existen en `active`). No se crean instancias a limpiar post-close.
+- **Epílogo UI**: los intentos (limitados o no) no borran/reabren la instancia compartida; los intentos 2+ son instancias nuevas sin día de calendario (no aparecen en banner ni calendar — solo vía feedback/WS/attempts).
+- **Unseen/stamps/pushes del close**: byte-idénticos a §16.5 (winners nuevo cálculo, efectos iguales).

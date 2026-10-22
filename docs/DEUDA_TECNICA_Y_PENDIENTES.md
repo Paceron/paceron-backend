@@ -207,15 +207,20 @@ Pendientes del intake/cierre de competencias de ruta. Mecánica en `docs/CATALOG
 
 ### Intento wip/interrupted no se borra ni se reabre (RUTA v1)
 
-El anti-doble intento cuenta runner sessions con `competition_id` **de cualquier status** (`ExistsAttemptByCompetitionAndAthlete`): un intento `interrupted` consume el único intento del atleta y **no hay endpoint de reset/borrado/re-apertura** en v1. Rediseñarlo (contador de reintentos, ventana de reintento, o contar solo finished) toca guards + spec — propio change futuro.
+El anti-doble intento original contaba runner sessions con `competition_id` **de cualquier status**: un intento `interrupted` consumía el único intento del atleta y **no hay endpoint de reset/borrado/re-apertura**. Desde el Gap 36 (`competencias-ruta-intentos-multiples`) el atleta puede reintentar mientras no agote `max_attempts` — pero el intento trunco igual **consume uno de los turnos** y sigue sin existir reset ni borrado de intentos. Rediseñar borrado/edición de intentos (p. ej. cuando el límite se agota con intentos fallidos) toca guards + spec — propio change futuro.
 
 ### Leaderboard en vivo mid-attempt
 
-Durante el intento en curso (`wip`) no hay broadcast WS de nada (ni ranking ni traza GPS); los frames WS son solo post-finish (`update:competition_progress`) y post-close (`control:competition_finished`). Progreso intermedio on-demand vía `GET /competitions/{id}`. Escenario declarado en el spec delta y al front en §17.5.
+Durante el intento en curso (`wip`) no hay broadcast WS de nada (ni ranking ni traza GPS); los frames WS son solo post-finish (`update:competition_progress`) y post-close (`control:competition_finished`). Progreso intermedio on-demand vía `GET /competitions/{id}`. Escenario declarado en el spec delta y al front en §17.5. **Sigue planteado con intentos múltiples** (Gap 36): ni ranking ni traza por intento en vivo; el acceso WS de las instancias de intento 2+ (D3) no agrega frames.
 
 ### Microventana race del pre-check anti-doble
 
-`CreateAttempt` es check-then-insert sin lock: dos POSTs casi simultáneos del mismo atleta pueden superar ambos el pre-check (`ExistsAttempt...` con Count). El arbitraje real es el unique `(session_instance_id, athlete_user_id)` de runner_session — el perdedor recibe `400` vía `ON CONFLICT DO NOTHING` + `RowsAffected=0`. Inofensiva (resultado correcto por ambas rutas de error); si algún día se quiere el message único en carrera también, tocaría transacción o advisory lock.
+**RESUELTO como efecto del Gap 36** (`competencias-ruta-intentos-multiples`, 2026-10-22): el guard de límite vivió dentro de `CreateAttemptSession` con `SELECT ... FOR UPDATE` de la fila de competencia, que serializa los intentos concurrentes; el único `(session_instance_id, athlete_user_id)` de runner_session queda como respaldo físico del intento 1.
+
+### Menores del Gap 36 (`competencias-ruta-intentos-multiples`, 2026-10-22)
+
+- **`ExistsAttemptByCompetitionAndAthlete` sin caller en producción:** el guard "doble intento" que la usaba fue reemplazado por el COUNT dentro de `CreateAttemptSession`. La función quedó viva con tests y sin call sites de prod — candidata a borrarse en una limpieza futura o a reusarse si algún guard vuelve a necesitar el check puntual (decisión documentada: NO se borró en el change).
+- **Empate exacto intra-atleta en `progress` sin desempate definido:** `bestAttemptByAthlete` (progreso del detalle) consume `ListAttemptSessions`, que **no trae ORDER BY** — dos intentos finished del mismo atleta con pct y duración idénticas pueden alternar cuál sale como "mejor" entre GETs (enums no determinista, inofensivo: el valor mostrado es igual). Los winners no sufren (empate exacto = todos ganan) y el GET de intentos sí es determinista (ORDER BY id ASC). Fix cosmético si alguna vez molesta: agregar ORDER BY al DAO.
 
 ### Default de `acceptance_radius_meters` solo sugerido por el front
 

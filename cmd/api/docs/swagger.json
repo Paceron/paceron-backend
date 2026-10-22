@@ -858,7 +858,7 @@
         },
         "/api/v1/competitions/{id}": {
             "get": {
-                "description": "Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor % de match (computado on-demand, sin broadcast WS).",
+                "description": "Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor intento por atleta computado on-demand, sin broadcast WS. El nombre del campo \"progress\" del detalle depende del type de la competencia y swag no puede resolver la interfaz: para type=metric cada ítem de progress es {user_id: int, value: number|null} y para type=route es {user_id: int, compliance_ratio: number|null, duration_ms: int|null, session_instance_id: int|null} (mejor intento del atleta: máximo compliance_ratio, empate → menor duration_ms; los tres nulls si aún no registró intentos).",
                 "produces": [
                     "application/json"
                 ],
