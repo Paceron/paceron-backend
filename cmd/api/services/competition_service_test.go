@@ -896,6 +896,83 @@ func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// max_attempts en el create (competencias-ruta-intentos-multiples D1): solo
+// route, opcional, >= 1 sin tope; inmutable post-create porque no existe vía
+// de edición de competencia (el cancel borra, el resto no toca estos datos).
+func TestCompetitionService_CreateMaxAttempts(t *testing.T) {
+	trx := &mockCompetitionDAO{
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	}
+	svc := newCompetitionServiceForTest(trx)
+
+	withMax := func(v int64) competition.CreateCompetitionRequest {
+		req := routeCreateReq()
+		req.MaxAttempts = &v
+		return req
+	}
+
+	// Happy path: sin max_attempts (null = sin límite), con 1 y con 3; el
+	// service lo copia al struct que el DAO inserta.
+	var lastComp *dbs.Competition
+	capture := func(comp *dbs.Competition, participantIDs []int64) error {
+		lastComp = comp
+		return nil
+	}
+	trx.createWithInstFn = capture
+	trx.createFn = capture
+	_, err := svc.Create(nil, 1, 10, routeCreateReq())
+	require.NoError(t, err)
+	require.NotNil(t, lastComp)
+	assert.Nil(t, lastComp.MaxAttempts)
+
+	for _, v := range []int64{1, 3} {
+		_, err = svc.Create(nil, 1, 10, withMax(v))
+		require.NoError(t, err)
+		require.NotNil(t, lastComp.MaxAttempts)
+		assert.Equal(t, v, *lastComp.MaxAttempts)
+	}
+
+	cases := []struct {
+		name    string
+		req     competition.CreateCompetitionRequest
+		wantMsg string
+	}{
+		{"route con 0", withMax(0), "max_attempts debe ser un entero mayor o igual a 1"},
+		{"route con negativo", withMax(-2), "max_attempts debe ser un entero mayor o igual a 1"},
+		{"metric con max_attempts", func() competition.CreateCompetitionRequest {
+			req := validMetricCreateReq()
+			v := int64(2)
+			req.MaxAttempts = &v
+			return req
+		}(), "type=metric no admite max_attempts"},
+	}
+	for _, tc := range cases {
+		_, err := svc.Create(nil, 1, 10, tc.req)
+		require.ErrorIs(t, err, ErrCompetitionInvalid, tc.name)
+		assert.Contains(t, err.Error(), tc.wantMsg, tc.name)
+	}
+
+	// Regresión: metric sin max_attempts sigue pasando y no lo setea.
+	lastComp = nil
+	_, err = svc.Create(nil, 1, 10, validMetricCreateReq())
+	require.NoError(t, err)
+	require.NotNil(t, lastComp)
+	assert.Nil(t, lastComp.MaxAttempts)
+
+	// La respuesta expone max_attempts de la fila persistida (sin re-carga).
+	resp := toCompetitionResponse(lastComp, []int64{11}, nil)
+	assert.Nil(t, resp.MaxAttempts)
+}
+
+func TestCompetitionResponse_MaxAttempts(t *testing.T) {
+	// max_attempts expone lo persistido (que solo route puede tener).
+	lim := int64(3)
+	resp := toCompetitionResponse(&dbs.Competition{ID: 1, TeamID: 10, Type: competition.TypeRoute, MaxAttempts: &lim}, []int64{11}, nil)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, lim, *resp.MaxAttempts)
+}
+
 func TestCompetitionResponse_ExposesSessionInstanceID(t *testing.T) {
 	// Gap 35: el detalle de intento viejo necesita el id de la instancia
 	// sintética — route lo expone, metric queda null.

@@ -178,6 +178,40 @@ func TestCompetitionDAO_ExistsAttemptByCompetitionAndAthlete(t *testing.T) {
 	require.Error(t, raceErr)
 }
 
+// max_attempts (Gap 36): el round-trip Postgres persiste/lee el valor (o el
+// NULL = sin límite) íntegro; una competencia pre-change sin columna seteada
+// se lee null.
+func TestCompetitionDAO_MaxAttemptsRoundTrip(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewCompetitionDao(db)
+	fx := newCompetitionFixture(t, db, "ma01")
+
+	withMax := int64(3)
+	limited := newRouteCompetition()
+	limited.TeamID = fx.team.ID
+	limited.CreatedByUserID = fx.owner.ID
+	limited.CreatedByRole = competition.CreatorRoleTrainer
+	limited.Status = competition.StatusActive
+	limited.MaxAttempts = &withMax
+	require.NoError(t, dao.CreateWithInstance(nil, limited, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+
+	loaded, err := dao.FindByID(nil, limited.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded.MaxAttempts)
+	assert.Equal(t, withMax, *loaded.MaxAttempts)
+
+	unlimited := newRouteCompetition()
+	unlimited.TeamID = fx.team.ID
+	unlimited.CreatedByUserID = fx.runnerA.ID
+	unlimited.CreatedByRole = competition.CreatorRoleRunner
+	unlimited.Status = competition.StatusPendingApproval
+	require.NoError(t, dao.CreateWithInstance(nil, unlimited, []int64{fx.runnerA.ID, fx.runnerB.ID}))
+
+	loaded, err = dao.FindByID(nil, unlimited.ID)
+	require.NoError(t, err)
+	assert.Nil(t, loaded.MaxAttempts, "sin max_attempts = NULL")
+}
+
 // FindByRouteSessionInstance es la mitad inversa del guard de anclaje del
 // intento (review extra I1): resuelve la dueña de la instancia sintética, y
 // devuelve not-found para instancias que no anclan a ninguna route.

@@ -9503,6 +9503,9 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "max_attempts": {
+                    "type": "integer"
+                },
                 "metric": {
                     "type": "string"
                 },
@@ -9576,6 +9579,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "group_id": {
+                    "type": "integer"
+                },
+                "max_attempts": {
+                    "description": "MaxAttempts es solo de type=route: opcional, \u003e= 1, sin tope. NULL =\nsin límite; inmutable post-create (no hay edición de competencia).",
                     "type": "integer"
                 },
                 "metric": {

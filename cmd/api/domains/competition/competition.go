@@ -41,7 +41,10 @@ type CreateCompetitionRequest struct {
 	EndAt                  *time.Time `json:"end_at"`
 	RouteGeoJSON           *string    `json:"route_geojson"`
 	AcceptanceRadiusMeters *float64   `json:"acceptance_radius_meters"`
-	ParticipantIDs         []int64    `json:"participants" binding:"required,min=2"`
+	// MaxAttempts es solo de type=route: opcional, >= 1, sin tope. NULL =
+	// sin límite; inmutable post-create (no hay edición de competencia).
+	MaxAttempts    *int64  `json:"max_attempts"`
+	ParticipantIDs []int64 `json:"participants" binding:"required,min=2"`
 }
 
 // CompetitionProgressItem es el progreso en vivo de un participante en el
@@ -56,6 +59,7 @@ type CompetitionProgressItem struct {
 // (spec: {id, team_id, group_id, type, metric?, ...}). progress solo en el
 // detalle (omitempty en el listado). session_instance_id = instancia
 // sintética del intento (Gap 35): solo type=route, null en metric.
+// max_attempts solo vive en route (null = sin límite); metric nunca lo setea.
 type CompetitionResponse struct {
 	ID                     int64                     `json:"id"`
 	TeamID                 int64                     `json:"team_id"`
@@ -67,6 +71,7 @@ type CompetitionResponse struct {
 	Route                  *string                   `json:"route,omitempty"`
 	AcceptanceRadiusMeters *float64                  `json:"acceptance_radius_meters"`
 	SessionInstanceID      *int64                    `json:"session_instance_id"`
+	MaxAttempts            *int64                    `json:"max_attempts"`
 	Participants           []int64                   `json:"participants"`
 	CreatedByUserID        int64                     `json:"created_by_user_id"`
 	CreatedByRole          string                    `json:"created_by_role"`

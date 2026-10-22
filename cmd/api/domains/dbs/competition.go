@@ -12,7 +12,10 @@ type Competition struct {
 	// RouteSessionInstanceID es la sesión instanciada sintética del intento de
 	// una competencia type=route (competencias-ruta-intake D1). FK opaca
 	// (BIGINT nullable, sin constraint de DB, app-managed): nil para metric.
-	RouteSessionInstanceID *int64     `gorm:"column:route_session_instance_id"`
+	RouteSessionInstanceID *int64 `gorm:"column:route_session_instance_id"`
+	// MaxAttempts es el límite de intentos por atleta, solo route (NULL =
+	// ilimitados, competencia pre-change sin backfill). Inmutable post-create.
+	MaxAttempts            *int64     `gorm:"column:max_attempts"`
 	TeamID                 int64      `gorm:"column:team_id;not null;index:idx_competition_team,priority:1"`
 	GroupID                *int64     `gorm:"column:group_id;index:idx_competition_team,priority:2"`
 	Type                   string     `gorm:"column:type;type:varchar(16);not null"`

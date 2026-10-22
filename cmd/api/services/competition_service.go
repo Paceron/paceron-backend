@@ -155,6 +155,7 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		EndAt:                  req.EndAt,
 		RouteGeoJSON:           req.RouteGeoJSON,
 		AcceptanceRadiusMeters: req.AcceptanceRadiusMeters,
+		MaxAttempts:            req.MaxAttempts,
 		CreatedByUserID:        callerID,
 		CreatedByRole:          role,
 		Status:                 status,
@@ -234,7 +235,8 @@ func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competiti
 
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige
 // metric + end_at > start_at; route exige route_geojson (parseable, ≤500
-// vértices, ≤100 km) + radius en [5, 500].
+// vértices, ≤100 km) + radius en [5, 500]; max_attempts solo route, si viene
+// entero >= 1 (NULL = sin límite).
 func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 	if req.Type != competition.TypeMetric && req.Type != competition.TypeRoute {
 		return fmt.Errorf("%w: type debe ser metric o route", ErrCompetitionInvalid)
@@ -265,6 +267,9 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		if req.RouteGeoJSON != nil || req.AcceptanceRadiusMeters != nil {
 			return fmt.Errorf("%w: type=metric no admite route_geojson ni acceptance_radius_meters", ErrCompetitionInvalid)
 		}
+		if req.MaxAttempts != nil {
+			return fmt.Errorf("%w: type=metric no admite max_attempts", ErrCompetitionInvalid)
+		}
 	case competition.TypeRoute:
 		if req.RouteGeoJSON == nil || *req.RouteGeoJSON == "" {
 			return fmt.Errorf("%w: type=route exige route_geojson", ErrCompetitionInvalid)
@@ -286,6 +291,9 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		}
 		if req.Metric != nil {
 			return fmt.Errorf("%w: type=route no admite metric", ErrCompetitionInvalid)
+		}
+		if req.MaxAttempts != nil && *req.MaxAttempts < 1 {
+			return fmt.Errorf("%w: max_attempts debe ser un entero mayor o igual a 1", ErrCompetitionInvalid)
 		}
 	}
 	if req.EndAt != nil && !req.EndAt.After(req.StartAt) {
@@ -907,6 +915,7 @@ func toCompetitionResponse(comp *dbs.Competition, participants, winners []int64)
 		Route:                  comp.RouteGeoJSON,
 		AcceptanceRadiusMeters: comp.AcceptanceRadiusMeters,
 		SessionInstanceID:      comp.RouteSessionInstanceID,
+		MaxAttempts:            comp.MaxAttempts,
 		Participants:           participants,
 		CreatedByUserID:        comp.CreatedByUserID,
 		CreatedByRole:          comp.CreatedByRole,

@@ -179,6 +179,17 @@ func TestCompetitionController_Create_BodyInvalido(t *testing.T) {
 	assert.Zero(t, svc.createCalls)
 }
 
+func TestCompetitionController_Create_MaxAttemptsNoEntero(t *testing.T) {
+	// El binding del DTO (*int64) rechaza max_attempts no-entero a 400 de Gin
+	// antes de tocar el service (D1).
+	svc := &mockCompetitionService{}
+	router := setupCompetitionRouterS(t, svc, 1)
+	resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/teams/2/competitions",
+		`{"type":"route","start_at":"2026-10-01T00:00:00Z","participants":[3,4],"max_attempts":1.5}`)
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.Zero(t, svc.createCalls)
+}
+
 func TestCompetitionService_Create_Success_MapeaDatos(t *testing.T) {
 	svc := &mockCompetitionService{createFn: func(callerID, teamID int64, req competition.CreateCompetitionRequest) (*competition.CompetitionResponse, error) {
 		metric := "distance"
