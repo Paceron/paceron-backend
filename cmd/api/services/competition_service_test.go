@@ -21,30 +21,36 @@ import (
 // validaciones 400/403, transiciones y shape.
 
 type mockCompetitionDAO struct {
-	isOwnerFn          func(teamID, userID int64) (bool, error)
-	isMemberFn         func(teamID, userID int64) (bool, error)
-	teamOwnerFn        func(teamID int64) (int64, error)
-	countMembersFn     func(teamID int64, userIDs []int64) (int64, error)
-	groupBelongsToFn   func(groupID, teamID int64) (bool, error)
-	createFn           func(comp *dbs.Competition, participantIDs []int64) error
-	createWithInstFn   func(comp *dbs.Competition, participantIDs []int64) error
-	findByIDFn         func(id int64) (*dbs.Competition, error)
-	findByRouteInstFn  func(instanceID int64) (*dbs.Competition, error)
-	listParticipantsFn func(ids []int64) ([]dbs.CompetitionParticipant, error)
-	listByTeamFn       func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
-	isParticipantFn    func(competitionID, userID int64) (bool, error)
-	existsAttemptFn    func(competitionID, userID int64) (bool, error)
-	approveFn          func(competitionID, approvedBy int64) (bool, error)
-	rejectFn           func(competitionID int64, reason *string) (bool, error)
-	finishFn           func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
-	deleteFn           func(competitionID int64) (bool, error)
-	hasUnseenFn        func(userID, teamID int64) (bool, error)
-	aggregateWindowFn  func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
-	attemptSessionsFn  func(competitionID int64) ([]dbs.RunnerSession, error)
-	attemptPointsFn    func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	isOwnerFn              func(teamID, userID int64) (bool, error)
+	isMemberFn             func(teamID, userID int64) (bool, error)
+	teamOwnerFn            func(teamID int64) (int64, error)
+	countMembersFn         func(teamID int64, userIDs []int64) (int64, error)
+	groupBelongsToFn       func(groupID, teamID int64) (bool, error)
+	createFn               func(comp *dbs.Competition, participantIDs []int64) error
+	createWithInstFn       func(comp *dbs.Competition, participantIDs []int64) error
+	findByIDFn             func(id int64) (*dbs.Competition, error)
+	findByRouteInstFn      func(instanceID int64) (*dbs.Competition, error)
+	listParticipantsFn     func(ids []int64) ([]dbs.CompetitionParticipant, error)
+	listByTeamFn           func(teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
+	isParticipantFn        func(competitionID, userID int64) (bool, error)
+	existsAttemptFn        func(competitionID, userID int64) (bool, error)
+	createAttemptSessionFn func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error)
+	approveFn              func(competitionID, approvedBy int64) (bool, error)
+	rejectFn               func(competitionID int64, reason *string) (bool, error)
+	finishFn               func(competitionID int64, finishedAt time.Time, winners []int64, stamps []dbs.GamificationStamp, unseen []dbs.GamificationUnseen) (bool, error)
+	deleteFn               func(competitionID int64) (bool, error)
+	hasUnseenFn            func(userID, teamID int64) (bool, error)
+	aggregateWindowFn      func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error)
+	attemptSessionsFn      func(competitionID int64) ([]dbs.RunnerSession, error)
+	attemptPointsFn        func(instanceIDs, athleteIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	listAttemptsFn         func(competitionID, athleteUserID int64) ([]dbs.RunnerSession, error)
+	sumDistanceFn          func(instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error)
+	countAttemptsFn        func(competitionIDs []int64, athleteUserID int64) (map[int64]int64, error)
 
 	createCalls, deleteCalls, approveCalls, rejectCalls, finishCalls int
 	createWithInstCalls, existsAttemptCalls                          int
+	countAttemptsCalls                                               int
+	createAttemptSessionCalls                                        int
 	findByRouteInstCalls                                             int
 	lastFinishWinners                                                []int64
 	lastFinishUnseenCount, lastFinishStampsCount                     int
@@ -109,6 +115,14 @@ func (m *mockCompetitionDAO) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Conte
 		return m.existsAttemptFn(competitionID, userID)
 	}
 	return false, nil
+}
+
+func (m *mockCompetitionDAO) CreateAttemptSession(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+	m.createAttemptSessionCalls++
+	if m.createAttemptSessionFn != nil {
+		return m.createAttemptSessionFn(comp, athleteUserID)
+	}
+	return nil, nil
 }
 
 func (m *mockCompetitionDAO) FindByID(ctx *gin.Context, id int64) (*dbs.Competition, error) {
@@ -212,6 +226,29 @@ func (m *mockCompetitionDAO) ListAttemptPoints(ctx *gin.Context, instanceIDs, at
 		return m.attemptPointsFn(instanceIDs, athleteIDs)
 	}
 	return nil, nil
+}
+
+func (m *mockCompetitionDAO) ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error) {
+	if m.listAttemptsFn != nil {
+		return m.listAttemptsFn(competitionID, athleteUserID)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) SumFeedbackDistanceByInstances(ctx *gin.Context, instanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error) {
+	if m.sumDistanceFn != nil {
+		return m.sumDistanceFn(instanceIDs, athleteUserID)
+	}
+	return nil, nil
+}
+
+func (m *mockCompetitionDAO) CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+	m.countAttemptsCalls++
+	if m.countAttemptsFn != nil {
+		return m.countAttemptsFn(competitionIDs, athleteUserID)
+	}
+	// Default: caller no participante en ninguna (null/false en las respuestas).
+	return map[int64]int64{}, nil
 }
 
 func newCompetitionServiceForTest(dao *mockCompetitionDAO) CompetitionServiceInterface {
@@ -642,13 +679,18 @@ func TestCompetitionService_GetDetalleProgreso(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, competition.StatusActive, resp.Data.Status)
 	require.Len(t, resp.Data.Progress, 2)
-	assert.Equal(t, int64(11), resp.Data.Progress[0].UserID)
-	require.NotNil(t, resp.Data.Progress[0].Value)
-	assert.InDelta(t, 3000.0, *resp.Data.Progress[0].Value, 0.0001)
-	assert.InDelta(t, 7000.0, *resp.Data.Progress[1].Value, 0.0001)
+	item0, ok0 := resp.Data.Progress[0].(competition.CompetitionMetricProgressItem)
+	require.True(t, ok0)
+	item1, ok1 := resp.Data.Progress[1].(competition.CompetitionMetricProgressItem)
+	require.True(t, ok1)
+	assert.Equal(t, int64(11), item0.UserID)
+	require.NotNil(t, item0.Value)
+	assert.InDelta(t, 3000.0, *item0.Value, 0.0001)
+	assert.InDelta(t, 7000.0, *item1.Value, 0.0001)
 
-	// type=route con el matcher de E4.2: sin intentos registrados, cada
-	// participante muestra 0 (y no se pide agregación de métrica).
+	// type=route shape nuevo (Gap 36 D5): sin intentos registrados, cada
+	// participante aparece con los tres valores null (y no se pide agregación
+	// de métrica).
 	comp.Type = competition.TypeRoute
 	comp.Metric = nil
 	dao.aggregateWindowFn = func(participantIDs []int64, startAt, endAt time.Time) ([]dbs.CompetitionMetricAgg, error) {
@@ -658,9 +700,12 @@ func TestCompetitionService_GetDetalleProgreso(t *testing.T) {
 	resp, err = svc.Get(nil, 3, 5)
 	require.NoError(t, err)
 	require.Len(t, resp.Data.Progress, 2)
-	for _, item := range resp.Data.Progress {
-		require.NotNil(t, item.Value)
-		assert.InDelta(t, 0.0, *item.Value, 1e-9)
+	for _, p := range resp.Data.Progress {
+		item, ok := p.(competition.CompetitionRouteProgressItem)
+		require.True(t, ok)
+		assert.Nil(t, item.ComplianceRatio)
+		assert.Nil(t, item.DurationMs)
+		assert.Nil(t, item.SessionInstanceID)
 	}
 }
 
@@ -894,6 +939,143 @@ func TestCompetitionService_CreateValidacionesRuta(t *testing.T) {
 	// 5 m = floor del rango de radius y vértice único degenerado: pasan.
 	_, err = svc.Create(nil, 1, 10, routeReqWith("{\"type\":\"LineString\",\"coordinates\":[[0,0]]}", fptr(5)))
 	require.NoError(t, err)
+}
+
+// max_attempts en el create (competencias-ruta-intentos-multiples D1): solo
+// route, opcional, >= 1 sin tope; inmutable post-create porque no existe vía
+// de edición de competencia (el cancel borra, el resto no toca estos datos).
+func TestCompetitionService_CreateMaxAttempts(t *testing.T) {
+	trx := &mockCompetitionDAO{
+		teamOwnerFn:    func(teamID int64) (int64, error) { return 1, nil },
+		countMembersFn: func(teamID int64, userIDs []int64) (int64, error) { return int64(len(userIDs)), nil },
+	}
+	svc := newCompetitionServiceForTest(trx)
+
+	withMax := func(v int64) competition.CreateCompetitionRequest {
+		req := routeCreateReq()
+		req.MaxAttempts = &v
+		return req
+	}
+
+	// Happy path: sin max_attempts (null = sin límite), con 1 y con 3; el
+	// service lo copia al struct que el DAO inserta.
+	var lastComp *dbs.Competition
+	capture := func(comp *dbs.Competition, participantIDs []int64) error {
+		lastComp = comp
+		return nil
+	}
+	trx.createWithInstFn = capture
+	trx.createFn = capture
+	_, err := svc.Create(nil, 1, 10, routeCreateReq())
+	require.NoError(t, err)
+	require.NotNil(t, lastComp)
+	assert.Nil(t, lastComp.MaxAttempts)
+
+	for _, v := range []int64{1, 3} {
+		_, err = svc.Create(nil, 1, 10, withMax(v))
+		require.NoError(t, err)
+		require.NotNil(t, lastComp.MaxAttempts)
+		assert.Equal(t, v, *lastComp.MaxAttempts)
+	}
+
+	cases := []struct {
+		name    string
+		req     competition.CreateCompetitionRequest
+		wantMsg string
+	}{
+		{"route con 0", withMax(0), "max_attempts debe ser un entero mayor o igual a 1"},
+		{"route con negativo", withMax(-2), "max_attempts debe ser un entero mayor o igual a 1"},
+		{"metric con max_attempts", func() competition.CreateCompetitionRequest {
+			req := validMetricCreateReq()
+			v := int64(2)
+			req.MaxAttempts = &v
+			return req
+		}(), "type=metric no admite max_attempts"},
+	}
+	for _, tc := range cases {
+		_, err := svc.Create(nil, 1, 10, tc.req)
+		require.ErrorIs(t, err, ErrCompetitionInvalid, tc.name)
+		assert.Contains(t, err.Error(), tc.wantMsg, tc.name)
+	}
+
+	// Regresión: metric sin max_attempts sigue pasando y no lo setea.
+	lastComp = nil
+	_, err = svc.Create(nil, 1, 10, validMetricCreateReq())
+	require.NoError(t, err)
+	require.NotNil(t, lastComp)
+	assert.Nil(t, lastComp.MaxAttempts)
+
+	// La respuesta expone max_attempts de la fila persistida (sin re-carga).
+	resp := toCompetitionResponse(lastComp, []int64{11}, nil)
+	assert.Nil(t, resp.MaxAttempts)
+}
+
+func TestCompetitionResponse_MaxAttempts(t *testing.T) {
+	// max_attempts expone lo persistido (que solo route puede tener).
+	lim := int64(3)
+	resp := toCompetitionResponse(&dbs.Competition{ID: 1, TeamID: 10, Type: competition.TypeRoute, MaxAttempts: &lim}, []int64{11}, nil)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, lim, *resp.MaxAttempts)
+}
+
+// Shape de los 3 campos de intentos (Gap 36 D7) en las respuestas de las
+// mutaciones: caller participante con 1 intento → attempts_used 1 y
+// can_attempt según status (true solo en active); max_attempts expuesto.
+func TestCompetitionService_MutacionesExponenCamposDeIntentos(t *testing.T) {
+	fieldsDao := func(status string) *mockCompetitionDAO {
+		maxAttempts := int64(2)
+		inst := int64(900)
+		return &mockCompetitionDAO{
+			findByIDFn: func(id int64) (*dbs.Competition, error) {
+				return &dbs.Competition{
+					ID: id, TeamID: 10, Type: competition.TypeRoute, Status: status,
+					StartAt:                time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+					RouteSessionInstanceID: &inst, MaxAttempts: &maxAttempts,
+					CreatedByUserID: 77, CreatedByRole: competition.CreatorRoleTrainer,
+				}, nil
+			},
+			isOwnerFn: func(teamID, userID int64) (bool, error) { return userID == 1, nil },
+			listParticipantsFn: func(ids []int64) ([]dbs.CompetitionParticipant, error) {
+				return []dbs.CompetitionParticipant{
+					{CompetitionID: ids[0], UserID: 77}, {CompetitionID: ids[0], UserID: 12},
+				}, nil
+			},
+			countAttemptsFn: func(competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+				return map[int64]int64{competitionIDs[0]: 1}, nil
+			},
+		}
+	}
+	caller := int64(77) // trainer creador y participante: pasa los guards de moderación y cierre
+
+	resp, err := newCompetitionServiceForTest(fieldsDao(competition.StatusPendingApproval)).Approve(nil, caller, 5)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusActive, resp.Status)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, int64(2), *resp.MaxAttempts)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.True(t, resp.CanAttempt)
+
+	resp, err = newCompetitionServiceForTest(fieldsDao(competition.StatusPendingApproval)).Reject(nil, caller, 5, strPtr("fuera de fecha"))
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusRejected, resp.Status)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.False(t, resp.CanAttempt)
+
+	resp, instances, err := newCompetitionServiceForTest(func() *mockCompetitionDAO {
+		dao := fieldsDao(competition.StatusActive)
+		dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) { return nil, nil }
+		return dao
+	}()).Close(nil, caller, 5)
+	require.NoError(t, err)
+	assert.Equal(t, competition.StatusFinished, resp.Status)
+	require.NotNil(t, resp.MaxAttempts)
+	assert.Equal(t, int64(2), *resp.MaxAttempts)
+	require.NotNil(t, resp.AttemptsUsed)
+	assert.Equal(t, int64(1), *resp.AttemptsUsed)
+	assert.False(t, resp.CanAttempt, "finished: sin cupo aunque no llegue al límite")
+	assert.Empty(t, instances)
 }
 
 func TestCompetitionResponse_ExposesSessionInstanceID(t *testing.T) {

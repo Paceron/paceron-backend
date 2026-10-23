@@ -27,6 +27,7 @@ type CompetitionController interface {
 	Cancel(c *gin.Context)
 	ListByTeam(c *gin.Context)
 	GetDetail(c *gin.Context)
+	ListAttempts(c *gin.Context)
 	Close(c *gin.Context)
 	CreateAttempt(c *gin.Context)
 }
@@ -288,7 +289,7 @@ func (cc *competitionController) ListByTeam(c *gin.Context) {
 
 // GetDetail godoc
 // @Summary      Detalle de una competencia con progreso en vivo
-// @Description  Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor % de match (computado on-demand, sin broadcast WS).
+// @Description  Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor intento por atleta computado on-demand, sin broadcast WS. El nombre del campo "progress" del detalle depende del type de la competencia y swag no puede resolver la interfaz: para type=metric cada ítem de progress es {user_id: int, value: number|null} y para type=route es {user_id: int, compliance_ratio: number|null, duration_ms: int|null, session_instance_id: int|null} (mejor intento del atleta: máximo compliance_ratio, empate → menor duration_ms; los tres nulls si aún no tiene intentos finished (un intento wip/interrupted ya registrado también se ve nulo)).
 // @Tags         gamification
 // @Produce      json
 // @Param        id    path  int  true  "ID de la competencia"
@@ -312,6 +313,54 @@ func (cc *competitionController) GetDetail(c *gin.Context) {
 		return
 	}
 	resp, err := cc.competitionService.Get(c, authUserID, competitionID)
+	if err != nil {
+		respondCompetitionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ListAttempts godoc
+// @Summary      Listar los intentos de un atleta en una competencia
+// @Description  Guard igual que el detalle: 404 si la competencia no existe (antes de todo guard), 403 si el caller no es miembro de grupo del team ni owner. Sin query athlete_user_id lista los intentos del caller; con la query, los de ese atleta (cualquier miembro puede ver los de otro; no-participante = lista vacía). Ítems orden por id ASC: distance_meters del feedback activo (null si no hay), compliance_ratio solo en finished de route (metric no matchea: null; 0 sin puntos GPS, matching on-demand) y duration_ms end-start server-side (null en wip).
+// @Tags         gamification
+// @Produce      json
+// @Param              id              path  int     true  "ID de la competencia"
+// @Param              athlete_user_id query int     false "Atleta cuyos intentos listar (default: el caller)"
+// @Success      200  {object}  competition.CompetitionAttemptsResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Router       /api/v1/competitions/{id}/attempts [get]
+func (cc *competitionController) ListAttempts(c *gin.Context) {
+	authUserID, ok := requireAuthForCompetition(c)
+	if !ok {
+		return
+	}
+	competitionID, err := parsePositivePathParam(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	athleteQuery, err := parseOptionalPositiveQueryParam(c, "athlete_user_id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, apierror.APIError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "Bad request",
+			Message:    err.Error(),
+		})
+		return
+	}
+	athleteUserID := authUserID
+	if athleteQuery != nil {
+		athleteUserID = *athleteQuery
+	}
+	resp, err := cc.competitionService.ListAttempts(c, authUserID, competitionID, athleteUserID)
 	if err != nil {
 		respondCompetitionError(c, err)
 		return
@@ -367,7 +416,7 @@ func (cc *competitionController) emitCompetitionFinished(competitionID int64, in
 
 // CreateAttempt godoc
 // @Summary      Registrar el intento del atleta en una competencia de ruta
-// @Description  Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip sobre la instancia sintética de la competencia tagueado con competition_id. Un único intento por participante (400 si ya registró uno, único garantizado por el constraint (session_instance_id, athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.
+// @Description  Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip tagueado con competition_id. El primer intento reusa la instancia sintética compartida de la competencia; los siguientes crean una instancia propia nueva ("Competencia ruta N (intento M)") cada vez, hasta agotar max_attempts si la competencia configuró uno (400 con "llegaste al límite de intentos de esta competencia"). El finish de cada intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.
 // @Tags         gamification
 // @Produce      json
 // @Param        id    path  int  true  "ID de la competencia"

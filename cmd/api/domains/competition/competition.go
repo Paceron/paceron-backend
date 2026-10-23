@@ -41,41 +41,73 @@ type CreateCompetitionRequest struct {
 	EndAt                  *time.Time `json:"end_at"`
 	RouteGeoJSON           *string    `json:"route_geojson"`
 	AcceptanceRadiusMeters *float64   `json:"acceptance_radius_meters"`
-	ParticipantIDs         []int64    `json:"participants" binding:"required,min=2"`
+	// MaxAttempts es solo de type=route: opcional, >= 1, sin tope. NULL =
+	// sin límite; inmutable post-create (no hay edición de competencia).
+	MaxAttempts    *int64  `json:"max_attempts"`
+	ParticipantIDs []int64 `json:"participants" binding:"required,min=2"`
 }
 
-// CompetitionProgressItem es el progreso en vivo de un participante en el
-// detalle. value es null para type=route hasta la implementación del matching
-// (E4.2): el DTO ya reserva el lugar.
-type CompetitionProgressItem struct {
+// CompetitionProgress es el progreso en vivo de un participante en el
+// detalle. Se serializa según el struct dinámico: metric viaja {user_id, value}
+// (byte-idéntico a E4.1) y route {user_id, compliance_ratio, duration_ms,
+// session_instance_id} con el MEJOR intento del atleta (Gap 36 D5).
+type CompetitionProgress interface {
+	competitionProgress()
+}
+
+// CompetitionMetricProgressItem es el progreso de una competencia type=metric:
+// value acumulado in-ventana (null si nunca reportó).
+type CompetitionMetricProgressItem struct {
 	UserID int64    `json:"user_id"`
 	Value  *float64 `json:"value"`
 }
+
+// CompetitionRouteProgressItem es el progreso de una competencia type=route:
+// el mejor intento del atleta (max pct, empate → menor duración). Los tres
+// valores van null si el participante no registró intentos.
+type CompetitionRouteProgressItem struct {
+	UserID            int64    `json:"user_id"`
+	ComplianceRatio   *float64 `json:"compliance_ratio"`
+	DurationMs        *int64   `json:"duration_ms"`
+	SessionInstanceID *int64   `json:"session_instance_id"`
+}
+
+func (CompetitionMetricProgressItem) competitionProgress() {}
+func (CompetitionRouteProgressItem) competitionProgress()  {}
 
 // CompetitionResponse es el shape de competencia para detalle y listado
 // (spec: {id, team_id, group_id, type, metric?, ...}). progress solo en el
 // detalle (omitempty en el listado). session_instance_id = instancia
 // sintética del intento (Gap 35): solo type=route, null en metric.
+// max_attempts solo vive en route (null = sin límite); metric nunca lo setea.
+// attempts_used/can_attempt son caller-dependientes y los llena el service:
+// attempts_used = intentos del caller (0 si participante sin intentos, null
+// si no es route o no participa); can_attempt = bool SIEMPRE presente,
+// true solo si type=route && active && caller participante && límite no
+// cumplido (Gap 36 D7).
 type CompetitionResponse struct {
-	ID                     int64                     `json:"id"`
-	TeamID                 int64                     `json:"team_id"`
-	GroupID                *int64                    `json:"group_id"`
-	Type                   string                    `json:"type"`
-	Metric                 *string                   `json:"metric"`
-	StartAt                time.Time                 `json:"start_at"`
-	EndAt                  *time.Time                `json:"end_at"`
-	Route                  *string                   `json:"route,omitempty"`
-	AcceptanceRadiusMeters *float64                  `json:"acceptance_radius_meters"`
-	SessionInstanceID      *int64                    `json:"session_instance_id"`
-	Participants           []int64                   `json:"participants"`
-	CreatedByUserID        int64                     `json:"created_by_user_id"`
-	CreatedByRole          string                    `json:"created_by_role"`
-	Status                 string                    `json:"status"`
-	ApprovedByUserID       *int64                    `json:"approved_by_user_id"`
-	RejectionReason        *string                   `json:"rejection_reason"`
-	WinnerUserIDs          []int64                   `json:"winner_user_ids"`
-	FinishedAt             *time.Time                `json:"finished_at"`
-	Progress               []CompetitionProgressItem `json:"progress,omitempty"`
+	ID                     int64                 `json:"id"`
+	TeamID                 int64                 `json:"team_id"`
+	GroupID                *int64                `json:"group_id"`
+	Type                   string                `json:"type"`
+	Metric                 *string               `json:"metric"`
+	StartAt                time.Time             `json:"start_at"`
+	EndAt                  *time.Time            `json:"end_at"`
+	Route                  *string               `json:"route,omitempty"`
+	AcceptanceRadiusMeters *float64              `json:"acceptance_radius_meters"`
+	SessionInstanceID      *int64                `json:"session_instance_id"`
+	MaxAttempts            *int64                `json:"max_attempts"`
+	AttemptsUsed           *int64                `json:"attempts_used"`
+	CanAttempt             bool                  `json:"can_attempt"`
+	Participants           []int64               `json:"participants"`
+	CreatedByUserID        int64                 `json:"created_by_user_id"`
+	CreatedByRole          string                `json:"created_by_role"`
+	Status                 string                `json:"status"`
+	ApprovedByUserID       *int64                `json:"approved_by_user_id"`
+	RejectionReason        *string               `json:"rejection_reason"`
+	WinnerUserIDs          []int64               `json:"winner_user_ids"`
+	FinishedAt             *time.Time            `json:"finished_at"`
+	Progress               []CompetitionProgress `json:"progress,omitempty"`
 }
 
 // CompetitionsListResponse es la respuesta de GET /teams/{id}/competitions,
@@ -94,6 +126,30 @@ type CompetitionDetailResponse struct {
 // RejectRequest es el body de PATCH /competitions/{id}/reject: reason opcional.
 type RejectRequest struct {
 	Reason *string `json:"reason"`
+}
+
+// CompetitionAttemptItem es un intento del listado GET /competitions/{id}/attempts
+// (Gap 36 D4). started_at/ended_at son los nombres del DTO; la fuente es
+// start_date/end_date de runner_session. distance_meters: SUM del feedback
+// activo del atleta sobre la instancia (null si no hay). compliance_ratio:
+// matching on-demand, null salvo finished. duration_ms: end-start server-side
+// (null en wip).
+type CompetitionAttemptItem struct {
+	ID                int64      `json:"id"`
+	SessionInstanceID int64      `json:"session_instance_id"`
+	Status            string     `json:"status"`
+	StartedAt         time.Time  `json:"started_at"`
+	EndedAt           *time.Time `json:"ended_at"`
+	DistanceMeters    *float64   `json:"distance_meters"`
+	ComplianceRatio   *float64   `json:"compliance_ratio"`
+	DurationMs        *int64     `json:"duration_ms"`
+}
+
+// CompetitionAttemptsResponse es la respuesta de GET /competitions/{id}/attempts:
+// envoltura simple {data: [...]}, SIN has_unseen (el unseen de competencias es
+// por team y lo cubre el listado).
+type CompetitionAttemptsResponse struct {
+	Data []CompetitionAttemptItem `json:"data"`
 }
 
 // CompetitionCancelResponse es la respuesta de DELETE /competitions/{id}/cancel
