@@ -185,6 +185,10 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/users/:id/workout-feedback-history", app.workoutFeedbackController.AthleteHistory)
 	r.GET("/api/v1/users/:id/administered-workout-feedback-history", app.workoutFeedbackController.AdministeredHistory)
 
+	// Comparación planificado vs realizado (comparacion-planificado-realizado)
+	r.GET("/api/v1/activities/comparison", app.activityComparisonController.ListComparisons)
+	r.GET("/api/v1/activities/comparison/:sessionInstanceId", app.activityComparisonController.GetSessionComparison)
+
 	// Gamificación: rachas (gamificacion-core E1), self-only.
 	r.GET("/api/v1/users/:id/streaks", app.streakController.GetStreaks)
 	// Escape del punto rojo (D3): POST seen, self-only.
