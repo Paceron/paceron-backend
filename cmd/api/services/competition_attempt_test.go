@@ -14,12 +14,13 @@ import (
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
 
-// Intake de intentos de competencias de ruta (competencias-ruta-intake D2):
-// mocks de DAO de competencias + DAO de runner sessions. Verifica el orden de
-// los 5 guards y que el write va directo al DAO (sin pasar por el service/gate
-// presencial de runner sessions).
+// Intake de intentos de competencias de ruta (Gap 36, intentos múltiples):
+// mocks de DAO de competencias. Verifica el orden de los guards de cabeza y
+// que el límite/la materialización de instancia vivan en el tx del DAO de
+// competencias (el service delega sin escribir intentos por su cuenta).
 
 func routeAttemptDao(instanceID int64) *mockCompetitionDAO {
+	attempts := int64(3)
 	return &mockCompetitionDAO{
 		findByIDFn: func(id int64) (*dbs.Competition, error) {
 			return &dbs.Competition{
@@ -28,29 +29,32 @@ func routeAttemptDao(instanceID int64) *mockCompetitionDAO {
 				Type:                   competition.TypeRoute,
 				Status:                 competition.StatusActive,
 				RouteSessionInstanceID: &instanceID,
+				MaxAttempts:            &attempts,
 			}, nil
 		},
 		isParticipantFn: func(competitionID, userID int64) (bool, error) { return true, nil },
 	}
 }
 
-// TestCompetitionService_CreateAttemptHappy verifica el shape del write: wip,
-// atleta = caller, session_instance_id = instancia sintética de la
-// competencia, competition_id tagueado. El DAO de runner sessions NO recibe la
-// llamada SessionInstanceExists: el intake va directo al Create (el gate
-// presencial / día vive solo en runnerSessionService.Create, que no se toca).
+// TestCompetitionService_CreateAttemptHappy verifica la delegación: el service
+// pasa comp + atleta al DAO (el límite lo decide el DAO con la fila lockeada)
+// y devuelve la runner session que el
+// DAO materializó. El DAO de runner sessions no recibe ninguna llamada: la tx
+// del intento vive entera en el DAO de competencias.
 func TestCompetitionService_CreateAttemptHappy(t *testing.T) {
 	dao := routeAttemptDao(42)
-	var existsCalls int
-	runnerDao := &mockRunnerSessionDao{
-		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) {
-			existsCalls++
-			return false, nil
-		},
+	var capturedComp *dbs.Competition
+	var capturedAthlete int64
+	dao.createAttemptSessionFn = func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+		capturedComp = comp
+		capturedAthlete = athleteUserID
+		return &dbs.RunnerSession{ID: 123, SessionInstanceID: 42, AthleteUserID: athleteUserID,
+			Status: runnersession.RunnerSessionStatusWip, CompetitionID: &comp.ID}, nil
 	}
-	var captured *dbs.RunnerSession
+	var runnerCreateCalls int
+	runnerDao := &mockRunnerSessionDao{}
 	runnerDao.createFn = func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
-		captured = rs
+		runnerCreateCalls++
 		return true, nil
 	}
 	svc := NewCompetitionService(dao, nil, nil, runnerDao)
@@ -58,20 +62,27 @@ func TestCompetitionService_CreateAttemptHappy(t *testing.T) {
 	rs, err := svc.CreateAttempt(nil, 7, 5)
 	require.NoError(t, err)
 	require.NotNil(t, rs)
-	require.NotNil(t, captured)
-	assert.Equal(t, int64(42), captured.SessionInstanceID)
-	assert.Equal(t, int64(7), captured.AthleteUserID)
-	assert.Equal(t, runnersession.RunnerSessionStatusWip, captured.Status)
-	require.Equal(t, int64(5), *captured.CompetitionID)
-	assert.Equal(t, int64(42), rs.SessionInstanceID)
-	assert.Zero(t, existsCalls, "el intake no pasa por el service de runner sessions (gate presencial no aplica)")
+	assert.Equal(t, int64(123), rs.ID)
+	assert.Equal(t, int64(42), rs.SessionInstanceID, "la runner session la devuelve el DAO, sin remap del service")
+	assert.Equal(t, int64(5), capturedComp.ID)
+	assert.Equal(t, int64(7), capturedAthlete)
+	assert.Equal(t, 0, runnerCreateCalls, "el intake no escribe por runnerSessionDao")
 }
 
 func TestCompetitionService_CreateAttemptGuardsEnOrden(t *testing.T) {
-	runnerDao := &mockRunnerSessionDao{}
-	runnerDao.createFn = func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
-		t.Fatal("el guard debe cortar antes del write")
-		return false, nil
+	// daoWriteBlocked vigila el DAO de runner sessions (que ya no participa):
+	// ningún guard debe llegar a escribir.
+	daoWriteBlocked := func(t *testing.T) *mockRunnerSessionDao {
+		runnerDao := &mockRunnerSessionDao{}
+		runnerDao.createFn = func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
+			t.Fatal("el guard debe cortar antes de escribir (y el write ya vive en el DAO)")
+			return false, nil
+		}
+		return runnerDao
+	}
+
+	writeBlockedSvc := func(t *testing.T, dao *mockCompetitionDAO) CompetitionServiceInterface {
+		return NewCompetitionService(dao, nil, nil, daoWriteBlocked(t))
 	}
 
 	t.Run("404 no existe", func(t *testing.T) {
@@ -80,9 +91,9 @@ func TestCompetitionService_CreateAttemptGuardsEnOrden(t *testing.T) {
 				return nil, daos.ErrCompetitionNotFound
 			},
 		}
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 999)
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 999)
 		require.ErrorIs(t, err, daos.ErrCompetitionNotFound)
+		assert.Equal(t, 0, dao.createAttemptSessionCalls)
 	})
 
 	t.Run("400 type metric", func(t *testing.T) {
@@ -91,10 +102,10 @@ func TestCompetitionService_CreateAttemptGuardsEnOrden(t *testing.T) {
 				return &dbs.Competition{ID: id, Type: competition.TypeMetric, Status: competition.StatusActive}, nil
 			},
 		}
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
 		require.ErrorIs(t, err, ErrCompetitionInvalid)
 		assert.Contains(t, err.Error(), "solo las competencias de ruta admiten intentos")
+		assert.Equal(t, 0, dao.createAttemptSessionCalls)
 	})
 
 	t.Run("400 status no activa", func(t *testing.T) {
@@ -103,10 +114,10 @@ func TestCompetitionService_CreateAttemptGuardsEnOrden(t *testing.T) {
 				return &dbs.Competition{ID: id, Type: competition.TypeRoute, Status: competition.StatusPendingApproval}, nil
 			},
 		}
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
 		require.ErrorIs(t, err, ErrCompetitionInvalid)
 		assert.Contains(t, err.Error(), "la competencia no está activa")
+		assert.Equal(t, 0, dao.createAttemptSessionCalls)
 	})
 
 	t.Run("403 no participante", func(t *testing.T) {
@@ -116,48 +127,65 @@ func TestCompetitionService_CreateAttemptGuardsEnOrden(t *testing.T) {
 			participantCalls++
 			return false, nil
 		}
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
 		require.ErrorIs(t, err, ErrCompetitionForbidden)
 		assert.Equal(t, 1, participantCalls)
+		assert.Equal(t, 0, dao.createAttemptSessionCalls)
 	})
 
-	t.Run("400 doble intento via pre-check", func(t *testing.T) {
-		dao := routeAttemptDao(42)
-		dao.existsAttemptFn = func(competitionID, userID int64) (bool, error) { return true, nil }
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
-		require.ErrorIs(t, err, ErrCompetitionInvalid)
-	})
-
-	t.Run("400 doble intento via unique (race, RowsAffected=0)", func(t *testing.T) {
-		dao := routeAttemptDao(42)
-		runnerDao := &mockRunnerSessionDao{}
-		runnerDao.createFn = func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
-			return false, nil
+	t.Run("400 sin instancia compartida", func(t *testing.T) {
+		dao := &mockCompetitionDAO{
+			findByIDFn: func(id int64) (*dbs.Competition, error) {
+				return &dbs.Competition{ID: id, TeamID: 10, Type: competition.TypeRoute, Status: competition.StatusActive}, nil
+			},
+			isParticipantFn: func(competitionID, userID int64) (bool, error) { return true, nil },
 		}
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
 		require.ErrorIs(t, err, ErrCompetitionInvalid)
+		assert.Contains(t, err.Error(), "no tiene instancia de ruta asignada")
+		assert.Equal(t, 0, dao.createAttemptSessionCalls)
 	})
 
-	t.Run("403 precede al doble intento", func(t *testing.T) {
+	t.Run("400 límite de intentos", func(t *testing.T) {
+		dao := routeAttemptDao(42)
+		dao.createAttemptSessionFn = func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+			return nil, daos.ErrCompetitionAttemptLimit
+		}
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
+		require.ErrorIs(t, err, ErrCompetitionInvalid)
+		assert.Contains(t, err.Error(), "llegaste al límite de intentos de esta competencia")
+	})
+
+	t.Run("400 conflict de instancia compartida (ON CONFLICT, DAO lo decide)", func(t *testing.T) {
+		dao := routeAttemptDao(42)
+		dao.createAttemptSessionFn = func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+			return nil, daos.ErrCompetitionAttemptConflict
+		}
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
+		require.ErrorIs(t, err, ErrCompetitionInvalid)
+		assert.Contains(t, err.Error(), "ya tenés un intento registrado en esta competencia")
+	})
+
+	t.Run("403 precede al límite", func(t *testing.T) {
 		dao := routeAttemptDao(42)
 		dao.isParticipantFn = func(competitionID, userID int64) (bool, error) { return false, nil }
-		dao.existsAttemptFn = func(competitionID, userID int64) (bool, error) { return true, nil }
-		svc := NewCompetitionService(dao, nil, nil, runnerDao)
-		_, err := svc.CreateAttempt(nil, 7, 5)
+		dao.createAttemptSessionFn = func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+			t.Fatal("el guard de participante corta antes del DAO")
+			return nil, nil
+		}
+		_, err := writeBlockedSvc(t, dao).CreateAttempt(nil, 7, 5)
 		require.ErrorIs(t, err, ErrCompetitionForbidden)
 	})
 }
 
 func TestCompetitionService_CreateAttemptDAOError500(t *testing.T) {
 	dao := routeAttemptDao(42)
-	dao.existsAttemptFn = func(competitionID, userID int64) (bool, error) {
-		return false, errors.New("db caida")
+	dao.createAttemptSessionFn = func(comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+		return nil, errors.New("db caida")
 	}
 	svc := NewCompetitionService(dao, nil, nil, &mockRunnerSessionDao{})
 	_, err := svc.CreateAttempt(nil, 7, 5)
+	require.EqualError(t, err, "error al registrar el intento")
 	require.NotErrorIs(t, err, ErrCompetitionInvalid)
 }
 

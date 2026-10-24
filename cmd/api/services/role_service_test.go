@@ -12,11 +12,12 @@ import (
 )
 
 type mockRoleDao struct {
-	createFn    func(ctx *gin.Context, r *dbs.Role) error
-	findByIDFn  func(ctx *gin.Context, id int64) (*dbs.Role, error)
+	createFn     func(ctx *gin.Context, r *dbs.Role) error
+	findByIDFn   func(ctx *gin.Context, id int64) (*dbs.Role, error)
+	findByIDsFn  func(ctx *gin.Context, ids []int64) ([]dbs.Role, error)
 	findByNameFn func(ctx *gin.Context, name string) (*dbs.Role, error)
-	getAllFn    func(ctx *gin.Context) ([]dbs.Role, error)
-	updateFn    func(ctx *gin.Context, r *dbs.Role) error
+	getAllFn     func(ctx *gin.Context) ([]dbs.Role, error)
+	updateFn     func(ctx *gin.Context, r *dbs.Role) error
 	softDeleteFn func(ctx *gin.Context, id int64) error
 }
 
@@ -30,6 +31,13 @@ func (m *mockRoleDao) Create(ctx *gin.Context, r *dbs.Role) error {
 func (m *mockRoleDao) FindByID(ctx *gin.Context, id int64) (*dbs.Role, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (m *mockRoleDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, ids)
 	}
 	return nil, nil
 }

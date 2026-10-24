@@ -1,6 +1,9 @@
 package services
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/mpconnect"
@@ -92,6 +96,12 @@ func newTestMPConnectService(connDao *mockSellerConnectionDao, client *mockMerca
 	return NewMPConnectService(connDao, client, enc, "client-id", "client-secret", "https://redirect")
 }
 
+// signedState arma un state firmado con el mismo secret que el service lee en
+// validateState (config.JWTSecret), con target web y timestamp actual.
+func signedState(userID int64) string {
+	return mpconnect.BuildState(config.JWTSecret, userID, time.Now().UnixNano(), mpconnect.TargetWeb)
+}
+
 func TestGetAuthURL_Success(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	client.On("GetAuthURL", mock.Anything, mock.Anything).Return("https://mp/auth?code=xyz").Once()
@@ -101,8 +111,12 @@ func TestGetAuthURL_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "https://mp/auth?code=xyz", resp.AuthURL)
-	assert.True(t, strings.HasPrefix(resp.State, "42-"))
-	assert.True(t, strings.HasSuffix(resp.State, "-"+mpconnect.TargetWeb))
+	// El state que emite el service tiene que poder verificarse con el mismo
+	// secret que el service usa al validarlo en el callback.
+	userID, _, target, err := mpconnect.ParseState(config.JWTSecret, resp.State)
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), userID)
+	assert.Equal(t, mpconnect.TargetWeb, target)
 	client.AssertExpectations(t)
 }
 
@@ -177,9 +191,34 @@ func TestHandleCallback_InvalidState(t *testing.T) {
 	assert.EqualError(t, err, "formato de state inválido")
 }
 
+// State forjado (payload bien formado, firma inventada): sin verificación de
+// firma este callback vincularía la cuenta de MP de quien lo manda al usuario
+// 7. Se rechaza antes de tocar MP o la base.
+func TestHandleCallback_StateForjadoRechazado(t *testing.T) {
+	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
+
+	resp, err := svc.HandleCallback(&gin.Context{}, &mpconnect.CallbackRequest{Code: "abc", State: fmt.Sprintf("7-%d-web", time.Now().UnixNano()) + ".deadbeef"})
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.EqualError(t, err, "formato de state inválido")
+}
+
+// Payload tampered dentro de un state con estructura válida: la firma ya no
+// corresponde y se rechaza igual.
+func TestHandleCallback_StateTamperedRechazado(t *testing.T) {
+	state := signedState(7)
+	tampered := "8" + state[1:]
+	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
+
+	resp, err := svc.HandleCallback(&gin.Context{}, &mpconnect.CallbackRequest{Code: "abc", State: tampered})
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.EqualError(t, err, "formato de state inválido")
+}
+
 func TestHandleCallback_ExpiredState(t *testing.T) {
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
-	expired := mpconnect.BuildState(1, time.Now().UnixNano()-11*time.Minute.Nanoseconds(), mpconnect.TargetWeb)
+	expired := mpconnect.BuildState(config.JWTSecret, 1, time.Now().UnixNano()-11*time.Minute.Nanoseconds(), mpconnect.TargetWeb)
 	resp, err := svc.HandleCallback(&gin.Context{}, &mpconnect.CallbackRequest{Code: "abc", State: expired})
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -190,7 +229,7 @@ func TestHandleCallback_ExpiredState(t *testing.T) {
 
 func TestHandleCallback_Success(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, "client-id", "client-secret", "https://redirect", "abc").
@@ -230,7 +269,7 @@ func TestHandleCallback_Success(t *testing.T) {
 
 func TestHandleCallback_RefreshKeepsOriginalRefreshToken(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -260,7 +299,7 @@ func TestHandleCallback_RefreshKeepsOriginalRefreshToken(t *testing.T) {
 
 func TestHandleCallback_RefreshError(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -278,7 +317,7 @@ func TestHandleCallback_RefreshError(t *testing.T) {
 
 func TestHandleCallback_TokenExchangeError(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -294,7 +333,7 @@ func TestHandleCallback_TokenExchangeError(t *testing.T) {
 
 func TestHandleCallback_GetUserInfoError(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -313,7 +352,7 @@ func TestHandleCallback_GetUserInfoError(t *testing.T) {
 
 func TestHandleCallback_EncryptError(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -334,7 +373,7 @@ func TestHandleCallback_EncryptError(t *testing.T) {
 
 func TestHandleCallback_UpsertError(t *testing.T) {
 	ctx := &gin.Context{}
-	state := fmt.Sprintf("%d-%d", 7, time.Now().UnixNano())
+	state := signedState(7)
 
 	client := new(mockMercadoPagoClient)
 	client.On("ExchangeCodeForToken", mock.Anything, mock.Anything, mock.Anything, mock.Anything, "abc").
@@ -489,4 +528,39 @@ func TestServiceMPConnectImplementsInterface(t *testing.T) {
 	svc := newTestMPConnectService(&mockSellerConnectionDao{}, new(mockMercadoPagoClient), &mockEncryptor{})
 	var iface MPConnectServiceInterface = svc
 	_ = iface
+}
+
+// TestMPConnectService_ValidateWebhookSignature matrices: mismo patrón que
+// payment_service — secret seteado → valida el SDK; secret ausente → nil sin
+// tocar MP (rollout gradual).dataID de deauth es el mp user id.
+func TestMPConnectService_ValidateWebhookSignature_SecretConfigured_PassesThrough(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	client.On("ValidateWebhookSignature", "ts=123,v1=abc", "req-id", "987", "secret-connect").Return(nil)
+
+	svc := &mpConnectService{mpClient: client, webhookSecret: "secret-connect"}
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "987"))
+	client.AssertExpectations(t)
+}
+
+func TestMPConnectService_ValidateWebhookSignature_SecretMissing_SkipsValidation(t *testing.T) {
+	client := new(mockMercadoPagoClient)
+	svc := &mpConnectService{mpClient: client, webhookSecret: ""}
+
+	assert.NoError(t, svc.ValidateWebhookSignature("ts=123,v1=abc", "req-id", "987"))
+	client.AssertNotCalled(t, "ValidateWebhookSignature", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestMPConnectService_ValidateWebhookSignature_RealHMAC_SignatureVerification(t *testing.T) {
+	secret := "secret-deauth-e2e"
+	manifest := fmt.Sprintf("id:987;request-id:req-abc;ts:1770000000000;")
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(manifest))
+	sig := fmt.Sprintf("ts=1770000000000,v1=%s", hex.EncodeToString(mac.Sum(nil)))
+
+	svc := &mpConnectService{mpClient: mercadopagoclient.New(), webhookSecret: secret}
+	assert.NoError(t, svc.ValidateWebhookSignature(sig, "req-abc", "987"))
+
+	tampered := "ts=1770000000000,v1=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	assert.Error(t, svc.ValidateWebhookSignature(tampered, "req-abc", "987"))
 }

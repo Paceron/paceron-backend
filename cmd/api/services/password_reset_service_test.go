@@ -51,7 +51,7 @@ func TestRequestPasswordReset_UserNotFound_NoErrorNoMail(t *testing.T) {
 		},
 	}
 	mailerMock := &mockMailer{}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, mailerMock)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil, mailerMock)
 
 	err := svc.RequestPasswordReset(nil, "nobody@test.com")
 
@@ -66,7 +66,7 @@ func TestRequestPasswordReset_UserNotActive_NoErrorNoMail(t *testing.T) {
 		},
 	}
 	mailerMock := &mockMailer{}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, mailerMock)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil, mailerMock)
 
 	err := svc.RequestPasswordReset(nil, "blocked@test.com")
 
@@ -80,7 +80,7 @@ func TestRequestPasswordReset_FindByEmailError_ReturnsError(t *testing.T) {
 			return nil, errors.New("db error")
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil, nil)
 
 	err := svc.RequestPasswordReset(nil, "user@test.com")
 
@@ -112,7 +112,7 @@ func TestRequestPasswordReset_ActiveUser_InvalidatesPreviousAndSendsMail(t *test
 	}
 	mailerMock := &mockMailer{}
 
-	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, mailerMock)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil, mailerMock)
 	err := svc.RequestPasswordReset(nil, "user@test.com")
 
 	assert.NoError(t, err)
@@ -131,7 +131,7 @@ func TestResetPassword_UserNotFound_GenericError(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil, nil)
 
 	err := svc.ResetPassword(nil, "nobody@test.com", "123456", "NewPass123")
 
@@ -145,7 +145,7 @@ func TestResetPassword_UserNotActive_GenericError(t *testing.T) {
 			return &dbs.User{ID: 1, Status: "blocked"}, nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, mockPasswordResetDao{}, nil, nil)
 
 	err := svc.ResetPassword(nil, "blocked@test.com", "123456", "NewPass123")
 
@@ -164,7 +164,7 @@ func TestResetPassword_NoActiveToken_GenericError(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil, nil)
 
 	err := svc.ResetPassword(nil, "user@test.com", "123456", "NewPass123")
 
@@ -189,7 +189,7 @@ func TestResetPassword_ExpiredToken_GenericError(t *testing.T) {
 			}, nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil, nil)
 
 	err := svc.ResetPassword(nil, "user@test.com", "123456", "NewPass123")
 
@@ -222,7 +222,7 @@ func TestResetPassword_WrongCode_IncrementsAttempts(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil, nil)
 
 	err := svc.ResetPassword(nil, "user@test.com", "000000", "NewPass123")
 
@@ -258,7 +258,7 @@ func TestResetPassword_WrongCode_ExceedsMaxAttempts_LocksOut(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil)
+	svc := NewPasswordResetService(authDao, mockUserDao{}, resetDao, nil, nil)
 
 	err := svc.ResetPassword(nil, "user@test.com", "000000", "NewPass123")
 
@@ -299,7 +299,7 @@ func TestResetPassword_HappyPath_UpdatesPasswordAndMarksUsed(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewPasswordResetService(authDao, userDao, resetDao, nil)
+	svc := NewPasswordResetService(authDao, userDao, resetDao, nil, nil)
 
 	err := svc.ResetPassword(nil, "user@test.com", "123456", "NewPass123")
 

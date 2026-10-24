@@ -264,6 +264,7 @@ func (pc *paymentController) GetPaymentStatus(c *gin.Context) {
 // @Param        id   path      string true "Mercado Pago Payment ID"
 // @Success      200  {object}  payment.MPPaymentStatusResponse
 // @Failure      400  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/payments/mp/{id} [get]
 func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
@@ -279,6 +280,14 @@ func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
 
 	resp, err := pc.paymentService.GetPaymentStatusFromMP(c, mpPaymentID)
 	if err != nil {
+		if err.Error() == "payment not found" {
+			c.JSON(http.StatusNotFound, apierror.APIError{
+				StatusCode: http.StatusNotFound,
+				Code:       "Not found",
+				Message:    "Pago no encontrado",
+			})
+			return
+		}
 		customlogger.Error(c, "error getting payment status from MP", err)
 		c.JSON(http.StatusInternalServerError, apierror.APIError{
 			StatusCode: http.StatusInternalServerError,
@@ -300,11 +309,15 @@ func (pc *paymentController) GetPaymentStatusFromMP(c *gin.Context) {
 // @Param        body body      payment.WebhookNotification true "Webhook notification"
 // @Success      200  {object}  map[string]string
 // @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
 // @Router       /api/v1/payments/webhook [post]
 func (pc *paymentController) HandleWebhook(c *gin.Context) {
+	xSignature := c.GetHeader("X-Signature")
+	xRequestID := c.GetHeader("X-Request-Id")
 	customlogger.Info(c, "[DEBUG] PaymentWebhook recibido",
-		customlogger.Tag("x_signature", c.GetHeader("X-Signature")),
-		customlogger.Tag("x_request_id", c.GetHeader("X-Request-Id")),
+		customlogger.Tag("x_signature_present", fmt.Sprintf("%t", xSignature != "")),
+		customlogger.Tag("x_signature_length", strconv.Itoa(len(xSignature))),
+		customlogger.Tag("x_request_id_present", fmt.Sprintf("%t", xRequestID != "")),
 		customlogger.TagMethod("HandleWebhook"))
 
 	var notification payment.WebhookNotification
@@ -328,13 +341,25 @@ func (pc *paymentController) HandleWebhook(c *gin.Context) {
 		customlogger.Tag("data_id", notification.Data.ID),
 		customlogger.TagMethod("HandleWebhook"))
 
-	xSignature := c.GetHeader("X-Signature")
-	xRequestID := c.GetHeader("X-Request-Id")
+	xSignature = c.GetHeader("X-Signature")
+	xRequestID = c.GetHeader("X-Request-Id")
+
+	if err := pc.paymentService.ValidateWebhookSignature(xSignature, xRequestID, notification.Data.ID); err != nil {
+		customlogger.Warn(c, "webhook signature validation failed",
+			customlogger.Tag("data_id", notification.Data.ID),
+			customlogger.TagMethod("HandleWebhook"))
+		c.JSON(http.StatusUnauthorized, apierror.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "Unauthorized",
+			Message:    "Firma de webhook inválida",
+		})
+		return
+	}
 
 	if xSignature == "" || xRequestID == "" {
 		customlogger.Warn(c, "webhook missing signature headers",
-			customlogger.Tag("x-signature", xSignature),
-			customlogger.Tag("x-request-id", xRequestID))
+			customlogger.Tag("x_signature_present", fmt.Sprintf("%t", xSignature != "")),
+			customlogger.Tag("x_request_id_present", fmt.Sprintf("%t", xRequestID != "")))
 		c.JSON(http.StatusOK, gin.H{"message": "missing signature headers"})
 		return
 	}

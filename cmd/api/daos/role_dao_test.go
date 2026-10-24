@@ -77,6 +77,32 @@ func TestRoleDao_FindByID_ExcludesSoftDeleted(t *testing.T) {
 	assert.Nil(t, found)
 }
 
+func TestRoleDao_FindByIDs_FoundAndExcludesSoftDeleted(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewRoleDao(db)
+
+	role1 := &dbs.Role{Name: "rol_a_test"}
+	role2 := &dbs.Role{Name: "rol_b_test"}
+	require.NoError(t, dao.Create(nil, role1))
+	require.NoError(t, dao.Create(nil, role2))
+	require.NoError(t, dao.SoftDelete(nil, role2.ID))
+
+	found, err := dao.FindByIDs(nil, []int64{role1.ID, role2.ID})
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, "rol_a_test", found[0].Name)
+}
+
+func TestRoleDao_FindByIDs_Empty(t *testing.T) {
+	dao := NewRoleDao(testutils.SetupTestDB(t))
+
+	found, err := dao.FindByIDs(nil, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, found)
+}
+
 func TestRoleDao_FindByName_Found(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewRoleDao(db)

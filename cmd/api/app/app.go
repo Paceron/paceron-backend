@@ -121,7 +121,8 @@ func NewApplication() *Application {
 
 	// User flow
 	userDao := daos.NewUserDao(db)
-	userService := services.NewUserService(userDao, mailerClient, pushTokenDao, expoPushClient, storageClientInstance)
+	refreshTokenDao := daos.NewRefreshTokenDao(db)
+	userService := services.NewUserService(userDao, mailerClient, pushTokenDao, refreshTokenDao, expoPushClient, storageClientInstance)
 	userController := controllers.NewUserController(userService)
 
 	// Role flow (roleDao/userRoleDao también los necesita authService para los claims
@@ -134,13 +135,12 @@ func NewApplication() *Application {
 
 	// Auth flow
 	authDao := daos.NewAuthDao(db)
-	refreshTokenDao := daos.NewRefreshTokenDao(db)
 	authService := services.NewAuthService(authDao, userRoleDao, roleDao, refreshTokenDao, mailerClient)
 	authController := controllers.NewAuthController(authService)
 
 	// Password reset flow
 	passwordResetDao := daos.NewPasswordResetDao(db)
-	passwordResetService := services.NewPasswordResetService(authDao, userDao, passwordResetDao, mailerClient)
+	passwordResetService := services.NewPasswordResetService(authDao, userDao, passwordResetDao, refreshTokenDao, mailerClient)
 	passwordResetController := controllers.NewPasswordResetController(passwordResetService)
 
 	// Example Weather flow

@@ -1013,7 +1013,7 @@ const docTemplate = `{
         },
         "/api/v1/competitions/{id}": {
             "get": {
-                "description": "Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor % de match (computado on-demand, sin broadcast WS).",
+                "description": "Accesible para miembros del team u owner; 404 si no existe. type=metric muestra el acumulado de la métrica por participante dentro de [start_at, end_at o now]; type=route muestra el mejor intento por atleta computado on-demand, sin broadcast WS. El nombre del campo \"progress\" del detalle depende del type de la competencia y swag no puede resolver la interfaz: para type=metric cada ítem de progress es {user_id: int, value: number|null} y para type=route es {user_id: int, compliance_ratio: number|null, duration_ms: int|null, session_instance_id: int|null} (mejor intento del atleta: máximo compliance_ratio, empate → menor duration_ms; los tres nulls si aún no tiene intentos finished (un intento wip/interrupted ya registrado también se ve nulo)).",
                 "produces": [
                     "application/json"
                 ],
@@ -1112,8 +1112,65 @@ const docTemplate = `{
             }
         },
         "/api/v1/competitions/{id}/attempts": {
+            "get": {
+                "description": "Guard igual que el detalle: 404 si la competencia no existe (antes de todo guard), 403 si el caller no es miembro de grupo del team ni owner. Sin query athlete_user_id lista los intentos del caller; con la query, los de ese atleta (cualquier miembro puede ver los de otro; no-participante = lista vacía). Ítems orden por id ASC: distance_meters del feedback activo (null si no hay), compliance_ratio solo en finished de route (metric no matchea: null; 0 sin puntos GPS, matching on-demand) y duration_ms end-start server-side (null en wip).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamification"
+                ],
+                "summary": "Listar los intentos de un atleta en una competencia",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "ID de la competencia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Atleta cuyos intentos listar (default: el caller)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            },
             "post": {
-                "description": "Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip sobre la instancia sintética de la competencia tagueado con competition_id. Un único intento por participante (400 si ya registró uno, único garantizado por el constraint (session_instance_id, athlete_user_id)). El finish del intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.",
+                "description": "Solo competencias type=route en status active y con el caller entre los participantes: crea su estado de sesión wip tagueado con competition_id. El primer intento reusa la instancia sintética compartida de la competencia; los siguientes crean una instancia propia nueva (\"Competencia ruta N (intento M)\") cada vez, hasta agotar max_attempts si la competencia configuró uno (400 con \"llegaste al límite de intentos de esta competencia\"). El finish de cada intento es el PATCH /session-instances/{id}/runner existente. NO aplica el gate presencial: la instancia sintética no pertenece a ningún día de calendario.",
                 "produces": [
                     "application/json"
                 ],
@@ -2919,6 +2976,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -3088,6 +3151,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -3357,6 +3426,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -9874,6 +9949,46 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptItem": {
+            "type": "object",
+            "properties": {
+                "compliance_ratio": {
+                    "type": "number"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionAttemptItem"
+                    }
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_competition.CompetitionCancelResponse": {
             "type": "object",
             "properties": {
@@ -9890,17 +10005,6 @@ const docTemplate = `{
                 }
             }
         },
-        "simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem": {
-            "type": "object",
-            "properties": {
-                "user_id": {
-                    "type": "integer"
-                },
-                "value": {
-                    "type": "number"
-                }
-            }
-        },
         "simple-arq-golang_cmd_api_domains_competition.CompetitionResponse": {
             "type": "object",
             "properties": {
@@ -9909,6 +10013,12 @@ const docTemplate = `{
                 },
                 "approved_by_user_id": {
                     "type": "integer"
+                },
+                "attempts_used": {
+                    "type": "integer"
+                },
+                "can_attempt": {
+                    "type": "boolean"
                 },
                 "created_by_role": {
                     "type": "string"
@@ -9928,6 +10038,9 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "max_attempts": {
+                    "type": "integer"
+                },
                 "metric": {
                     "type": "string"
                 },
@@ -9939,15 +10052,16 @@ const docTemplate = `{
                 },
                 "progress": {
                     "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_competition.CompetitionProgressItem"
-                    }
+                    "items": {}
                 },
                 "rejection_reason": {
                     "type": "string"
                 },
                 "route": {
                     "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
                 },
                 "start_at": {
                     "type": "string"
@@ -9998,6 +10112,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "group_id": {
+                    "type": "integer"
+                },
+                "max_attempts": {
+                    "description": "MaxAttempts es solo de type=route: opcional, \u003e= 1, sin tope. NULL =\nsin límite; inmutable post-create (no hay edición de competencia).",
                     "type": "integer"
                 },
                 "metric": {

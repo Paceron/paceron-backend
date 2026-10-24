@@ -78,6 +78,10 @@ func (s *channelAuthorizerStubDAO) HasFeedbackByIDs(*gin.Context, []int64) ([]in
 	return []int64{}, nil
 }
 
+func (s *channelAuthorizerStubDAO) HasInstanceAccessBatch(*gin.Context, int64, []int64) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+
 func TestChannelAuthorizer(t *testing.T) {
 	stub := &channelAuthorizerStubDAO{}
 	authorizer := newChannelAuthorizer(stub)

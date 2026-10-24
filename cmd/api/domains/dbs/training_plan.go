@@ -6,7 +6,7 @@ import "time"
 // físico (no soft-delete) — ver design.md D1.
 type TrainingPlan struct {
 	ID          int64     `gorm:"column:id;primaryKey"`
-	OwnerID     int64     `gorm:"column:owner_id;not null"`
+	OwnerID     int64     `gorm:"column:owner_id;not null;index"`
 	Name        string    `gorm:"column:name;not null"`
 	Description *string   `gorm:"column:description"`
 	CreatedAt   time.Time `gorm:"column:created_at;autoCreateTime"`

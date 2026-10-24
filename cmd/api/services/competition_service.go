@@ -47,6 +47,11 @@ type CompetitionServiceInterface interface {
 	Cancel(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, error)
 	ListByTeam(ctx *gin.Context, callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
 	Get(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
+	// ListAttempts lista los intentos de un atleta en la competencia (Gap 36
+	// D4): guard 404 → miembro-u-owner 403, sin guard de tipo/status. Sin
+	// atleta explícito lista los del caller; un atleta no-participante
+	// devuelve data vacía (la lectura no exige participación).
+	ListAttempts(ctx *gin.Context, callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error)
 	// Close aplica el cierre (status finished + efectos): devuelve la respuesta
 	// y los session_instance_ids de los intentos registrados de la competencia
 	// para el control:competition_finished del controller (D9); sin intentos
@@ -69,8 +74,9 @@ type competitionService struct {
 }
 
 // NewCompetitionService crea el service de competencias. runnerSessionDao es
-// variadic opcional (competencias-ruta-intake D2): los call sites históricos
-// de tres argumentos quedan intactos; CreateAttempt lo exige en runtime.
+// variadic opcional: los call sites históricos de tres argumentos quedan
+// intactos (el wiring futuro puede dejar de pasarle el runner DAO, el intake
+// del intento no lo usa desde Gap 36).
 func NewCompetitionService(dao daos.CompetitionDAOInterface, pushTokenDao daos.PushTokenDaoInterface, pushClient expopushclient.ExpoPushClientInterface, runnerSessionDao ...daos.RunnerSessionDAOInterface) CompetitionServiceInterface {
 	svc := &competitionService{dao: dao, pushTokenDao: pushTokenDao, pushClient: pushClient}
 	if len(runnerSessionDao) > 0 && runnerSessionDao[0] != nil {
@@ -155,6 +161,7 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		EndAt:                  req.EndAt,
 		RouteGeoJSON:           req.RouteGeoJSON,
 		AcceptanceRadiusMeters: req.AcceptanceRadiusMeters,
+		MaxAttempts:            req.MaxAttempts,
 		CreatedByUserID:        callerID,
 		CreatedByRole:          role,
 		Status:                 status,
@@ -172,16 +179,24 @@ func (s *competitionService) Create(ctx *gin.Context, callerID, teamID int64, re
 		customlogger.Error(ctx, "error creating competition", err, customlogger.TagMethod("CompetitionCreate"))
 		return nil, fmt.Errorf("error al crear la competencia")
 	}
-	return toCompetitionResponse(comp, unique, nil), nil
+	resp := toCompetitionResponse(comp, unique, nil)
+	// attempts_used/can_attempt del caller-creador: 0/false para el corredor
+	// (participante, recién alta sin intentos), null/false para el trainer
+	// (no compite) — D7 coherente con el momento del alta.
+	if err := s.fillAttemptFields(ctx, resp, comp, callerID); err != nil {
+		customlogger.Error(ctx, "error filling competition attempt fields", err, customlogger.TagMethod("CompetitionCreate"))
+		return nil, fmt.Errorf("error al crear la competencia")
+	}
+	return resp, nil
 }
 
-// CreateAttempt registra el intento de una competencia route (D2): los 5
-// guards en orden, cada uno sin tocar la escritura, y el insert de
-// runner_session reusando el DAO de runner sessions (mismo ON CONFLICT DO
-// NOTHING: si un intento concurrente ganó la carrera, RowsAffected=0 también
-// es doble intento — el uq (session_instance_id, athlete_user_id) arbitra).
-// Sin gate presencial ni rango temporal: la instancia sintética no tiene día
-// y route no usa ventana.
+// CreateAttempt registra el intento de una competencia route (Gap 36,
+// intentos múltiples): los guards de cabeza quedan (404 → 400 type → 400
+// status → 403 → guard de instancia compartida) y el límite/doble intento lo
+// arbitra el DAO en su transacción (count >= max_attempts / ON CONFLICT) que
+// también materializa la instancia del intento. Sin gate presencial ni rango
+// temporal: la instancia sintética no tiene día y route no usa ventana.
+// Sentinels del DAO → ErrCompetitionInvalid (mismo mapping 400 del controller).
 func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competitionID int64) (*dbs.RunnerSession, error) {
 	comp, err := s.dao.FindByID(ctx, competitionID)
 	if err != nil {
@@ -200,41 +215,27 @@ func (s *competitionService) CreateAttempt(ctx *gin.Context, callerID, competiti
 	if !isParticipant {
 		return nil, ErrCompetitionForbidden
 	}
-	attempt, err := s.dao.ExistsAttemptByCompetitionAndAthlete(ctx, competitionID, callerID)
-	if err != nil {
-		return nil, fmt.Errorf("error al registrar el intento")
-	}
-	if attempt {
-		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
-	}
-	if s.runnerSessionDao == nil {
-		customlogger.Error(ctx, "competition attempt without runner session dao", nil, customlogger.TagMethod("CompetitionCreateAttempt"))
-		return nil, fmt.Errorf("error al registrar el intento")
-	}
 	if comp.RouteSessionInstanceID == nil {
 		return nil, fmt.Errorf("%w: la competencia no tiene instancia de ruta asignada", ErrCompetitionInvalid)
 	}
-	rs := &dbs.RunnerSession{
-		SessionInstanceID: *comp.RouteSessionInstanceID,
-		AthleteUserID:     callerID,
-		Status:            runnersession.RunnerSessionStatusWip,
-		StartDate:         gametime.Now(),
-		CompetitionID:     &comp.ID,
-	}
-	created, err := s.runnerSessionDao.Create(ctx, rs)
+	attempt, err := s.dao.CreateAttemptSession(ctx, comp, callerID)
 	if err != nil {
+		if errors.Is(err, daos.ErrCompetitionAttemptLimit) {
+			return nil, fmt.Errorf("%w: %s", ErrCompetitionInvalid, daos.ErrCompetitionAttemptLimit.Error())
+		}
+		if errors.Is(err, daos.ErrCompetitionAttemptConflict) {
+			return nil, fmt.Errorf("%w: %s", ErrCompetitionInvalid, daos.ErrCompetitionAttemptConflict.Error())
+		}
 		customlogger.Error(ctx, "error creating competition attempt", err, customlogger.TagMethod("CompetitionCreateAttempt"))
 		return nil, fmt.Errorf("error al registrar el intento")
 	}
-	if !created {
-		return nil, fmt.Errorf("%w: ya tenés un intento registrado en esta competencia", ErrCompetitionInvalid)
-	}
-	return rs, nil
+	return attempt, nil
 }
 
 // validateCreateRequest aplica las reglas cruzadas del spec: metric exige
 // metric + end_at > start_at; route exige route_geojson (parseable, ≤500
-// vértices, ≤100 km) + radius en [5, 500].
+// vértices, ≤100 km) + radius en [5, 500]; max_attempts solo route, si viene
+// entero >= 1 (NULL = sin límite).
 func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 	if req.Type != competition.TypeMetric && req.Type != competition.TypeRoute {
 		return fmt.Errorf("%w: type debe ser metric o route", ErrCompetitionInvalid)
@@ -265,6 +266,9 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		if req.RouteGeoJSON != nil || req.AcceptanceRadiusMeters != nil {
 			return fmt.Errorf("%w: type=metric no admite route_geojson ni acceptance_radius_meters", ErrCompetitionInvalid)
 		}
+		if req.MaxAttempts != nil {
+			return fmt.Errorf("%w: type=metric no admite max_attempts", ErrCompetitionInvalid)
+		}
 	case competition.TypeRoute:
 		if req.RouteGeoJSON == nil || *req.RouteGeoJSON == "" {
 			return fmt.Errorf("%w: type=route exige route_geojson", ErrCompetitionInvalid)
@@ -286,6 +290,9 @@ func validateCreateRequest(req competition.CreateCompetitionRequest) error {
 		}
 		if req.Metric != nil {
 			return fmt.Errorf("%w: type=route no admite metric", ErrCompetitionInvalid)
+		}
+		if req.MaxAttempts != nil && *req.MaxAttempts < 1 {
+			return fmt.Errorf("%w: max_attempts debe ser un entero mayor o igual a 1", ErrCompetitionInvalid)
 		}
 	}
 	if req.EndAt != nil && !req.EndAt.After(req.StartAt) {
@@ -360,7 +367,11 @@ func (s *competitionService) Approve(ctx *gin.Context, callerID, competitionID i
 	bundle.comp.Status = competition.StatusActive
 	bundle.comp.ApprovedByUserID = &callerID
 	s.notifyCreator(bundle.comp, "Competencia aprobada", "Tu competencia fue aprobada y ya está activa.", "competition_approved")
-	return s.detailResponse(ctx, bundle), nil
+	resp, err := s.detailResponse(ctx, bundle, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al consultar la competencia")
+	}
+	return resp, nil
 }
 
 func (s *competitionService) Reject(ctx *gin.Context, callerID, competitionID int64, reason *string) (*competition.CompetitionResponse, error) {
@@ -379,7 +390,11 @@ func (s *competitionService) Reject(ctx *gin.Context, callerID, competitionID in
 	bundle.comp.Status = competition.StatusRejected
 	bundle.comp.RejectionReason = reason
 	s.notifyCreator(bundle.comp, "Competencia rechazada", "Tu competencia propuesta fue rechazada.", "competition_rejected")
-	return s.detailResponse(ctx, bundle), nil
+	resp, err := s.detailResponse(ctx, bundle, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al consultar la competencia")
+	}
+	return resp, nil
 }
 
 // moderationGuard resuelve 404 y el guard de moderación (owner del team, o el
@@ -481,6 +496,13 @@ func (s *competitionService) ListByTeam(ctx *gin.Context, callerID, teamID int64
 	for i := range comps {
 		items = append(items, *toCompetitionResponse(&comps[i], participants[comps[i].ID], winners[comps[i].ID]))
 	}
+	// attempts_used/can_attempt del caller del listado: el batch del DAO
+	// cuenta los intentos de TODAS las competencias route en 1 query (D7,
+	// sin N+1; metric/no-participante queda null/false sin query extra).
+	if err := s.fillAttemptFieldsBatch(ctx, items, comps, callerID); err != nil {
+		customlogger.Error(ctx, "error filling competition attempt fields", err, customlogger.TagMethod("CompetitionListByTeam"))
+		return nil, fmt.Errorf("error al consultar las competencias")
+	}
 	return &competition.CompetitionsListResponse{Data: items, HasUnseen: hasUnseen}, nil
 }
 
@@ -503,24 +525,208 @@ func (s *competitionService) Get(ctx *gin.Context, callerID, competitionID int64
 			return nil, ErrCompetitionForbidden
 		}
 	}
-	return &competition.CompetitionDetailResponse{Data: *s.detailResponse(ctx, bundle)}, nil
+	resp, err := s.detailResponse(ctx, bundle, callerID)
+	if err != nil {
+		return nil, fmt.Errorf("error al consultar la competencia")
+	}
+	return &competition.CompetitionDetailResponse{Data: *resp}, nil
+}
+
+// attemptItems arma los ítems del listado de intentos (null-rules D4):
+// distance_meters del feedback activo (null sin feedback), compliance_ratio
+// solo finished de route (metric no matchea: null, sin ruta) y duration_ms
+// end-start server-side (null sin end).
+func (s *competitionService) attemptItems(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64, sessions []dbs.RunnerSession) ([]competition.CompetitionAttemptItem, error) {
+	items := make([]competition.CompetitionAttemptItem, 0, len(sessions))
+	if len(sessions) == 0 {
+		return items, nil
+	}
+	instanceIDs := make([]int64, 0, len(sessions))
+	finishedIDs := make([]int64, 0, len(sessions))
+	for _, rs := range sessions {
+		instanceIDs = append(instanceIDs, rs.SessionInstanceID)
+		if rs.Status == runnersession.RunnerSessionStatusFinished {
+			finishedIDs = append(finishedIDs, rs.SessionInstanceID)
+		}
+	}
+	dists, err := s.dao.SumFeedbackDistanceByInstances(ctx, instanceIDs, athleteUserID)
+	if err != nil {
+		customlogger.Error(ctx, "error summing competition attempt distance", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	sumByInstance := make(map[int64]*float64, len(dists))
+	for _, r := range dists {
+		sumByInstance[r.SessionInstanceID] = r.SumDistance
+	}
+	var samples []routematch.Point
+	radius := 0.0
+	pointsByInstance := make(map[int64][]routematch.Point)
+	isRoute := comp.Type == competition.TypeRoute
+	if isRoute && len(finishedIDs) > 0 {
+		samples, err = s.routeSamples(ctx, comp)
+		if err != nil {
+			// Ruta mal cargada no se engaña a null: igual que el cierre, sube.
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		if comp.AcceptanceRadiusMeters != nil {
+			radius = *comp.AcceptanceRadiusMeters
+		}
+		points, err := s.dao.ListAttemptPoints(ctx, finishedIDs, []int64{athleteUserID})
+		if err != nil {
+			customlogger.Error(ctx, "error listing competition attempt points", err, customlogger.TagMethod("CompetitionListAttempts"))
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		for _, p := range points {
+			pointsByInstance[p.SessionInstanceID] = append(pointsByInstance[p.SessionInstanceID], routematch.Point{Lat: p.Latitude, Lng: p.Longitude})
+		}
+	}
+	for _, rs := range sessions {
+		item := competition.CompetitionAttemptItem{
+			ID:                rs.ID,
+			SessionInstanceID: rs.SessionInstanceID,
+			Status:            rs.Status,
+			StartedAt:         rs.StartDate,
+			EndedAt:           rs.EndDate,
+			DistanceMeters:    sumByInstance[rs.SessionInstanceID],
+		}
+		if isRoute && rs.Status == runnersession.RunnerSessionStatusFinished {
+			pct := routematch.MatchPercent(samples, radius, pointsByInstance[rs.SessionInstanceID])
+			item.ComplianceRatio = &pct
+		}
+		if rs.EndDate != nil {
+			ms := attemptDurationMs(rs.StartDate, *rs.EndDate)
+			item.DurationMs = &ms
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// attemptDurationMs es la duración de un intento en ms (end-start, 0 si
+// negativa); única forma para attempts, progress y winners (D10).
+func attemptDurationMs(start, end time.Time) int64 {
+	ms := end.Sub(start).Milliseconds()
+	if ms < 0 {
+		return 0
+	}
+	return ms
+}
+
+// ListAttempts guarda 404 → miembro-u-owner 403 (igual que el detalle, sin
+// guard de tipo/status) y arma los ítems del intento. El atleta pedido
+// no-participante devuelve data vacía sin error.
+func (s *competitionService) ListAttempts(ctx *gin.Context, callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+	comp, err := s.dao.FindByID(ctx, competitionID)
+	if err != nil {
+		return nil, err
+	}
+	isOwner, err := s.dao.IsTeamOwner(ctx, comp.TeamID, callerID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking competition attempts owner", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	if !isOwner {
+		isMember, err := s.dao.IsTeamGroupMember(ctx, comp.TeamID, callerID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking competition attempts member", err, customlogger.TagMethod("CompetitionListAttempts"))
+			return nil, fmt.Errorf("error al consultar los intentos")
+		}
+		if !isMember {
+			return nil, ErrCompetitionForbidden
+		}
+	}
+	isParticipant, err := s.dao.IsParticipant(ctx, competitionID, athleteUserID)
+	if err != nil {
+		customlogger.Error(ctx, "error checking competition attempts participant", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	if !isParticipant {
+		return &competition.CompetitionAttemptsResponse{Data: []competition.CompetitionAttemptItem{}}, nil
+	}
+	sessions, err := s.dao.ListAttemptsByCompetitionAndAthlete(ctx, competitionID, athleteUserID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing competition attempts", err, customlogger.TagMethod("CompetitionListAttempts"))
+		return nil, fmt.Errorf("error al consultar los intentos")
+	}
+	items, err := s.attemptItems(ctx, comp, athleteUserID, sessions)
+	if err != nil {
+		return nil, err
+	}
+	return &competition.CompetitionAttemptsResponse{Data: items}, nil
 }
 
 // detailResponse arma la respuesta del detalle desde el bundle (usada en Get
 // y por las mutaciones que ya cargaron el bundle: sin re-Get ni re-guard).
-func (s *competitionService) detailResponse(ctx *gin.Context, bundle *competitionBundle) *competition.CompetitionResponse {
+// fillAttemptFields agrega los 3 campos caller-dependientes con el caller en
+// mano (Get/mutación: el caller de la request; gap 36 D7).
+func (s *competitionService) detailResponse(ctx *gin.Context, bundle *competitionBundle, callerID int64) (*competition.CompetitionResponse, error) {
 	resp := toCompetitionResponse(bundle.comp, bundle.participants, bundle.winners)
 	if bundle.comp.Type == competition.TypeMetric {
 		resp.Progress = s.computeMetricProgress(ctx, bundle)
 	} else if bundle.comp.Type == competition.TypeRoute {
 		resp.Progress = s.computeRouteProgress(ctx, bundle)
 	}
-	return resp
+	if err := s.fillAttemptFields(ctx, resp, bundle.comp, callerID); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// fillAttemptFields llena los 3 campos caller-dependientes de una respuesta
+// única (Gap 36 D7): solo route y caller-participante usan la query; el
+// default del DTO (null/false) cubre metric y no-participante. can_attempt =
+// route && active && límite no cumplido (max_attempts null = ilimitados).
+func (s *competitionService) fillAttemptFields(ctx *gin.Context, resp *competition.CompetitionResponse, comp *dbs.Competition, callerID int64) error {
+	if comp.Type != competition.TypeRoute {
+		return nil
+	}
+	counts, err := s.dao.CountAttemptsByCompetitionAndAthlete(ctx, []int64{comp.ID}, callerID)
+	if err != nil {
+		return err
+	}
+	used, participant := counts[comp.ID]
+	if !participant {
+		return nil
+	}
+	resp.AttemptsUsed = &used
+	resp.CanAttempt = comp.Status == competition.StatusActive && (comp.MaxAttempts == nil || used < *comp.MaxAttempts)
+	return nil
+}
+
+// fillAttemptFieldsBatch es la variante del listado: el batch del DAO cubre
+// todas las competencias route en una sola query. Metric y caller no
+// participante quedan en los defaults null/false.
+func (s *competitionService) fillAttemptFieldsBatch(ctx *gin.Context, items []competition.CompetitionResponse, comps []dbs.Competition, callerID int64) error {
+	routeIDs := make([]int64, 0, len(comps))
+	for i := range comps {
+		if comps[i].Type == competition.TypeRoute {
+			routeIDs = append(routeIDs, comps[i].ID)
+		}
+	}
+	if len(routeIDs) == 0 {
+		return nil
+	}
+	counts, err := s.dao.CountAttemptsByCompetitionAndAthlete(ctx, routeIDs, callerID)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		if comps[i].Type != competition.TypeRoute {
+			continue
+		}
+		used, participant := counts[comps[i].ID]
+		if !participant {
+			continue
+		}
+		items[i].AttemptsUsed = &used
+		items[i].CanAttempt = comps[i].Status == competition.StatusActive && (comps[i].MaxAttempts == nil || used < *comps[i].MaxAttempts)
+	}
+	return nil
 }
 
 // computeMetricProgress arma el acumulado in-ventana por participante
 // (detalle on-demand; sin broadcast). El progreso de route corre su matcher.
-func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgressItem {
+func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgress {
 	agg, err := s.dao.AggregateFeedbackWindow(ctx, bundle.comp.TeamID, bundle.participants, gametime.DateOnly(bundle.comp.StartAt), gametime.DateOnly(windowEnd(bundle.comp)))
 	if err != nil {
 		customlogger.Error(ctx, "error computing competition progress", err, customlogger.TagMethod("CompetitionGet"))
@@ -530,21 +736,45 @@ func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *com
 	for _, r := range agg {
 		byUser[r.UserID] = r
 	}
-	progress := make([]competition.CompetitionProgressItem, 0, len(bundle.participants))
-	for _, uid := range bundle.participants {
+	progress := make([]competition.CompetitionProgress, 0, len(bundle.participants))
+	for _, uid := range sortedParticipants(bundle.participants) {
 		value := metricValueFromAgg(byUser[uid], bundle.comp.Metric)
-		progress = append(progress, competition.CompetitionProgressItem{UserID: uid, Value: value})
+		progress = append(progress, competition.CompetitionMetricProgressItem{UserID: uid, Value: value})
 	}
-	sort.Slice(progress, func(i, j int) bool { return progress[i].UserID < progress[j].UserID })
 	return progress
 }
 
+// sortedParticipants replica el orden del progress y los winners: user_id ASC.
+func sortedParticipants(parts []int64) []int64 {
+	sorted := make([]int64, len(parts))
+	copy(sorted, parts)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	return sorted
+}
+
 // competitionRouteAttempt es un intento de competencia tipo route: el valor
-// matcheado y la duración del intento (desempate D10).
+// matcheado, la duración del intento (desempate D10) y la instancia que lo
+// produjo (mejor intento por atleta del progress route, D5).
 type competitionRouteAttempt struct {
 	userID     int64
+	instanceID int64
 	pct        float64
-	durationMs float64
+	durationMs int64
+}
+
+// bestAttemptByAthlete reduce los intentos finished al MEJOR de cada atleta
+// (Gap 36 D5/D6, una sola fuente de verdad para progress y winners): max pct,
+// empate exacto → menor duración. Un atleta sin intentos no aparece.
+func bestAttemptByAthlete(attempts []competitionRouteAttempt) map[int64]*competitionRouteAttempt {
+	best := make(map[int64]*competitionRouteAttempt, len(attempts))
+	for i := range attempts {
+		a := &attempts[i]
+		cur, ok := best[a.userID]
+		if !ok || a.pct > cur.pct || (a.pct == cur.pct && a.durationMs < cur.durationMs) {
+			best[a.userID] = a
+		}
+	}
+	return best
 }
 
 // routeAttempts arma los intentos de la competencia a partir de los runner
@@ -599,11 +829,11 @@ func (s *competitionService) routeAttempts(ctx *gin.Context, bundle *competition
 	attempts = make([]competitionRouteAttempt, 0, len(finished))
 	for _, rs := range finished {
 		pct := routematch.MatchPercent(samples, radius, byAttempt[[2]int64{rs.SessionInstanceID, rs.AthleteUserID}])
-		duration := 0.0
-		if rs.EndDate != nil && rs.EndDate.After(rs.StartDate) {
-			duration = rs.EndDate.Sub(rs.StartDate).Seconds() * 1000
+		durationMs := int64(0)
+		if rs.EndDate != nil {
+			durationMs = attemptDurationMs(rs.StartDate, *rs.EndDate)
 		}
-		attempts = append(attempts, competitionRouteAttempt{userID: rs.AthleteUserID, pct: pct, durationMs: duration})
+		attempts = append(attempts, competitionRouteAttempt{userID: rs.AthleteUserID, instanceID: rs.SessionInstanceID, pct: pct, durationMs: durationMs})
 	}
 	return attempts, registeredInstanceIDs, nil
 }
@@ -623,26 +853,30 @@ func (s *competitionService) routeSamples(ctx *gin.Context, comp *dbs.Competitio
 	return routematch.SampleRoute(route), nil
 }
 
-// computeRouteProgress arma el mejor % de match de cada participante hasta
-// ahora (detalle on-demand; el matching es el mismo del cierre, D10).
-func (s *competitionService) computeRouteProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgressItem {
+// computeRouteProgress arma el MEJOR intento de cada participante hasta ahora
+// (max pct, empate → menor duración; D5) en el shape route nuevo. El
+// participante sin intentos aparece con los tres valores null.
+func (s *competitionService) computeRouteProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgress {
 	attempts, _, err := s.routeAttempts(ctx, bundle)
 	if err != nil {
 		customlogger.Error(ctx, "error computing competition route progress", err, customlogger.TagMethod("CompetitionGet"))
 		return nil
 	}
-	best := make(map[int64]float64, len(attempts))
-	for _, a := range attempts {
-		if a.pct > best[a.userID] {
-			best[a.userID] = a.pct
+	best := bestAttemptByAthlete(attempts)
+	progress := make([]competition.CompetitionProgress, 0, len(bundle.participants))
+	for _, uid := range sortedParticipants(bundle.participants) {
+		var item competition.CompetitionRouteProgressItem
+		item.UserID = uid
+		if a := best[uid]; a != nil {
+			pct := a.pct
+			ms := a.durationMs
+			item.ComplianceRatio = &pct
+			item.DurationMs = &ms
+			inst := a.instanceID
+			item.SessionInstanceID = &inst
 		}
+		progress = append(progress, item)
 	}
-	progress := make([]competition.CompetitionProgressItem, 0, len(bundle.participants))
-	for _, uid := range bundle.participants {
-		value := best[uid]
-		progress = append(progress, competition.CompetitionProgressItem{UserID: uid, Value: &value})
-	}
-	sort.Slice(progress, func(i, j int) bool { return progress[i].UserID < progress[j].UserID })
 	return progress
 }
 
@@ -749,7 +983,11 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 	bundle.comp.Status = competition.StatusFinished
 	bundle.comp.FinishedAt = &finishedAt
 	bundle.winners = winners
-	return s.detailResponse(ctx, bundle), registeredInstanceIDs, nil
+	resp, err := s.detailResponse(ctx, bundle, callerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error al cerrar la competencia")
+	}
+	return resp, registeredInstanceIDs, nil
 }
 
 // computeWinners compara la métrica (o el match % de route) entre participantes.
@@ -779,23 +1017,23 @@ func (s *competitionService) computeWinners(ctx *gin.Context, bundle *competitio
 		if len(attempts) == 0 {
 			return nil, nil
 		}
-		bestPct := attempts[0].pct
-		for _, a := range attempts[1:] {
-			if a.pct > bestPct {
-				bestPct = a.pct
+		// Reducción por atleta primero (mejor intento del D6): max pct →
+		// menor duración; después la comparación entra atletas con empate
+		// EXACTO en (pct, duración) → todos ganan. Un atleta nunca entra dos
+		// veces aunque sus intentos matcheen el máximo global.
+		best := bestAttemptByAthlete(attempts)
+		var bestPct float64
+		var bestDur int64
+		var seen bool
+		for _, a := range best {
+			if !seen || a.pct > bestPct || (a.pct == bestPct && a.durationMs < bestDur) {
+				bestPct, bestDur, seen = a.pct, a.durationMs, true
 			}
 		}
-		// Tie-break de duración SOLO dentro del subconjunto del mejor %.
-		bestDur := 0.0
-		for _, a := range attempts {
-			if a.pct == bestPct && (bestDur == 0 || a.durationMs < bestDur) {
-				bestDur = a.durationMs
-			}
-		}
-		winners := make([]int64, 0, len(attempts))
-		for _, a := range attempts {
-			if a.pct == bestPct && a.durationMs == bestDur {
-				winners = append(winners, a.userID)
+		winners := make([]int64, 0, len(best))
+		for _, uid := range sortedParticipants(bundle.participants) {
+			if a := best[uid]; a != nil && a.pct == bestPct && a.durationMs == bestDur {
+				winners = append(winners, uid)
 			}
 		}
 		return winners, nil
@@ -906,6 +1144,8 @@ func toCompetitionResponse(comp *dbs.Competition, participants, winners []int64)
 		EndAt:                  comp.EndAt,
 		Route:                  comp.RouteGeoJSON,
 		AcceptanceRadiusMeters: comp.AcceptanceRadiusMeters,
+		SessionInstanceID:      comp.RouteSessionInstanceID,
+		MaxAttempts:            comp.MaxAttempts,
 		Participants:           participants,
 		CreatedByUserID:        comp.CreatedByUserID,
 		CreatedByRole:          comp.CreatedByRole,

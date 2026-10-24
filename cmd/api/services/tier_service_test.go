@@ -101,6 +101,10 @@ func (m *mockRoleDaoForTier) FindByID(ctx *gin.Context, id int64) (*dbs.Role, er
 	return nil, nil
 }
 
+func (m *mockRoleDaoForTier) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+	return nil, nil
+}
+
 func (m *mockRoleDaoForTier) FindByName(ctx *gin.Context, name string) (*dbs.Role, error) {
 	if m.findByNameFn != nil {
 		return m.findByNameFn(ctx, name)
@@ -603,9 +607,9 @@ func TestTierService_GetAll_Error(t *testing.T) {
 
 func TestTierRulesByName(t *testing.T) {
 	testCases := []struct {
-		name       string
-		wantLevel  int
-		wantForce  bool
+		name      string
+		wantLevel int
+		wantForce bool
 	}{
 		{name: "base", wantLevel: 1, wantForce: true},
 		{name: "medium", wantLevel: 2, wantForce: false},

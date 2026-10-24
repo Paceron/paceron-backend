@@ -366,13 +366,14 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/users/:id/achievements` | Achievements showcase: catalog merged with unlock progress (self only; embeds `has_unseen`) |
 | GET | `/api/v1/users/:id/stamps` | User stamps (self only; populated by closed competitions) |
 | GET | `/api/v1/teams/:id/leaderboard?metric=&period=&from=&to=` | Team leaderboard (member of a team group or owner; metric: distance/duration/pace/peak_speed/sessions_count/attendance_count, period: week/month/year/custom/all; `record` only with period=all, pace record = lowest) |
-| POST | `/api/v1/teams/:id/competitions` | Create competition (trainer owner → active; runner member → pending_approval; ≥2 participants, all team members, no trainer) |
+| POST | `/api/v1/teams/:id/competitions` | Create competition (trainer owner → active; runner member → pending_approval; ≥2 participants, all team members, no trainer; route accepts optional `max_attempts` ≥1 = attempt limit, null/absent = unlimited) |
 | GET | `/api/v1/teams/:id/competitions?status=&group_id=` | List team competitions (member or owner; optional status/group_id filters; embeds `has_unseen` for that team) |
-| GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best match %; member or owner) |
+| GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best attempt per athlete; member or owner) |
 | PATCH | `/api/v1/competitions/:id/approve` | Approve a pending competition (team owner only) |
 | PATCH | `/api/v1/competitions/:id/reject` | Reject a pending competition with optional `reason` (team owner only) |
 | PATCH | `/api/v1/competitions/:id/close` | Manually close an active competition (creator or owner); `type=metric` requires its window ended, `route` can close anytime; computes winners, stamps, unseen and pushes |
-| POST | `/api/v1/competitions/:id/attempts` | Register the route competition attempt of the authenticated participant (`type=route` + `active` only; `400` if already attempted). Creates a `wip` runner session tagged `competition_id` on the competition's shared synthetic route instance, without the presencial gate; finish is the existing `PATCH /session-instances/:id/runner` |
+| POST | `/api/v1/competitions/:id/attempts` | Register a route competition attempt of the authenticated participant (`type=route` + `active` only; first attempt reuses the shared synthetic route instance, later attempts create a new instance `Competencia ruta N (intento M)`; `400` "llegaste al límite..." when `max_attempts` is exhausted; limit serialization via FOR UPDATE). Creates a `wip` runner session tagged `competition_id` without the presencial gate; finish is the existing `PATCH /session-instances/:id/runner` |
+| GET | `/api/v1/competitions/:id/attempts?athlete_user_id=` | List attempts of an athlete in a route competition (member or owner; defaults to caller; non-participant athlete → empty list; ordered id ASC; each item carries status, started/ended at, distance, compliance and duration) |
 | DELETE | `/api/v1/competitions/:id/cancel` | Cancel own pending competition (runner creator only; physical delete) |
 
 ## Run

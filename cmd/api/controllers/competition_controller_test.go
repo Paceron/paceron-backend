@@ -34,10 +34,13 @@ type mockCompetitionService struct {
 	cancelFn      func(callerID, competitionID int64) (*competition.CompetitionResponse, error)
 	listFn        func(callerID, teamID int64, status string, groupID *int64) (*competition.CompetitionsListResponse, error)
 	getFn         func(callerID, competitionID int64) (*competition.CompetitionDetailResponse, error)
+	listAttempts  func(callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error)
 	closeFn       func(callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error)
 	createAttempt func(callerID, competitionID int64) (*dbs.RunnerSession, error)
 
 	createCalls, approveCalls, rejectCalls, cancelCalls, listCalls, getCalls, closeCalls, attemptCalls int
+	listAttemptsCalls                                                                                  int
+	lastAthleteUserID                                                                                  int64
 	lastReason                                                                                         *string
 	lastStatus                                                                                         string
 	lastGroupID                                                                                        *int64
@@ -94,6 +97,15 @@ func (m *mockCompetitionService) Get(ctx *gin.Context, callerID, competitionID i
 	return &competition.CompetitionDetailResponse{Data: competition.CompetitionResponse{ID: competitionID}}, nil
 }
 
+func (m *mockCompetitionService) ListAttempts(ctx *gin.Context, callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+	m.listAttemptsCalls++
+	m.lastAthleteUserID = athleteUserID
+	if m.listAttempts != nil {
+		return m.listAttempts(callerID, competitionID, athleteUserID)
+	}
+	return &competition.CompetitionAttemptsResponse{Data: []competition.CompetitionAttemptItem{}}, nil
+}
+
 func (m *mockCompetitionService) Close(ctx *gin.Context, callerID, competitionID int64) (*competition.CompetitionResponse, []int64, error) {
 	m.closeCalls++
 	if m.closeFn != nil {
@@ -132,6 +144,7 @@ func setupCompetitionRouterS(t *testing.T, svc services.CompetitionServiceInterf
 	router.PATCH("/api/v1/competitions/:id/close", cc.Close)
 	router.DELETE("/api/v1/competitions/:id/cancel", cc.Cancel)
 	router.GET("/api/v1/competitions/:id", cc.GetDetail)
+	router.GET("/api/v1/competitions/:id/attempts", cc.ListAttempts)
 	router.POST("/api/v1/competitions/:id/attempts", cc.CreateAttempt)
 	return router
 }
@@ -175,6 +188,17 @@ func TestCompetitionController_Create_BodyInvalido(t *testing.T) {
 	svc := &mockCompetitionService{}
 	router := setupCompetitionRouterS(t, svc, 7)
 	resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/teams/2/competitions", `{"type":...`)
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.Zero(t, svc.createCalls)
+}
+
+func TestCompetitionController_Create_MaxAttemptsNoEntero(t *testing.T) {
+	// El binding del DTO (*int64) rechaza max_attempts no-entero a 400 de Gin
+	// antes de tocar el service (D1).
+	svc := &mockCompetitionService{}
+	router := setupCompetitionRouterS(t, svc, 1)
+	resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/teams/2/competitions",
+		`{"type":"route","start_at":"2026-10-01T00:00:00Z","participants":[3,4],"max_attempts":1.5}`)
 	require.Equal(t, http.StatusBadRequest, resp.Code)
 	assert.Zero(t, svc.createCalls)
 }
@@ -501,6 +525,17 @@ func TestCompetitionController_CreateAttempt(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.Result().StatusCode)
 	})
 
+	t.Run("400 límite de intentos", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		svc.createAttempt = func(callerID, competitionID int64) (*dbs.RunnerSession, error) {
+			return nil, fmt.Errorf("%w: %s", services.ErrCompetitionInvalid, daos.ErrCompetitionAttemptLimit.Error())
+		}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodPost, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
+		assert.Contains(t, competitionErrorMessage(t, resp), "llegaste al límite de intentos de esta competencia")
+	})
+
 	t.Run("path no numérico", func(t *testing.T) {
 		svc := &mockCompetitionService{}
 		router := setupCompetitionRouterS(t, svc, 7)
@@ -522,4 +557,101 @@ func TestCompetitionController_CreateAttempt_InternalErrorNoLeak(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, resp.Result().StatusCode)
 	assert.Contains(t, competitionErrorMessage(t, resp), "error interno")
 	assert.NotContains(t, resp.Body.String(), "punto de falla interno")
+}
+
+// ListAttempts (Gap 36 D4): parsing de query, default caller, mapping de
+// errores y shape 200 {data: [...]} sin has_unseen.
+func TestCompetitionController_ListAttempts(t *testing.T) {
+	attemptItem := competition.CompetitionAttemptItem{
+		ID: 1, SessionInstanceID: 42, Status: "wip",
+		StartedAt: time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC),
+	}
+
+	t.Run("200 sin query default caller", func(t *testing.T) {
+		svc := &mockCompetitionService{listAttempts: func(callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+			return &competition.CompetitionAttemptsResponse{Data: []competition.CompetitionAttemptItem{attemptItem}}, nil
+		}}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusOK, resp.Result().StatusCode)
+		require.Equal(t, 1, svc.listAttemptsCalls)
+		assert.Equal(t, int64(7), svc.lastAthleteUserID, "sin query el atleta es el caller")
+
+		var out competition.CompetitionAttemptsResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
+		require.Len(t, out.Data, 1)
+		assert.Equal(t, int64(1), out.Data[0].ID)
+		assert.Equal(t, int64(42), out.Data[0].SessionInstanceID)
+		assert.Equal(t, "wip", out.Data[0].Status)
+
+		// La envoltura es solo data: sin has_unseen.
+		var raw map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
+		require.Len(t, raw, 1)
+		require.Contains(t, raw, "data")
+	})
+
+	t.Run("con query de otro atleta", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts?athlete_user_id=9", "")
+		require.Equal(t, http.StatusOK, resp.Result().StatusCode)
+		assert.Equal(t, int64(9), svc.lastAthleteUserID)
+	})
+
+	t.Run("400 query invalida", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		router := setupCompetitionRouterS(t, svc, 7)
+		for _, q := range []string{"?athlete_user_id=abc", "?athlete_user_id=-1", "?athlete_user_id=0"} {
+			resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts"+q, "")
+			require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode, q)
+		}
+		assert.Zero(t, svc.listAttemptsCalls)
+	})
+
+	t.Run("400 path no numerico", func(t *testing.T) {
+		svc := &mockCompetitionService{}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/abc/attempts", "")
+		require.Equal(t, http.StatusBadRequest, resp.Result().StatusCode)
+		assert.Zero(t, svc.listAttemptsCalls)
+	})
+
+	t.Run("403 y 404 mapeados", func(t *testing.T) {
+		svc := &mockCompetitionService{listAttempts: func(callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+			return nil, services.ErrCompetitionForbidden
+		}}
+		router := setupCompetitionRouterS(t, svc, 7)
+		assert.Equal(t, http.StatusForbidden, doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts", "").Result().StatusCode)
+
+		svc = &mockCompetitionService{listAttempts: func(callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+			return nil, daos.ErrCompetitionNotFound
+		}}
+		router = setupCompetitionRouterS(t, svc, 7)
+		assert.Equal(t, http.StatusNotFound, doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts", "").Result().StatusCode)
+	})
+
+	t.Run("error crudo del service 500 sin leak", func(t *testing.T) {
+		svc := &mockCompetitionService{listAttempts: func(callerID, competitionID, athleteUserID int64) (*competition.CompetitionAttemptsResponse, error) {
+			return nil, errors.New("fuga filtrada")
+		}}
+		router := setupCompetitionRouterS(t, svc, 7)
+		resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts", "")
+		require.Equal(t, http.StatusInternalServerError, resp.Result().StatusCode)
+		assert.NotContains(t, resp.Body.String(), "fuga filtrada")
+	})
+}
+
+// FailingDB no-leak del listado de intentos: la primera query del service
+// falla con DB real y responde 500 genérico sin filtrar el error inyectado.
+func TestCompetitionController_ListAttempts_FailingDB_NoLeak(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, func(op string) bool { return op == "select" })
+	realSvc := services.NewCompetitionService(daos.NewCompetitionDao(failing), nil, nil)
+	router := setupCompetitionRouterS(t, realSvc, 7)
+	resp := doCompetitionRequest(t, router, http.MethodGet, "/api/v1/competitions/5/attempts", "")
+	require.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.Equal(t, "error interno", competitionErrorMessage(t, resp))
+	assert.NotContains(t, resp.Body.String(), "inyectado", "sin leak del error de DB de test")
+	assert.NotContains(t, resp.Body.String(), "FailingDB")
 }

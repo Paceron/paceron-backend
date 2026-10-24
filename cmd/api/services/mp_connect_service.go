@@ -2,10 +2,12 @@ package services
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
@@ -22,6 +24,10 @@ type MPConnectServiceInterface interface {
 	HandleCallback(ctx *gin.Context, req *mpconnect.CallbackRequest) (*mpconnect.CallbackResponse, error)
 	GetStatus(ctx *gin.Context, userID int64) (*mpconnect.StatusResponse, error)
 	HandleDeauthorization(ctx *gin.Context, mpUserID int64) error
+	// ValidateWebhookSignature valida la firma HMAC del webhook de deauth contra
+	// el secret configurado. Sin secret configurado: nil sin llamar al validador
+	// (rollout gradual, mismo patrón que payment_service).
+	ValidateWebhookSignature(xSignature, xRequestID, dataID string) error
 }
 
 type mpConnectService struct {
@@ -31,6 +37,9 @@ type mpConnectService struct {
 	clientID      string
 	clientSecret  string
 	redirectURI   string
+	webhookSecret string
+	// ver payment_service: warning "sin secret" una vez por proceso.
+	warnNoWebhookSecretOnce sync.Once
 }
 
 // NewMPConnectService crea una nueva instancia de MPConnectService.
@@ -47,7 +56,19 @@ func NewMPConnectService(
 		clientID:      clientID,
 		clientSecret:  clientSecret,
 		redirectURI:   redirectURI,
+		webhookSecret: config.MyMP.WebhookSecret,
 	}
+}
+
+func (s *mpConnectService) ValidateWebhookSignature(xSignature, xRequestID, dataID string) error {
+	if s.webhookSecret == "" {
+		s.warnNoWebhookSecretOnce.Do(func() {
+			customlogger.Warn(nil, "MERCADOPAGO_WEBHOOK_SECRET sin configurar, webhook de deauth aceptando notificaciones sin validar firma",
+				customlogger.TagMethod("ValidateWebhookSignature"))
+		})
+		return nil
+	}
+	return s.mpClient.ValidateWebhookSignature(xSignature, xRequestID, dataID, s.webhookSecret)
 }
 
 // GetAuthURL genera la URL de autorización de Mercado Pago con un state CSRF.
@@ -55,7 +76,7 @@ func (s *mpConnectService) GetAuthURL(ctx *gin.Context, userID int64, target str
 	// State CSRF: userID + timestamp + a dónde volver tras el callback. El
 	// target viaja acá porque el redirect_uri registrado en MP es fijo — ver
 	// domains/mpconnect/state.go.
-	state := mpconnect.BuildState(userID, time.Now().UnixNano(), target)
+	state := mpconnect.BuildState(config.JWTSecret, userID, time.Now().UnixNano(), target)
 
 	if s.clientID == "" || s.redirectURI == "" {
 		customlogger.Error(ctx, "MP OAuth client not configured", fmt.Errorf("missing client ID/redirect"),
@@ -283,7 +304,7 @@ func (s *mpConnectService) HandleDeauthorization(ctx *gin.Context, mpUserID int6
 
 // validateState valida que el state pertenece al usuario y no es muy viejo.
 func (s *mpConnectService) validateState(ctx *gin.Context, state string) (int64, error) {
-	userID, ts, _, err := mpconnect.ParseState(state)
+	userID, ts, _, err := mpconnect.ParseState(config.JWTSecret, state)
 	if err != nil {
 		return 0, err
 	}

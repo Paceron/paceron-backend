@@ -52,11 +52,13 @@ func (m *mockStorageClient) Delete(ctx context.Context, key string) error {
 type mockExpoPushClient struct {
 	sendCallCount int
 	lastToken     string
+	lastTokens    []string
 	lastTitle     string
 	lastBody      string
 	lastData      map[string]string
 
-	mockSend func(ctx context.Context, token, title, body string, data map[string]string) error
+	mockSend      func(ctx context.Context, token, title, body string, data map[string]string) error
+	mockSendBatch func(ctx context.Context, tokens []string, title, body string, data map[string]string) error
 }
 
 func (m *mockExpoPushClient) Send(ctx context.Context, token, title, body string, data map[string]string) error {
@@ -68,6 +70,31 @@ func (m *mockExpoPushClient) Send(ctx context.Context, token, title, body string
 
 	if m.mockSend != nil {
 		return m.mockSend(ctx, token, title, body, data)
+	}
+	return nil
+}
+
+func (m *mockExpoPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	// Sin mockSendBatch explícito, cae al per-token mockSend para que los tests
+	// que inyectaban fallo por Send sigan ejercitando el mismo path de prod.
+	if m.mockSendBatch == nil && m.mockSend != nil {
+		for _, token := range tokens {
+			_ = m.Send(ctx, token, title, body, data)
+		}
+		return nil
+	}
+
+	m.sendCallCount++
+	m.lastTokens = tokens
+	if len(tokens) > 0 {
+		m.lastToken = tokens[0]
+	}
+	m.lastTitle = title
+	m.lastBody = body
+	m.lastData = data
+
+	if m.mockSendBatch != nil {
+		return m.mockSendBatch(ctx, tokens, title, body, data)
 	}
 	return nil
 }
@@ -167,7 +194,7 @@ func TestGetUser_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	result, err := service.GetUser(nil, 1)
 
 	assert.NoError(t, err)
@@ -182,7 +209,7 @@ func TestGetUser_NotFound(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.GetUser(nil, 999)
 
 	assert.Error(t, err)
@@ -196,7 +223,7 @@ func TestGetUser_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.GetUser(nil, 1)
 
 	assert.Error(t, err)
@@ -213,7 +240,7 @@ func TestUserService_Search_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	result, err := service.Search(nil, "ana")
 
 	assert.NoError(t, err)
@@ -232,14 +259,14 @@ func TestUserService_Search_TrimsQuery(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "  ana  ")
 
 	assert.NoError(t, err)
 }
 
 func TestUserService_Search_QueryTooShort(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "an")
 
 	assert.Error(t, err)
@@ -247,7 +274,7 @@ func TestUserService_Search_QueryTooShort(t *testing.T) {
 }
 
 func TestUserService_Search_BlankQuery(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "   ")
 
 	assert.Error(t, err)
@@ -260,7 +287,7 @@ func TestUserService_Search_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.Search(nil, "ana")
 
 	assert.Error(t, err)
@@ -279,7 +306,7 @@ func TestUserService_Search_PhotoURL(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	result, err := service.Search(nil, "ana")
 
 	assert.NoError(t, err)
@@ -301,7 +328,7 @@ func TestUserService_BatchLookup_Success(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	result, err := service.BatchLookup(nil, []int64{1, 2})
 
 	assert.NoError(t, err)
@@ -311,7 +338,7 @@ func TestUserService_BatchLookup_Success(t *testing.T) {
 }
 
 func TestUserService_BatchLookup_EmptyIDs(t *testing.T) {
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, []int64{})
 
 	assert.Error(t, err)
@@ -324,7 +351,7 @@ func TestUserService_BatchLookup_TooManyIDs(t *testing.T) {
 		ids[i] = int64(i + 1)
 	}
 
-	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockUserDao{}, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, ids)
 
 	assert.Error(t, err)
@@ -338,7 +365,7 @@ func TestUserService_BatchLookup_DaoError(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	_, err := service.BatchLookup(nil, []int64{1})
 
 	assert.Error(t, err)
@@ -357,7 +384,7 @@ func TestUserService_BatchLookup_PhotoURL(t *testing.T) {
 		},
 	}
 
-	service := NewUserService(mockDao, nil, mockPushTokenDao{}, &mockExpoPushClient{}, nil)
+	service := NewUserService(mockDao, nil, mockPushTokenDao{}, nil, &mockExpoPushClient{}, nil)
 	result, err := service.BatchLookup(nil, []int64{1, 2})
 
 	assert.NoError(t, err)

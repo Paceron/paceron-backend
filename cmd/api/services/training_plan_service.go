@@ -66,6 +66,23 @@ func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trai
 		seen[d.SequenceNo] = true
 	}
 
+	sessionIDs := make([]int64, 0, n)
+	seenSessions := make(map[int64]bool, n)
+	for _, d := range days {
+		if d.Kind == string(constants.PlanDayKindTraining) && d.SessionID != nil && !seenSessions[*d.SessionID] {
+			sessionIDs = append(sessionIDs, *d.SessionID)
+			seenSessions[*d.SessionID] = true
+		}
+	}
+	sessionsFound, err := s.sessionDao.FindByIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error al validar sesión del día")
+	}
+	sessionExists := make(map[int64]bool, len(sessionsFound))
+	for _, s := range sessionsFound {
+		sessionExists[s.ID] = true
+	}
+
 	rows := make([]dbs.PlanDay, n)
 	for i, d := range days {
 		if !constants.IsValidPlanDayKind(d.Kind) {
@@ -76,11 +93,7 @@ func (s *trainingPlanService) validateAndBuildDays(ctx *gin.Context, days []trai
 			if d.SessionID == nil || d.OtherName != nil {
 				return nil, ErrPlanDayFieldMismatch
 			}
-			sessionDB, err := s.sessionDao.FindByID(ctx, *d.SessionID)
-			if err != nil {
-				return nil, fmt.Errorf("error al validar sesión del día")
-			}
-			if sessionDB == nil {
+			if !sessionExists[*d.SessionID] {
 				return nil, ErrPlanSessionNotFound
 			}
 		case string(constants.PlanDayKindOther):
@@ -306,13 +319,30 @@ func (s *trainingPlanService) List(ctx *gin.Context, ownerID int64) ([]trainingp
 		customlogger.Error(ctx, "error listing training plans", err, customlogger.TagMethod("List"))
 		return nil, fmt.Errorf("error al listar planes")
 	}
+	ids := make([]int64, len(plans))
+	for i := range plans {
+		ids[i] = plans[i].ID
+	}
+	days, err := s.planDayDao.FindByPlanIDs(ctx, ids)
+	if err != nil {
+		customlogger.Error(ctx, "error loading plan days", err, customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al armar la respuesta del plan")
+	}
+	daysByPlan := make(map[int64][]dbs.PlanDay, len(ids))
+	for _, d := range days {
+		daysByPlan[d.PlanID] = append(daysByPlan[d.PlanID], d)
+	}
 	responses := make([]trainingplan.TrainingPlanResponse, len(plans))
 	for i := range plans {
-		resp, err := s.toResponse(ctx, &plans[i])
-		if err != nil {
-			return nil, err
+		dayRows := daysByPlan[plans[i].ID]
+		dayResponses := make([]trainingplan.PlanDayResponse, len(dayRows))
+		for j, d := range dayRows {
+			dayResponses[j] = toPlanDayResponse(d)
 		}
-		responses[i] = *resp
+		responses[i] = trainingplan.TrainingPlanResponse{
+			ID: plans[i].ID, OwnerID: plans[i].OwnerID, Name: plans[i].Name, Description: plans[i].Description,
+			Days: dayResponses, CreatedAt: plans[i].CreatedAt, UpdatedAt: plans[i].UpdatedAt,
+		}
 	}
 	return responses, nil
 }
