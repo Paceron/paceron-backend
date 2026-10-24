@@ -88,19 +88,21 @@ El `axis` es **obligatorio en las dos**: en el eje temporal el signo se invierte
 - [x] 6.10 Test de que un `sort` fuera de whitelist devuelve `400` sin ejecutar la query.
 - [x] 6.11 Test de que un rango de 12 años devuelve `400`.
 - [x] 6.12 Tests de los cuatro filtros de rango y del `kind` escalar: ventana de distancia y de tiempo con series dentro y fuera (DAO), rango invertido y negativo (`400 INVALID_RANGE_FILTER` sin tocar la DB), tiempo del rango sobre `active_duration_ms` presente, serie excluida por rango que **no** suma a `invalid_series` (service + DAO reales), `kind=liviano` → `400`, y `kinds`/`kinds[]`/`kind` repetido → `400`.
+- [x] 6.13 **Filtro `athlete_user_id` en los cuatro GET de métricas (2026-10-19).** Estaba en `MetricsQuery.AthleteUserIDs` y el DAO ya lo aplicaba, pero el controller nunca lo leía: el front ofrecía "Corredor" y la request salía sin ese parámetro. Se parsea como entero positivo (`400 INVALID_RANGE` si no), se valida con `validateAthletes` (fuera del scope → `403 ATHLETE_OUT_OF_SCOPE`) y se agrega a las anotaciones swag de summary/timeseries/leaderboard/series. Tests de controller: el parámetro llega a la query y los tres valores inválidos son 400.
 
 ## 7. Seed
 
 - [x] 7.1 `cmd/api/scripts/seed_dashboard/main.go` con `TEAM_ID = 29` y `GROUP_ID = 39` como constantes en el **top del archivo**, reusables para otro scope.
-- [x] 7.2 Catálogo de 12 ejercicios respetando la matriz de tipos vigente:
+- [x] 7.2 Catálogo de 13 ejercicios respetando la matriz de tipos vigente:
   - `liviano` — Sparring (10 min / 1.2 km) y Trote Vuelta a la Calma (15 min / 1.2 km).
   - `elongacion` — Elongación (10 min, sin distancia).
   - `ritmo_continuo` — Distancia 4/6/8/10/21 km. Necesitan distancia **y** tiempo, que es justo lo que tienen.
   - `velocidad_distancia` — Pasadas 1000 m (4:00/serie), Pasadas 2000 m (10:00/serie), **Velocidad Máxima 100 m y 200 m** (solo distancia, `minutes` en `null`).
+  - `velocidad_tiempo` — **1 min a máxima potencia** (1 min, 400 m): el objetivo es el reloj y la distancia permite derivar la velocidad esperada (24 km/h). Es el único ejercicio de ese tipo y el que hace que el filtro `kind=velocidad_tiempo` tenga series; sin él la opción del desplegable quedaba vacía.
 
   **Por qué las series de velocidad máxima van como `velocidad_distancia` y no como `velocidad_tiempo`:** `minutes` es `INT`, y un sprint de 100 m son ~12 s = **0,2 minutos**, que no es representable — redondeado da 0, que el validador de tiempo del front rechaza (`> 0`). Como `velocidad_distancia` tiene el **tiempo opcional**, 100 m se declara con `distance_m = 100` y `minutes` en `null`, que sí es exacto y además lo puede crear un entrenador desde el form. El KPI relevante —mejor tiempo y velocidad derivada— sigue disponible vía `best_time_ms` y `speed_kph`.
 
-- [x] 7.2b **Consecuencia para la validación:** el seed **no ejercita la paleta B** (sin objetivo cargado), porque los 12 ejercicios tienen objetivo. La paleta B queda como robustez del dashboard, para datos que lleguen sin objetivo —filas previas a la migración de tipos, o un ejercicio que el entrenador dejó incompleto—. El seed debe **incluir al menos un caso con `has_target: false`** para probar esa rama: agregar un ejercicio de `velocidad_distancia` con `distance_m` en `null` es inválido, así que el caso se cubre en los **tests** del DAO (fila de prueba, no del catálogo).
+- [x] 7.2b **Consecuencia para la validación:** el seed **no ejercita la paleta B** (sin objetivo cargado), porque los 13 ejercicios tienen objetivo. La paleta B queda como robustez del dashboard, para datos que lleguen sin objetivo —filas previas a la migración de tipos, o un ejercicio que el entrenador dejó incompleto—. El seed debe **incluir al menos un caso con `has_target: false`** para probar esa rama: agregar un ejercicio de `velocidad_distancia` con `distance_m` en `null` es inválido, así que el caso se cubre en los **tests** del DAO (fila de prueba, no del catálogo).
 - [x] 7.3 Nombres: **"Sparring"** y no "Calentamiento" — el rol lo define `session_exercises.role`, no el nombre. Un `liviano` puede ser calentamiento, recuperación o trote suelto.
 - [x] 7.4 Composición de sesión: siempre Sparring → Elongación → bloque principal → Vuelta a la calma. Si entra distancia ≥8 km, ese es el **único** bloque principal.
 - [x] 7.5 Planes de 14 días aplicados vía el mecanismo de stamp existente (con `SEEDING_ENABLED`), **nunca insertando a mano por saltarse la instanciación**. 2 sesiones presenciales por semana (martes y jueves) usando `exclude_dates` para saltear el resto.

@@ -84,6 +84,7 @@ func (dc *dashboardController) Filters(c *gin.Context) {
 // @Produce      json
 // @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
 // @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        athlete_user_id  query     int64    false  "Acotar a un corredor del scope (403 si no pertenece)"
 // @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
 // @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
 // @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
@@ -120,6 +121,7 @@ func (dc *dashboardController) Summary(c *gin.Context) {
 // @Produce      json
 // @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
 // @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        athlete_user_id  query     int64    false  "Acotar a un corredor del scope (403 si no pertenece)"
 // @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
 // @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
 // @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
@@ -157,6 +159,7 @@ func (dc *dashboardController) TimeSeries(c *gin.Context) {
 // @Produce      json
 // @Param        team_id          query     int64    true   "Equipo del que se está mirando el dashboard"
 // @Param        group_id         query     int64    false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        athlete_user_id  query     int64    false  "Acotar a un corredor del scope (403 si no pertenece)"
 // @Param        exercise_id      query     int64    false  "Un ejercicio de catálogo (excluyente con exercise_ids y kind)"
 // @Param        exercise_ids     query     []int64  false  "Varios ejercicios de catálogo (excluyente con exercise_id y kind)"
 // @Param        kind             query     string   false  "Un tipo con métrica (excluyente con exercise_id y exercise_ids)"  Enums(ritmo_continuo, velocidad_tiempo, velocidad_distancia)
@@ -203,6 +206,7 @@ func (dc *dashboardController) Leaderboard(c *gin.Context) {
 // @Param        id              path      int64   true   "Ejercicio de catálogo (exercises.id)"
 // @Param        team_id         query     int64   true   "Equipo del que se está mirando el dashboard"
 // @Param        group_id        query     int64   false  "Acotar a un grupo del scope (no lo amplía)"
+// @Param        athlete_user_id query     int64   false  "Acotar a un corredor del scope (403 si no pertenece)"
 // @Param        from            query     string  true   "Desde (YYYY-MM-DD, obligatorio)"
 // @Param        to              query     string  false  "Hasta (YYYY-MM-DD; sin él, cierra en from)"
 // @Param        tolerance       query     number  false  "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)"
@@ -343,6 +347,14 @@ func dashboardRequest(c *gin.Context) (int64, services.MetricsQuery, bool) {
 		To:          c.Query("to"),
 		Tolerance:   c.Query("tolerance"),
 		Granularity: c.Query("granularity"),
+	}
+	if raw := c.Query("athlete_user_id"); raw != "" {
+		athleteID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || athleteID <= 0 {
+			respondDashboardParamError(c, "INVALID_RANGE", "athlete_user_id debe ser un entero mayor a cero")
+			return 0, services.MetricsQuery{}, false
+		}
+		query.AthleteUserIDs = []int64{athleteID}
 	}
 	if raw := c.Query("group_id"); raw != "" {
 		groupID, err := strconv.ParseInt(raw, 10, 64)

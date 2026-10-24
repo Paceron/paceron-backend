@@ -32,14 +32,24 @@ type runnerSessionController struct {
 	// notifier es opcional (nil): emite update:session_state a session:{id}
 	// al abrir/cerrar (D10, best-effort, patrón workout-feedback).
 	notifier realtime.Notifier
+	// streakTrigger es opcional (nil): hook de gamificación (gamificacion-core
+	// D3) post-write del PATCH hacia finished/interrupted. No aplica al Create
+	// (wip nunca genera novedad de racha). Async best-effort.
+	streakTrigger services.StreakTriggerServiceInterface
+	// achievementsTrigger es opcional (nil): hook de evaluación de logros
+	// (gamificacion-core D5) en la misma transición post-write. Async
+	// best-effort; el fallo se loguea y no toca la respuesta.
+	achievementsTrigger services.AchievementsTriggerInterface
 }
 
 // NewRunnerSessionController crea una nueva instancia de RunnerSessionController.
-func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier) RunnerSessionController {
+func NewRunnerSessionController(runnerSessionService services.RunnerSessionServiceInterface, presencial services.PresencialSessionServiceInterface, notifier realtime.Notifier, streakTrigger services.StreakTriggerServiceInterface, achievementsTrigger services.AchievementsTriggerInterface) RunnerSessionController {
 	return &runnerSessionController{
 		runnerSessionService: runnerSessionService,
 		presencial:           presencial,
 		notifier:             notifier,
+		streakTrigger:        streakTrigger,
+		achievementsTrigger:  achievementsTrigger,
 	}
 }
 
@@ -69,6 +79,17 @@ func (rc *runnerSessionController) emitSessionState(sessionInstanceID int64, day
 	}
 	channel := sessionChannel(sessionInstanceID)
 	rc.notifier.Emit(channel, realtime.MarshalUpdateSessionState(channel, toSessionStateData(day)))
+}
+
+// emitCompetitionProgress emite el frame update:competition_progress (E4.2
+// D9) al canal de la instancia, sólo para intentos tagueados al pasar a
+// finished. nil-safe; la ausencia del campo no emite.
+func (rc *runnerSessionController) emitCompetitionProgress(sessionInstanceID int64, rs *dbs.RunnerSession) {
+	if rc.notifier == nil || rs.CompetitionID == nil || rs.Status != runnersession.RunnerSessionStatusFinished {
+		return
+	}
+	channel := sessionChannel(sessionInstanceID)
+	rc.notifier.Emit(channel, realtime.MarshalUpdateCompetitionProgress(channel, *rs.CompetitionID, rs.AthleteUserID))
 }
 
 // respondRunnerSessionError mapea los errores de negocio del service a status HTTP.
@@ -108,6 +129,7 @@ func toRunnerSessionResponse(rs *dbs.RunnerSession) runnersession.RunnerSessionR
 		Status:            rs.Status,
 		StartDate:         rs.StartDate,
 		EndDate:           rs.EndDate,
+		CompetitionID:     rs.CompetitionID,
 	}
 }
 
@@ -244,6 +266,18 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 		return
 	}
 
+	// Hook de gamificación (D3): finished/interrupted post-write corre el
+	// chequeo de rachas (async best-effort; el fallo se loguea y no toca la
+	// respuesta del PATCH). El Create (wip) no dispara.
+	if rc.streakTrigger != nil {
+		rc.streakTrigger.OnRunnerSessionCompletion(c, rs.AthleteUserID)
+	}
+	// Hook de logros (D5): misma transición, evaluate idempotente async
+	// (sessions/early por finished; streak reusa el cálculo de D2).
+	if rc.achievementsTrigger != nil {
+		rc.achievementsTrigger.OnEvent(c, rs.AthleteUserID, services.AchievementTriggerRunnerSession)
+	}
+
 	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;
 	// interrupted NO cierra. Idempotente vía guard SQL.
 	if rs.Status == runnersession.RunnerSessionStatusFinished && rc.presencial != nil {
@@ -256,6 +290,12 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 			rc.emitSessionState(sessionInstanceID, day)
 		}
 	}
+
+	// Hook de competencia (E4.2 D9): intento tagueado que pasa a finished
+	// emite update:competition_progress por el canal de la instancia, payload
+	// mínimo {competition_id, user_id}, SIN exclusión del emisor (mismo
+	// fan-out del broadcast de feedback). nil-safe.
+	rc.emitCompetitionProgress(sessionInstanceID, rs)
 
 	response := toRunnerSessionResponse(rs)
 	message := runnersession.MsgRunnerSessionFinished

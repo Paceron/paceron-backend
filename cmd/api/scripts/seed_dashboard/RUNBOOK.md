@@ -1,6 +1,6 @@
 # Seed del dashboard analítico
 
-Sembrea el dataset que el dashboard de rendimiento necesita: 12 ejercicios de
+Sembrea el dataset que el dashboard de rendimiento necesita: 13 ejercicios de
 catálogo, 4 plantillas de sesión, 2 planes de 7 días estampados por el mecanismo
 de calendario, y el feedback de 7 corredores durante 2 semanas.
 
@@ -79,7 +79,7 @@ correcto; para una base con datos reales, no.
 
 ## Qué produce
 
-### Catálogo (12 ejercicios)
+### Catálogo (13 ejercicios)
 
 | Tipo | Ejercicios |
 |---|---|
@@ -87,13 +87,17 @@ correcto; para una base con datos reales, no.
 | `elongacion` | Elongación (10 min, con `muscle_group`) |
 | `ritmo_continuo` | Distancia 4 / 6 / 8 / 10 / 21 km |
 | `velocidad_distancia` | Pasadas 1000 (4 min), Pasadas 2000 (10 min), Velocidad Máxima 100 m y 200 m (sin minutos) |
+| `velocidad_tiempo` | 1 min a máxima potencia (1 min, 400 m) |
 
 "Calentamiento" se llama **Sparring**: el rol de un bloque lo define
 `session_exercise_instances.role`, no el nombre del ejercicio.
 
 Velocidad Máxima va como `velocidad_distancia` con `minutes` en `null` porque 100 m
 son ~12 s = 0,2 minutos, que no es representable en un `INT` de minutos
-(redondeado da 0).
+(redondeado da 0). Por eso un sprint de 100/200 m no puede ser el objetivo de un
+`velocidad_tiempo`: ese tipo exige minutos enteros. El seed agrega **1 min a
+máxima potencia** (1 min / 400 m) como el único `velocidad_tiempo`, que es lo que
+hace que el filtro por ese tipo tenga series y velocidad esperada (24 km/h).
 
 ### Planes y sesiones
 
@@ -116,8 +120,16 @@ devuelve el dashboard contra los que el plan esperaba.
 | `degraded_time` | 5 series sin `active_duration_ms` (caen al fallback de `duration_ms`) **+ las 2 sin tiempo**, que también están degradadas | **7** |
 | `unknown_status` | 3 series con `completion_status` fuera del vocabulario (o `null`) | **3** |
 | `open_sessions` | 2 sesiones del último día con `runner_session.status = 'wip'` | **2** |
-| `legacy_sessions` | 2 corredores sin fila `runner_session` (16 series válidas) | **16** |
+| `legacy_sessions` | 2 corredores sin fila `runner_session` (19 series válidas) | **19** |
 | `insufficient_data` | el corredor "en progreso", con 1 sola sesión: se ve filtrando por él | `false` en el scope, `true` por corredor |
+
+`legacy_sessions` es el único contador que **cambia después de la corrida**: el
+seed deja sin `source_exercise_id` las instancias del día 0, así que su propio
+verify (inmediatamente después de sembrar, sin reiniciar el backend) compara
+**89/89** por el fallback de nombre. Al reiniciar, el backfill las enlaza y el
+dashboard estable baja a **19**. La tabla de arriba muestra el valor estable
+(post-backfill), que es el que se ve en la UI; no es el que imprime el verify
+del seed en esa primera corrida.
 
 Si la comparación falla, el seed sale con error en vez de terminar: un dataset
 cuyo `data_quality` no es el que el plan dice es un bug, no una sorpresa.

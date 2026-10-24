@@ -160,6 +160,28 @@ Al crear un mensaje vía `POST /session-instances/:id/messages`, el backend emit
 - Server originado: no lleva `from` ni `to` (regla del §7 aplica solo a presence/control de usuarios).
 - Helper: `realtime.MarshalControlMessageCreated` (`realtime/notifier.go`) — el único productor del frame.
 
+### 6.4 `update:competition_progress` — intento de competencia terminado (change `gamificacion-core` D9)
+
+Al terminar (`finished`) un intento tagueado con `competition_id` (creado vía `POST /session-instances/:id/runner` con el campo), el backend emite a `session:{session_instance_id}`:
+
+```json
+{"type":"update:competition_progress","channel":"session:88","payload":{"competition_id":3,"user_id":7}}
+```
+
+- Payload mínimo `{competition_id, user_id}` (**snake_case**) — sin contenido de métrica: el detalle se refresca por `GET /competitions/{id}`.
+- Sin exclusión del emisor (el propio actor lo recibe). Best-effort/efímero como todo `update:*`. Helper: `realtime.MarshalUpdateCompetitionProgress`.
+
+### 6.5 `control:competition_finished` — cierre de competencia (change `gamificacion-core` D9)
+
+Al cerrar la competencia (`PATCH /competitions/:id/close`), el backend emite por los canales `session:{instance}` de **todos los intentos registrados**:
+
+```json
+{"type":"control:competition_finished","channel":"session:88","payload":{"competitionId":3}}
+```
+
+- Payload mínimo `{competitionId}` (**camelCase** — los `control:*` usan camelCase, los `update:*` snake_case; convención distinta por familia, igual que §6.3).
+- Solo se emite si la competencia tenía intentos registrados (sin intentos, el push HTTP alcanza a los participantes). Helper: `realtime.MarshalControlCompetitionFinished`.
+
 ## 7. Relay dirigido por `to` en presence/control (Gap 27 D11)
 
 El payload de `presence`/`control` sigue siendo opaco para el backend, pero el campo `to` adentro tiene semántica de entrega:

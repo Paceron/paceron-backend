@@ -348,3 +348,13 @@ Un package NO debe conocer la existencia de otros packages del mismo nivel. Ejem
 
 ### Propósito de los properties
 Los archivos `.properties` separan la configuración del código. Permiten tener distintos valores para local, test, stage y prod sin modificar el código fuente.
+
+## 🎮 Términos de gamificación (`gamificacion-core`)
+
+- **Racha estricta (A) / flexible (B):** estado diario del corredor sobre los días `kind='training'` de sus grupos. Estricta exige terminar TODAS las runner sessions del día (`finished`); flexible al menos una. Valores: `completed|failed|skipped|pending` (pending = hoy; skipped = sin training, sin instancia o previo al alta del corredor). Current/best cubren TODO el histórico hasta ayer.
+- **Unseen / seen:** filas `gamification_unseen` que materializan "hay novedad por sección" (streaks/achievements/competitions, team_id solo en competitions). `POST seen` las borra; `has_unseen` embebido en los GETs deriva de su existencia.
+- **Logro:** fila "once" del catálogo versionado en constants (21 en v1) con umbral único, evaluada async por triggers (runner_session/feedback/gps_points/asistencia). Sin revoke: nunca se desbloquea dos veces ni se quita.
+- **Estampa (stamp):** recuerdo de vitrina (`gamification_stamp`); en v1 solo emite type `competition` al ganar una competencia.
+- **Leaderboard:** ranking por team para una métrica y período; desempates por menos actividades contribuyentes (o instante específico); record histórico solo en `period=all` (pace = mejor ritmo, el más bajo).
+- **Competencia metric / route:** desafío entre miembros de un team. `metric` acumula una métrica de feedback en `[start_at, end_at]`; `route` matchea el GPS del intento contra un GeoJSON LineString sampleado a ~40 m (Haversine, radio de aceptación). Empate exacto → todos ganan. Cierre siempre manual.
+- **FK opaca:** columna BIGINT > 0 sin constraint de DB que anticipa una entidad (patrón del repo; acá `runner_session.competition_id`).

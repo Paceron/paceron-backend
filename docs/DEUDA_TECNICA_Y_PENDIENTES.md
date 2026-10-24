@@ -112,6 +112,52 @@ Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change
 
 El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), pero la detección de colisiones presencial sigue corriendo **1 query por fecha con día presencial** (`findPresencialCollisions` reutilizado per-date). Para lotes asincrónicos no agrega queries. Resolución futura: reutilizar la clasificación in-memory de `AdministeredCalendar` (T5) alimentada por 1 lectura de todas las fechas del owner, preservando el 409/same_team_warnings byte-idéntico.
 
+## Gamificación (change `gamificacion-core`, 2026-10-13)
+
+Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16 y §17 (ruta, `competencias-ruta-intake`).
+
+### Auto-cierre de competencias por cron (deuda explícita, D13)
+
+El cierre de competencias es **SIEMPRE manual** (`PATCH /competitions/:id/close`): no existe el cron que cierra al vencer `end_at`. El guard de ventana es **metric-only** (spec 4b, `competencias-ruta-intake`): cerrar una `metric` antes de que termine su `end_at` da `400`; una `route` se cierra cuando el creador/owner decide (no tiene ventana). El frontend debe mostrar el botón de cierre al creador/owner en ambos tipos.
+
+### Deriva del estado de triggers de racha (aproximado, D14)
+
+`gamification_streak_state` es el baseline de los triggers de racha; su fallo/deriva solo puede producir **punto rojo tarde o doble** — el GET de rachas es exacto y no la consulta. Aceptado por diseño; no "arreglar" sin reabrir D3/D14.
+
+### `achieved_at` del record de métricas SUM = última fila contribuyente
+
+Para `distance`/`duration` (agregación SUM), `record.achieved_at` es la `session_date` de la **última fila que contribuyó** al valor acumulado — es la interpretación elegida de "cuándo se alcanzó el récord" (el valor acumulado solo existe al cerrar esa fila). Para `peak_speed` es la fila del argmax y para `sessions_count`/`attendance_count` la última actividad.
+
+### Wording "record máximo histórico" para pace = MEJOR (mínimo) ritmo
+
+La spec decía "máximo histórico del team" genérico; para `pace` el record es el valor **más bajo** (mejor ritmo) — implementado así y aclarado en el spec delta (`gamification-leaderboards`).
+
+### `BulkCreatePoints` del DAO de feedback es operación muerta
+
+Solo `BulkCreatePointsRecompute` está en uso (subida de points del leaderboard, D6). La variante sin recompute quedó sin call sites — marcar/eliminar en una futura limpieza (no hacerla en caliente).
+
+### Frontera de membresía mixta: `date_end > NOW()` (instante) vs `::date >= hoy`
+
+`FindActiveGroupMemberships` (gamificación) evalúa la vigencia con **instante** (`date_end > NOW()`), mientras otros dominios del repo comparan por `::date >= fecha`. Consistente **dentro del módulo** (todas las queries de gamificación usan la misma frontera); unificar con el resto del repo es cambio transversal aparte.
+
+### Rachas solo sobre memberships activas: el stint histórico no cuenta
+
+Las rachas se computan sobre los grupos con membresía **activa hoy**: si la membresía de un grupo cerró (`date_end` pasada), sus días de calendario dejan de contar para current/best aunque hayan contado en su momento. Racha "histórica" de equipos abandonados desaparece del GET por diseño.
+
+### `date_start` entre 21:00 y 23:59 Cordoba resta hasta 1 día en la frontera de alta
+
+El mapeo de día (`utcDateToDay`) toma la **fecha UTC** del timestamptz: un `date_start` a la noche de Cordoba (UTC-3) cae en el día UTC siguiente y ese día de alta puede quedar `skipped` (previo a la membresía) en vez de contable. Cosmético, borde de alta; arreglaría comparando en TZ Cordoba.
+
+### Minors de tests/internals (tasks 1-6)
+
+- **Root cause del error del trigger sin log crudo:** `EvaluateRunnerCompletion` envuelve los errores como `ErrStreakTrigger` con sufijo pero **descarta el error de driver original** — el log del trigger no muestra la causa cruda (`gamification_streak_trigger.go`). Wrap con `%v` del error fuente cuando se toque.
+- **Pin de queries del trigger sin rama "sin evento" assertionada:** `TestStreakTrigger_Evaluate_QueriesConstantes` pinea el conteo (6) de la corrida **con** evento y compara 3 vs 12 días; la corrida sin evento (sin INSERT de unseen) solo se loguea (`t.Logf`), sin assert de conteo.
+- **Gate del hook por service-success sin chequeo explícito de status:** los hooks de racha/logros corren tras **cualquier** PATCH exitoso del runner (finished, interrupted, interrupted idempotente) sin inspeccionar el status final de la fila; es inofensivo (recálculo idempotente + baseline) pero un gate más fino exigiría chequear status.
+- **Idx redundante `idx_user_achievement_progress_user`:** `user_id` ya es prefijo de la PK compuesta `(user_id, achievement_id)`; el índice separado no aporta y podría eliminarse (requiere migración).
+- **`gps_N` cuenta puntos de feedbacks borrados (decisión consciente):** `CountGPSFinishedSessions` cuenta por existencia de puntos en `workout_feedback_points`; un feedback soft-deleted deja sus puntos contando para el criterio.
+- **`GetUserStamps` sin test de rama 500:** la suite del controller cubre 200/403/401 del GET de stamps pero no el pin FailingDB de la rama de error interno.
+- **Sin assert negativo "record nil en period=week":** el scenario existe en el spec delta pero la suite del service no tiene el assert negativo explícito (solo cubre record presente en `all`).
+
 ## Cobertura de tests
 
 > Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).
@@ -154,3 +200,38 @@ N+1 de escritura/lectura del dominio calendario, migrados a batch con el número
 - **N+1 de borrado de instancias y N reads del bulk-clear:** `deleteSupersededInstances` batch (semántica de §8.4 intacta — protege instancia si hay feedback de la sesión o de cualquier ejercicio; soft-deleted feedback no protege) + bulk-clear reescrito (1 read `IN` + guards en memoria + 1 delete + supersede batch), fijo en 11 queries. Resuelto en `239dbde`.
 - **Loop de colisiones de AdministeredCalendar** (3 queries por fecha colisionante): clasificación in-memory sobre las filas de `FindForGroupsInRange` — 3 queries fijas para todo el rango. Resuelto en `8a17e57`.
 - **Invitaciones 3N+1** (users resueltos de a 1..2 por invitación): `ListPendingInvitationsForUser` en 3 queries, listado del team en 4 queries (teams/users con `IN`). Resuelto en `8a17e57` (Task 8 completó el residuo: `can_receive_payments` del listado hoy sale en 1 query batch de `seller_connections`, ver `f4dd3e8`).
+
+## Competencias de ruta — spec 4b (change `competencias-ruta-intake`, 2026-10-13)
+
+Pendientes del intake/cierre de competencias de ruta. Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14 (subsección "Competencias de ruta"); contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §17.
+
+### Intento wip/interrupted no se borra ni se reabre (RUTA v1)
+
+El anti-doble intento cuenta runner sessions con `competition_id` **de cualquier status** (`ExistsAttemptByCompetitionAndAthlete`): un intento `interrupted` consume el único intento del atleta y **no hay endpoint de reset/borrado/re-apertura** en v1. Rediseñarlo (contador de reintentos, ventana de reintento, o contar solo finished) toca guards + spec — propio change futuro.
+
+### Leaderboard en vivo mid-attempt
+
+Durante el intento en curso (`wip`) no hay broadcast WS de nada (ni ranking ni traza GPS); los frames WS son solo post-finish (`update:competition_progress`) y post-close (`control:competition_finished`). Progreso intermedio on-demand vía `GET /competitions/{id}`. Escenario declarado en el spec delta y al front en §17.5.
+
+### Microventana race del pre-check anti-doble
+
+`CreateAttempt` es check-then-insert sin lock: dos POSTs casi simultáneos del mismo atleta pueden superar ambos el pre-check (`ExistsAttempt...` con Count). El arbitraje real es el unique `(session_instance_id, athlete_user_id)` de runner_session — el perdedor recibe `400` vía `ON CONFLICT DO NOTHING` + `RowsAffected=0`. Inofensiva (resultado correcto por ambas rutas de error); si algún día se quiere el message único en carrera también, tocaría transacción o advisory lock.
+
+### Default de `acceptance_radius_meters` solo sugerido por el front
+
+Backend NO aplica default: el campo es requerido en [5, 500] metros (`400` "el radio de aceptación debe estar entre 5 y 500 metros"). El frontend debe **sugerir 50 m** en su UI de creación de competencia de ruta.
+
+### Memoización del matching de ruta (ronda seguridad 2026-10-14)
+
+Dos recomputos que un memo por request/bundle ahorraría, documentados como mejora futura (no afectan correncta DIR): (a) `Close` de route corre `routeAttempts`/matching **2×** y `ListAttemptSessions` 3× (para canales WS + winners + respuesta final) — un campo memo en el bundle del request lo reduciría 1 query + 1 matching completo; (b) el progreso route del `GET /competitions/{id}` recomputa todo el matching O(samples×points) por GET aunque la ruta es inmutable — los samples son cacheables por competencia indefinidamente (hoy ~2500 allocs por GET). Bound actual aceptable (≤500 vértices / ≤100 km / ≤5000 puntos por bulk).
+
+### Sin MaxBytesReader ni rate-limit en los POST de competencias (ronda seguridad 2026-10-14)
+
+`POST /teams/{id}/competitions` bindea el body completo sin `http.MaxBytesReader` (ni rate-limit repo-wide; fotos es lo único con MaxBytes en el repo). El pico de memoria por request queda acotado en persistencia por las validaciones (500 vértices/100 km) pero el parseo/unmarshal ocurre ANTES de las validaciones. Follow-up transversal si algún día se generaliza límite de body/cuota en el repo.
+
+## Resueltos (change `competencias-ruta-intake`, 2026-10-13)
+
+- **Guard de status de cancel** (ronda seguridad 2026-10-14): `DELETE cancel` tenía el DELETE sin condición de status en el SQL (race con approve podía borrar una competencia ya `active`). Ahora el DELETE exige `status = 'pending_approval'` en el WHERE y `RowsAffected==0` → `400` (patrón Approve/Reject/Finish), con test `TestCompetitionDAO_CancelVsApproveRace`. Resuelto en `5aed0e4`.
+- **Exclusión del owner como participante** (ronda seguridad 2026-10-14): solo se bloqueaba cuando el caller era owner; un corredor creador podía incluir al owner en participants. Ahora el owner se excluye SIEMPRE (resolución `TeamOwnerID` + guard incondicional), con test del 400 "el entrenador no compite". Resuelto en `5aed0e4` (mezcla: commit `f71c713` cerró antes el I1 de competencia rota tagueada sobre instancia ajena, guard bidireccional con `FindByRouteSessionInstance`)
+
+- **Validación de `route_geojson` en Create solo estructural** (deuda de `gamificacion-core`, entry eliminada de las Gamificación): Create ahora parsea el LineString y rechaza con `400` inválido / >500 vértices / >100 km Haversine (`routematch.ParseLineString` + `LineStringLength`) — el passthrough al `500` fail-safe en el matching ya no aplica en el alta (el matching sobre una competencia creada siempre tiene ruta confiable). Resuelto en `3e6d0c3`.

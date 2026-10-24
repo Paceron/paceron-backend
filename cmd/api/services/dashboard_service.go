@@ -500,6 +500,9 @@ func (s *dashboardService) validate(ctx *gin.Context, scope *DashboardScope, que
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateAthletes(ctx, scope, groupIDs, query.AthleteUserIDs); err != nil {
+		return nil, err
+	}
 
 	var from, to time.Time
 	if requireRange {

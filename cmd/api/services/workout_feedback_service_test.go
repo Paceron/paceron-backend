@@ -97,6 +97,13 @@ func (m *mockWorkoutFeedbackDao) BulkCreatePoints(ctx *gin.Context, feedbackID i
 	return 0, nil
 }
 
+func (m *mockWorkoutFeedbackDao) BulkCreatePointsRecompute(ctx *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error) {
+	if m.bulkCreatePointsFn != nil {
+		return m.bulkCreatePointsFn(ctx, feedbackID, points)
+	}
+	return 0, nil
+}
+
 func (m *mockWorkoutFeedbackDao) GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error) {
 	if m.getPointsByFeedbackFn != nil {
 		return m.getPointsByFeedbackFn(ctx, feedbackID)

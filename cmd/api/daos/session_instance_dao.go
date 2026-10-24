@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
@@ -34,7 +35,11 @@ type SessionInstanceDaoInterface interface {
 	// HasInstanceAccess aplica la regla dual de session-instance-detail D2:
 	// día con esta instancia donde el caller es miembro activo del grupo u
 	// owner del equipo, O feedback activo sobre la instancia donde el caller
-	// es atleta, reportante u owner del equipo.
+	// es atleta, reportante u owner del equipo. TERCERA rama
+	// (competencias-ruta-intake D8): si la instancia es la sintética de una
+	// competencia type=route, autoriza al participante de esa competencia sin
+	// filtro de status (el front suscribe el canal session:{id} del intento en
+	// el pre-start, antes de que exista feedback).
 	HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error)
 }
 
@@ -150,5 +155,16 @@ func (d *sessionInstanceDao) HasInstanceAccess(ctx *gin.Context, instanceID, cal
 	if err != nil {
 		return false, fmt.Errorf("error checking session instance feedback access: %w", err)
 	}
-	return fbCount > 0, nil
+	if fbCount > 0 {
+		return true, nil
+	}
+	var compCount int64
+	err = d.DB.Model(&dbs.Competition{}).
+		Joins("JOIN competition_participant ON competition_participant.competition_id = competition.id AND competition_participant.user_id = ?", callerID).
+		Where("competition.route_session_instance_id = ? AND competition.type = ?", instanceID, competition.TypeRoute).
+		Count(&compCount).Error
+	if err != nil {
+		return false, fmt.Errorf("error checking session instance competition access: %w", err)
+	}
+	return compCount > 0, nil
 }

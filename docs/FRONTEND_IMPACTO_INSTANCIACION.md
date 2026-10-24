@@ -537,3 +537,212 @@ Los endpoints de calendario e invitaciones (stamp/bulk/shift/bulk-clear/administ
 ## 15. `GET /auth/permissions?user_id=` — decisión de producto: sin guard
 
 `GET /auth/permissions?user_id=` no aplica guard self/owner sobre `user_id` — cualquier usuario autenticado puede consultar los permisos (metadata del tier) de otro. **Decisión de producto (2026-10-11): se deja SIN guard a propósito** — consultar esa metadata de otros users es aceptado (expone nombre de permisos del tier, nada de datos personales ni de pago). Si el producto cambia de criterio más adelante, el cambio es mete un guard en el handler; mientras tanto contracto estables, no es bug ni deuda.
+
+## 16. Gamificación: rachas, logros, leaderboard y competencias (Gaps 30-34, change `gamificacion-core`)
+
+Cambios de contrato **confirmados en el código final** de la rama `feature/gamificacion-core` (HEAD `21a5e84`). Referencias: `cmd/api/controllers/{streak,gamification_seen,achievements,leaderboard,competition}_controller.go`, servicios homónimos en `cmd/api/services/`, DTOs en `cmd/api/domains/gamification/` y `cmd/api/domains/competition/`, frames en `cmd/api/realtime/protocol.go`. Doc de dominio (mecánica, no shapes): `docs/CATALOGO_Y_CALENDARIO.md` §8.14. Contrato WS completo: `docs/REALTIME_WS.md` §6.4/§6.5.
+
+**Marco general: `breaking = NINGUNO` — todo es endpoint/evento nuevo o campo aditivo.** La única modificación de un endpoint existente es `POST /session-instances/:id/runner` aceptando `competition_id` opcional (§16.6); sin el campo, el flujo y la respuesta quedan byte-idénticos. Todas las fechas/horas de gamificación operan en TZ fija `America/Argentina/Cordoba`.
+
+Los errores `4xx/5xx` de los endpoints nuevos viajan como `apierror.APIError {status_code, code, message}`; los errores internos de DB son **500 genéricos** (`"error interno"`) sin filtrar detalles del driver, en todos los casos.
+
+### 16.1 NUEVO — `GET /users/{id}/streaks` (rachas)
+
+Self-only (`id` == token, `403` si no). `days` opcional: default `42`, válido `1..365`, fuera de rango → `400`. `200` con:
+
+```json
+{
+  "strict": {"current": 4, "best": 12},
+  "flexible": {"current": 9, "best": 30},
+  "days": [
+    {"date": "2026-10-11", "strict_status": "completed", "flexible_status": "completed"},
+    {"date": "2026-10-12", "strict_status": "failed", "flexible_status": "completed"},
+    {"date": "2026-10-13", "strict_status": "pending", "flexible_status": "pending"}
+  ],
+  "has_unseen": false
+}
+```
+
+- Dos rachas: `strict` (día con training asignado exige TODAS sus runner sessions `finished`) y `flexible` (al menos una finished). Cada día trae DOS estados `completed|failed|skipped|pending`: `skipped` = día sin training asignado, sin instancia o **previo al alta del corredor en ese grupo** (no corta racha); `pending` = solo el día de hoy, en curso (no corta ni rompe).
+- **`current`/`best` se computan sobre TODO el histórico hasta ayer**; `days` solo recorta el array de la ventana (que incluye HOY, siempre `pending`). La ventana de cálculo termina en ayer: hoy nunca modifica las rachas.
+- `has_unseen` es de la sección `streaks` (ver §16.8).
+
+### 16.2 NUEVO — `POST /users/{id}/gamification/seen` (marcar novedades vistas)
+
+Self-only. Body: `{"section": "streaks|achievements|competitions", "team_id": 1}` — `section` obligatorio (whitelist, otro valor `400`), `team_id` **solo** se admite con `section="competitions"` (`400` en otra sección). Con `team_id` borra solo las filas de ese equipo; sin `team_id` limpia todas las de la sección. Cero filas por borrar = `200` no-op igual. `200` con:
+
+```json
+{"message": "novedades marcadas como vistas"}
+```
+
+### 16.3 NUEVOS — logros (catálogo, vitrina, estampas)
+
+- **`GET /achievements/catalog`** — cualquier usuario autenticado (sin ownership). `200` con las 21 filas del catálogo (`{"data": [...]}`), cada fila `{id, family, name, description, icon_key, threshold, unit}`:
+
+  ```json
+  {"data": [
+    {"id": "streak_7", "family": "consistency", "name": "Racha de 7", "description": "7 días seguidos con entrenamiento completo", "icon_key": "streak_7", "threshold": 7, "unit": "days"}
+  ]}
+  ```
+
+- **`GET /users/{id}/achievements`** — self-only. Merge catálogo + progreso: las 21 filas **siempre presentes**, con `unlocked_at: null` si no desbloqueado. `200`:
+
+  ```json
+  {
+    "data": [
+      {"achievement_id": "first_session", "current_level": null, "count": null, "unlocked_at": "2026-10-01T15:04:05Z", "last_unlocked_at": "2026-10-01T15:04:05Z"},
+      {"achievement_id": "sessions_5", "current_level": null, "count": null, "unlocked_at": null, "last_unlocked_at": null}
+    ],
+    "has_unseen": true
+  }
+  ```
+
+  Sin `omitempty`: `current_level` y `count` viajan **siempre `null` en v1** (regla de niveles es futura) y `last_unlocked_at` **replica** `unlocked_at` en v1.
+- **`GET /users/{id}/stamps`** — self-only. `200` con `{"data": [{"id": 1, "type": "competition", "source_id": 3, "source_name": "Competencia 3", "granted_at": "2026-10-13T21:00:00Z", "count": 1}]}`. Vacía hasta que existan competencias cerradas (E4). **Nota: este GET no trae `has_unseen`** (único de la vitrina sin él).
+- Los logros son **una vez, sin revoke**: una fila desbloqueada nunca se quita ni se re-timestampa. Al desbloquear llega un push best-effort (tipo `achievement_unlocked`) con `data.route "/achievements"` (placeholder).
+
+### 16.4 NUEVO — `GET /teams/{id}/leaderboard`
+
+Guard: miembro de algún grupo del team O owner (`403` otro caso). Query params **obligatorios** `metric` (`distance|duration|pace|peak_speed|sessions_count|attendance_count`, otro valor `400`) y `period` (`week|month|year|custom|all`, otro valor `400`); `custom` exige además `from` y `to` (`YYYY-MM-DD`, `from <= to`, `400`). Los demás períodos se derivan de "hoy" en TZ Cordoba (semana desde el lunes). `200`:
+
+```json
+{
+  "rows": [
+    {"user_id": 6, "name": "Ana Gómez", "avatar_url": "https://…?v=1690000000", "value": 21540.0, "rank": 1},
+    {"user_id": 7, "name": "Ben Ruiz", "avatar_url": null, "value": 21540.0, "rank": 1},
+    {"user_id": 8, "name": "Cara Diaz", "avatar_url": null, "value": 18000.0, "rank": 3}
+  ],
+  "viewer_rank": {"user_id": 9, "value": 5000.0, "rank": 7},
+  "record": {"user_id": 6, "name": "Ana Gómez", "value": 21540.0, "achieved_at": "2026-10-06"}
+}
+```
+
+- `rows`: **top 5**; ranks compartidos a igual valor exacto y la posición siguiente saltea N (1, 1, 3).
+- Desempates: métricas de feedback a igual valor gana quien usó **menos entrenamientos contribuyentes**; `sessions_count` (empezó antes) y `attendance_count` (registró antes) desempatan por el instante de su última actividad.
+- `viewer_rank`: posición del caller en el ranking completo; **`null` si no contribuyó al período** (incluye al owner, que nunca genera fila propia).
+- `record` **solo con `period=all`** (ausente en los demás). Para `pace` el record es el **MEJOR ritmo — el más bajo**, no el máximo (las demás métricas sí son máximo). `achieved_at` es date-only `YYYY-MM-DD`.
+- Unidades de `value`: distance = metros (SUM), duration = ms (SUM), pace = **s/km** (SUM duration / SUM distance del período, no promedio de ritmos), peak_speed = km/h (MAX), sessions/attendance = conteo. Sin actividad en el período: `200` con `rows: []` y `viewer_rank: null`.
+
+### 16.5 NUEVOS — competencias (E4)
+
+Máquina de estados: `pending_approval → active | rejected` (moderación del owner), `active → finished` (cierre manual). Tabla shape completa en `CompetitionResponse`:
+
+```json
+{
+  "id": 3, "team_id": 1, "group_id": 2, "type": "metric", "metric": "distance",
+  "start_at": "2026-10-01T00:00:00Z", "end_at": "2026-10-15T00:00:00Z",
+  "route": null, "acceptance_radius_meters": null,
+  "participants": [6, 7, 8], "created_by_user_id": 7, "created_by_role": "runner",
+  "status": "active", "approved_by_user_id": 5, "rejection_reason": null,
+  "winner_user_ids": [], "finished_at": null
+}
+```
+
+- `type="metric"`: exige `metric` (distance|duration|pace|peak_speed) y `end_at` posterior a `start_at`; **NO** admite `route`/`acceptance_radius_meters`. `type="route"`: exige `route_geojson` (GeoJSON LineString) y `acceptance_radius_meters > 0`; **NO** admite `metric`. Todo eso es `400`.
+- **`POST /teams/{id}/competitions`** → `200` con `{data: {…}}` (creador owner → `active` directo; corredor miembro → `pending_approval`). Participantes: mínimo 2, todos miembros activos del team, sin el trainer (`400` si falla). Caller fuera del team: `403`.
+- **`PATCH /competitions/{id}/approve`** / **`/reject`** (body opcional `{"reason": "…"}`) → `200` con `{data}`; solo sobre `pending_approval` (`400` otro estado), guard owner del team (`403`). Push best-effort al creador en ambos casos (`competition_approved`/`competition_rejected`, `data.route "/teams/{id}"` placeholder).
+- **`DELETE /competitions/{id}/cancel`** → `200 {"message": "competencia cancelada"}`; **solo el creador corredor**, solo sobre `pending_approval`; borrado físico.
+- **`GET /teams/{id}/competitions?status=&group_id=`** → `200 {data: [CompetitionResponse], has_unseen}` — filtros opcionales (`status` fuera de whitelist `400`); `has_unseen` de la sección competitions **filtrado por ese team_id**. **El listado NO trae `progress`** (solo el detalle).
+- **`GET /competitions/{id}`** → `200 {data: {…, progress}}`; `404` si no existe, `403` ajeno. Progreso en vivo on-demand: `type=metric` acumulado de la métrica por participante en `[start_at, end_at o now]` (`null` si no aportó); `type=route` mejor % de match hasta ahora (`0` sin intentos/GPS). Sin broadcast WS en esta consulta.
+- **`PATCH /competitions/{id}/close`** → `200` con `{data: {…, winner_user_ids, finished_at}}`. **Cierre SIEMPRE manual** (no hay cron): caller creador (trainer o runner) u owner; solo sobre `active` (`400` otro estado) y **solo cuando la ventana ya terminó** si hay `end_at` (`400` "no puede cerrarse todavía"). Winners: metric = mejor valor en ventana (para `pace` el más bajo) con **empate exacto = todos ganan**; route = mejor % de match con tie-break menor duración (duración exacta igual = todos ganan). Sin intentos → `finished` con `winner_user_ids: []` sin stamps ni pushes. El ganador recibe **stamp** (visible en `GET /users/{id}/stamps`, §16.3) y **todos los participantes** reciben unseen + push best-effort (`competition_finished`, `data.route "/competencias/{id}"`).
+
+### 16.6 MODIFICADO (aditivo) — `POST /session-instances/:id/runner` acepta `competition_id`
+
+Body suma `competition_id` **opcional** (int64). Si **no** viene: byte-idéntico a lo publicado en §12.1. Si viene, valida **antes de crear el intento** y cualquier falla es **`400`** (con `message` específico; nota: competencia inexistente es `400`, **no** `404`):
+
+- "la competencia indicada no existe" / "la competencia no está activa" / "no sos participante de la competencia" / "la competencia todavía no empezó" / "la competencia ya terminó".
+
+El intento queda tagueado en `runner_session.competition_id` (FK opaca). Al terminar el intento (`finished`) se emite el frame WS de §16.7.
+
+### 16.7 NUEVOS frames WS de competencia
+
+Por los canales `session:{id}` (el id es el **session instance id** del intento, mismo patrón de siempre):
+
+```json
+{"type":"update:competition_progress","channel":"session:88","payload":{"competition_id":3,"user_id":7}}
+{"type":"control:competition_finished","channel":"session:88","payload":{"competitionId":3}}
+```
+
+- **`update:competition_progress`** — al terminar un intento tagueado; payload mínimo `{competition_id, user_id}` en **snake_case**; **sin exclusión del emisor** (el actor también lo recibe); sin contenido de métrica — refetch del detalle.
+- **`control:competition_finished`** — al cerrar la competencia, por los canales de **todos los intentos registrados**; payload `{competitionId}` en **camelCase**; solo se emite si hay intentos (sin intentos, el push alcanza).
+- **Convención distinta por familia de frame, a propósito:** los frames `update:*` server-originados usan snake_case, mientras que los `control:*` usan camelCase (igual que `control:message_created` con `{sessionMessageId}`, §13.4). No normalizar un lado contra el otro.
+
+### 16.8 Catch-up de `has_unseen` (resumen por sección)
+
+| Sección | Embebido en | Borra el punto rojo |
+|---|---|---|
+| `streaks` | `GET /users/{id}/streaks` | `seen {section:"streaks"}` |
+| `achievements` | `GET /users/{id}/achievements` | `seen {section:"achievements"}` |
+| `competitions` | `GET /teams/{id}/competitions` (por `team_id`) | `seen {section:"competitions", team_id}` (o sin `team_id` para todos) |
+
+El punto rojo se **deriva de la existencia de filas unseen** — no hay contador ni estado extra. Las fuentes de filas: triggers de racha (reset o cruce de hito 10/20/50/100 hacia arriba), desbloqueo de logros, y cierre de competencias (todos los participantes, ganen o no).
+
+## 17. Competencias de ruta: intake `POST /competitions/{id}/attempts` e instancia sintética (change `competencias-ruta-intake`)
+
+Se superpone a §16.5/16.6/16.7: es aditivo para `metric` (sin cambios) y redefine cómo se abre y cierra el intento de una competencia `type="route"`. Todo lo del close/winners/stamps/unseen de §16.5 sigue valiendo salvo lo que se aclara acá.
+
+### 17.1 Create route: validaciones de ruta (reemplaza el shape laxo de §16.5)
+
+En `POST /teams/{id}/competitions` con `type="route"`, además del shape de §16.5:
+
+- `route_geojson` debe ser un **LineString GeoJSON parseable** (`400` "la ruta GeoJSON no es válida" si no).
+- **≤ 500 vértices** (`400` "la ruta admite hasta 500 puntos").
+- Longitud total **≤ 100 km** (Haversine sumada sobre los vértices; `400` "la ruta no puede superar los 100 km").
+- `acceptance_radius_meters`: **requerido**, rango válido **[5, 500] metros** (`400` "el radio de aceptación debe estar entre 5 y 500 metros") — **sin default backend-mandado**: si falta, `400`. El front debe **sugerir 50 m** en su UI.
+- La ruta es **inmutable post-create**: no hay endpoint de edición de ruta (cambiarla = crear otra competencia).
+
+Estas validaciones sustituyen el enunciado anterior "`acceptance_radius_meters > 0`" de §16.5 y el comportamiento previo de GeoJSON inválido detectado recién al matching (hoy rechaza con `400` en el alta).
+
+### 17.2 NUEVO — instancia sintética compartida de la competencia route
+
+Al crear una competencia route, **el backend** crea en la MISMA transacción una `session_instance` sintética (name "Competencia ruta N", description "Instancia sintética de la competencia de ruta", **sin día de calendario** — no aparece en ningún calendario ni banner) con un único `exercise_instance` "Corrida" (kind `velocidad_distancia`) y su link. El id se persiste en `competition.route_session_instance_id` (FK opaca, `NULL` en metric). Esa columna **NO viaja en `CompetitionResponse`**: el front conoce la instancia a través del `session_instance_id` de la respuesta del intento.
+
+Consecuencia clave: **todos los participantes corren sobre la MISMA session_instance** → el canal WS de la competencia es común — suscribirse a `session:{route_session_instance_id}` alcanza a todos los intentos (frames de §17.5).
+
+### 17.3 NUEVO — `POST /competitions/{id}/attempts` (intake del intento)
+
+Guards **en este orden**, cada uno sin tocar la escritura:
+
+| Orden | Error | Mensaje |
+|---|---|---|
+| 1 | `404` | competencia inexistente |
+| 2 | `400` | "solo las competencias de ruta admiten intentos" (`type != route`) |
+| 3 | `400` | "la competencia no está activa" (`status != active`) |
+| 4 | `403` | caller no está en `competition_participant` |
+| 5 | `400` | doble intento (ver abajo) |
+
+Acción: inserta la runner session `{session_instance_id: instancia sintética, athlete_user_id: caller, status: "wip", competition_id: id}` directamente, **sin gate presencial** (la instancia no pertenece a ningún día) y **sin ventana temporal** (route no usa `start_at`/`end_at` para el intento).
+
+```json
+{
+  "message": "intento registrado",
+  "data": {
+    "id": 120,
+    "session_instance_id": 88,
+    "athlete_user_id": 7,
+    "status": "wip",
+    "start_date": "2026-10-13T18:30:00Z",
+    "end_date": null,
+    "competition_id": 3
+  }
+}
+```
+
+OJO: `data` es el runner session plano — la clave del recurso es **`id`**, no `runner_session_id`. Mismo shape que `POST /session-instances/:id/runner` (§12.1) con `competition_id` poblado.
+
+- **Sin reintentos:** un intento por participante. El `400` de doble intento ("ya tenés un intento registrado en esta competencia") aplica tanto por pre-check como ante una segunda request repetida; la unicidad real la garantiza el unique `(session_instance_id, athlete_user_id)` de runner_session (todos los intentos comparten instancia, así que el unique de siempre ya arbitra). Un intento `interrupted` también bloquea: **no hay reset ni re-apertura** en v1.
+- **El finish sigue siendo `PATCH /session-instances/:id/runner`** (§12.1/§16.6): nada nuevo en el servicio de feedback; al quedar `finished` con `competition_id` poblado se emite el frame de §17.5.
+- La competencia `metric` **NO cambia**: sigue abriendo intentos vía §16.6 (runner session normal con `competition_id`); `POST attempts` sobre una metric responde `400` (order 2).
+
+### 17.4 MODIFICADO — cierre route sin guard de ventana
+
+El guard "no puede cerrarse todavía" (cerrar con `end_at` en el futuro → `400`) ahora aplica **SOLO a `type="metric"`**. En route **no hay guard de `end_at` para cerrar**: el creador/owner cierra cuando decide, con la ventana llena de intentos o antes. El resto del close de §16.5 es byte-idéntico (winners por match %, stamps, unseen, pushes, `400` fuera de `active`, `403` ajeno, sin intentos → winners vacía).
+
+### 17.5 Frames WS sin canal nuevo
+
+Los 2 frames de §16.7 siguen siendo todos los del intento; **no se agrega canal ni frame nuevo** para el intento en curso:
+
+- `update:competition_progress {competition_id, user_id}` — al terminar cada intento, por el canal común `session:{route_session_instance_id}` (todos los participes lo ven, sin exclusión del emisor).
+- `control:competition_finished {competitionId}` — al cerrar, por el canal de la instancia (único, compartido por los intentos).
+- **Sin leaderboard en vivo mid-attempt**: mientras el intento está en `wip` no hay broadcast de nada (ni ranking ni traza GPS); el resultado live del detalle sale on-demand en `GET /competitions/{id}` (§16.5) y el resultado final viaja post-close con `control:competition_finished` + refetch.
+

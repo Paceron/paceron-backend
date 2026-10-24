@@ -190,7 +190,7 @@ func TestDashboardController_TeamIDObligatorio(t *testing.T) {
 func TestDashboardController_ArmaLaQuery(t *testing.T) {
 	service := &stubDashboardService{}
 	ctx, _ := dashboardTestContext(t, http.MethodGet,
-		"/?team_id=29&group_id=39&exercise_id=7&kind=ritmo_continuo&from=2026-09-01&to=2026-09-30&tolerance=0.1&granularity=week&page=2&page_size=50&sort=mean_speed_kph&order=desc"+
+		"/?team_id=29&group_id=39&athlete_user_id=4&exercise_id=7&kind=ritmo_continuo&from=2026-09-01&to=2026-09-30&tolerance=0.1&granularity=week&page=2&page_size=50&sort=mean_speed_kph&order=desc"+
 			"&distance_from_m=5000&distance_to_m=42000&time_from_min=5&time_to_min=360", "", true)
 
 	NewDashboardController(service).Leaderboard(ctx)
@@ -202,6 +202,7 @@ func TestDashboardController_ArmaLaQuery(t *testing.T) {
 	require.NotNil(t, service.lastQuery.ExerciseID)
 	assert.Equal(t, int64(7), *service.lastQuery.ExerciseID)
 	assert.Equal(t, "ritmo_continuo", service.lastQuery.Kind)
+	assert.Equal(t, []int64{4}, service.lastQuery.AthleteUserIDs)
 	assert.Equal(t, "2026-09-01", service.lastQuery.From)
 	assert.Equal(t, "2026-09-30", service.lastQuery.To)
 	assert.Equal(t, "0.1", service.lastQuery.Tolerance)
@@ -270,6 +271,24 @@ func TestDashboardController_RangoDeSerieNoEnteroEs400(t *testing.T) {
 
 			assert.Equal(t, http.StatusBadRequest, recorder.Code)
 			assert.Equal(t, "INVALID_RANGE_FILTER", decodeAPIError(t, recorder).Code)
+		})
+	}
+}
+
+// El corredor del scope es un entero positivo opcional, igual que group_id.
+func TestDashboardController_AthleteUserIDInvalidoEs400(t *testing.T) {
+	for name, target := range map[string]string{
+		"cero":     "/?team_id=29&from=2026-09-01&athlete_user_id=0",
+		"texto":    "/?team_id=29&from=2026-09-01&athlete_user_id=abc",
+		"negativo": "/?team_id=29&from=2026-09-01&athlete_user_id=-3",
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, recorder := dashboardTestContext(t, http.MethodGet, target, "", true)
+
+			NewDashboardController(&stubDashboardService{}).Summary(ctx)
+
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, "INVALID_RANGE", decodeAPIError(t, recorder).Code)
 		})
 	}
 }

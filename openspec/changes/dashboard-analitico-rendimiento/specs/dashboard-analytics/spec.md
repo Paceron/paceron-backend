@@ -187,10 +187,10 @@ Los parámetros que no se listan aquí no se aceptan.
 | Endpoint | Método | Parámetros |
 |---|---|---|
 | `/dashboard/filters` | GET | `team_id` **obligatorio** (el resto del scope sale del token) |
-| `/dashboard/metrics/summary` | GET | `team_id` **obligatorio**, `exercise_id` o `exercise_ids[]` o `kind`, `from` **obligatorio**, `to`, `tolerance`, y los 4 de rango (`distance_from_m`, `distance_to_m`, `time_from_min`, `time_to_min`) |
+| `/dashboard/metrics/summary` | GET | `team_id` **obligatorio**, `group_id`, `athlete_user_id`, `exercise_id` o `exercise_ids[]` o `kind`, `from` **obligatorio**, `to`, `tolerance`, y los 4 de rango (`distance_from_m`, `distance_to_m`, `time_from_min`, `time_to_min`) |
 | `/dashboard/metrics/timeseries` | GET | los de summary, más `granularity` (default `session`) |
 | `/dashboard/leaderboard` | GET | los de summary, más `page`, `page_size`, `sort` (default `best_time_ms`), `order` (default `asc`) |
-| `/dashboard/exercises/{id}/series` | GET | `{id}` de catálogo, `team_id`, más `from`, `to`, `tolerance`, `page`, `page_size` y los 4 de rango |
+| `/dashboard/exercises/{id}/series` | GET | `{id}` de catálogo, `team_id`, `group_id`, `athlete_user_id`, más `from`, `to`, `tolerance`, `page`, `page_size` y los 4 de rango |
 | `/dashboard/comparisons` | POST | body `{ group_id, exercise_id o exercise_ids[] o kind, from, to, tolerance, athlete_user_ids[] }` + los 4 de rango |
 | `/dashboard/comparisons/periods` | POST | body `{ group_id, exercise_id o exercise_ids[] o kind, current: { from, to }, tolerance, previous: { from, to } }` + los 4 de rango |
 
@@ -198,7 +198,7 @@ Tres defaults que antes no existían y que cambian lo que se ve: `granularity = 
 
 `previous` es **opcional** en `comparisons/periods`: si no viene, el backend lo deriva desplazando `current` hacia atrás su misma cantidad de días.
 
-**Todos los filtros de scope —`group_id`, `athlete_user_id`— son opcionales** y se resuelven del scope del solicitante cuando faltan. `group_id` explícito **no** amplía el scope: si no está en el scope del solicitante, responde `403`, no `404`.
+**Todos los filtros de scope —`group_id`, `athlete_user_id`— son opcionales** y se resuelven del scope del solicitante cuando faltan. `group_id` explícito **no** amplía el scope: si no está en el scope del solicitante, responde `403`, no `404`. Lo mismo vale para `athlete_user_id`: el corredor tiene que pertenecer a los grupos del scope (si no, `403` nombrando el id) y el filtro acota las series de los cuatro GET de métricas a ese corredor.
 
 #### Scenario: El previous se deriva
 
@@ -558,7 +558,7 @@ Cuando `has_target` sea `false`, el sistema SHALL **NOT** calcular ni devolver `
 
 La conmutación depende **del dato, no del `kind`**, porque el objetivo puede faltar en cualquier tipo: un `liviano` cargado solo con distancia no tiene objetivo temporal, y un `velocidad_distancia` creado sin distancia tampoco. Un tipo puede no tener objetivo aunque el `kind` lo declare como su eje.
 
-> **Nota de modelo:** `minutes` es `INT`. Un sprint de 100 m en 12 s equivale a 0,2 minutos, que no es representable — redondeado da 0, y el validador de tiempo exige `> 0`. Por eso los ejercicios de velocidad máxima se modelan como `velocidad_distancia` (100 m, **sin objetivo temporal**), no como `velocidad_tiempo`: es el tipo cuyo eje temporal no puede expresar el sprint. Ojo con la distinción: esos ejercicios **sí** tienen objetivo (el de distancia), así que van a la paleta A reducida; la rama `has_target: false` no la ejercita ninguno de los 12 del seed y queda cubierta por tests del DAO, porque datos sin objetivo pueden llegar igual por filas previas a la migración de tipos.
+> **Nota de modelo:** `minutes` es `INT`. Un sprint de 100 m en 12 s equivale a 0,2 minutos, que no es representable — redondeado da 0, y el validador de tiempo exige `> 0`. Por eso los ejercicios de velocidad máxima se modelan como `velocidad_distancia` (100 m, **sin objetivo temporal**), no como `velocidad_tiempo`: es el tipo cuyo eje temporal no puede expresar el sprint. Ojo con la distinción: esos ejercicios **sí** tienen objetivo (el de distancia), así que van a la paleta A reducida; la rama `has_target: false` no la ejercita ninguno de los 13 del seed y queda cubierta por tests del DAO, porque datos sin objetivo pueden llegar igual por filas previas a la migración de tipos.
 
 #### Scenario: Ejercicio con objetivo cargado
 

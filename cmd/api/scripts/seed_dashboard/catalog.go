@@ -30,6 +30,7 @@ const (
 	keyPasadas2000 = "pasadas_2000"
 	keyMax100      = "max_100"
 	keyMax200      = "max_200"
+	keyTiempoMax   = "tiempo_max"
 )
 
 func intPtr(v int) *int           { return &v }
@@ -49,7 +50,7 @@ type catalogItem struct {
 	MuscleGroup *string
 }
 
-// catalog son los 12 ejercicios del seed (tarea 7.2), uno por celda de la
+// catalog son los 13 ejercicios del seed (tarea 7.2), uno por celda de la
 // matriz de tipos vigente:
 //
 //   - liviano ×2 (Sparring y Trote Vuelta a la Calma): tienen tiempo Y distancia,
@@ -59,6 +60,10 @@ type catalogItem struct {
 //   - ritmo_continuo ×5 (4/6/8/10/21 km): necesitan los dos objetivos.
 //   - velocidad_distancia ×4: dos con tiempo (Pasadas 1000/2000) y dos solo con
 //     distancia (Velocidad Máxima 100/200 m).
+//   - velocidad_tiempo ×1: el objetivo es el reloj (1 minuto), con la distancia
+//     como dato para derivar la velocidad esperada. Un sprint de 100/200 m no
+//     entra acá: son ~12-30 s y `minutes` es un INT de minutos, así que el
+//     objetivo no es representable (esos dos ya viven como velocidad_distancia).
 //
 // "Calentamiento" se renombra a "Sparring": el rol de un bloque lo define
 // session_exercise_instances.role, no el nombre del ejercicio (tarea 7.3).
@@ -81,6 +86,12 @@ var catalog = []catalogItem{
 	// puede crear un entrenador desde el form (tarea 7.2).
 	{Key: keyMax100, Name: "Velocidad Máxima 100 m", Kind: string(constants.ExerciseKindVelocidadDistancia), DistanceM: intPtr(100)},
 	{Key: keyMax200, Name: "Velocidad Máxima 200 m", Kind: string(constants.ExerciseKindVelocidadDistancia), DistanceM: intPtr(200)},
+
+	// El único velocidad_tiempo del seed. El objetivo es 1 minuto (tiempo), y
+	// los 400 m son el dato que permite derivar la velocidad esperada (24 km/h)
+	// en vez de dejar `target_speed_kph` en null y caer a A reducido. Es el
+	// ejercicio que hace que el filtro por tipo `velocidad_tiempo` tenga datos.
+	{Key: keyTiempoMax, Name: "1 min a máxima potencia", Kind: string(constants.ExerciseKindVelocidadTiempo), Minutes: intPtr(1), DistanceM: intPtr(400)},
 }
 
 func catalogByKey(key string) (catalogItem, bool) {
@@ -139,7 +150,7 @@ var sessions = []sessionTemplate{
 		Name: "Sesión de velocidad",
 		Blocks: []sessionBlock{
 			warmupBlock(keySparring), warmupBlock(keyElongacion),
-			mainBlock(keyPasadas1000, 5), mainBlock(keyMax100, 3), mainBlock(keyMax200, 3),
+			mainBlock(keyPasadas1000, 5), mainBlock(keyMax100, 3), mainBlock(keyMax200, 3), mainBlock(keyTiempoMax, 3),
 			cooldownBlock(keyTrote),
 		},
 	},

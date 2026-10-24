@@ -179,6 +179,33 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.GET("/api/v1/users/:id/workout-feedback-history", app.workoutFeedbackController.AthleteHistory)
 	r.GET("/api/v1/users/:id/administered-workout-feedback-history", app.workoutFeedbackController.AdministeredHistory)
 
+	// Gamificación: rachas (gamificacion-core E1), self-only.
+	r.GET("/api/v1/users/:id/streaks", app.streakController.GetStreaks)
+	// Escape del punto rojo (D3): POST seen, self-only.
+	r.POST("/api/v1/users/:id/gamification/seen", app.gamificationSeenController.See)
+
+	// Gamificación: catálogo + vitrina de logros y estampas (E2). El catálogo
+	// es compartido (sin guard de recurso); la vitrina es self-only.
+	r.GET("/api/v1/achievements/catalog", app.achievementsController.GetCatalog)
+	r.GET("/api/v1/users/:id/achievements", app.achievementsController.GetUserAchievements)
+	r.GET("/api/v1/users/:id/stamps", app.achievementsController.GetUserStamps)
+
+	// Gamificación: leaderboard por equipo (E3). Miembro de algún grupo del
+	// team O owner; solo corredores puntúan.
+	r.GET("/api/v1/teams/:id/leaderboard", app.leaderboardController.GetLeaderboard)
+
+	// Gamificación: competencias (E4.1). El creation va bajo el team con el
+	// guard de caller; la moderación/cierre/detalle bajo el recurso.
+	r.POST("/api/v1/teams/:id/competitions", app.competitionController.Create)
+	r.GET("/api/v1/teams/:id/competitions", app.competitionController.ListByTeam)
+	r.PATCH("/api/v1/competitions/:id/approve", app.competitionController.Approve)
+	r.PATCH("/api/v1/competitions/:id/reject", app.competitionController.Reject)
+	r.PATCH("/api/v1/competitions/:id/close", app.competitionController.Close)
+	r.DELETE("/api/v1/competitions/:id/cancel", app.competitionController.Cancel)
+	r.GET("/api/v1/competitions/:id", app.competitionController.GetDetail)
+	// Intake de intentos de competencias de ruta (competencias-ruta-intake D2).
+	r.POST("/api/v1/competitions/:id/attempts", app.competitionController.CreateAttempt)
+
 	// Payments (authenticated)
 	r.POST("/api/v1/payments/preference", app.paymentController.CreatePreference)
 	r.POST("/api/v1/payments", app.paymentController.ProcessPayment)
