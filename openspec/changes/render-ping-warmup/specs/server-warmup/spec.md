@@ -40,7 +40,7 @@ Con un destino válido, el worker SHALL iniciar un `GET` asíncrono al arrancar 
 
 ### Requirement: Los fallos de warmup SHALL ser aislados del servicio
 
-Una falla de red o respuesta HTTP no exitosa SHALL registrarse como advertencia, SHALL NOT detener ni degradar el servidor y SHALL permitir que el siguiente ciclo vuelva a intentar la request.
+Una falla de red o respuesta HTTP no exitosa SHALL registrarse con nivel de error, SHALL NOT detener ni degradar el servidor y SHALL permitir que el siguiente ciclo vuelva a intentar la request.
 
 #### Scenario: El endpoint no responde
 - **WHEN** una llamada falla por timeout, error de red o estado HTTP no exitoso

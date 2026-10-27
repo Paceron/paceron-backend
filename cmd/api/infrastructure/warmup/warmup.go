@@ -45,24 +45,25 @@ func run(ctx context.Context, cfg config.WarmupConfig, client *http.Client) {
 func ping(ctx context.Context, client *http.Client, targetURL string) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
-		customlogger.Warn(nil, "warmup request could not be created",
-			customlogger.Tag("url", targetURL),
-			customlogger.Tag("error", err.Error()))
+		customlogger.Error(nil, "warmup request could not be created", err,
+			customlogger.Tag("url", targetURL))
 		return
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		customlogger.Warn(nil, "warmup request failed",
-			customlogger.Tag("url", targetURL),
-			customlogger.Tag("error", err.Error()))
+		if ctx.Err() != nil {
+			return
+		}
+		customlogger.Error(nil, "warmup request failed", err,
+			customlogger.Tag("url", targetURL))
 		return
 	}
 	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBody))
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		customlogger.Warn(nil, "warmup returned a non-success status",
+		customlogger.Error(nil, "warmup returned a non-success status", fmt.Errorf("HTTP status %d", response.StatusCode),
 			customlogger.Tag("url", targetURL),
 			customlogger.Tag("status_code", fmt.Sprintf("%d", response.StatusCode)))
 		return

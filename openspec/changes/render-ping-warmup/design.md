@@ -45,7 +45,7 @@ El worker usa un cliente HTTP estándar con timeout por request. Inicia una requ
 
 - **No evita un cold start después de que el proceso ya duerme:** Render apaga también el worker. El primer request externo sigue siendo quien despierta el servicio; el warmup ayuda mientras la instancia está activa.
 - **El default de producción desde local o develop puede calentar producción:** es el default solicitado. Los despliegues pueden sobrescribir `WARMUP_BASE_URL` para apuntarse a su propio dominio.
-- **Una falla HTTP no implica caída de la API:** el worker solo deja una advertencia y continúa para no convertir un mantenimiento de Render en un fallo de startup.
+- **Una falla HTTP no implica caída de la API:** el worker registra un error y continúa para no convertir un mantenimiento de Render en un fallo de startup.
 
 ## Migration Plan
 
