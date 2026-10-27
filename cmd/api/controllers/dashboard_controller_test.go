@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -86,6 +87,17 @@ func (s *stubDashboardService) Periods(c *gin.Context, callerID int64, request d
 		return nil, s.err
 	}
 	return &dashboard.PeriodsResponse{}, nil
+}
+
+func (s *stubDashboardService) SessionComparison(c *gin.Context, callerID int64, request dashboard.SessionComparisonRequest) (*dashboard.SessionComparisonResponse, error) {
+	s.lastCallerID, s.lastRequest = callerID, request
+	if s.err != nil {
+		return nil, s.err
+	}
+	if typed, ok := s.response.(*dashboard.SessionComparisonResponse); ok {
+		return typed, nil
+	}
+	return &dashboard.SessionComparisonResponse{}, nil
 }
 
 func dashboardTestContext(t *testing.T, method, target, body string, withAuth bool) (*gin.Context, *httptest.ResponseRecorder) {
@@ -394,6 +406,90 @@ func TestDashboardController_BodyDePeriods(t *testing.T) {
 	assert.Equal(t, "velocidad_distancia", *request.Kind)
 	require.NotNil(t, request.TimeFromMin)
 	assert.Equal(t, int64(30), *request.TimeFromMin)
+}
+
+func TestDashboardController_BodyDeSessionComparison(t *testing.T) {
+	service := &stubDashboardService{response: &dashboard.SessionComparisonResponse{
+		A:     dashboard.SessionComparisonSide{Series: []dashboard.SessionComparisonPoint{}},
+		B:     dashboard.SessionComparisonSide{Series: []dashboard.SessionComparisonPoint{}},
+		Delta: dashboard.SessionComparisonDelta{Direction: "b_minus_a"},
+		Units: dashboard.SessionComparisonUnits{Duration: "ms", Distance: "m", Speed: "km/h", RPE: "1-10"},
+	}}
+	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{
+		"team_id": 29,
+		"from": "2026-09-01",
+		"to": "2026-09-30",
+		"a": {"group_id": 39, "athlete_user_id": 1, "session_instance_id": 501, "exercise_id": 8},
+		"b": {"group_id": 40, "athlete_user_id": 2, "session_instance_id": 502, "exercise_id": 9}
+	}`, true)
+
+	NewDashboardController(service).SessionComparison(ctx)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, int64(42), service.lastCallerID)
+	request, ok := service.lastRequest.(dashboard.SessionComparisonRequest)
+	require.True(t, ok)
+	assert.Equal(t, int64(29), request.TeamID)
+	assert.Equal(t, "2026-09-01", request.From)
+	require.NotNil(t, request.A)
+	require.NotNil(t, request.B)
+	assert.Equal(t, int64(501), request.A.SessionInstanceID)
+	assert.Equal(t, int64(9), request.B.ExerciseID)
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	a, ok := response["a"].(map[string]any)
+	require.True(t, ok)
+	assert.Nil(t, a["mean_rpe"], "un valor ausente se serializa como null")
+	units, ok := response["units"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "km/h", units["speed"])
+}
+
+func TestDashboardController_SessionComparisonRechazaBodyIncompletoOConCamposDesconocidos(t *testing.T) {
+	for _, body := range []string{
+		`{"team_id":29,"from":"2026-09-01","to":"2026-09-30","a":{"group_id":39,"athlete_user_id":1,"session_instance_id":501,"exercise_id":8}}`,
+		`{"team_id":29,"from":"2026-09-01","to":"2026-09-30","a":{"group_id":39,"athlete_user_id":1,"session_instance_id":501,"exercise_id":8},"b":{"group_id":39,"athlete_user_id":1,"session_instance_id":502,"exercise_id":8},"session_id":501}`,
+		`{"team_id":29,"from":"2026-09-01","to":"2026-09-30","a":{"group_id":0,"athlete_user_id":1,"session_instance_id":501,"exercise_id":8},"b":{"group_id":39,"athlete_user_id":1,"session_instance_id":502,"exercise_id":8}}`,
+	} {
+		service := &stubDashboardService{}
+		ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", body, true)
+		NewDashboardController(service).SessionComparison(ctx)
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assert.Equal(t, "INVALID_REQUEST", decodeAPIError(t, recorder).Code)
+		assert.Nil(t, service.lastRequest)
+	}
+}
+
+func TestDashboardController_SessionComparisonRequiereAutenticacion(t *testing.T) {
+	service := &stubDashboardService{}
+	ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", `{}`, false)
+
+	NewDashboardController(service).SessionComparison(ctx)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Nil(t, service.lastRequest)
+}
+
+func TestDashboardController_SessionComparisonMapeaErroresDelService(t *testing.T) {
+	body := `{"team_id":29,"from":"2026-09-01","to":"2026-09-30","a":{"group_id":39,"athlete_user_id":1,"session_instance_id":501,"exercise_id":8},"b":{"group_id":39,"athlete_user_id":1,"session_instance_id":502,"exercise_id":8}}`
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"fuera de scope", services.ErrDashboardForbidden, http.StatusForbidden, "FORBIDDEN"},
+		{"sin feedback", services.ErrDashboardNotFound, http.StatusNotFound, "NOT_FOUND"},
+		{"falla interna", errors.New("fallo de dao"), http.StatusInternalServerError, "Internal Server Error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, recorder := dashboardTestContext(t, http.MethodPost, "/", body, true)
+			NewDashboardController(&stubDashboardService{err: tc.err}).SessionComparison(ctx)
+			assert.Equal(t, tc.status, recorder.Code)
+			assert.Equal(t, tc.code, decodeAPIError(t, recorder).Code)
+		})
+	}
 }
 
 // Sin token, 401 y nada de consulta.

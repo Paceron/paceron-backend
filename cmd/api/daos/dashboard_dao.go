@@ -19,6 +19,8 @@ type DashboardScopeFilter struct {
 	GroupIDs []int64
 	From     time.Time
 	To       time.Time
+	// SessionInstanceID acota a una única ejecución en la comparación A/B.
+	SessionInstanceID *int64
 	// Granularity elige el anclaje de calendario del bucket. Vacío = session.
 	Granularity string
 	// ExerciseIDs son ids del CATÁLOGO contra los que se filtra por
@@ -63,6 +65,7 @@ type DashboardSeriesRow struct {
 	DurationMs          *int64
 	ActiveDurationMs    *int64
 	DistanceMeters      *float64
+	RPE                 *int16
 	CompletionStatus    *string
 	HasRunnerSession    bool
 	// ResolvedByName marca las instancias que entraron por el fallback de nombre
@@ -301,6 +304,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		"wf.duration_ms AS duration_ms",
 		"wf.active_duration_ms AS active_duration_ms",
 		"wf.distance_meters AS distance_meters",
+		"wf.rpe AS rpe",
 		"wf.completion_status AS completion_status",
 		"(rs.id IS NOT NULL) AS has_runner_session",
 		"(ei.source_exercise_id IS NULL) AS resolved_by_name",
@@ -309,6 +313,10 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 	args := []interface{}{filter.GroupIDs, filter.From, filter.To,
 		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
 	conditions := []string{}
+	if filter.SessionInstanceID != nil {
+		conditions = append(conditions, "wf.assigned_session_id = ?")
+		args = append(args, *filter.SessionInstanceID)
+	}
 
 	if len(filter.AthleteUserIDs) > 0 {
 		conditions = append(conditions, "wf.athlete_user_id IN ?")
@@ -354,6 +362,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		DurationMs          *int64    `gorm:"column:duration_ms"`
 		ActiveDurationMs    *int64    `gorm:"column:active_duration_ms"`
 		DistanceMeters      *float64  `gorm:"column:distance_meters"`
+		RPE                 *int16    `gorm:"column:rpe"`
 		CompletionStatus    *string   `gorm:"column:completion_status"`
 		HasRunnerSession    bool      `gorm:"column:has_runner_session"`
 		ResolvedByName      bool      `gorm:"column:resolved_by_name"`
@@ -379,6 +388,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 			DurationMs:          row.DurationMs,
 			ActiveDurationMs:    row.ActiveDurationMs,
 			DistanceMeters:      row.DistanceMeters,
+			RPE:                 row.RPE,
 			CompletionStatus:    row.CompletionStatus,
 			HasRunnerSession:    row.HasRunnerSession,
 			ResolvedByName:      row.ResolvedByName,

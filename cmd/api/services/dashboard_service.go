@@ -148,6 +148,7 @@ type DashboardServiceInterface interface {
 	ExerciseSeries(ctx *gin.Context, callerID int64, catalogExerciseID int64, query MetricsQuery) (*dashboard.SeriesResponse, error)
 	Comparisons(ctx *gin.Context, callerID int64, request dashboard.ComparisonsRequest) (*dashboard.ComparisonsResponse, error)
 	Periods(ctx *gin.Context, callerID int64, request dashboard.PeriodsRequest) (*dashboard.PeriodsResponse, error)
+	SessionComparison(ctx *gin.Context, callerID int64, request dashboard.SessionComparisonRequest) (*dashboard.SessionComparisonResponse, error)
 }
 
 type dashboardService struct {
@@ -470,6 +471,130 @@ func (s *dashboardService) Periods(ctx *gin.Context, callerID int64, request das
 	response := dashboard.BuildPeriods(currentFrom, currentTo, previousFrom, previousTo,
 		currentRows, previousRows, base.Tolerance, quality)
 	return &response, nil
+}
+
+// SessionComparison compara dos ejecuciones completas. Cada referencia se valida
+// dentro del scope antes de devolver cualquier parte de la respuesta.
+func (s *dashboardService) SessionComparison(ctx *gin.Context, callerID int64, request dashboard.SessionComparisonRequest) (*dashboard.SessionComparisonResponse, error) {
+	if request.TeamID <= 0 || request.A == nil || request.B == nil {
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
+			"team_id, a y b son obligatorios")
+	}
+	scope, err := s.scopeService.Resolve(ctx, callerID)
+	if err != nil {
+		return nil, err
+	}
+	if _, inScope := scope.Teams[request.TeamID]; !inScope {
+		return nil, ErrDashboardForbidden
+	}
+	from, to, err := parseDashboardRange(request.From, request.To)
+	if err != nil {
+		return nil, err
+	}
+	if span := int(to.Sub(from).Hours() / 24); span > dashboardMaxRangeDays {
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidRange,
+			"el rango no puede superar los 2 años (va de %s a %s)",
+			dashboard.FormatDate(from), dashboard.FormatDate(to))
+	}
+
+	a, err := s.sessionComparisonSide(ctx, callerID, scope, request.TeamID, from, to, *request.A)
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.sessionComparisonSide(ctx, callerID, scope, request.TeamID, from, to, *request.B)
+	if err != nil {
+		return nil, err
+	}
+	response := dashboard.BuildSessionComparison(a, b)
+	return &response, nil
+}
+
+func (s *dashboardService) sessionComparisonSide(
+	ctx *gin.Context,
+	callerID int64,
+	scope *DashboardScope,
+	teamID int64,
+	from, to time.Time,
+	ref dashboard.SessionExerciseRef,
+) (dashboard.SessionComparisonSide, error) {
+	if ref.GroupID <= 0 || ref.AthleteUserID <= 0 || ref.SessionInstanceID <= 0 || ref.ExerciseID <= 0 {
+		return dashboard.SessionComparisonSide{}, newDashboardParamError(constants.ErrorCodeInvalidRange,
+			"los IDs de cada lado deben ser enteros mayores a cero")
+	}
+	groupID := ref.GroupID
+	groupIDs, err := s.resolveTeamGroup(ctx, scope, &teamID, &groupID)
+	if err != nil {
+		return dashboard.SessionComparisonSide{}, err
+	}
+	group, ok := scope.Groups[ref.GroupID]
+	if !ok || group.TeamID != teamID {
+		return dashboard.SessionComparisonSide{}, ErrDashboardForbidden
+	}
+	if !scope.OwnsTeam(teamID) && ref.AthleteUserID != callerID {
+		return dashboard.SessionComparisonSide{}, newDashboardAthleteForbidden(ref.AthleteUserID)
+	}
+	if err := s.validateAthletes(ctx, scope, groupIDs, []int64{ref.AthleteUserID}); err != nil {
+		return dashboard.SessionComparisonSide{}, err
+	}
+
+	catalog, err := s.dashboardDao.FindDashboardCatalogExerciseByID(ctx, ref.ExerciseID)
+	if err != nil {
+		customlogger.Error(ctx, "error resolving session comparison catalog exercise", err,
+			customlogger.TagMethod("Dashboard.SessionComparison"))
+		return dashboard.SessionComparisonSide{}, fmt.Errorf("error al resolver el ejercicio de la comparación")
+	}
+	if catalog == nil {
+		return dashboard.SessionComparisonSide{}, ErrDashboardNotFound
+	}
+	if !catalogOwnerInScope(scope, teamID, catalog.OwnerID) {
+		return dashboard.SessionComparisonSide{}, ErrDashboardForbidden
+	}
+	prepared := &validatedMetricsQuery{Scope: scope, TeamID: teamID, GroupIDs: groupIDs}
+	legacyIDs, err := s.resolveLegacyInstances(ctx, prepared, ref.ExerciseID)
+	if err != nil {
+		return dashboard.SessionComparisonSide{}, err
+	}
+	sessionID := ref.SessionInstanceID
+	rows, err := s.dashboardDao.FindSeries(ctx, daos.DashboardScopeFilter{
+		GroupIDs:                  groupIDs,
+		From:                      from,
+		To:                        to,
+		SessionInstanceID:         &sessionID,
+		ExerciseIDs:               []int64{ref.ExerciseID},
+		LegacyExerciseInstanceIDs: legacyIDs,
+		AthleteUserIDs:            []int64{ref.AthleteUserID},
+	})
+	if err != nil {
+		customlogger.Error(ctx, "error reading session comparison series", err,
+			customlogger.TagMethod("Dashboard.SessionComparison"))
+		return dashboard.SessionComparisonSide{}, fmt.Errorf("error al consultar las series de la comparación")
+	}
+	if len(rows) == 0 {
+		return dashboard.SessionComparisonSide{}, ErrDashboardNotFound
+	}
+	kind := rows[0].Kind
+	if !constants.IsDashboardMetricKind(kind) {
+		return dashboard.SessionComparisonSide{}, ErrDashboardNotFound
+	}
+	for _, row := range rows[1:] {
+		if row.Kind != kind {
+			return dashboard.SessionComparisonSide{}, newDashboardParamError(constants.ErrorCodeInvalidRange,
+				"el ejercicio de la sesión resuelve a más de un tipo")
+		}
+	}
+
+	names, err := s.athleteNames(ctx, []int64{ref.AthleteUserID})
+	if err != nil {
+		return dashboard.SessionComparisonSide{}, err
+	}
+	athleteName := names[ref.AthleteUserID]
+	context := dashboard.SessionComparisonContext{
+		TeamID: teamID, GroupID: group.ID, GroupName: group.Name,
+		AthleteUserID: ref.AthleteUserID, AthleteName: athleteName.Name,
+		AthleteSurname: athleteName.Surname, SessionInstanceID: ref.SessionInstanceID,
+		ExerciseID: catalog.ID, ExerciseName: catalog.Name,
+	}
+	return dashboard.BuildSessionComparisonSide(context, mapSeriesRows(rows)), nil
 }
 
 // ---------- validación ----------
@@ -957,6 +1082,7 @@ func mapSeriesRows(rows []daos.DashboardSeriesRow) []dashboard.ScopedSeries {
 				DurationMs:       row.DurationMs,
 				ActiveDurationMs: row.ActiveDurationMs,
 				DistanceMeters:   row.DistanceMeters,
+				RPE:              row.RPE,
 				CompletionStatus: row.CompletionStatus,
 				HasRunnerSession: row.HasRunnerSession,
 				ResolvedByName:   row.ResolvedByName,

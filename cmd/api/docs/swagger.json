@@ -1295,6 +1295,70 @@
                 }
             }
         },
+        "/api/v1/dashboard/comparisons/sessions": {
+            "post": {
+                "description": "Compara dos ejecuciones principales concretas del rango. El entrenador puede elegir atletas de su scope; un corredor solo puede consultar su propio historial. La velocidad/diferencia y las series se calculan en backend.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Comparación de ejercicios entre sesiones",
+                "parameters": [
+                    {
+                        "description": "Referencias A/B y rango inclusivo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/dashboard/exercises/{id}/series": {
             "get": {
                 "description": "Serie por serie con objetivo congelado, cumplimiento, banda y calidad de tiempo. El `{id}` es el `exercises.id` de catálogo, el mismo que expone `/dashboard/filters`. Las instancias anteriores al change de instancia-referencia-catálogo se resuelven por nombre normalizado contra el catálogo del mismo dueño.",
@@ -10926,6 +10990,207 @@
                 },
                 "units": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonDelta": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string"
+                },
+                "distance_delta_m": {
+                    "type": "number"
+                },
+                "speed_delta_kph": {
+                    "type": "number"
+                },
+                "speed_delta_pct": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "feedback_id": {
+                    "type": "integer"
+                },
+                "rpe": {
+                    "type": "integer"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "speed_kph": {
+                    "type": "number"
+                },
+                "target_distance_m": {
+                    "type": "integer"
+                },
+                "target_minutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonRequest": {
+            "type": "object",
+            "required": [
+                "a",
+                "b",
+                "from",
+                "team_id",
+                "to"
+            ],
+            "properties": {
+                "a": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef"
+                },
+                "b": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonResponse": {
+            "type": "object",
+            "properties": {
+                "a": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide"
+                },
+                "b": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide"
+                },
+                "delta": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonDelta"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonUnits"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide": {
+            "type": "object",
+            "properties": {
+                "athlete_name": {
+                    "type": "string"
+                },
+                "athlete_surname": {
+                    "type": "string"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "best": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "exercise_name": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mean_rpe": {
+                    "type": "number"
+                },
+                "mean_speed_kph": {
+                    "type": "number"
+                },
+                "rpe_count": {
+                    "type": "integer"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                    }
+                },
+                "series_count": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                },
+                "valid_series": {
+                    "type": "integer"
+                },
+                "worst": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonUnits": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "rpe": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef": {
+            "type": "object",
+            "required": [
+                "athlete_user_id",
+                "exercise_id",
+                "group_id",
+                "session_instance_id"
+            ],
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
                 }
             }
         },

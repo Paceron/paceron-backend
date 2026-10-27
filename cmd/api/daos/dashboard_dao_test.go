@@ -131,7 +131,9 @@ func TestDashboardDao_FindSeries_SoloRolMain(t *testing.T) {
 	fixture.persistFeedback(t, fixture.warmupEx, fixture.athleteID, 1, 600000, nil)
 	fixture.persistRunnerSession(t, fixture.athleteID, runnersession.RunnerSessionStatusFinished)
 
-	rows, err := fixture.dao.FindSeries(nil, fixture.filter())
+	filter := fixture.filter()
+	filter.SessionInstanceID = &fixture.sessionInst
+	rows, err := fixture.dao.FindSeries(nil, filter)
 
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "el calentamiento no puede entrar al dashboard")
@@ -140,6 +142,38 @@ func TestDashboardDao_FindSeries_SoloRolMain(t *testing.T) {
 	require.NotNil(t, rows[0].TargetMinutes)
 	assert.Equal(t, 30, *rows[0].TargetMinutes, "el objetivo sale de la ExerciseInstance, no del catálogo")
 	assert.True(t, rows[0].HasRunnerSession)
+}
+
+func TestDashboardDao_FindSeries_AcotaUnaSesionAtletaEjercicioYRPE(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "session-comparison")
+	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 1, 240000, floatPtrDAO(4000))
+	fixture.persistFeedback(t, fixture.warmupEx, fixture.athleteID, 2, 600000, floatPtrDAO(1000))
+	rpe := int16(8)
+	require.NoError(t, db.Model(&dbs.WorkoutFeedback{}).
+		Where("assigned_session_id = ? AND assigned_exercise_id = ? AND athlete_user_id = ? AND set_number = ?",
+			fixture.sessionInst, fixture.mainEx, fixture.athleteID, 1).
+		Update("rpe", rpe).Error)
+	sessionID := fixture.sessionInst
+
+	filter := fixture.filter()
+	filter.SessionInstanceID = &sessionID
+	filter.AthleteUserIDs = []int64{fixture.athleteID}
+	filter.ExerciseIDs = []int64{fixture.catalogEx}
+	rows, err := fixture.dao.FindSeries(nil, filter)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, fixture.mainEx, rows[0].ExerciseInstanceID)
+	assert.Equal(t, fixture.sessionInst, rows[0].SessionInstanceID)
+	require.NotNil(t, rows[0].RPE)
+	assert.Equal(t, rpe, *rows[0].RPE)
+
+	otherSessionID := fixture.sessionInst + 999
+	filter.SessionInstanceID = &otherSessionID
+	rows, err = fixture.dao.FindSeries(nil, filter)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
 }
 
 // El LEFT JOIN a runner_session es lo que mantiene el histórico previo al feature
@@ -170,7 +204,9 @@ func TestDashboardDao_WipNoEntraYSeCuentaEnOpenSessions(t *testing.T) {
 	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 2, 250000, floatPtrDAO(4000))
 	fixture.persistRunnerSession(t, fixture.athleteID, runnersession.RunnerSessionStatusWip)
 
-	rows, err := fixture.dao.FindSeries(nil, fixture.filter())
+	filter := fixture.filter()
+	filter.SessionInstanceID = &fixture.sessionInst
+	rows, err := fixture.dao.FindSeries(nil, filter)
 	require.NoError(t, err)
 	assert.Empty(t, rows, "una sesión a medias no alimenta los indicadores")
 
@@ -185,7 +221,9 @@ func TestDashboardDao_InterruptedEntraAlKPI(t *testing.T) {
 	fixture.persistFeedback(t, fixture.mainEx, fixture.athleteID, 1, 240000, floatPtrDAO(4000))
 	fixture.persistRunnerSession(t, fixture.athleteID, runnersession.RunnerSessionStatusInterrupted)
 
-	rows, err := fixture.dao.FindSeries(nil, fixture.filter())
+	filter := fixture.filter()
+	filter.SessionInstanceID = &fixture.sessionInst
+	rows, err := fixture.dao.FindSeries(nil, filter)
 
 	require.NoError(t, err)
 	assert.Len(t, rows, 1)

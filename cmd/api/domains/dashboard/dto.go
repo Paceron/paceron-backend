@@ -302,6 +302,89 @@ type PeriodsResponse struct {
 	DataQuality DataQuality    `json:"data_quality"`
 }
 
+// SessionExerciseRef identifica una ejecución concreta de un ejercicio de
+// catálogo dentro del grupo y atleta especificados. Los IDs se vuelven a validar
+// contra el scope y el feedback real en el service/DAO; no son permisos por sí
+// solos.
+type SessionExerciseRef struct {
+	GroupID           int64 `json:"group_id" binding:"required,gt=0"`
+	AthleteUserID     int64 `json:"athlete_user_id" binding:"required,gt=0"`
+	SessionInstanceID int64 `json:"session_instance_id" binding:"required,gt=0"`
+	ExerciseID        int64 `json:"exercise_id" binding:"required,gt=0"`
+}
+
+// SessionComparisonRequest es el body de POST /dashboard/comparisons/sessions.
+// El rango es inclusivo; A y B pueden usar grupos/atletas diferentes dentro del
+// team autorizado.
+type SessionComparisonRequest struct {
+	TeamID int64               `json:"team_id" binding:"required,gt=0"`
+	From   string              `json:"from" binding:"required"`
+	To     string              `json:"to" binding:"required"`
+	A      *SessionExerciseRef `json:"a" binding:"required"`
+	B      *SessionExerciseRef `json:"b" binding:"required"`
+}
+
+// SessionComparisonPoint es una serie registrada. Las métricas derivadas no
+// calculables permanecen nil para serializarse como null.
+type SessionComparisonPoint struct {
+	FeedbackID       int64    `json:"feedback_id"`
+	SetNumber        int      `json:"set_number"`
+	DurationMs       *int64   `json:"duration_ms"`
+	ActiveDurationMs *int64   `json:"active_duration_ms"`
+	DistanceMeters   *float64 `json:"distance_meters"`
+	SpeedKph         *float64 `json:"speed_kph"`
+	TargetMinutes    *int     `json:"target_minutes"`
+	TargetDistanceM  *int     `json:"target_distance_m"`
+	RPE              *int16   `json:"rpe"`
+}
+
+// SessionComparisonSide contiene un agregado y la distribución por serie de una
+// sola sesión/ejercicio, listo para presentar sin recalcular KPIs en el cliente.
+type SessionComparisonSide struct {
+	TeamID            int64                    `json:"team_id"`
+	GroupID           int64                    `json:"group_id"`
+	GroupName         string                   `json:"group_name"`
+	AthleteUserID     int64                    `json:"athlete_user_id"`
+	AthleteName       string                   `json:"athlete_name"`
+	AthleteSurname    string                   `json:"athlete_surname"`
+	SessionInstanceID int64                    `json:"session_instance_id"`
+	SessionDate       string                   `json:"session_date"`
+	ExerciseID        int64                    `json:"exercise_id"`
+	ExerciseName      string                   `json:"exercise_name"`
+	Kind              string                   `json:"kind"`
+	SeriesCount       int                      `json:"series_count"`
+	ValidSeries       int                      `json:"valid_series"`
+	TotalDistanceM    *float64                 `json:"total_distance_m"`
+	MeanSpeedKph      *float64                 `json:"mean_speed_kph"`
+	MeanRPE           *float64                 `json:"mean_rpe"`
+	RPECount          int                      `json:"rpe_count"`
+	Best              *SessionComparisonPoint  `json:"best"`
+	Worst             *SessionComparisonPoint  `json:"worst"`
+	Series            []SessionComparisonPoint `json:"series"`
+}
+
+// SessionComparisonDelta mantiene una dirección única: B menos A.
+type SessionComparisonDelta struct {
+	Direction      string   `json:"direction"`
+	SpeedDeltaKph  *float64 `json:"speed_delta_kph"`
+	SpeedDeltaPct  *float64 `json:"speed_delta_pct"`
+	DistanceDeltaM *float64 `json:"distance_delta_m"`
+}
+
+type SessionComparisonUnits struct {
+	Duration string `json:"duration"`
+	Distance string `json:"distance"`
+	Speed    string `json:"speed"`
+	RPE      string `json:"rpe"`
+}
+
+type SessionComparisonResponse struct {
+	A     SessionComparisonSide  `json:"a"`
+	B     SessionComparisonSide  `json:"b"`
+	Delta SessionComparisonDelta `json:"delta"`
+	Units SessionComparisonUnits `json:"units"`
+}
+
 // ---------- requests ----------
 
 // PeriodRange es un período inclusivo de ambos extremos, en "YYYY-MM-DD".

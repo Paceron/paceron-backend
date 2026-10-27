@@ -13,6 +13,7 @@ type Series struct {
 	DurationMs       *int64
 	ActiveDurationMs *int64
 	DistanceMeters   *float64
+	RPE              *int16
 	CompletionStatus *string
 	HasRunnerSession bool
 	// ResolvedByName marca la serie cuya ExerciseInstance entró por el fallback

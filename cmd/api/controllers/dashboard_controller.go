@@ -26,6 +26,7 @@ type DashboardController interface {
 	ExerciseSeries(c *gin.Context)
 	Comparisons(c *gin.Context)
 	Periods(c *gin.Context)
+	SessionComparison(c *gin.Context)
 }
 
 // Los tipos de respuesta se nombran acá para que swag los resuelva.
@@ -37,6 +38,7 @@ var (
 	_ *dashboard.SeriesResponse
 	_ *dashboard.ComparisonsResponse
 	_ *dashboard.PeriodsResponse
+	_ *dashboard.SessionComparisonResponse
 )
 
 type dashboardController struct {
@@ -302,6 +304,40 @@ func (dc *dashboardController) Periods(c *gin.Context) {
 	}
 
 	resp, err := dc.service.Periods(c, callerID, request)
+	if err != nil {
+		respondDashboardError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// SessionComparison godoc
+// @Summary      Comparación de ejercicios entre sesiones
+// @Description  Compara dos ejecuciones principales concretas del rango. El entrenador puede elegir atletas de su scope; un corredor solo puede consultar su propio historial. La velocidad/diferencia y las series se calculan en backend.
+// @Tags         dashboard
+// @Accept       json
+// @Produce      json
+// @Param        request  body      dashboard.SessionComparisonRequest  true  "Referencias A/B y rango inclusivo"
+// @Success      200  {object}  dashboard.SessionComparisonResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      403  {object}  apierror.APIError
+// @Failure      404  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/dashboard/comparisons/sessions [post]
+func (dc *dashboardController) SessionComparison(c *gin.Context) {
+	callerID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		respondDashboardUnauthorized(c)
+		return
+	}
+	var request dashboard.SessionComparisonRequest
+	if err := bindDashboardBody(c, &request); err != nil {
+		respondDashboardParamError(c, "INVALID_REQUEST", "body inválido: %s", err.Error())
+		return
+	}
+
+	resp, err := dc.service.SessionComparison(c, callerID, request)
 	if err != nil {
 		respondDashboardError(c, err)
 		return
