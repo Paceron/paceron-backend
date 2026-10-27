@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/infrastructure/warmup"
 
 	"github.com/gin-gonic/gin"
 )
@@ -100,6 +102,20 @@ func StartApp() {
 			customlogger.Tag("method", route.Method),
 			customlogger.Tag("path", route.Path),
 			customlogger.Tag("handler", route.Handler))
+	}
+
+	warmupConfig := config.LoadWarmupConfig()
+	if warmupConfig.Warning != "" {
+		customlogger.Warn(nil, "warmup configuration warning",
+			customlogger.Tag("warning", warmupConfig.Warning))
+	}
+	if warmupConfig.BaseURL != "" {
+		customlogger.Info(nil, "starting server warmup",
+			customlogger.Tag("base_url", warmupConfig.BaseURL),
+			customlogger.Tag("interval", warmupConfig.Interval.String()))
+		warmupContext, cancelWarmup := context.WithCancel(context.Background())
+		defer cancelWarmup()
+		go warmup.Run(warmupContext, warmupConfig)
 	}
 
 	if err := router.Run(":8080"); err != nil {

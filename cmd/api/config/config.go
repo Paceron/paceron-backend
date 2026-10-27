@@ -1,15 +1,81 @@
 package config
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
+
+const (
+	warmupBaseURLDefault         = "https://paceron-backend-as9c.onrender.com"
+	warmupIntervalMinutesDefault = 13
+)
+
+// WarmupConfig contiene los parámetros del worker que consulta el endpoint de
+// salud del backend.
+type WarmupConfig struct {
+	BaseURL  string
+	Interval time.Duration
+	Warning  string
+}
+
+// LoadWarmupConfig resuelve la configuración del warmup desde el entorno. Una
+// URL inválida deshabilita únicamente el worker; un intervalo inválido vuelve
+// al default para que la API pueda seguir arrancando.
+func LoadWarmupConfig() WarmupConfig {
+	return parseWarmupConfig(os.Getenv("WARMUP_BASE_URL"), os.Getenv("WARMUP_INTERVAL_MINUTES"))
+}
+
+func parseWarmupConfig(baseURL, intervalMinutes string) WarmupConfig {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		baseURL = warmupBaseURLDefault
+	}
+
+	cfg := WarmupConfig{}
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || !isValidWarmupOrigin(parsedURL) {
+		cfg.Warning = fmt.Sprintf("WARMUP_BASE_URL %q no es un origen HTTP(S) válido; warmup deshabilitado", baseURL)
+	} else {
+		cfg.BaseURL = strings.TrimRight(baseURL, "/")
+	}
+
+	minutes := int64(warmupIntervalMinutesDefault)
+	if strings.TrimSpace(intervalMinutes) != "" {
+		parsedMinutes, parseErr := strconv.ParseInt(strings.TrimSpace(intervalMinutes), 10, 64)
+		if parseErr != nil || parsedMinutes <= 0 || parsedMinutes > int64(^uint64(0)>>1)/int64(time.Minute) {
+			cfg.Warning = appendWarmupWarning(cfg.Warning, fmt.Sprintf("WARMUP_INTERVAL_MINUTES %q inválido; se usarán %d minutos", intervalMinutes, warmupIntervalMinutesDefault))
+		} else {
+			minutes = parsedMinutes
+		}
+	}
+	cfg.Interval = time.Duration(minutes) * time.Minute
+	return cfg
+}
+
+func isValidWarmupOrigin(parsedURL *url.URL) bool {
+	if parsedURL == nil || parsedURL.Hostname() == "" || parsedURL.User != nil || parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+		return false
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return false
+	}
+	return parsedURL.Path == "" || parsedURL.Path == "/"
+}
+
+func appendWarmupWarning(current, next string) string {
+	if current == "" {
+		return next
+	}
+	return current + "; " + next
+}
 
 type Environment int
 

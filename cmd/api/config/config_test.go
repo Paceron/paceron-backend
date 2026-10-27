@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -418,4 +419,54 @@ func TestNormalizeWebhookSecret(t *testing.T) {
 	assert.Equal(t, "", normalizeWebhookSecret("  tu-webhook-secret-aqui  "))
 	assert.Equal(t, "", normalizeWebhookSecret(""))
 	assert.Equal(t, "secret-real", normalizeWebhookSecret("secret-real"))
+}
+
+func TestParseWarmupConfigDefaults(t *testing.T) {
+	cfg := parseWarmupConfig("", "")
+
+	assert.Equal(t, "https://paceron-backend-as9c.onrender.com", cfg.BaseURL)
+	assert.Equal(t, 13*time.Minute, cfg.Interval)
+	assert.Empty(t, cfg.Warning)
+}
+
+func TestParseWarmupConfigOverridesAndNormalizesBaseURL(t *testing.T) {
+	cfg := parseWarmupConfig(" https://backend.example.com/ ", "7")
+
+	assert.Equal(t, "https://backend.example.com", cfg.BaseURL)
+	assert.Equal(t, 7*time.Minute, cfg.Interval)
+	assert.Empty(t, cfg.Warning)
+}
+
+func TestParseWarmupConfigInvalidIntervalUsesDefault(t *testing.T) {
+	for _, value := range []string{"not-a-number", "0", "-2", "9223372036854775807"} {
+		t.Run(value, func(t *testing.T) {
+			cfg := parseWarmupConfig("https://backend.example.com", value)
+
+			assert.Equal(t, "https://backend.example.com", cfg.BaseURL)
+			assert.Equal(t, 13*time.Minute, cfg.Interval)
+			assert.Contains(t, cfg.Warning, "WARMUP_INTERVAL_MINUTES")
+		})
+	}
+}
+
+func TestParseWarmupConfigInvalidBaseURLDisablesWarmup(t *testing.T) {
+	for _, value := range []string{"not-a-url", "ftp://backend.example.com", "https://backend.example.com/api", "https://user:pass@backend.example.com", "https://backend.example.com?x=1"} {
+		t.Run(value, func(t *testing.T) {
+			cfg := parseWarmupConfig(value, "13")
+
+			assert.Empty(t, cfg.BaseURL)
+			assert.Equal(t, 13*time.Minute, cfg.Interval)
+			assert.Contains(t, cfg.Warning, "WARMUP_BASE_URL")
+		})
+	}
+}
+
+func TestLoadWarmupConfigReadsEnvironment(t *testing.T) {
+	t.Setenv("WARMUP_BASE_URL", "http://localhost:8080")
+	t.Setenv("WARMUP_INTERVAL_MINUTES", "5")
+
+	cfg := LoadWarmupConfig()
+
+	assert.Equal(t, "http://localhost:8080", cfg.BaseURL)
+	assert.Equal(t, 5*time.Minute, cfg.Interval)
 }
