@@ -75,6 +75,15 @@ func (s *stubPushClient) Send(ctx context.Context, token, title, body string, da
 	return nil
 }
 
+func (s *stubPushClient) SendBatch(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+	for _, token := range tokens {
+		if err := s.Send(ctx, token, title, body, data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // fakeAchievementDao lleva el snapshot de agregados por criterio + registra
 // los InsertUnlock. alreadyUnlocked modela la idempotencia de la PK compuesta.
 type fakeAchievementDao struct {

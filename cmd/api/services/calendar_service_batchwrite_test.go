@@ -148,8 +148,11 @@ func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 	assert.Equal(t, dayQueries, counter, "stamp de 30 días = exactamente el mismo write path (sin término lineal)")
 
 	// Contenido batch correcto: cada día tiene su propia instancia con links.
+	// La ventana parsea la fecha literal (como StartDate): .UTC() sobre el
+	// instante de la tarde local cambia el día y se come el primer row.
 	days := make([]dbs.GroupCalendarDay, 0)
-	start := time.Now().AddDate(0, 0, 120).UTC()
+	startStr := time.Now().AddDate(0, 0, 120).Format("2006-01-02")
+	start, _ := time.Parse("2006-01-02", startStr)
 	require.NoError(t, db.Where("group_id = ? AND date >= ? AND date <= ?", group.ID, start, start.AddDate(0, 0, 29)).Order("date").Find(&days).Error)
 	require.Len(t, days, 30)
 	ids := make(map[int64]bool, 30)

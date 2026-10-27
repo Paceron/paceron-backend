@@ -7,15 +7,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/runnersession"
+	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
 // ErrCompetitionNotFound se devuelve cuando la competencia no existe. El
 // controller lo mapea a 404.
 var ErrCompetitionNotFound = errors.New("competencia no encontrada")
+
+// ErrCompetitionAttemptLimit alcanza el atleta su max_attempts (Gap 36). El
+// service lo envuelve en ErrCompetitionInvalid (→ 400 con este mismo mensaje);
+// no se mapea directo en controller para dejar el mapping de intentos intacto.
+var ErrCompetitionAttemptLimit = errors.New("llegaste al límite de intentos de esta competencia")
+
+// ErrCompetitionAttemptConflict es el ON CONFLICT del intento 1 (instancia
+// compartida) que no insertó: el atleta ya tiene runner_session sobre esa
+// instancia SIN tag de competencia. El service lo envuelve en
+// ErrCompetitionInvalid → 400 "ya tenés un intento registrado...".
+var ErrCompetitionAttemptConflict = errors.New("ya tenés un intento registrado en esta competencia")
 
 func isGormNotFound(err error) bool {
 	return errors.Is(err, gorm.ErrRecordNotFound)
@@ -59,10 +73,19 @@ type CompetitionDAOInterface interface {
 	ListByTeam(ctx *gin.Context, teamID int64, status *string, groupID *int64) ([]dbs.Competition, error)
 	// IsParticipant indica si el usuario está entre los participantes.
 	IsParticipant(ctx *gin.Context, competitionID, userID int64) (bool, error)
-	// ExistsAttemptByCompetitionAndAthlete es el guard anti-doble intento de
-	// una competencia route (competencias-ruta-intake D2): true si el atleta
-	// ya tiene runner_session sobre esta competencia.
+	// ExistsAttemptByCompetitionAndAthlete consulta si el atleta ya tiene
+	// runner_session tagueada con esta competencia (cualquier status).
 	ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) (bool, error)
+	// CreateAttemptSession materializa un intento del atleta (Gap 36) en una
+	// sola transacción: lock FOR UPDATE de la fila de competencia (serializa
+	// concurrentes — el unique (session_instance_id, athlete_user_id) ya no
+	// arbitra el límite porque los intentos 2+ usan instancias distintas),
+	// COUNT de intentos (cualquier status) y decisión del límite con el
+	// max_attempts FRESCO de la fila lockeada (ErrCompetitionAttemptLimit si
+	// count >= max_attempts). Intento 1 reusa la instancia compartida (ON
+	// CONFLICT DO NOTHING, same-as-intake); intento 2+ crea instancia nueva
+	// "Competencia ruta N (intento M)". Cualquier fallo → rollback total.
+	CreateAttemptSession(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error)
 	// Approve / Reject / Finish aplican la transición de status (guard de
 	// status en el WHERE: solo corren sobre el status origen válido) y
 	// devuelven si hubo cambio. Finish es el cierre E4.2 race-safe: una única
@@ -76,9 +99,23 @@ type CompetitionDAOInterface interface {
 	// competition_id (intentos registrados de cualquier status; el service
 	// filtra finished para el matching — D9/D10).
 	ListAttemptSessions(ctx *gin.Context, competitionID int64) ([]dbs.RunnerSession, error)
+	// ListAttemptsByCompetitionAndAthlete devuelve los intentos del atleta en
+	// la competencia (cualquier status), ORDER BY id ASC (cronológico =
+	// número de intento, Gap 36 D4).
+	ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error)
+	// SumFeedbackDistanceByInstances suma distance_meters del feedback activo
+	// del atleta sobre las instancias dadas, GROUP BY assigned_session_id
+	// (batch sin N+1, D4). Sin feedback para una instancia no hay fila.
+	SumFeedbackDistanceByInstances(ctx *gin.Context, sessionInstanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error)
 	// ListAttemptPoints trae en una sola query los puntos GPS de los intentos
 	// provistos (join feedback activo del atleta, D10).
 	ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error)
+	// CountAttemptsByCompetitionAndAthlete cuenta los intentos (cualquier
+	// status) del atleta en UNA sola query para todas las competencias pedidas
+	// (Gap 36 D7): LEFT JOIN competition_participant garantiza fila para todo
+	// participante (count 0 sin runner_session) y ninguna fila para el
+	// no-participante — el service mapea fila→0..N y ausencia→null.
+	CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error)
 	// Delete borra físicamente la competencia junto con sus participantes
 	// (DELETE cancel D9; borrado físico). El guard de status corre en el SQL
 	// (solo sobre pending_approval) para arbitrar la carrera cancel-vs-approve:
@@ -203,7 +240,7 @@ func (d *competitionDao) CreateWithInstance(ctx *gin.Context, comp *dbs.Competit
 			return fmt.Errorf("error creating competition: %w", err)
 		}
 		if isRoute {
-			instance, err := createSyntheticRouteInstance(tx, comp.ID)
+			instance, err := createSyntheticRouteInstance(tx, fmt.Sprintf("Competencia ruta %d", comp.ID))
 			if err != nil {
 				return err
 			}
@@ -228,13 +265,14 @@ func (d *competitionDao) CreateWithInstance(ctx *gin.Context, comp *dbs.Competit
 }
 
 // createSyntheticRouteInstance arma la estructura mínima compartida por todos
-// los participantes de una competencia route (D1): 1 session_instance + 1
-// exercise_instance sintético (name "Corrida", kind velocidad_distancia,
-// intencionalmente sin datos de catálogo: SourceExerciseID NULL) + 1 link
-// role=main. La instancia no pertenece a ningún día de calendario.
-func createSyntheticRouteInstance(tx *gorm.DB, competitionID int64) (*dbs.SessionInstance, error) {
+// los participantes de una competencia route (D1): 1 session_instance con el
+// nombre dado + 1 exercise_instance sintético (name "Corrida", kind
+// velocidad_distancia, intencionalmente sin datos de catálogo:
+// SourceExerciseID NULL) + 1 link role=main. La instancia no pertenece a
+// ningún día de calendario.
+func createSyntheticRouteInstance(tx *gorm.DB, name string) (*dbs.SessionInstance, error) {
 	sessionInstance := &dbs.SessionInstance{
-		Name:        fmt.Sprintf("Competencia ruta %d", competitionID),
+		Name:        name,
 		Description: strPtrDaos("Instancia sintética de la competencia de ruta"),
 	}
 	if err := tx.Create(sessionInstance).Error; err != nil {
@@ -350,6 +388,74 @@ func (d *competitionDao) ExistsAttemptByCompetitionAndAthlete(ctx *gin.Context, 
 		return false, fmt.Errorf("error checking competition attempt: %w", err)
 	}
 	return count > 0, nil
+}
+
+// CreateAttemptSession implementa la mecánica D2 del change
+// competencias-ruta-intentos-multiples (ver doc del método en la interface).
+// El lock FOR UPDATE carga la fila fresca de competencia: comp puede venir
+// obsoleto, el límite y la instancia compartida se resuelven con el snapshot
+// del tx (locked). StartDate sale de gametime (relación con las ventanas de
+// feedback, misma convención del intake).
+func (d *competitionDao) CreateAttemptSession(ctx *gin.Context, comp *dbs.Competition, athleteUserID int64) (*dbs.RunnerSession, error) {
+	var created *dbs.RunnerSession
+	err := d.DB.Transaction(func(tx *gorm.DB) error {
+		var locked dbs.Competition
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", comp.ID).
+			First(&locked).Error; err != nil {
+			return fmt.Errorf("error locking competition for attempt: %w", err)
+		}
+		var count int64
+		if err := tx.Model(&dbs.RunnerSession{}).
+			Where("competition_id = ? AND athlete_user_id = ?", locked.ID, athleteUserID).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("error counting competition attempts: %w", err)
+		}
+		if locked.MaxAttempts != nil && count >= *locked.MaxAttempts {
+			return ErrCompetitionAttemptLimit
+		}
+		var instanceID int64
+		if count == 0 {
+			if locked.RouteSessionInstanceID == nil {
+				return fmt.Errorf("la competencia %d no tiene instancia de ruta asignada", locked.ID)
+			}
+			instanceID = *locked.RouteSessionInstanceID
+		} else {
+			instance, err := createSyntheticRouteInstance(tx, fmt.Sprintf("Competencia ruta %d (intento %d)", locked.ID, count+1))
+			if err != nil {
+				return err
+			}
+			instanceID = instance.ID
+		}
+		rs := &dbs.RunnerSession{
+			SessionInstanceID: instanceID,
+			AthleteUserID:     athleteUserID,
+			Status:            runnersession.RunnerSessionStatusWip,
+			StartDate:         gametime.Now(),
+			CompetitionID:     &locked.ID,
+		}
+		var res *gorm.DB
+		if count == 0 {
+			res = tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "session_instance_id"}, {Name: "athlete_user_id"}},
+				DoNothing: true,
+			}).Create(rs)
+		} else {
+			res = tx.Create(rs)
+		}
+		if res.Error != nil {
+			return fmt.Errorf("error creating competition attempt session: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrCompetitionAttemptConflict
+		}
+		created = rs
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 func (d *competitionDao) Approve(ctx *gin.Context, competitionID, approvedByUserID int64) (bool, error) {
@@ -545,6 +651,38 @@ func (d *competitionDao) ListAttemptSessions(ctx *gin.Context, competitionID int
 	return sessions, nil
 }
 
+// ListAttemptsByCompetitionAndAthlete lista los intentos de un atleta
+// (cualquier status) con ORDER BY id ASC: el id es cronológico, así que el
+// intento 1 queda primero.
+func (d *competitionDao) ListAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionID, athleteUserID int64) ([]dbs.RunnerSession, error) {
+	var sessions []dbs.RunnerSession
+	err := d.DB.Where("competition_id = ? AND athlete_user_id = ?", competitionID, athleteUserID).
+		Order("id ASC").Find(&sessions).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing competition attempts by athlete: %w", err)
+	}
+	return sessions, nil
+}
+
+// SumFeedbackDistanceByInstances acumula la distancia del feedback ACTIVO del
+// atleta por instancia (soft-deleted no suma): instancia sin feedback no
+// aparece en la respuesta (el service la deja null).
+func (d *competitionDao) SumFeedbackDistanceByInstances(ctx *gin.Context, sessionInstanceIDs []int64, athleteUserID int64) ([]dbs.CompetitionInstanceDistanceAgg, error) {
+	if len(sessionInstanceIDs) == 0 {
+		return nil, nil
+	}
+	var rows []dbs.CompetitionInstanceDistanceAgg
+	err := d.DB.Model(&dbs.WorkoutFeedback{}).
+		Select("assigned_session_id, SUM(distance_meters) AS sum_distance").
+		Where("assigned_session_id IN ? AND athlete_user_id = ? AND deleted_at IS NULL", sessionInstanceIDs, athleteUserID).
+		Group("assigned_session_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error summing competition feedback distance: %w", err)
+	}
+	return rows, nil
+}
+
 // ListAttemptPoints une en una query los puntos GPS de los intentos (los
 // puntos viven del feedback activo del atleta sobre la misma instancia).
 func (d *competitionDao) ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs, athleteUserIDs []int64) ([]dbs.CompetitionAttemptPoint, error) {
@@ -561,4 +699,30 @@ func (d *competitionDao) ListAttemptPoints(ctx *gin.Context, sessionInstanceIDs,
 		return nil, fmt.Errorf("error listing competition attempt points: %w", err)
 	}
 	return rows, nil
+}
+
+// CountAttemptsByCompetitionAndAthlete devuelve competencia→cantidad de
+// intentos del atleta, una sola query batch para el listado y el detalle
+// (Gap 36 D7). El LEFT JOIN con competition_participant distingue al
+// participante sin intentos (fila con count 0) del no-participante (no hay
+// fila): attempts_used null solo tiene sentido en el segundo caso.
+func (d *competitionDao) CountAttemptsByCompetitionAndAthlete(ctx *gin.Context, competitionIDs []int64, athleteUserID int64) (map[int64]int64, error) {
+	if len(competitionIDs) == 0 {
+		return map[int64]int64{}, nil
+	}
+	var rows []dbs.CompetitionAttemptCountAgg
+	err := d.DB.Table("competition_participant AS cp").
+		Select("cp.competition_id AS competition_id, COUNT(rs.id) AS attempt_count").
+		Joins("LEFT JOIN runner_session rs ON rs.competition_id = cp.competition_id AND rs.athlete_user_id = cp.user_id").
+		Where("cp.user_id = ? AND cp.competition_id IN ?", athleteUserID, competitionIDs).
+		Group("cp.competition_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error counting competition attempts by athlete: %w", err)
+	}
+	counts := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		counts[r.CompetitionID] = r.AttemptCount
+	}
+	return counts, nil
 }

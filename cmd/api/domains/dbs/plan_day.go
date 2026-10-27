@@ -6,19 +6,19 @@ import "time"
 // default_* son informativos para el momento del stamp (ver el change de
 // calendario), no afectan nada del catálogo en sí.
 type PlanDay struct {
-	ID                int64      `gorm:"column:id;primaryKey"`
-	PlanID            int64      `gorm:"column:plan_id;not null"`
-	SequenceNo        int        `gorm:"column:sequence_no;not null"`
-	Kind              string     `gorm:"column:kind;not null"`
-	OtherName         *string    `gorm:"column:other_name"`
-	SessionID         *int64     `gorm:"column:session_id"`
-	DefaultPresencial bool       `gorm:"column:default_presencial;not null;default:false"`
+	ID                int64   `gorm:"column:id;primaryKey"`
+	PlanID            int64   `gorm:"column:plan_id;not null;index"`
+	SequenceNo        int     `gorm:"column:sequence_no;not null"`
+	Kind              string  `gorm:"column:kind;not null"`
+	OtherName         *string `gorm:"column:other_name"`
+	SessionID         *int64  `gorm:"column:session_id"`
+	DefaultPresencial bool    `gorm:"column:default_presencial;not null;default:false"`
 	// DefaultTimeFrom/DefaultTimeTo: mismo caveat de UTC que
 	// GroupCalendarDay.PresencialTimeFrom/To — siempre leer con .UTC() antes de
 	// extraer Hour()/Minute(), nunca confiar en el time.Local del valor leído.
-	DefaultTimeFrom   *time.Time `gorm:"column:default_time_from"`
-	DefaultTimeTo     *time.Time `gorm:"column:default_time_to"`
-	DefaultLocation   *string    `gorm:"column:default_location;type:jsonb"`
+	DefaultTimeFrom *time.Time `gorm:"column:default_time_from"`
+	DefaultTimeTo   *time.Time `gorm:"column:default_time_to"`
+	DefaultLocation *string    `gorm:"column:default_location;type:jsonb"`
 }
 
 func (PlanDay) TableName() string { return "plan_days" }

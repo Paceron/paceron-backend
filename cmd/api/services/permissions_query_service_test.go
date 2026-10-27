@@ -97,6 +97,10 @@ func (m *mockRoleDaoForQuery) FindByID(ctx *gin.Context, id int64) (*dbs.Role, e
 	return nil, nil
 }
 
+func (m *mockRoleDaoForQuery) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+	return nil, nil
+}
+
 func (m *mockRoleDaoForQuery) FindByName(ctx *gin.Context, name string) (*dbs.Role, error) {
 	return nil, nil
 }
@@ -856,7 +860,7 @@ func TestPermissionsQueryService_GetUserPermissions_FallbackToBaseTierWhenNoActi
 			return &dbs.Permission{ID: 1, Name: "crear_equipos"}, nil
 		},
 	}
-// Sin sub activa, sin pending y sin suscripción alguna en el ledger — el
+	// Sin sub activa, sin pending y sin suscripción alguna en el ledger — el
 	// caché user_roles.tier_id (premium de una activación vieja) no manda: base.
 	tierSubDao := &mockTierSubscriptionDaoForQuery{}
 

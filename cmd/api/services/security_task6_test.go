@@ -64,7 +64,7 @@ func sqlipersistUser(t *testing.T, db *gorm.DB, name, email, dni string) *dbs.Us
 func TestSQLi_UserSearch_PayloadsDoNotScale(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	sqlipersistUser(t, db, "Ana", "sqli-payloads-ana@test.com", "71000001")
-	svc := NewUserService(daos.NewUserDao(db), nil, nil, nil, nil)
+	svc := NewUserService(daos.NewUserDao(db), nil, nil, nil, nil, nil)
 
 	payloads := []string{"admin'+--", "' OR 1=1 --", "%; DROP TABLE users; --", "%  %"}
 	for _, payload := range payloads {
@@ -77,7 +77,7 @@ func TestSQLi_UserSearch_PayloadsDoNotScale(t *testing.T) {
 func TestSQLi_UserSearch_LiteralPayloadMatchedByLiteral(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	victim := sqlipersistUser(t, db, "' OR 1=1 --", "sqli-literal-victim@test.com", "71000002")
-	svc := NewUserService(daos.NewUserDao(db), nil, nil, nil, nil)
+	svc := NewUserService(daos.NewUserDao(db), nil, nil, nil, nil, nil)
 
 	resp, err := svc.Search(nil, "' OR 1=1 --")
 
@@ -149,7 +149,7 @@ func TestSQLi_TeamSearch_LiteralPayloadStoredMatchesByEquality(t *testing.T) {
 func TestNoLeak_UserSearch_DBFailureKeepsContractMessage(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	failing := testutils.FailingDB(t, db, func(op string) bool { return op == "select" })
-	svc := NewUserService(daos.NewUserDao(failing), nil, nil, nil, nil)
+	svc := NewUserService(daos.NewUserDao(failing), nil, nil, nil, nil, nil)
 
 	_, err := svc.Search(nil, "alguenausuario")
 

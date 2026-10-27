@@ -53,12 +53,19 @@ func (m *mockTrainingPlanDao) Delete(ctx *gin.Context, id int64) error {
 
 type mockPlanDayDao struct {
 	findByPlanFn     func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error)
+	findByPlanIDsFn  func(ctx *gin.Context, planIDs []int64) ([]dbs.PlanDay, error)
 	replaceForPlanFn func(ctx *gin.Context, planID int64, rows []dbs.PlanDay) error
 }
 
 func (m *mockPlanDayDao) FindByPlan(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
 	if m.findByPlanFn != nil {
 		return m.findByPlanFn(ctx, planID)
+	}
+	return nil, nil
+}
+func (m *mockPlanDayDao) FindByPlanIDs(ctx *gin.Context, planIDs []int64) ([]dbs.PlanDay, error) {
+	if m.findByPlanIDsFn != nil {
+		return m.findByPlanIDsFn(ctx, planIDs)
 	}
 	return nil, nil
 }
@@ -118,7 +125,7 @@ func TestTrainingPlanService_Create_TrainingWithoutSessionID(t *testing.T) {
 }
 
 func TestTrainingPlanService_Create_TrainingSessionNotFound(t *testing.T) {
-	sessionDao := &mockSessionDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Session, error) { return nil, nil }}
+	sessionDao := &mockSessionDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Session, error) { return nil, nil }}
 	svc := NewTrainingPlanService(&mockTrainingPlanDao{}, &mockPlanDayDao{}, sessionDao, &mockGroupCalendarDao{})
 	sessionID := int64(5)
 
@@ -317,8 +324,12 @@ func TestTrainingPlanService_List_Success(t *testing.T) {
 		{ID: 2, OwnerID: 7, Name: "Plan B"},
 	}
 	planDao := &mockTrainingPlanDao{findByOwnerFn: func(ctx *gin.Context, ownerID int64) ([]dbs.TrainingPlan, error) { return plans, nil }}
-	dayDao := &mockPlanDayDao{findByPlanFn: func(ctx *gin.Context, planID int64) ([]dbs.PlanDay, error) {
-		return []dbs.PlanDay{{ID: planID, PlanID: planID, SequenceNo: 1, Kind: "rest"}}, nil
+	dayDao := &mockPlanDayDao{findByPlanIDsFn: func(ctx *gin.Context, planIDs []int64) ([]dbs.PlanDay, error) {
+		days := make([]dbs.PlanDay, 0, len(planIDs))
+		for _, planID := range planIDs {
+			days = append(days, dbs.PlanDay{ID: planID, PlanID: planID, SequenceNo: 1, Kind: "rest"})
+		}
+		return days, nil
 	}}
 	svc := NewTrainingPlanService(planDao, dayDao, &mockSessionDao{}, &mockGroupCalendarDao{})
 

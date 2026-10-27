@@ -358,19 +358,22 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/workout-feedback/search?team_id=&athlete_user_id=&feedback_owner_user_id=&assigned_session_id=&assigned_exercise_id=&session_date_from=&session_date_to=` | Search workout feedbacks applying the ownership matrix (self by default; teams only for their owner) |
 | PUT | `/api/v1/workout-feedback/:id` | Partially edit a workout feedback (athlete/reporter/team owner; `athlete_user_id`/`feedback_owner_user_id` are not editable) |
 | DELETE | `/api/v1/workout-feedback/:id` | Soft-delete a workout feedback (same set can be reported again after deletion) |
+| GET | `/api/v1/activities/comparison?date_from=&date_to=&team_id=&group_id=&kind=&athlete_user_id=` | Planned vs done compliance for a date range: every training day of the athlete's groups (membership on that date; not done = 0%) plus sessions with their feedback, with totals and a period summary (range required, max 366 days, not after today; another athlete requires `team_id` owned by the caller) |
+| GET | `/api/v1/activities/comparison/:sessionInstanceId?athlete_user_id=` | Planned vs done for one session: each planned exercise with its target and each set with status, duration, distance, pace, deviation and compliance (per set, capped at 100%) |
 | GET | `/api/v1/users/:id/streaks?days=` | Strict/flexible streaks of the authenticated user (self only; `days` window default 42, 1..365; today never breaks a streak, `current`/`best` cover full history up to yesterday) |
 | POST | `/api/v1/users/:id/gamification/seen` | Mark gamification news as seen (self only; body `{section: streaks\|achievements\|competitions, team_id?}` — `team_id` only with competitions) |
 | GET | `/api/v1/achievements/catalog` | Full achievements catalog (21 rows, any authenticated user) |
 | GET | `/api/v1/users/:id/achievements` | Achievements showcase: catalog merged with unlock progress (self only; embeds `has_unseen`) |
 | GET | `/api/v1/users/:id/stamps` | User stamps (self only; populated by closed competitions) |
 | GET | `/api/v1/teams/:id/leaderboard?metric=&period=&from=&to=` | Team leaderboard (member of a team group or owner; metric: distance/duration/pace/peak_speed/sessions_count/attendance_count, period: week/month/year/custom/all; `record` only with period=all, pace record = lowest) |
-| POST | `/api/v1/teams/:id/competitions` | Create competition (trainer owner → active; runner member → pending_approval; ≥2 participants, all team members, no trainer) |
+| POST | `/api/v1/teams/:id/competitions` | Create competition (trainer owner → active; runner member → pending_approval; ≥2 participants, all team members, no trainer; route accepts optional `max_attempts` ≥1 = attempt limit, null/absent = unlimited) |
 | GET | `/api/v1/teams/:id/competitions?status=&group_id=` | List team competitions (member or owner; optional status/group_id filters; embeds `has_unseen` for that team) |
-| GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best match %; member or owner) |
+| GET | `/api/v1/competitions/:id` | Competition detail with live progress (metric accumulated in window / route best attempt per athlete; member or owner) |
 | PATCH | `/api/v1/competitions/:id/approve` | Approve a pending competition (team owner only) |
 | PATCH | `/api/v1/competitions/:id/reject` | Reject a pending competition with optional `reason` (team owner only) |
 | PATCH | `/api/v1/competitions/:id/close` | Manually close an active competition (creator or owner); `type=metric` requires its window ended, `route` can close anytime; computes winners, stamps, unseen and pushes |
-| POST | `/api/v1/competitions/:id/attempts` | Register the route competition attempt of the authenticated participant (`type=route` + `active` only; `400` if already attempted). Creates a `wip` runner session tagged `competition_id` on the competition's shared synthetic route instance, without the presencial gate; finish is the existing `PATCH /session-instances/:id/runner` |
+| POST | `/api/v1/competitions/:id/attempts` | Register a route competition attempt of the authenticated participant (`type=route` + `active` only; first attempt reuses the shared synthetic route instance, later attempts create a new instance `Competencia ruta N (intento M)`; `400` "llegaste al límite..." when `max_attempts` is exhausted; limit serialization via FOR UPDATE). Creates a `wip` runner session tagged `competition_id` without the presencial gate; finish is the existing `PATCH /session-instances/:id/runner` |
+| GET | `/api/v1/competitions/:id/attempts?athlete_user_id=` | List attempts of an athlete in a route competition (member or owner; defaults to caller; non-participant athlete → empty list; ordered id ASC; each item carries status, started/ended at, distance, compliance and duration) |
 | DELETE | `/api/v1/competitions/:id/cancel` | Cancel own pending competition (runner creator only; physical delete) |
 
 ## Run

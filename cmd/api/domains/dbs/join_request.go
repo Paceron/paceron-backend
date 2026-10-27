@@ -8,9 +8,9 @@ import "time"
 // en vez de agregar un 4to estado.
 type JoinRequest struct {
 	ID        int64     `gorm:"column:id;primaryKey"`
-	TeamID    int64     `gorm:"column:team_id;not null"`
-	RunnerID  int64     `gorm:"column:runner_id;not null"`
-	Status    string    `gorm:"column:status;not null;default:pending"`
+	TeamID    int64     `gorm:"column:team_id;not null;index:idx_join_requests_team_id_status,priority:1"`
+	RunnerID  int64     `gorm:"column:runner_id;not null;index"`
+	Status    string    `gorm:"column:status;not null;default:pending;index:idx_join_requests_team_id_status,priority:2"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }

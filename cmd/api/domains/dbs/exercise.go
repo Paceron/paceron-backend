@@ -6,7 +6,7 @@ import "time"
 // muscle_group son independientes entre sí — sin combinación obligatoria.
 type Exercise struct {
 	ID          int64      `gorm:"column:id;primaryKey"`
-	OwnerID     int64      `gorm:"column:owner_id;not null"`
+	OwnerID     int64      `gorm:"column:owner_id;not null;index"`
 	Name        string     `gorm:"column:name;not null"`
 	Description *string    `gorm:"column:description"`
 	Kind        string     `gorm:"column:kind;not null"`

@@ -31,6 +31,7 @@ type passwordResetService struct {
 	authDao          daos.AuthDaoInterface
 	userDao          daos.UserDaoInterface
 	passwordResetDao daos.PasswordResetDaoInterface
+	refreshTokenDao  daos.RefreshTokenDaoInterface
 	mailer           mailer.MailerInterface
 }
 
@@ -38,12 +39,14 @@ func NewPasswordResetService(
 	authDao daos.AuthDaoInterface,
 	userDao daos.UserDaoInterface,
 	passwordResetDao daos.PasswordResetDaoInterface,
+	refreshTokenDao daos.RefreshTokenDaoInterface,
 	mailerClient mailer.MailerInterface,
 ) PasswordResetServiceInterface {
 	return &passwordResetService{
 		authDao:          authDao,
 		userDao:          userDao,
 		passwordResetDao: passwordResetDao,
+		refreshTokenDao:  refreshTokenDao,
 		mailer:           mailerClient,
 	}
 }
@@ -197,6 +200,17 @@ func (s *passwordResetService) ResetPassword(ctx *gin.Context, email, code, newP
 		customlogger.Error(ctx, "error marking reset token as used", err,
 			customlogger.Tag("token_id", fmt.Sprintf("%d", tokenDB.ID)),
 			customlogger.Tag("step", "reset_password_mark_used"))
+	}
+
+	// Misma regla que ChangePassword: la contraseña ya cambió, la revocación de
+	// sesiones es parte del flujo y su error propaga.
+	if s.refreshTokenDao != nil {
+		if err := s.refreshTokenDao.RevokeByUserID(ctx, userDB.ID); err != nil {
+			customlogger.Error(ctx, "error revoking refresh tokens after password reset", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userDB.ID)),
+				customlogger.Tag("step", "reset_password_revoke_refresh_tokens"))
+			return fmt.Errorf("error al restablecer la contraseña")
+		}
 	}
 
 	customlogger.Info(ctx, "password reset successfully",

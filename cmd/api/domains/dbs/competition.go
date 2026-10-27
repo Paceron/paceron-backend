@@ -12,7 +12,10 @@ type Competition struct {
 	// RouteSessionInstanceID es la sesión instanciada sintética del intento de
 	// una competencia type=route (competencias-ruta-intake D1). FK opaca
 	// (BIGINT nullable, sin constraint de DB, app-managed): nil para metric.
-	RouteSessionInstanceID *int64     `gorm:"column:route_session_instance_id"`
+	RouteSessionInstanceID *int64 `gorm:"column:route_session_instance_id"`
+	// MaxAttempts es el límite de intentos por atleta, solo route (NULL =
+	// ilimitados, competencia pre-change sin backfill). Inmutable post-create.
+	MaxAttempts            *int64     `gorm:"column:max_attempts"`
 	TeamID                 int64      `gorm:"column:team_id;not null;index:idx_competition_team,priority:1"`
 	GroupID                *int64     `gorm:"column:group_id;index:idx_competition_team,priority:2"`
 	Type                   string     `gorm:"column:type;type:varchar(16);not null"`
@@ -54,4 +57,21 @@ type CompetitionAttemptPoint struct {
 	AthleteUserID     int64   `gorm:"column:athlete_user_id"`
 	Latitude          float64 `gorm:"column:latitude"`
 	Longitude         float64 `gorm:"column:longitude"`
+}
+
+// CompetitionInstanceDistanceAgg agrupa la distancia sumada del feedback
+// activo de UN atleta por instancia (assigned_session_id FK opaca) — fuente
+// de distance_meters en el listado de intentos (Gap 36 D4).
+type CompetitionInstanceDistanceAgg struct {
+	SessionInstanceID int64    `gorm:"column:assigned_session_id"`
+	SumDistance       *float64 `gorm:"column:sum_distance"`
+}
+
+// CompetitionAttemptCountAgg acumula los intentos (cualquier status, Gap 36
+// D7) de UN atleta por competencia: LEFT JOIN en el DAO garantiza fila para
+// todo participante (count 0 sin intentos) y ausencia de fila para el
+// no-participante (el service lo deja null).
+type CompetitionAttemptCountAgg struct {
+	CompetitionID int64 `gorm:"column:competition_id"`
+	AttemptCount  int64 `gorm:"column:attempt_count"`
 }

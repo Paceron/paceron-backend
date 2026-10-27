@@ -291,23 +291,29 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
-	// 10. Índices de las consultas analíticas del dashboard (design.md D15).
-	//
+	// 10. Índices parciales de competencias y de las consultas analíticas del dashboard.
+	// Los primeros permiten filtrar competencias de ruta; los segundos aceleran
+	// el scope del dashboard por atleta y fecha.
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_runner_session_competition
+		ON runner_session (competition_id)
+		WHERE competition_id IS NOT NULL;`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial index on runner_session competition attempts", err)
+		return nil, err
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_competition_route_session_instance
+		ON competition (route_session_instance_id)
+		WHERE route_session_instance_id IS NOT NULL;`).Error; err != nil {
+		customlogger.Error(nil, "error creating partial unique index on competition route session instance", err)
+		return nil, err
+	}
+
 	// CONCURRENTLY es viable porque ConfigDB no abre transacciones: todo lo de
-	// arriba corre en autocommit. Envolver ESTE bloque en db.Transaction lo
-	// rompe (CONCURRENTLY no se permite dentro de una transacción) — si alguna
-	// vez se necesita transactions para otra migración, va en su propio item.
-	//
-	// idx_runner_session_athlete: el UNIQUE vigente arranca por
-	// session_instance_id, así que solo sirve para "la corrida de esta sesión".
-	// La vista de corredor de un grupo filtra por corredor sin saber la sesión.
-	//
-	// idx_feedback_session_date: el dashboard filtra por sesión Y rango de
-	// fechas, y el índice vigente de assigned_session_id no trae session_date
-	// (el rango se filtraría en memoria, después del join).
-	//
-	// Un índice que queda INVALID a mitad de una falla NO lo reintenta el IF
-	// NOT EXISTS: hay que dropearlo a mano. Rollback:
+	// arriba corre en autocommit. Envolver ESTE bloque en db.Transaction lo rompe.
+	// idx_runner_session_athlete: el UNIQUE vigente arranca por session_instance_id,
+	// pero la vista de corredor filtra por atleta sin conocer la sesión.
+	// idx_feedback_session_date: el índice de assigned_session_id no incluye la
+	// fecha que limita las consultas del dashboard.
+	// Si un índice queda INVALID, IF NOT EXISTS no lo reintenta. Rollback:
 	//   DROP INDEX CONCURRENTLY IF EXISTS idx_runner_session_athlete;
 	//   DROP INDEX CONCURRENTLY IF EXISTS idx_feedback_session_date;
 	dashboardIndexes := []string{
@@ -325,23 +331,10 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 	}
 
 	// 11. Backfill de exercise_instances.source_exercise_id (2026-10-13).
-	//
-	// La columna la agregó AutoMigrate en el change instancia-referencia-catalogo
-	// (8670ffe, 2026-09-21) y se puebla al instanciar. AutoMigrate no toca filas
-	// existentes, así que TODA instancia estampada antes de esa fecha quedó en
-	// NULL. Sin el link, el dashboard no puede agrupar series: dos instancias de
-	// "Distancia 4 km" de enero y marzo serían dos ejercicios distintos y la
-	// progresión longitudinal se perdería.
-	//
-	// Es un backfill y no un fallback en cada query a propósito: el dato debería
-	// estar escrito, y matchear por nombre en cada request cuesta y decide la
-	// ambigüedad en silencio. Acá se matchea una vez, por (owner_id, nombre
-	// normalizado), y lo que no resuelve queda en NULL para el fallback —que sí
-	// es el caso raro y por eso está contado en data_quality.legacy_sessions.
-	//
-	// Idempotente: el UPDATE filtra las NULL, así que una segunda pasada no
-	// toca nada. Corre en autocommit como el resto del bloque; si alguna vez
-	// necesita transacción, va en su propio item (ver la nota del 10).
+	// AutoMigrate agregó la columna y la llena para nuevas instancias, pero no toca
+	// las filas históricas. El backfill matchea por (owner_id, nombre normalizado)
+	// una sola vez; los casos ambiguos/no resueltos quedan para el fallback legacy.
+	// Es idempotente: solo actualiza referencias NULL.
 	if err := BackfillSourceExerciseID(db); err != nil {
 		customlogger.Error(nil, "error backfilling source_exercise_id", err)
 		return nil, err
