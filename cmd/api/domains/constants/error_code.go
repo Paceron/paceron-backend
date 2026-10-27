@@ -15,3 +15,21 @@ const (
 	ErrorCodePaymentInstallmentNotFound    = "PAYMENT_INSTALLMENT_NOT_FOUND"
 	ErrorCodePaymentInstallmentForbidden   = "PAYMENT_INSTALLMENT_FORBIDDEN"
 )
+
+// Códigos de los rechazos de parámetro del dashboard. Son estables a propósito:
+// el 400 del dashboard no es reintentable —reintentar la misma request devuelve
+// lo mismo—, así que el cliente necesita un `code` para no ofrecer "reintentar"
+// como acción y para poder explicar qué corregir.
+const (
+	ErrorCodeInvalidRange       = "INVALID_RANGE"
+	ErrorCodeInvalidTolerance   = "INVALID_TOLERANCE"
+	ErrorCodeInvalidSort        = "INVALID_SORT"
+	ErrorCodeInvalidGranularity = "INVALID_GRANULARITY"
+	ErrorCodeMissingFrom        = "MISSING_FROM"
+	ErrorCodeInvalidPageSize    = "INVALID_PAGE_SIZE"
+	// ErrorCodeInvalidRangeFilter es el 400 de los cuatro filtros de rango de serie
+	// (distance_from_m, distance_to_m, time_from_min, time_to_min). Code propio y no
+	// ErrorCodeInvalidRange porque ese ya significa "el rango de FECHAS del período",
+	// y el cliente los corrige en lugares distintos de la pantalla.
+	ErrorCodeInvalidRangeFilter = "INVALID_RANGE_FILTER"
+)

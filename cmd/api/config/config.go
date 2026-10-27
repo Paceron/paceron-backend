@@ -207,6 +207,7 @@ func LoadValues() {
 
 func initLocal() {
 	loadDBConfig()
+	loadSeedingConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
 	loadStorageConfig()
@@ -214,6 +215,7 @@ func initLocal() {
 
 func initProd() {
 	loadDBConfig()
+	loadSeedingConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
 	loadStorageConfig()
@@ -221,6 +223,7 @@ func initProd() {
 
 func initTest() {
 	loadDBConfig()
+	loadSeedingConfig()
 	loadMailerConfig()
 	loadMercadoPagoConfig()
 	loadStorageConfig()

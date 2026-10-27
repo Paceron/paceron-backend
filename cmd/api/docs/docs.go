@@ -1391,6 +1391,847 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/dashboard/comparisons": {
+            "post": {
+                "description": "Una fila por corredor comparable del scope, con su tendencia y el ` + "`" + `data_quality` + "`" + ` común. Solo el dueño del equipo. Cada ` + "`" + `athlete_user_id` + "`" + ` se valida por separado: si uno está fuera de scope responde 403 nombrándolo, sin devolver los datos de los válidos. ` + "`" + `kind` + "`" + ` es un valor único entre los tres tipos con métrica, y los cuatro filtros de rango acotan las series igual que en los GET.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Comparación entre corredores",
+                "parameters": [
+                    {
+                        "description": "Filtros de la comparación",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/comparisons/periods": {
+            "post": {
+                "description": "Compara el período actual contra el anterior de la misma longitud; sin ` + "`" + `previous` + "`" + `, el backend lo deriva desplazando ` + "`" + `current` + "`" + ` hacia atrás. ` + "`" + `compliance_pp` + "`" + ` son puntos porcentuales y ` + "`" + `best_time_pct` + "`" + ` tiene el signo invertido: bajar el tiempo es mejorar. Solo el dueño del equipo. Los cuatro filtros de rango acotan las series de los dos períodos por igual.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Comparación de períodos",
+                "parameters": [
+                    {
+                        "description": "Períodos y filtros de la comparación",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/comparisons/sessions": {
+            "post": {
+                "description": "Compara dos ejecuciones principales concretas del rango. El entrenador puede elegir atletas de su scope; un corredor solo puede consultar su propio historial. La velocidad/diferencia y las series se calculan en backend.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Comparación de ejercicios entre sesiones",
+                "parameters": [
+                    {
+                        "description": "Referencias A/B y rango inclusivo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/exercises/{id}/series": {
+            "get": {
+                "description": "Serie por serie con objetivo congelado, cumplimiento, banda y calidad de tiempo. El ` + "`" + `{id}` + "`" + ` es el ` + "`" + `exercises.id` + "`" + ` de catálogo, el mismo que expone ` + "`" + `/dashboard/filters` + "`" + `. Las instancias anteriores al change de instancia-referencia-catálogo se resuelven por nombre normalizado contra el catálogo del mismo dueño.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Detalle de series de un ejercicio",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Ejercicio de catálogo (exercises.id)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Equipo del que se está mirando el dashboard",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un grupo del scope (no lo amplía)",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un corredor del scope (403 si no pertenece)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, obligatorio)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD; sin él, cierra en from)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
+                        "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamaño de página, máximo 100 (default 20)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SeriesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/filters": {
+            "get": {
+                "description": "Equipos, grupos, corredores, tipos de ejercicio, catálogo con su objetivo VIGENTE y el rango de fechas real con datos, todo recortado por el scope del solicitante. El entrenador ve sus corredores; el corredor, solo su propia entrada.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Filtros del dashboard",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Equipo del que se está mirando el dashboard",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/leaderboard": {
+            "get": {
+                "description": "Ranking paginado del scope con la posición global de cada corredor (` + "`" + `position` + "`" + `), calculada sobre todas las filas y con el mismo criterio de orden que la página. Solo el dueño del equipo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Ranking de corredores",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Equipo del que se está mirando el dashboard",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un grupo del scope (no lo amplía)",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un corredor del scope (403 si no pertenece)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
+                        "name": "exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int64"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
+                        "name": "exercise_ids",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, obligatorio)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD; sin él, cierra en from)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
+                        "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamaño de página, máximo 100 (default 20)",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "best_time_ms",
+                            "mean_speed_kph",
+                            "total_distance_m",
+                            "compliance_rate"
+                        ],
+                        "type": "string",
+                        "description": "Columna de orden (default best_time_ms)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sentido del orden (default asc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.LeaderboardResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/metrics/summary": {
+            "get": {
+                "description": "KPIs del período: totales, cumplimiento (porcentaje 0-100), mejor tiempo, consistencia, tendencia y estado de los datos. ` + "`" + `compliance_rate` + "`" + ` es porcentaje y ` + "`" + `delta_pct` + "`" + ` va con signo positivo hacia la mejora, incluso en el eje temporal. Los cuatro filtros de rango acotan qué series entran al cálculo y se aplican sobre el tiempo logrado y la distancia lograda; una serie que queda afuera no cuenta como inválida.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Resumen de métricas",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Equipo del que se está mirando el dashboard",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un grupo del scope (no lo amplía)",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un corredor del scope (403 si no pertenece)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
+                        "name": "exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int64"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
+                        "name": "exercise_ids",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, obligatorio)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD; sin él, cierra en from)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
+                        "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SummaryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/dashboard/metrics/timeseries": {
+            "get": {
+                "description": "Buckets de calendario (session/week/month/quarter) con los mismos KPIs del resumen. Los anclajes son de calendario: un bucket puede empezar antes del ` + "`" + `from` + "`" + ` y el recorte nunca parte una semana ni un trimestre por la mitad.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "Métricas por período",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Equipo del que se está mirando el dashboard",
+                        "name": "team_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un grupo del scope (no lo amplía)",
+                        "name": "group_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Acotar a un corredor del scope (403 si no pertenece)",
+                        "name": "athlete_user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Un ejercicio de catálogo (excluyente con exercise_ids y kind)",
+                        "name": "exercise_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int64"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Varios ejercicios de catálogo (excluyente con exercise_id y kind)",
+                        "name": "exercise_ids",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Un tipo con métrica (excluyente con exercise_id y exercise_ids)",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, obligatorio)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD; sin él, cierra en from)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Tolerancia de cumplimiento, entre 0.01 y 0.20 (default 0.05)",
+                        "name": "tolerance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia mínima de la serie, en metros enteros",
+                        "name": "distance_from_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Distancia máxima de la serie, en metros enteros",
+                        "name": "distance_to_m",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado mínimo, en minutos enteros",
+                        "name": "time_from_min",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "Tiempo logrado máximo, en minutos enteros",
+                        "name": "time_to_min",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "session",
+                            "week",
+                            "month",
+                            "quarter"
+                        ],
+                        "type": "string",
+                        "description": "Anclaje del bucket (default session)",
+                        "name": "granularity",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TimeseriesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/exercises": {
             "get": {
                 "produces": [
@@ -10143,6 +10984,940 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.BandCounts": {
+            "type": "object",
+            "properties": {
+                "met": {
+                    "type": "integer"
+                },
+                "missed": {
+                    "type": "integer"
+                },
+                "near": {
+                    "type": "integer"
+                },
+                "unknown": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow": {
+            "type": "object",
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "compliance_rate": {
+                    "type": "number"
+                },
+                "mean_speed_kph": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "surname": {
+                    "type": "string"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                },
+                "trend": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Trend"
+                },
+                "valid_series": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.ComparisonsRequest": {
+            "type": "object",
+            "required": [
+                "team_id"
+            ],
+            "properties": {
+                "athlete_user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "distance_from_m": {
+                    "description": "Rango de datos: metros y minutos enteros, igual que en los GET.",
+                    "type": "integer"
+                },
+                "distance_to_m": {
+                    "type": "integer"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "exercise_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "from": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "description": "Kind es un valor único, no una lista: el filtro de tipo del front es de\nselección única y su opción \"todos\" viaja como ausencia del parámetro. Solo\nadmiten los tres tipos con métrica.",
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "time_from_min": {
+                    "type": "integer"
+                },
+                "time_to_min": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "tolerance": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.ComparisonsResponse": {
+            "type": "object",
+            "properties": {
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow"
+                    }
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.Consistency": {
+            "type": "object",
+            "properties": {
+                "cv": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.DataQuality": {
+            "type": "object",
+            "properties": {
+                "degraded_time": {
+                    "type": "integer"
+                },
+                "insufficient_data": {
+                    "type": "boolean"
+                },
+                "invalid_series": {
+                    "type": "integer"
+                },
+                "legacy_sessions": {
+                    "type": "integer"
+                },
+                "open_sessions": {
+                    "type": "integer"
+                },
+                "unknown_status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.DateRange": {
+            "type": "object",
+            "properties": {
+                "max": {
+                    "type": "string"
+                },
+                "min": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.FiltersAthlete": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "surname": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.FiltersExercise": {
+            "type": "object",
+            "properties": {
+                "current_target_distance_m": {
+                    "type": "integer"
+                },
+                "current_target_minutes": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.FiltersGroup": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.FiltersResponse": {
+            "type": "object",
+            "properties": {
+                "athletes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersAthlete"
+                    }
+                },
+                "date_range": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DateRange"
+                },
+                "exercise_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersExercise"
+                    }
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersGroup"
+                    }
+                },
+                "teams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.FiltersTeam"
+                    }
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.FiltersTeam": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.LeaderboardItem": {
+            "type": "object",
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "compliance_rate": {
+                    "type": "number"
+                },
+                "is_self": {
+                    "type": "boolean"
+                },
+                "mean_speed_kph": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "rank": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "surname": {
+                    "type": "string"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.LeaderboardResponse": {
+            "type": "object",
+            "properties": {
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.LeaderboardItem"
+                    }
+                },
+                "order": {
+                    "type": "string"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "sort": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics": {
+            "type": "object",
+            "properties": {
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "compliance_rate": {
+                    "type": "number"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "mean_speed_kph": {
+                    "type": "number"
+                },
+                "series": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                },
+                "valid_series": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.PeriodRange": {
+            "type": "object",
+            "required": [
+                "from",
+                "to"
+            ],
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.PeriodsDelta": {
+            "type": "object",
+            "properties": {
+                "best_time_pct": {
+                    "type": "number"
+                },
+                "compliance_pp": {
+                    "description": "CompliancePP son puntos porcentuales, no porcentaje relativo: 58 % contra\n64 % es −6 pp, no −9,4 %.",
+                    "type": "number"
+                },
+                "distance_pct": {
+                    "type": "number"
+                },
+                "series": {
+                    "type": "integer"
+                },
+                "speed_pct": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.PeriodsRequest": {
+            "type": "object",
+            "required": [
+                "current",
+                "team_id"
+            ],
+            "properties": {
+                "current": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange"
+                },
+                "distance_from_m": {
+                    "description": "El rango de datos acota las series de los DOS períodos por igual: si el\ncurrent y el previous midieran ventanas distintas, el delta compararía dos\ncosas que el usuario no pidió comparar.",
+                    "type": "integer"
+                },
+                "distance_to_m": {
+                    "type": "integer"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "exercise_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "previous": {
+                    "description": "Previous es opcional: si no viene, el backend lo deriva desplazando current\nhacia atrás exactamente su misma cantidad de días.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodRange"
+                        }
+                    ]
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "time_from_min": {
+                    "type": "integer"
+                },
+                "time_to_min": {
+                    "type": "integer"
+                },
+                "tolerance": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.PeriodsResponse": {
+            "type": "object",
+            "properties": {
+                "current": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics"
+                },
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "delta": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodsDelta"
+                },
+                "previous": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.PeriodMetrics"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                },
+                "verdict": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SeriesDetailItem": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "band": {
+                    "description": "Band es null cuando has_target es false: sin objetivo no hay cumplimiento\nque clasificar. No es lo mismo que la banda \"unknown\".",
+                    "type": "string"
+                },
+                "completion_status": {
+                    "type": "string"
+                },
+                "delta_pct": {
+                    "type": "number"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "feedback_owner_user_id": {
+                    "type": "integer"
+                },
+                "met_target": {
+                    "type": "boolean"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "speed_kph": {
+                    "description": "SpeedKph es DERIVADA de distancia y tiempo, nunca leída de\nexercise_instances.speed_kph (design.md D2).",
+                    "type": "number"
+                },
+                "target_distance_m": {
+                    "type": "integer"
+                },
+                "target_minutes": {
+                    "type": "integer"
+                },
+                "time_quality": {
+                    "type": "string"
+                },
+                "tolerance_applied": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SeriesResponse": {
+            "type": "object",
+            "properties": {
+                "axis": {
+                    "type": "string"
+                },
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "has_target": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SeriesDetailItem"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "series_count": {
+                    "description": "SeriesCount son las series válidas del ejercicio en el scope; Total son las\nfilas de la página.",
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonDelta": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string"
+                },
+                "distance_delta_m": {
+                    "type": "number"
+                },
+                "speed_delta_kph": {
+                    "type": "number"
+                },
+                "speed_delta_pct": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint": {
+            "type": "object",
+            "properties": {
+                "active_duration_ms": {
+                    "type": "integer"
+                },
+                "distance_meters": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "feedback_id": {
+                    "type": "integer"
+                },
+                "rpe": {
+                    "type": "integer"
+                },
+                "set_number": {
+                    "type": "integer"
+                },
+                "speed_kph": {
+                    "type": "number"
+                },
+                "target_distance_m": {
+                    "type": "integer"
+                },
+                "target_minutes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonRequest": {
+            "type": "object",
+            "required": [
+                "a",
+                "b",
+                "from",
+                "team_id",
+                "to"
+            ],
+            "properties": {
+                "a": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef"
+                },
+                "b": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonResponse": {
+            "type": "object",
+            "properties": {
+                "a": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide"
+                },
+                "b": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide"
+                },
+                "delta": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonDelta"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonUnits"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonSide": {
+            "type": "object",
+            "properties": {
+                "athlete_name": {
+                    "type": "string"
+                },
+                "athlete_surname": {
+                    "type": "string"
+                },
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "best": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "exercise_name": {
+                    "type": "string"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "group_name": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mean_rpe": {
+                    "type": "number"
+                },
+                "mean_speed_kph": {
+                    "type": "number"
+                },
+                "rpe_count": {
+                    "type": "integer"
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                    }
+                },
+                "series_count": {
+                    "type": "integer"
+                },
+                "session_date": {
+                    "type": "string"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                },
+                "team_id": {
+                    "type": "integer"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                },
+                "valid_series": {
+                    "type": "integer"
+                },
+                "worst": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonPoint"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionComparisonUnits": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "string"
+                },
+                "duration": {
+                    "type": "string"
+                },
+                "rpe": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SessionExerciseRef": {
+            "type": "object",
+            "required": [
+                "athlete_user_id",
+                "exercise_id",
+                "group_id",
+                "session_instance_id"
+            ],
+            "properties": {
+                "athlete_user_id": {
+                    "type": "integer"
+                },
+                "exercise_id": {
+                    "type": "integer"
+                },
+                "group_id": {
+                    "type": "integer"
+                },
+                "session_instance_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SummaryResponse": {
+            "type": "object",
+            "properties": {
+                "axis": {
+                    "type": "string"
+                },
+                "consistency": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Consistency"
+                },
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "has_target": {
+                    "type": "boolean"
+                },
+                "series_count": {
+                    "type": "integer"
+                },
+                "tolerance_applied": {
+                    "description": "ToleranceApplied y SeriesCount viajan porque el tooltip de KPI necesita\nmostrar la tolerancia usada y cuántas series entraron, y no hay otra fuente.",
+                    "type": "number"
+                },
+                "totals": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.SummaryTotals"
+                },
+                "trend": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Trend"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.SummaryTotals": {
+            "type": "object",
+            "properties": {
+                "achieved_speed_kph": {
+                    "type": "number"
+                },
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "compliance_rate": {
+                    "description": "ComplianceRate es un PORCENTAJE 0-100, no una fracción, para que no compita\ncon delta_pct.",
+                    "type": "number"
+                },
+                "delta_pct": {
+                    "type": "number"
+                },
+                "distance_m": {
+                    "type": "number"
+                },
+                "series": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "target_speed_kph": {
+                    "type": "number"
+                },
+                "time_ms": {
+                    "type": "integer"
+                },
+                "valid_series": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TimeseriesBucket": {
+            "type": "object",
+            "properties": {
+                "achieved_speed_kph": {
+                    "type": "number"
+                },
+                "band_counts": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.BandCounts"
+                },
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "compliance_rate": {
+                    "type": "number"
+                },
+                "delta_pct": {
+                    "type": "number"
+                },
+                "period_start": {
+                    "type": "string"
+                },
+                "series": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "target_speed_kph": {
+                    "type": "number"
+                },
+                "valid_series": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TimeseriesResponse": {
+            "type": "object",
+            "properties": {
+                "buckets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TimeseriesBucket"
+                    }
+                },
+                "data_quality": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.DataQuality"
+                },
+                "granularity": {
+                    "type": "string"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.Trend": {
+            "type": "object",
+            "properties": {
+                "trend_pct": {
+                    "type": "number"
+                },
+                "verdict": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.Units": {
+            "type": "object",
+            "properties": {
+                "best_time": {
+                    "type": "string"
+                },
+                "compliance": {
+                    "type": "string"
+                },
+                "delta": {
+                    "type": "string"
+                },
+                "distance": {
+                    "type": "string"
+                },
+                "percentage_point": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "string"
+                },
+                "time": {
                     "type": "string"
                 }
             }

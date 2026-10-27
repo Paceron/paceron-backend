@@ -57,6 +57,7 @@ type Application struct {
 	teamConfigurationController controllers.TeamConfigurationControllerInterface
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
+	dashboardController         controllers.DashboardController
 	sessionMessageController    controllers.SessionMessageController
 	runnerSessionController     controllers.RunnerSessionController
 	streakController            controllers.StreakController
@@ -369,6 +370,17 @@ func NewApplication() *Application {
 	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
 	// apertura/cierre del entrenador; el controller emite update:session_state.
 	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
+	// Dashboard analítico (change dashboard-analitico-rendimiento): el scope del
+	// solicitante se resuelve una vez por request (dashboardScopeService) y el
+	// dashboardDao ya lo recibe resuelto — ningún DAO del dashboard acepta un
+	// group_id crudo.
+	dashboardDao := daos.NewDashboardDao(db)
+	dashboardScopeService := services.NewDashboardScopeService(groupDao, groupUserDao, teamDao)
+	dashboardService := services.NewDashboardService(dashboardDao, dashboardScopeService, userDao, groupUserDao)
+	dashboardController := controllers.NewDashboardController(dashboardService)
+
+	// `runnerSessionDao` ya se creó arriba: el intake de competencias de ruta
+	// (develop) lo comparte con el flujo normal del corredor.
 	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService, competitionDao)
 
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)
@@ -407,6 +419,7 @@ func NewApplication() *Application {
 		teamConfigurationController:  teamConfigurationController,
 		attendanceController:         attendanceController,
 		workoutFeedbackController:    workoutFeedbackController,
+		dashboardController:          dashboardController,
 		sessionMessageController:     sessionMessageController,
 		runnerSessionController:      runnerSessionController,
 		streakController:             streakController,

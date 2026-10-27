@@ -1,4 +1,5 @@
 .PHONY: test coverage coverage-html test-db-up test-db-down test-db-restart test-with-db coverage-with-db
+.PHONY: seed-dashboard seed-dashboard-cleanup
 .PHONY: local-up local-down local-ps local-logs local-dump local-restore local-reset local-shell
 .PHONY: demo-baseline demo-baseline-force demo-restore demo-reset demo-verify demo-status
 
@@ -63,6 +64,21 @@ demo-status:   ## Estado del baseline, de los contenedores y de cuánto difiere 
 # flag va explícito acá y no en DEMO_FLAGS (que arrastraría a los otros targets).
 demo-baseline-force:
 	./scripts/demo_db.sh baseline --force
+
+# =============================================================================
+# Seed del dashboard analítico (change dashboard-analitico-rendimiento).
+#
+# Exige SEEDING_ENABLED=true en .env.local y --stage=local: son las dos mitades
+# del guard de design.md D14, y sin ninguna de las dos el stamp no puede escribir
+# fechas pasadas. Ver cmd/api/scripts/seed_dashboard/RUNBOOK.md.
+# =============================================================================
+SEED_FLAGS ?=
+
+seed-dashboard: ## Informa qué sembraría el dataset del dashboard (SEED_FLAGS=--seed para siembra)
+	go run ./cmd/api/scripts/seed_dashboard --stage=local $(SEED_FLAGS)
+
+seed-dashboard-cleanup: ## Informa qué borraría la limpieza (SEED_FLAGS=--yes para borrar de verdad)
+	go run ./cmd/api/scripts/seed_dashboard --stage=local --cleanup --dry-run $(SEED_FLAGS)
 
 # =============================================================================
 # Tests — abajo, la base de test descartable para los tests de daos/

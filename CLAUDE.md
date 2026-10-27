@@ -167,6 +167,23 @@ Manual completo: `docs/ENTORNO_LOCAL.md`. Spec: `openspec/changes/entorno-local-
 - Deploy: producción en Vercel (`https://paceron-frontend.vercel.app`), preview de `develop` en `https://paceron-frontend-git-develop-paceron.vercel.app` — ambos dominios deben estar en `CORS_ALLOWED_ORIGINS`.
 - La app nativa registra los schemes `paceron://` (producción) y `paceron-dev://` (variante de desarrollo). El backend los usa como destino del redirect del callback de Mercado Pago — ver sección arriba.
 
+## Seed del dashboard analítico
+
+`cmd/api/scripts/seed_dashboard/` siembra el dataset que necesita el dashboard de rendimiento (12 ejercicios, 4 sesiones, 2 planes de 7 días estampados por el mecanismo de calendario, 7 corredores con arquetipos y 2 semanas de feedback). Manual completo: [`RUNBOOK.md`](cmd/api/scripts/seed_dashboard/RUNBOOK.md).
+
+```bash
+SEEDING_ENABLED=true make seed-dashboard SEED_FLAGS=--seed   # siembra
+SEEDING_ENABLED=true make seed-dashboard-cleanup             # qué borraría
+```
+
+Tres cosas que no son obvias y conviene no volver a descubrir:
+
+- **El calendario se siembra con `CalendarService.Stamp`, nunca insertando a mano.** Es lo único que crea las `session_instances`/`exercise_instances`; sin esa instanciación el dashboard no tiene nada que leer. La idempotencia sale de `exclude_dates` (las fechas objetivo que ya son de este plan se listan ahí), no de `Force`.
+- **El seed rompe los datos a propósito.** Tiene un plan de rupturas explícito (`defectPlan`) para que los seis contadores de `data_quality` den números distintos de cero, y la corrida **compara** lo que devuelve el dashboard contra lo que el plan esperaba: si no coinciden, sale con error. Un dataset limpio se ve igual de lindo en la pantalla y no ejercita ninguna de las ramas que el change especificó.
+- **`--stage=local` + `SEEDING_ENABLED=true` son las dos mitades del guard** (`config.AssertSeedingStage`, reutilizado tal cual): sin la bandera el calendario cierra toda fecha pasada y no hay stamping posible.
+- **`group_users` no se borra en la limpieza**: el seed solo mueve `date_start` para que la primera sesión entre en la ventana de membresía, y el valor previo queda en el log para revertirlo a mano.
+- Sembrar contra la base de test (`--db postgres://postgres:postgres@localhost:5433/paceron_test`) deja filas que rompen los tests que cuentan sin filtrar: después hay que correr el `--cleanup --yes` o `make test-db-restart`.
+
 ## Herramientas de conversión de documentación
 
 - `scripts/md-to-pdf/` — convierte un `.md` (con diagramas mermaid) a **HTML autocontenido** y **PDF** renderizado igual que el preview de VS Code (mermaid v11). Es la alternativa al plugin "Markdown PDF" de VS Code, que usa un mermaid viejo y falla con `rect`/`note over`/unicode en sequence diagrams. Uso: `cd scripts/md-to-pdf && npm i && node convert.mjs <archivo.md> --pdf`. Primera corrida baja `mermaid.min.js` a `.cache/` (gitignoreado) para que después sea offline. Requiere Chrome para el PDF (`--html` solo produce el HTML). `.gitignore` cubre `node_modules/`, `.cache/` y `build/`.

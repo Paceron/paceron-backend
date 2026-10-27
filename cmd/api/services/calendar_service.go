@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/calendar"
 	"simple-arq-golang/cmd/api/domains/constants"
@@ -396,11 +397,16 @@ func (s *calendarService) isGroupOwnerOrMember(ctx *gin.Context, groupID, caller
 // isCalendarDayClosed applies the calendar's date/time rule to a stored day.
 // It is a write guard now; it no longer decides whether catalog content must
 // be cloned.
+//
+// La rama `date < hoy` se relaja SOLO con SEEDING_ENABLED (design.md D14): es
+// la única vía que tiene el seed para cargar histórico, porque no hay endpoint
+// que corte una fecha pasada. La presencial de hoy ya empezada y el async de hoy
+// siguen cerrando igual — el flag no abre la escritura del día en curso.
 func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
 	if dayDate.Before(today) {
-		return true
+		return !config.SeedingEnabled()
 	}
 	if dayDate.After(today) {
 		return false
@@ -413,6 +419,45 @@ func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 	}
 	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTimeFrom.UTC().Hour(), day.PresencialTimeFrom.UTC().Minute(), 0, 0, now.Location())
 	return !now.Before(threshold)
+}
+
+// logSeededPastWrite deja rastro de cada escritura que el flag de seeding dejó
+// pasar sobre fechas pasadas: usuario, plan y fechas afectadas. Sin esto el flag
+// es invisible en los logs y no hay forma de auditar qué tocó cada corrida del
+// seed — que es justamente lo que un flag de este tipo necesita.
+func logSeededPastWrite(ctx *gin.Context, callerID, groupID int64, dates []time.Time, planID *int64, now time.Time) {
+	if !config.SeedingEnabled() {
+		return
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	past := make([]string, 0, len(dates))
+	for _, date := range dates {
+		if date.Before(today) {
+			past = append(past, date.Format("2006-01-02"))
+		}
+	}
+	if len(past) == 0 {
+		return
+	}
+	customlogger.Warn(ctx, "calendar write on past dates allowed by seeding",
+		customlogger.Tag("caller_id", fmt.Sprintf("%d", callerID)),
+		customlogger.Tag("group_id", fmt.Sprintf("%d", groupID)),
+		customlogger.Tag("plan_id", planIDTag(planID)),
+		customlogger.Tag("dates", strings.Join(past, ",")))
+}
+
+func planIDTag(planID *int64) string {
+	if planID == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *planID)
+}
+
+func existingPlanID(day *dbs.GroupCalendarDay) *int64 {
+	if day == nil {
+		return nil
+	}
+	return day.SourcePlanID
 }
 
 // validateDayFields valida el request contra el kind actual del día.
@@ -954,6 +999,7 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 	if req.Kind != string(constants.GroupCalendarDayKindCancelled) && closedDayForRequest(existing, row, time.Now()) {
 		return nil, newCalendarClosedDaysError([]string{date.Format("2006-01-02")})
 	}
+	logSeededPastWrite(ctx, callerID, groupID, []time.Time{date}, existingPlanID(existing), time.Now())
 	if s.db == nil {
 		if existing != nil && (req.Kind == string(constants.GroupCalendarDayKindCancelled) ||
 			(req.Kind == string(constants.GroupCalendarDayKindTraining) && req.SessionID == nil)) {
@@ -1395,6 +1441,7 @@ func (s *calendarService) Stamp(ctx *gin.Context, groupID, callerID int64, req c
 		if len(closed) > 0 {
 			return newCalendarClosedDaysError(closed)
 		}
+		logSeededPastWrite(ctx, callerID, groupID, targetDates, &req.PlanID, time.Now())
 		if !req.Force && len(conflicts) > 0 {
 			return &calendarStampConflictError{dates: conflicts}
 		}

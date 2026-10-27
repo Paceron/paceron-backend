@@ -1,3 +1,14 @@
+# Spec — workout-feedback
+
+## Purpose
+
+Registro de lo que un corredor efectivamente ejecutó en un ejercicio de una sesión:
+series con tiempo, distancia y métricas fisiológicas, más su feedback y su recorrido
+GPS. Es la única fuente de datos medidos de la aplicación — el resto de las tablas
+del dominio guarda lo que se pidió hacer, no lo que se hizo.
+
+## Requirements
+
 ### Requirement: El sistema SHALL persistir el feedback de entrenamiento con la estructura definida
 
 El sistema SHALL persistir feedback de entrenamiento en la tabla `workout_feedback` con las siguientes columnas según la spec del change: `id` (BIGSERIAL PK), `team_id` (nullable), `assigned_session_id` (NOT NULL), `assigned_exercise_id` (NOT NULL), `athlete_user_id` (NOT NULL), `feedback_owner_user_id` (NOT NULL), `report_source` (NOT NULL), `session_date` (DATE NOT NULL), `set_number` (INTEGER default 0), `started_at`/`ended_at` (TIMESTAMPTZ nullables), `duration_ms`/`active_duration_ms` (BIGINT nullables), `weight_kg` (FLOAT nullable), `reps` (INTEGER nullable), `distance_meters` (FLOAT nullable), `rpe` (SMALLINT nullable con CHECK 1..10), `avg_heart_rate`/`max_heart_rate` (SMALLINT nullables), `completion_status` (VARCHAR(20) nullable), `elevation_gain_meters` (FLOAT nullable), `cadence` (SMALLINT nullable), `annotations` (TEXT nullable), `media_urls` (TEXT[] nullable), `created_at`/`updated_at` (TIMESTAMPTZ DEFAULT NOW()), `deleted_at` (TIMESTAMPTZ nullable, baja lógica). `route_summary` NO se incluye en este change (depende de PostGIS, postergado). La tabla SHALL definirse con los índices `idx_feedback_team_date (team_id, session_date)`, `idx_feedback_athlete_date (athlete_user_id, session_date)`, `idx_feedback_session_exercise (assigned_session_id, assigned_exercise_id, set_number)` y un índice único parcial `unique_feedback_per_set` sobre `(assigned_session_id, assigned_exercise_id, athlete_user_id, feedback_owner_user_id, set_number)` con `WHERE deleted_at IS NULL`.

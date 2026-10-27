@@ -291,8 +291,9 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
-	// 10. Índices parciales que GORM no expresa por tags (implementación de
-	// intendencia: intentos de competencia y sesión de ruta del intento).
+	// 10. Índices parciales de competencias y de las consultas analíticas del dashboard.
+	// Los primeros permiten filtrar competencias de ruta; los segundos aceleran
+	// el scope del dashboard por atleta y fecha.
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_runner_session_competition
 		ON runner_session (competition_id)
 		WHERE competition_id IS NOT NULL;`).Error; err != nil {
@@ -303,6 +304,39 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		ON competition (route_session_instance_id)
 		WHERE route_session_instance_id IS NOT NULL;`).Error; err != nil {
 		customlogger.Error(nil, "error creating partial unique index on competition route session instance", err)
+		return nil, err
+	}
+
+	// CONCURRENTLY es viable porque ConfigDB no abre transacciones: todo lo de
+	// arriba corre en autocommit. Envolver ESTE bloque en db.Transaction lo rompe.
+	// idx_runner_session_athlete: el UNIQUE vigente arranca por session_instance_id,
+	// pero la vista de corredor filtra por atleta sin conocer la sesión.
+	// idx_feedback_session_date: el índice de assigned_session_id no incluye la
+	// fecha que limita las consultas del dashboard.
+	// Si un índice queda INVALID, IF NOT EXISTS no lo reintenta. Rollback:
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_runner_session_athlete;
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_feedback_session_date;
+	dashboardIndexes := []string{
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_runner_session_athlete
+			ON runner_session (athlete_user_id);`,
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feedback_session_date
+			ON workout_feedback (assigned_session_id, session_date)
+			WHERE deleted_at IS NULL;`,
+	}
+	for _, stmt := range dashboardIndexes {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error creating dashboard analytics index", err)
+			return nil, err
+		}
+	}
+
+	// 11. Backfill de exercise_instances.source_exercise_id (2026-10-13).
+	// AutoMigrate agregó la columna y la llena para nuevas instancias, pero no toca
+	// las filas históricas. El backfill matchea por (owner_id, nombre normalizado)
+	// una sola vez; los casos ambiguos/no resueltos quedan para el fallback legacy.
+	// Es idempotente: solo actualiza referencias NULL.
+	if err := BackfillSourceExerciseID(db); err != nil {
+		customlogger.Error(nil, "error backfilling source_exercise_id", err)
 		return nil, err
 	}
 
