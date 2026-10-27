@@ -69,15 +69,17 @@ jobs:
         run: go build ./...
 
       - name: Run tests
-        run: go test ./... -v
+        # Los paquetes comparten esta DB; serializarlos evita que CREATE INDEX
+        # CONCURRENTLY de ConfigDB quede esperando transacciones de otro paquete.
+        run: go test -p 1 ./... -v
 
       - name: Measure test coverage
         run: |
           mkdir -p ci/test_coverage
-          go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test -coverpkg=./... -coverprofile=ci/test_coverage/coverage.out -covermode=atomic
+          go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs go test -p 1 -coverpkg=./... -coverprofile=ci/test_coverage/coverage.out -covermode=atomic
 
       - name: Coverage summary
-        if: always()
+        if: always() && hashFiles('ci/test_coverage/coverage.out') != ''
         run: |
           echo "## Test coverage" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
