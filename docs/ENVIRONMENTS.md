@@ -31,6 +31,8 @@ Si vienen los dos flags, **gana `local`**: conectar a la base local es reversibl
 | `SUPABASE_TESTING_DATABASE_URL` | testing (default) | — |
 | `SUPABASE_PRODUCTION_DATABASE_URL` | production (`--stage=production`) | — |
 | `DATABASE_URL` | local (`--stage=local`) | — |
+| `WARMUP_BASE_URL` | todos | Origen al que el worker agrega `/ping`; default `https://paceron-backend-as9c.onrender.com` |
+| `WARMUP_INTERVAL_MINUTES` | todos | Frecuencia del warmup en minutos; default `13` |
 
 `DATABASE_URL` sí se lee, pero **solo** bajo `--stage=local` (y con `.env.local` cargado, que pisa a `.env`). Sin el flag sigue sin leerse: es una variable del stage local, no un override global. Si en cloud ninguna de las dos de arriba está seteada, cae al fallback histórico de `db_host`/`db_port`/`db_user`/`db_password`/`db_name` (sin distinción de stage, legacy).
 
@@ -46,6 +48,14 @@ Dos services (`render.yaml`), mismo repo:
 |---|---|---|---|
 | `paceron-backend` | `master` | `--stage=production` | `SUPABASE_PRODUCTION_DATABASE_URL` |
 | `paceron-backend-develop` | `develop` | *(ninguno)* | `SUPABASE_TESTING_DATABASE_URL` |
+
+### Warmup periódico
+
+El backend hace un `GET` inicial y luego cada `WARMUP_INTERVAL_MINUTES` al path `/ping` de `WARMUP_BASE_URL`. El valor por defecto es `https://paceron-backend-as9c.onrender.com` y el intervalo, `13` minutos. Si el intervalo está ausente o no es un entero positivo se usa el default; una URL que no sea un origen HTTP(S) válido deshabilita solo el warmup y deja una advertencia en logs.
+
+`render.yaml` configura cada servicio explícitamente: producción apunta a `https://paceron-backend-as9c.onrender.com` y develop a `https://paceron-backend-develop.onrender.com`, ambos cada 13 minutos. En ejecuciones locales, si no se define `WARMUP_BASE_URL`, también se usa el default de `paceron-backend-as9c`.
+
+El worker corre dentro del proceso, por lo que no puede despertar una instancia que Render ya haya suspendido; sirve para mantener actividad mientras el proceso está vivo y para reducir la probabilidad de que quede inactivo.
 
 **Antes de este cambio**, el único service existente en Render desplegaba `develop` pero estaba etiquetado/tratado como "producción" — mismo quirk que ya estaba documentado en `CLAUDE.md`. Esto lo corrige: `master` pasa a ser la producción real, `develop` queda como preview separado.
 

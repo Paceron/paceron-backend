@@ -23,6 +23,10 @@ services:
       - key: ATTENDANCE_BASE_URL
         # Base del FRONTEND, no del backend: es lo que el corredor escanea.
         value: "https://paceron-frontend.vercel.app"
+      - key: WARMUP_BASE_URL
+        value: "https://paceron-backend-as9c.onrender.com"
+      - key: WARMUP_INTERVAL_MINUTES
+        value: "13"
       - key: JWT_SECRET
         sync: false
       - key: RESEND_API_KEY
@@ -74,6 +78,10 @@ services:
       - key: ATTENDANCE_BASE_URL
         # Base del FRONTEND de la preview de develop, no del backend.
         value: "https://paceron-frontend-git-develop-paceron.vercel.app"
+      - key: WARMUP_BASE_URL
+        value: "https://paceron-backend-develop.onrender.com"
+      - key: WARMUP_INTERVAL_MINUTES
+        value: "13"
       - key: JWT_SECRET
         sync: false
       - key: RESEND_API_KEY
