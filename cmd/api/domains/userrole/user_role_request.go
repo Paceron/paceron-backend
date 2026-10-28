@@ -7,9 +7,9 @@ type AssignRoleRequest struct {
 }
 
 // ActivateEntrenadorRequest es el DTO para que el usuario autenticado active su propio
-// rol entrenador. Exige la contraseña actual (mismo patrón que cambiar email/password) y
-// un alias bancario válido — si el usuario ya tiene uno guardado, bank_alias es opcional.
+// rol entrenador. Exige la contraseña actual. bank_alias es opcional y, si se envía no
+// vacío, debe tener un formato válido.
 type ActivateEntrenadorRequest struct {
 	Password  string  `json:"password" binding:"required"` // Contraseña actual, confirma que es una acción deliberada del dueño de la cuenta
-	BankAlias *string `json:"bank_alias"`                  // Alias bancario (requerido si el usuario no tiene uno ya guardado)
+	BankAlias *string `json:"bank_alias,omitempty"`        // Alias bancario opcional
 }

@@ -3593,7 +3593,7 @@ definitions:
   simple-arq-golang_cmd_api_domains_userrole.ActivateEntrenadorRequest:
     properties:
       bank_alias:
-        description: Alias bancario (requerido si el usuario no tiene uno ya guardado)
+        description: Alias bancario opcional
         type: string
       password:
         description: Contraseña actual, confirma que es una acción deliberada del
@@ -10123,15 +10123,14 @@ paths:
       consumes:
       - application/json
       description: Activa el rol entrenador del usuario autenticado sobre sí mismo.
-        Exige confirmar la contraseña actual y un alias bancario válido (propio o
-        recién provisto)
+        Exige confirmar la contraseña actual; el alias bancario es opcional.
       parameters:
       - description: User ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Contraseña actual y alias bancario
+      - description: Contraseña actual y alias bancario opcional
         in: body
         name: body
         required: true

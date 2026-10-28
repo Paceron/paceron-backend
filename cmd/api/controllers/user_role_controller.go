@@ -176,12 +176,12 @@ func (urc *userRoleController) RemoveRole(c *gin.Context) {
 
 // ActivateEntrenador godoc
 // @Summary      Activar rol entrenador
-// @Description  Activa el rol entrenador del usuario autenticado sobre sí mismo. Exige confirmar la contraseña actual y un alias bancario válido (propio o recién provisto)
+// @Description  Activa el rol entrenador del usuario autenticado sobre sí mismo. Exige confirmar la contraseña actual; el alias bancario es opcional.
 // @Tags         user-roles
 // @Accept       json
 // @Produce      json
 // @Param        id    path      int                              true  "User ID"
-// @Param        body  body      userrole.ActivateEntrenadorRequest true  "Contraseña actual y alias bancario"
+// @Param        body  body      userrole.ActivateEntrenadorRequest true  "Contraseña actual y alias bancario opcional"
 // @Success      201   {object}  userrole.UserRoleResponse
 // @Failure      400   {object}  apierror.APIError
 // @Failure      401   {object}  apierror.APIError
@@ -232,8 +232,7 @@ func (urc *userRoleController) ActivateEntrenador(c *gin.Context) {
 		case errMsg == "el usuario ya tiene asignado este rol":
 			statusCode = http.StatusConflict
 			code = "Conflict"
-		case errMsg == "se requiere un alias bancario para activar el rol entrenador",
-			strings.Contains(errMsg, "bank_alias"):
+		case strings.Contains(errMsg, "bank_alias"):
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
 		}

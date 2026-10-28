@@ -31,8 +31,8 @@ type mockUserRoleDao struct {
 	createFn            func(ctx *gin.Context, ur *dbs.UserRole) error
 	findByUserAndRoleFn func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error)
 	findByUserIDFn      func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error)
-softDeleteFn func(ctx *gin.Context, id int64) error
-	updateTierFn func(ctx *gin.Context, userID, roleID, tierID int64) error
+	softDeleteFn        func(ctx *gin.Context, id int64) error
+	updateTierFn        func(ctx *gin.Context, userID, roleID, tierID int64) error
 }
 
 func (m *mockUserRoleDao) Create(ctx *gin.Context, ur *dbs.UserRole) error {
@@ -654,6 +654,42 @@ func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 
 func ptrStr(s string) *string { return &s }
 
+func newActivateEntrenadorServiceForTest(user *dbs.User, updateFn func(*dbs.User) error) UserRoleServiceInterface {
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return user, nil
+		},
+	}
+	if updateFn != nil {
+		mockUserDao.updateFn = func(_ *gin.Context, updatedUser *dbs.User) error {
+			return updateFn(updatedUser)
+		}
+	}
+	mockRoleDao := &mockRoleDao{
+		findByNameFn: func(ctx *gin.Context, name string) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 2, Name: "entrenador"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 9, Name: "base entrenador", RoleID: roleID}, nil
+		},
+	}
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, ur *dbs.UserRole) error {
+			ur.ID = 1
+			return nil
+		},
+	}
+	return NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
+}
+
 func TestUserRoleService_ActivateEntrenador_Success(t *testing.T) {
 	bankAlias := "mi.alias-1"
 	mockUserDao := &mockUserDaoForUserRole{
@@ -782,18 +818,41 @@ func TestUserRoleService_ActivateEntrenador_WrongPassword(t *testing.T) {
 	assert.Contains(t, err.Error(), "contraseña actual incorrecta")
 }
 
-func TestUserRoleService_ActivateEntrenador_MissingBankAlias(t *testing.T) {
-	mockUserDao := &mockUserDaoForUserRole{
-		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Password: entrenadorTestPasswordHash}, nil
+func TestUserRoleService_ActivateEntrenador_WithoutBankAlias(t *testing.T) {
+	svc := newActivateEntrenadorServiceForTest(
+		&dbs.User{ID: 1, Password: entrenadorTestPasswordHash},
+		nil,
+	)
+
+	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "CorrectPass123"})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, int64(2), resp.RoleID)
+}
+
+func TestUserRoleService_ActivateEntrenador_EmptyBankAliasIsOmitted(t *testing.T) {
+	storedAlias := "alias.guardado"
+	user := &dbs.User{ID: 1, Password: entrenadorTestPasswordHash, BankAlias: &storedAlias}
+	updateCalled := false
+	svc := newActivateEntrenadorServiceForTest(
+		user,
+		func(updatedUser *dbs.User) error {
+			updateCalled = true
+			return nil
 		},
-	}
+	)
 
-	svc := NewUserRoleService(&mockUserRoleDao{}, &mockRoleDao{}, &mockTierDao{}, mockUserDao, &mockTeamUserDao{}, nil)
-	_, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{Password: "CorrectPass123"})
+	resp, err := svc.ActivateEntrenador(nil, 1, &userrole.ActivateEntrenadorRequest{
+		Password:  "CorrectPass123",
+		BankAlias: ptrStr("   "),
+	})
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "se requiere un alias bancario")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.False(t, updateCalled)
+	require.NotNil(t, user.BankAlias)
+	assert.Equal(t, "alias.guardado", *user.BankAlias)
 }
 
 func TestUserRoleService_ActivateEntrenador_InvalidBankAliasFormat(t *testing.T) {
