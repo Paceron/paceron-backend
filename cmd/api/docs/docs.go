@@ -8882,7 +8882,7 @@ const docTemplate = `{
         },
         "/api/v1/users/{id}/trainer-role": {
             "post": {
-                "description": "Activa el rol entrenador del usuario autenticado sobre sí mismo. Exige confirmar la contraseña actual y un alias bancario válido (propio o recién provisto)",
+                "description": "Activa el rol entrenador del usuario autenticado sobre sí mismo. Exige confirmar la contraseña actual; el alias bancario es opcional.",
                 "consumes": [
                     "application/json"
                 ],
@@ -8902,7 +8902,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Contraseña actual y alias bancario",
+                        "description": "Contraseña actual y alias bancario opcional",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -14878,7 +14878,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "bank_alias": {
-                    "description": "Alias bancario (requerido si el usuario no tiene uno ya guardado)",
+                    "description": "Alias bancario opcional",
                     "type": "string"
                 },
                 "password": {

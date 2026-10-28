@@ -274,8 +274,8 @@ func (s *userRoleService) RemoveRole(ctx *gin.Context, userID, roleID int64) err
 
 // ActivateEntrenador activa el rol "entrenador" del usuario autenticado sobre sí mismo.
 // Exige confirmar la contraseña actual (evita que un token robado alcance para
-// auto-promoverse) y un alias bancario válido, propio o recién provisto — internamente
-// reutiliza AssignRole para no duplicar la lógica de tier por defecto.
+// auto-promoverse). El alias bancario es opcional; si se provee uno no vacío, se valida
+// y persiste. Internamente reutiliza AssignRole para no duplicar la lógica de tier.
 func (s *userRoleService) ActivateEntrenador(ctx *gin.Context, userID int64, req *userrole.ActivateEntrenadorRequest) (*userrole.UserRoleResponse, error) {
 	userDB, err := s.userDao.FindByID(ctx, userID)
 	if err != nil {
@@ -294,16 +294,15 @@ func (s *userRoleService) ActivateEntrenador(ctx *gin.Context, userID int64, req
 		return nil, fmt.Errorf("contraseña actual incorrecta")
 	}
 
-	bankAlias := userDB.BankAlias
+	var bankAlias *string
 	if req.BankAlias != nil {
 		trimmed := strings.TrimSpace(*req.BankAlias)
-		if !bankAliasRegex.MatchString(trimmed) {
-			return nil, fmt.Errorf(bankAliasFormatError)
+		if trimmed != "" {
+			if !bankAliasRegex.MatchString(trimmed) {
+				return nil, fmt.Errorf(bankAliasFormatError)
+			}
+			bankAlias = &trimmed
 		}
-		bankAlias = &trimmed
-	}
-	if bankAlias == nil || *bankAlias == "" {
-		return nil, fmt.Errorf("se requiere un alias bancario para activar el rol entrenador")
 	}
 
 	role, err := s.roleDao.FindByName(ctx, teamOwnerRoleName)
@@ -318,7 +317,7 @@ func (s *userRoleService) ActivateEntrenador(ctx *gin.Context, userID int64, req
 		return nil, fmt.Errorf("error al activar rol entrenador")
 	}
 
-	if req.BankAlias != nil {
+	if bankAlias != nil {
 		userDB.BankAlias = bankAlias
 		if err := s.userDao.Update(ctx, userDB); err != nil {
 			customlogger.Error(ctx, "error saving bank alias for entrenador activation", err,

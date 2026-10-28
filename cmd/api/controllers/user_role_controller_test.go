@@ -455,13 +455,14 @@ func TestUserRoleController_RemoveRole_ServiceError(t *testing.T) {
 func TestUserRoleController_ActivateEntrenador_Success(t *testing.T) {
 	mockSvc := &mockUserRoleService{
 		activateEntrenadorFn: func(ctx *gin.Context, userID int64, req *userrole.ActivateEntrenadorRequest) (*userrole.UserRoleResponse, error) {
+			assert.Nil(t, req.BankAlias)
 			return &userrole.UserRoleResponse{ID: 1, UserID: userID, RoleID: 2, Status: "active"}, nil
 		},
 	}
 
 	controller := NewUserRoleController(mockSvc)
 	response := httptest.NewRecorder()
-	body := `{"password":"CorrectPass123","bank_alias":"mi.alias-1"}`
+	body := `{"password":"CorrectPass123"}`
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/users/1/entrenador-role", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -536,16 +537,16 @@ func TestUserRoleController_ActivateEntrenador_WrongPassword(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, response.Code)
 }
 
-func TestUserRoleController_ActivateEntrenador_MissingBankAlias(t *testing.T) {
+func TestUserRoleController_ActivateEntrenador_InvalidBankAlias(t *testing.T) {
 	mockSvc := &mockUserRoleService{
 		activateEntrenadorFn: func(ctx *gin.Context, userID int64, req *userrole.ActivateEntrenadorRequest) (*userrole.UserRoleResponse, error) {
-			return nil, errors.New("se requiere un alias bancario para activar el rol entrenador")
+			return nil, errors.New("bank_alias debe tener entre 6 y 20 caracteres")
 		},
 	}
 
 	controller := NewUserRoleController(mockSvc)
 	response := httptest.NewRecorder()
-	body := `{"password":"CorrectPass123"}`
+	body := `{"password":"CorrectPass123","bank_alias":"a"}`
 	c, _ := gin.CreateTestContext(response)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/users/1/entrenador-role", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
