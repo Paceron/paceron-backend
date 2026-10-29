@@ -93,6 +93,35 @@ func (f *runnerKpisFixture) persistRunnerSession(t *testing.T, athleteID, sessio
 	}).Error)
 }
 
+// persistNoise agrega series de otro corredor dentro del rango y actualiza las
+// estadísticas. Sin volumen, la igualdad por athlete_user_id no es selectiva
+// (matchea casi toda la tabla) y el planner elige cualquier otro índice: el
+// test de EXPLAIN se vuelve dependiente de la cantidad de filas. Con volumen
+// realista la consulta tiene que entrar por (athlete_user_id, session_date).
+func (f *runnerKpisFixture) persistNoise(t *testing.T, rows int) {
+	t.Helper()
+	batch := make([]dbs.WorkoutFeedback, 0, rows)
+	for i := 0; i < rows; i++ {
+		timeMs := int64(600000)
+		distance := 5000.0
+		batch = append(batch, dbs.WorkoutFeedback{
+			AssignedSessionID:   int64(10000 + i),
+			AssignedExerciseID:  f.ritmoEx,
+			AthleteUserID:       f.otherAthleteID,
+			FeedbackOwnerUserID: f.otherAthleteID,
+			ReportSource:        "atleta",
+			SessionDate:         f.from.AddDate(0, 0, i%28),
+			SetNumber:           1,
+			DurationMs:          &timeMs,
+			ActiveDurationMs:    &timeMs,
+			DistanceMeters:      &distance,
+			MediaURLs:           emptyMediaURLs(t),
+		})
+	}
+	require.NoError(t, f.db.CreateInBatches(batch, 500).Error)
+	require.NoError(t, f.db.Exec("ANALYZE workout_feedback").Error)
+}
+
 // La query del Home parte de workout_feedback y no exige grupo ni equipo:
 // incluye dos equipos distintos, un grupo del que el corredor ya no es miembro,
 // finished/interrupted y feedback sin runner_session, y deja afuera wip,
@@ -170,10 +199,12 @@ func TestDashboardDao_RunnerSeriesQueryNoUsaGruposNiRoles(t *testing.T) {
 }
 
 // La query usa el índice existente (athlete_user_id, session_date); no se agrega
-// ninguno nuevo. Con seqscan deshabilitado el plan tiene que nombrarlo.
+// ninguno nuevo. Con seqscan deshabilitado el plan tiene que nombrarlo. El ruido
+// de otro corredor hace selectiva la igualdad por atleta, como en producción.
 func TestDashboardDao_RunnerSeriesUsaIndiceAthleteDate(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	fixture := newRunnerKpisFixture(t, db, "explain")
+	fixture.persistNoise(t, 1000)
 	fixture.persistFeedback(t, fixture.athleteID, fixture.ritmoEx, 200, fixture.from, 5000, nil, false)
 
 	require.NoError(t, db.Exec("SET LOCAL enable_seqscan = off").Error)
