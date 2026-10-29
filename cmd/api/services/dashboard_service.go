@@ -149,6 +149,15 @@ type DashboardServiceInterface interface {
 	Comparisons(ctx *gin.Context, callerID int64, request dashboard.ComparisonsRequest) (*dashboard.ComparisonsResponse, error)
 	Periods(ctx *gin.Context, callerID int64, request dashboard.PeriodsRequest) (*dashboard.PeriodsResponse, error)
 	SessionComparison(ctx *gin.Context, callerID int64, request dashboard.SessionComparisonRequest) (*dashboard.SessionComparisonResponse, error)
+	RunnerKpis(ctx *gin.Context, callerID int64, query RunnerKpisQuery) (*dashboard.RunnerKpisResponse, error)
+}
+
+// RunnerKpisQuery son los tres parámetros del Home del corredor. No incluye
+// ningún id de corredor: el alcance es siempre el del token.
+type RunnerKpisQuery struct {
+	Period        string
+	ReferenceDate string
+	Tab           string
 }
 
 type dashboardService struct {
@@ -595,6 +604,75 @@ func (s *dashboardService) sessionComparisonSide(
 		ExerciseID: catalog.ID, ExerciseName: catalog.Name,
 	}
 	return dashboard.BuildSessionComparisonSide(context, mapSeriesRows(rows)), nil
+}
+
+// ---------- KPIs del Home del corredor ----------
+
+// RunnerKpis arma los KPIs del Home para el corredor autenticado. No resuelve
+// scope de equipo: el alcance es el athlete_user_id del token y el agregado
+// incluye todos sus grupos, incluso los que dejó.
+func (s *dashboardService) RunnerKpis(ctx *gin.Context, callerID int64, query RunnerKpisQuery) (*dashboard.RunnerKpisResponse, error) {
+	reference := time.Now()
+	if raw := strings.TrimSpace(query.ReferenceDate); raw != "" {
+		parsed, err := time.Parse(dashboard.DateLayoutISO, raw)
+		if err != nil {
+			return nil, newDashboardParamError(constants.ErrorCodeInvalidDate,
+				"reference_date debe ser una fecha real en formato YYYY-MM-DD")
+		}
+		reference = parsed
+	}
+
+	periodName := strings.TrimSpace(query.Period)
+	if periodName == "" {
+		periodName = "month"
+	}
+	tab := dashboard.RunnerKpiTab(strings.TrimSpace(query.Tab))
+	if tab == "" {
+		tab = dashboard.RunnerKpiTabGeneral
+	}
+	if !dashboard.IsValidRunnerKpiTab(tab) {
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidTab,
+			"tab debe ser uno de: general, ritmo_continuo, velocidad_tiempo, velocidad_distancia")
+	}
+
+	period, err := dashboard.ResolveRunnerPeriod(periodName, reference)
+	if err != nil {
+		return nil, newDashboardParamError(constants.ErrorCodeInvalidPeriod,
+			"period debe ser uno de: month, week, day")
+	}
+
+	rows, err := s.dashboardDao.FindRunnerSeries(ctx, callerID, period.From, period.To)
+	if err != nil {
+		customlogger.Error(ctx, "error finding runner kpis series", err,
+			customlogger.TagMethod("Dashboard.RunnerKpis"))
+		return nil, fmt.Errorf("error al obtener las series del corredor")
+	}
+	series := mapSeriesRows(rows)
+	tabRows := dashboard.FilterRunnerKpiRows(series, tab)
+
+	validSeries := 0
+	sessions := map[int64]struct{}{}
+	for _, row := range tabRows {
+		if row.Valid() {
+			validSeries++
+		}
+		sessions[row.SessionInstanceID] = struct{}{}
+	}
+
+	return &dashboard.RunnerKpisResponse{
+		Period:         periodName,
+		ReferenceDate:  dashboard.FormatDate(period.ReferenceDate),
+		From:           dashboard.FormatDate(period.From),
+		To:             dashboard.FormatDate(period.To),
+		DaysConsidered: period.DaysConsidered,
+		Tab:            string(tab),
+		Units:          dashboard.RunnerKpisUnitsBlock,
+		HasData:        len(tabRows) > 0,
+		SeriesCount:    len(tabRows),
+		ValidSeries:    validSeries,
+		Sessions:       len(sessions),
+		Metrics:        dashboard.BuildRunnerKpis(series, tab),
+	}, nil
 }
 
 // ---------- validación ----------

@@ -17,6 +17,7 @@ import (
 
 type mockDashboardDao struct {
 	findSeriesFn     func(ctx *gin.Context, filter daos.DashboardScopeFilter) ([]daos.DashboardSeriesRow, error)
+	findRunnerFn     func(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]daos.DashboardSeriesRow, error)
 	countOpenFn      func(ctx *gin.Context, filter daos.DashboardScopeFilter) (daos.DashboardOpenSessions, error)
 	dateRangeFn      func(ctx *gin.Context, groupIDs []int64) (*time.Time, *time.Time, error)
 	unlinkedFn       func(ctx *gin.Context, groupIDs []int64) ([]daos.UnlinkedExerciseInstance, error)
@@ -33,6 +34,14 @@ func (m *mockDashboardDao) FindSeries(ctx *gin.Context, filter daos.DashboardSco
 	m.calls++
 	if m.findSeriesFn != nil {
 		return m.findSeriesFn(ctx, filter)
+	}
+	return nil, nil
+}
+
+func (m *mockDashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]daos.DashboardSeriesRow, error) {
+	m.calls++
+	if m.findRunnerFn != nil {
+		return m.findRunnerFn(ctx, athleteUserID, from, to)
 	}
 	return nil, nil
 }
