@@ -278,6 +278,8 @@ func mapUrls(r *gin.Engine, app *Application) {
 	r.POST("/api/v1/dashboard/comparisons", app.dashboardController.Comparisons)
 	r.POST("/api/v1/dashboard/comparisons/periods", app.dashboardController.Periods)
 	r.POST("/api/v1/dashboard/comparisons/sessions", app.dashboardController.SessionComparison)
+	// KPIs del Home del corredor: sin team_id, scoped por el token.
+	r.GET("/api/v1/dashboard/runner-kpis", app.dashboardController.RunnerKpis)
 
 	// Runner Session (estado de la sesión del corredor, wip -> finished) y
 	// feedback de una sesión asignada. Sin ruta /session-instances/* existente

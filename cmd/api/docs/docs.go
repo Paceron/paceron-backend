@@ -2232,6 +2232,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/dashboard/runner-kpis": {
+            "get": {
+                "description": "Distancia, mejor día, mejor velocidad por serie, velocidad promedio y mejores marcas del corredor autenticado en un período calendario. No acepta team_id, group_id ni athlete_user_id: el alcance es siempre el del token y suma todos sus grupos y equipos, incluidos los que ya dejó. Cada request calcula una sola pestaña.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "KPIs del Home del corredor",
+                "parameters": [
+                    {
+                        "enum": [
+                            "month",
+                            "week",
+                            "day"
+                        ],
+                        "type": "string",
+                        "description": "Calendario del período (default month)",
+                        "name": "period",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha que ancla el período, YYYY-MM-DD (default fecha del servidor)",
+                        "name": "reference_date",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "general",
+                            "ritmo_continuo",
+                            "velocidad_tiempo",
+                            "velocidad_distancia"
+                        ],
+                        "type": "string",
+                        "description": "Pestaña a calcular (default general)",
+                        "name": "tab",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/exercises": {
             "get": {
                 "produces": [
@@ -11462,6 +11531,87 @@ const docTemplate = `{
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
                 },
                 "verdict": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisMetrics": {
+            "type": "object",
+            "properties": {
+                "average_speed_kph": {
+                    "type": "number"
+                },
+                "best_day_date": {
+                    "type": "string"
+                },
+                "best_day_distance_m": {
+                    "type": "number"
+                },
+                "best_distance_m": {
+                    "type": "number"
+                },
+                "best_speed_kph": {
+                    "type": "number"
+                },
+                "best_time_ms": {
+                    "type": "integer"
+                },
+                "total_distance_m": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisResponse": {
+            "type": "object",
+            "properties": {
+                "days_considered": {
+                    "type": "integer"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "has_data": {
+                    "type": "boolean"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisMetrics"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "reference_date": {
+                    "type": "string"
+                },
+                "series_count": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "type": "integer"
+                },
+                "tab": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "units": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisUnits"
+                },
+                "valid_series": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisUnits": {
+            "type": "object",
+            "properties": {
+                "distance": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "string"
+                },
+                "time": {
                     "type": "string"
                 }
             }

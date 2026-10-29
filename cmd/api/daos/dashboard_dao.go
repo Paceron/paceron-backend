@@ -126,6 +126,23 @@ WHERE gcd.group_id IN ?
   AND wf.deleted_at IS NULL
   AND (rs.status IN (?, ?) OR rs.status IS NULL)`
 
+// runnerSeriesFromClause es la query del Home del corredor (kpis-home-corredor
+// D1). No usa group_calendar_days ni session_exercise_instances a propósito: el
+// dato es del corredor, no de un grupo, y sumar todos los roles es el pedido
+// explícito. El LEFT JOIN a runner_session preserva el feedback previo al
+// feature de registro de sesión; el WHERE excluye solo las sesiones wip.
+const runnerSeriesFromClause = `
+FROM workout_feedback wf
+JOIN exercise_instances ei
+	ON ei.id = wf.assigned_exercise_id
+LEFT JOIN runner_session rs
+	ON rs.session_instance_id = wf.assigned_session_id
+	AND rs.athlete_user_id = wf.athlete_user_id
+WHERE wf.athlete_user_id = ?
+  AND wf.session_date BETWEEN ? AND ?
+  AND wf.deleted_at IS NULL
+  AND (rs.status IN (?, ?) OR rs.status IS NULL)`
+
 // membershipWindowEXISTS acota las series a los corredores que eran miembros del
 // grupo en la fecha de la sesión (tarea 6.2): el roster del leaderboard tiene que
 // respetar la fecha de la sesión, no la membresía actual.
@@ -248,6 +265,9 @@ WHERE gcd.group_id IN ?
 // DashboardDaoInterface define el acceso a datos de métricas del dashboard.
 type DashboardDaoInterface interface {
 	FindSeries(ctx *gin.Context, filter DashboardScopeFilter) ([]DashboardSeriesRow, error)
+	// FindRunnerSeries son las series propias del corredor para el Home. No
+	// recibe grupos ni equipo: el scope es el athlete_user_id del token.
+	FindRunnerSeries(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]DashboardSeriesRow, error)
 	CountOpenSessions(ctx *gin.Context, filter DashboardScopeFilter) (DashboardOpenSessions, error)
 	ScopeDateRange(ctx *gin.Context, groupIDs []int64) (minDate, maxDate *time.Time, err error)
 	UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64) ([]UnlinkedExerciseInstance, error)
@@ -369,6 +389,85 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 	}
 	if err := d.DB.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("error finding dashboard series: %w", err)
+	}
+
+	out := make([]DashboardSeriesRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, DashboardSeriesRow{
+			FeedbackID:          row.FeedbackID,
+			SessionInstanceID:   row.SessionInstanceID,
+			ExerciseInstanceID:  row.ExerciseInstanceID,
+			SessionDate:         row.SessionDate,
+			BucketStart:         row.BucketStart,
+			AthleteUserID:       row.AthleteUserID,
+			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
+			SetNumber:           row.SetNumber,
+			Kind:                row.Kind,
+			TargetMinutes:       row.TargetMinutes,
+			TargetDistanceM:     row.TargetDistanceM,
+			DurationMs:          row.DurationMs,
+			ActiveDurationMs:    row.ActiveDurationMs,
+			DistanceMeters:      row.DistanceMeters,
+			RPE:                 row.RPE,
+			CompletionStatus:    row.CompletionStatus,
+			HasRunnerSession:    row.HasRunnerSession,
+			ResolvedByName:      row.ResolvedByName,
+		})
+	}
+	return out, nil
+}
+
+// FindRunnerSeries devuelve las series del corredor autenticado para el Home,
+// sin exigir grupo ni equipo y sin filtrar por rol. Ordena por fecha e id para
+// que el empate de mejor día sea determinista.
+func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]DashboardSeriesRow, error) {
+	selected := []string{
+		"wf.id AS feedback_id",
+		"wf.assigned_session_id AS session_instance_id",
+		"wf.assigned_exercise_id AS exercise_instance_id",
+		"wf.session_date AS session_date",
+		"wf.session_date::date AS bucket_start",
+		"wf.athlete_user_id AS athlete_user_id",
+		"wf.feedback_owner_user_id AS feedback_owner_user_id",
+		"wf.set_number AS set_number",
+		"ei.kind AS kind",
+		"ei.minutes AS target_minutes",
+		"ei.distance_m AS target_distance_m",
+		"wf.duration_ms AS duration_ms",
+		"wf.active_duration_ms AS active_duration_ms",
+		"wf.distance_meters AS distance_meters",
+		"wf.rpe AS rpe",
+		"wf.completion_status AS completion_status",
+		"(rs.id IS NOT NULL) AS has_runner_session",
+		"(ei.source_exercise_id IS NULL) AS resolved_by_name",
+	}
+	query := "SELECT " + strings.Join(selected, ", ") + runnerSeriesFromClause +
+		" ORDER BY wf.session_date, wf.id"
+
+	var rows []struct {
+		FeedbackID          int64     `gorm:"column:feedback_id"`
+		SessionInstanceID   int64     `gorm:"column:session_instance_id"`
+		ExerciseInstanceID  int64     `gorm:"column:exercise_instance_id"`
+		SessionDate         time.Time `gorm:"column:session_date"`
+		BucketStart         time.Time `gorm:"column:bucket_start"`
+		AthleteUserID       int64     `gorm:"column:athlete_user_id"`
+		FeedbackOwnerUserID int64     `gorm:"column:feedback_owner_user_id"`
+		SetNumber           int       `gorm:"column:set_number"`
+		Kind                string    `gorm:"column:kind"`
+		TargetMinutes       *int      `gorm:"column:target_minutes"`
+		TargetDistanceM     *int      `gorm:"column:target_distance_m"`
+		DurationMs          *int64    `gorm:"column:duration_ms"`
+		ActiveDurationMs    *int64    `gorm:"column:active_duration_ms"`
+		DistanceMeters      *float64  `gorm:"column:distance_meters"`
+		RPE                 *int16    `gorm:"column:rpe"`
+		CompletionStatus    *string   `gorm:"column:completion_status"`
+		HasRunnerSession    bool      `gorm:"column:has_runner_session"`
+		ResolvedByName      bool      `gorm:"column:resolved_by_name"`
+	}
+	args := []interface{}{athleteUserID, from, to,
+		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
+	if err := d.DB.Raw(query, args...).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("error finding runner series: %w", err)
 	}
 
 	out := make([]DashboardSeriesRow, 0, len(rows))

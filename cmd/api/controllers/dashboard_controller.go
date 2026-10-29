@@ -27,6 +27,7 @@ type DashboardController interface {
 	Comparisons(c *gin.Context)
 	Periods(c *gin.Context)
 	SessionComparison(c *gin.Context)
+	RunnerKpis(c *gin.Context)
 }
 
 // Los tipos de respuesta se nombran acá para que swag los resuelva.
@@ -39,6 +40,7 @@ var (
 	_ *dashboard.ComparisonsResponse
 	_ *dashboard.PeriodsResponse
 	_ *dashboard.SessionComparisonResponse
+	_ *dashboard.RunnerKpisResponse
 )
 
 type dashboardController struct {
@@ -338,6 +340,39 @@ func (dc *dashboardController) SessionComparison(c *gin.Context) {
 	}
 
 	resp, err := dc.service.SessionComparison(c, callerID, request)
+	if err != nil {
+		respondDashboardError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// RunnerKpis godoc
+// @Summary      KPIs del Home del corredor
+// @Description  Distancia, mejor día, mejor velocidad por serie, velocidad promedio y mejores marcas del corredor autenticado en un período calendario. No acepta team_id, group_id ni athlete_user_id: el alcance es siempre el del token y suma todos sus grupos y equipos, incluidos los que ya dejó. Cada request calcula una sola pestaña.
+// @Tags         dashboard
+// @Produce      json
+// @Param        period          query     string  false  "Calendario del período (default month)"  Enums(month, week, day)
+// @Param        reference_date  query     string  false  "Fecha que ancla el período, YYYY-MM-DD (default fecha del servidor)"
+// @Param        tab             query     string  false  "Pestaña a calcular (default general)"  Enums(general, ritmo_continuo, velocidad_tiempo, velocidad_distancia)
+// @Success      200  {object}  dashboard.RunnerKpisResponse
+// @Failure      400  {object}  apierror.APIError
+// @Failure      401  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/dashboard/runner-kpis [get]
+func (dc *dashboardController) RunnerKpis(c *gin.Context) {
+	callerID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		respondDashboardUnauthorized(c)
+		return
+	}
+	query := services.RunnerKpisQuery{
+		Period:        c.Query("period"),
+		ReferenceDate: c.Query("reference_date"),
+		Tab:           c.Query("tab"),
+	}
+
+	resp, err := dc.service.RunnerKpis(c, callerID, query)
 	if err != nil {
 		respondDashboardError(c, err)
 		return
