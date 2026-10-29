@@ -26,8 +26,8 @@
 - [x] 3.2 Implementar la query desde `workout_feedback`, con `JOIN exercise_instances` y `LEFT JOIN runner_session`; sin `group_calendar_days`, sin `session_exercise_instances` y sin filtro de rol.
 - [x] 3.3 Filtrar por `athlete_user_id`, rango inclusivo de `session_date`, `deleted_at IS NULL` y estado `finished`/`interrupted` o sin fila de `runner_session`.
 - [x] 3.4 Ordenar por `session_date, id` para que el empate de mejor día sea determinista.
-- [ ] 3.5 Test de DAO con Postgres real: series en dos equipos, serie de grupo dejado, serie `wip`, serie borrada y serie de otro corredor.
-- [ ] 3.6 Verificar con `EXPLAIN` que la query usa `idx_feedback_athlete_date`; no agregar índice si ya lo usa.
+- [x] 3.5 Test de DAO con Postgres real: series en dos equipos, serie de grupo dejado, serie `wip`, serie borrada y serie de otro corredor.
+- [x] 3.6 Verificar con `EXPLAIN` que la query usa `idx_feedback_athlete_date`; no agregar índice si ya lo usa.
 
 ## 4. Service: validación y orquestación
 
@@ -53,4 +53,4 @@
 - [x] 6.3 Test de contrato: todas las claves de `metrics` presentes, `units` completo y `null` serializado como `null`.
 - [x] 6.4 Ejecutar la suite existente del dashboard y confirmar que no cambió ninguna expectativa.
 - [x] 6.5 Ejecutar `go test ./...` y `go vet ./...`.
-- [ ] 6.6 Verificar manualmente con `curl` un corredor con datos en dos equipos y otro sin datos.
+- [x] 6.6 Verificar manualmente con `curl` un corredor con datos en dos equipos y otro sin datos.

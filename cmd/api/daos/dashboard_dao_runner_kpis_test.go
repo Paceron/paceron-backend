@@ -177,7 +177,7 @@ func TestDashboardDao_RunnerSeriesUsaIndiceAthleteDate(t *testing.T) {
 	fixture.persistFeedback(t, fixture.athleteID, fixture.ritmoEx, 200, fixture.from, 5000, nil, false)
 
 	require.NoError(t, db.Exec("SET LOCAL enable_seqscan = off").Error)
-	query := "EXPLAIN SELECT wf.id FROM workout_feedback wf" + runnerSeriesFromClause
+	query := "EXPLAIN SELECT wf.id" + runnerSeriesFromClause + " ORDER BY wf.session_date, wf.id"
 	sqlRows, err := db.Raw(query, fixture.athleteID, fixture.from, fixture.to,
 		runnersession.RunnerSessionStatusFinished,
 		runnersession.RunnerSessionStatusInterrupted).Rows()
