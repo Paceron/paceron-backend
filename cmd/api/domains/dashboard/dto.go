@@ -385,6 +385,38 @@ type SessionComparisonResponse struct {
 	Units SessionComparisonUnits `json:"units"`
 }
 
+// ---------- KPIs del Home del corredor ----------
+
+// RunnerKpisUnits es el bloque de unidades del Home. A diferencia de Units, que
+// sirve a los seis endpoints analíticos, acá solo viajan las tres magnitudes del
+// contrato.
+type RunnerKpisUnits struct {
+	Distance string `json:"distance"`
+	Speed    string `json:"speed"`
+	Time     string `json:"time"`
+}
+
+// RunnerKpisUnitsBlock es el valor único del bloque de unidades del Home.
+var RunnerKpisUnitsBlock = RunnerKpisUnits{Distance: "m", Speed: "km/h", Time: "ms"}
+
+// RunnerKpisResponse es el contrato de GET /dashboard/runner-kpis. Las métricas
+// viajan todas las claves aunque no apliquen a la pestaña: null significa "sin
+// dato", nunca 0.
+type RunnerKpisResponse struct {
+	Period         string            `json:"period"`
+	ReferenceDate  string            `json:"reference_date"`
+	From           string            `json:"from"`
+	To             string            `json:"to"`
+	DaysConsidered int               `json:"days_considered"`
+	Tab            string            `json:"tab"`
+	Units          RunnerKpisUnits   `json:"units"`
+	HasData        bool              `json:"has_data"`
+	SeriesCount    int               `json:"series_count"`
+	ValidSeries    int               `json:"valid_series"`
+	Sessions       int               `json:"sessions"`
+	Metrics        RunnerKpisMetrics `json:"metrics"`
+}
+
 // ---------- requests ----------
 
 // PeriodRange es un período inclusivo de ambos extremos, en "YYYY-MM-DD".

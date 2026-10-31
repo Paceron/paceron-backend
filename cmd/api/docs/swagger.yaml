@@ -1268,6 +1268,59 @@ definitions:
       verdict:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisMetrics:
+    properties:
+      average_speed_kph:
+        type: number
+      best_day_date:
+        type: string
+      best_day_distance_m:
+        type: number
+      best_distance_m:
+        type: number
+      best_speed_kph:
+        type: number
+      best_time_ms:
+        type: integer
+      total_distance_m:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisResponse:
+    properties:
+      days_considered:
+        type: integer
+      from:
+        type: string
+      has_data:
+        type: boolean
+      metrics:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisMetrics'
+      period:
+        type: string
+      reference_date:
+        type: string
+      series_count:
+        type: integer
+      sessions:
+        type: integer
+      tab:
+        type: string
+      to:
+        type: string
+      units:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisUnits'
+      valid_series:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisUnits:
+    properties:
+      distance:
+        type: string
+      speed:
+        type: string
+      time:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_dashboard.SeriesDetailItem:
     properties:
       active_duration_ms:
@@ -5557,6 +5610,57 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Métricas por período
+      tags:
+      - dashboard
+  /api/v1/dashboard/runner-kpis:
+    get:
+      description: 'Distancia, mejor día, mejor velocidad por serie, velocidad promedio
+        y mejores marcas del corredor autenticado en un período calendario. No acepta
+        team_id, group_id ni athlete_user_id: el alcance es siempre el del token y
+        suma todos sus grupos y equipos, incluidos los que ya dejó. Cada request calcula
+        una sola pestaña.'
+      parameters:
+      - description: Calendario del período (default month)
+        enum:
+        - month
+        - week
+        - day
+        in: query
+        name: period
+        type: string
+      - description: Fecha que ancla el período, YYYY-MM-DD (default fecha del servidor)
+        in: query
+        name: reference_date
+        type: string
+      - description: Pestaña a calcular (default general)
+        enum:
+        - general
+        - ritmo_continuo
+        - velocidad_tiempo
+        - velocidad_distancia
+        in: query
+        name: tab
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.RunnerKpisResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: KPIs del Home del corredor
       tags:
       - dashboard
   /api/v1/exercises:

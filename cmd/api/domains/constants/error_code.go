@@ -3,17 +3,17 @@ package constants
 // Custom codes usados por los controllers para tipificar errores de dominio.
 // Se usan como `Code` en el DTO apierror.APIError.
 const (
-	ErrorCodeTierNotFound                  = "TIER_NOT_FOUND"
-	ErrorCodeTierRoleMismatch              = "TIER_ROLE_MISMATCH"
-	ErrorCodeSubscriptionPendingFirstPayment = "SUBSCRIPTION_PENDING_FIRST_PAYMENT"
-	ErrorCodeSubscriptionNotFound            = "SUBSCRIPTION_NOT_FOUND"
+	ErrorCodeTierNotFound                       = "TIER_NOT_FOUND"
+	ErrorCodeTierRoleMismatch                   = "TIER_ROLE_MISMATCH"
+	ErrorCodeSubscriptionPendingFirstPayment    = "SUBSCRIPTION_PENDING_FIRST_PAYMENT"
+	ErrorCodeSubscriptionNotFound               = "SUBSCRIPTION_NOT_FOUND"
 	ErrorCodeSubscriptionNotPendingFirstPayment = "SUBSCRIPTION_NOT_PENDING_FIRST_PAYMENT"
-	ErrorCodeDebtBlocksOperation           = "DEBT_BLOCKS_OPERATION"
-	ErrorCodeSellerNotConnected            = "SELLER_NOT_CONNECTED"
-	ErrorCodeTeamDebtBlocksOperation       = "TEAM_DEBT_BLOCKS_OPERATION"
-	ErrorCodeNotAppOwner                   = "NOT_APP_OWNER"
-	ErrorCodePaymentInstallmentNotFound    = "PAYMENT_INSTALLMENT_NOT_FOUND"
-	ErrorCodePaymentInstallmentForbidden   = "PAYMENT_INSTALLMENT_FORBIDDEN"
+	ErrorCodeDebtBlocksOperation                = "DEBT_BLOCKS_OPERATION"
+	ErrorCodeSellerNotConnected                 = "SELLER_NOT_CONNECTED"
+	ErrorCodeTeamDebtBlocksOperation            = "TEAM_DEBT_BLOCKS_OPERATION"
+	ErrorCodeNotAppOwner                        = "NOT_APP_OWNER"
+	ErrorCodePaymentInstallmentNotFound         = "PAYMENT_INSTALLMENT_NOT_FOUND"
+	ErrorCodePaymentInstallmentForbidden        = "PAYMENT_INSTALLMENT_FORBIDDEN"
 )
 
 // Códigos de los rechazos de parámetro del dashboard. Son estables a propósito:
@@ -32,4 +32,14 @@ const (
 	// ErrorCodeInvalidRange porque ese ya significa "el rango de FECHAS del período",
 	// y el cliente los corrige en lugares distintos de la pantalla.
 	ErrorCodeInvalidRangeFilter = "INVALID_RANGE_FILTER"
+)
+
+// Códigos de los parámetros propios del Home del corredor
+// (GET /dashboard/runner-kpis). Son independientes de los del dashboard
+// analítico porque el período lo deriva el servidor y no hay un rango de dos
+// fechas que corregir.
+const (
+	ErrorCodeInvalidPeriod = "INVALID_PERIOD"
+	ErrorCodeInvalidDate   = "INVALID_DATE"
+	ErrorCodeInvalidTab    = "INVALID_TAB"
 )

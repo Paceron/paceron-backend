@@ -21,13 +21,14 @@ import (
 // stubDashboardService registra la query que arma el controller y devuelve lo que el
 // test le pida. El controller no tiene lógica: su contrato es parsear y mapear.
 type stubDashboardService struct {
-	lastQuery      services.MetricsQuery
-	lastCallerID   int64
-	lastRequest    any
-	lastExerciseID int64
-	response       any
-	err            error
-	filtersTeamID  int64
+	lastQuery       services.MetricsQuery
+	lastCallerID    int64
+	lastRequest     any
+	lastExerciseID  int64
+	lastRunnerQuery services.RunnerKpisQuery
+	response        any
+	err             error
+	filtersTeamID   int64
 }
 
 func (s *stubDashboardService) Filters(c *gin.Context, callerID, teamID int64) (*dashboard.FiltersResponse, error) {
@@ -98,6 +99,17 @@ func (s *stubDashboardService) SessionComparison(c *gin.Context, callerID int64,
 		return typed, nil
 	}
 	return &dashboard.SessionComparisonResponse{}, nil
+}
+
+func (s *stubDashboardService) RunnerKpis(c *gin.Context, callerID int64, query services.RunnerKpisQuery) (*dashboard.RunnerKpisResponse, error) {
+	s.lastCallerID, s.lastRunnerQuery = callerID, query
+	if s.err != nil {
+		return nil, s.err
+	}
+	if typed, ok := s.response.(*dashboard.RunnerKpisResponse); ok {
+		return typed, nil
+	}
+	return &dashboard.RunnerKpisResponse{}, nil
 }
 
 func dashboardTestContext(t *testing.T, method, target, body string, withAuth bool) (*gin.Context, *httptest.ResponseRecorder) {
