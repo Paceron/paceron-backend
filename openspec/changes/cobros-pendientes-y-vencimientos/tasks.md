@@ -10,9 +10,9 @@
 
 ## 3. Comisión en el código de pagos
 
-- [ ] 3.1 `CreatePreference` y `ProcessPayment`: guardar `marketplace_fee` en todo `team_subscription`, también en 0.
-- [ ] 3.2 `ProcessPayment`: resolver el split por `concept`, así un `team_subscription` sin `installment_id` devuelve `400`.
-- [ ] 3.3 Tests de los dos casos.
+- [x] 3.1 `CreatePreference` y `ProcessPayment`: guardar `marketplace_fee` en todo `team_subscription`, también en 0.
+- [x] 3.2 `ProcessPayment`: resolver el split por `concept`, así un `team_subscription` sin `installment_id` devuelve `400`.
+- [x] 3.3 Tests de los dos casos.
 
 ## 4. Neto = bruto − comisión
 
