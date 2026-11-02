@@ -37,7 +37,8 @@ Decisión del equipo (2026-11-02). Reemplaza la D5 de `historial-pagos-cobros-en
 
 Una obligación es una cuota esperada. Para una membresía o suscripción con monto `m` mayor a 0, alta `a` y `p` cuotas pagadas:
 
-- La cuota `k` (k ≥ 1) vence en `a + (k − 1)` meses. La #1 vence en el alta: el backend no la cuenta como deuda para bloquear, pero para el entrenador es plata pendiente desde ese día.
+- La #1 vence en el alta. El backend no la cuenta como deuda para bloquear, pero para el entrenador es plata pendiente desde ese día.
+- La #2 vence un mes después del alta, y cada una de las siguientes un mes después de la anterior. Es la misma cadena que `BuildNextInstallment`. No equivale a `a + (k − 1)` meses: `AddDate` normaliza las fechas de fin de mes (31/1 + 1 mes = 3/3), y la cadena tiene que dar igual que la cuota que crea el webhook.
 - Las cuotas `1..p` están pagadas. De `p + 1` en adelante, pendientes.
 - Su monto es `init_amount`, el mismo que usa `BuildNextInstallment`.
 - Entran las membresías vivas (`team_users.deleted_at IS NULL`, `role_in_team = 'corredor'`, `init_amount > 0`) de los equipos vivos del entrenador (`teams.owner_id`).

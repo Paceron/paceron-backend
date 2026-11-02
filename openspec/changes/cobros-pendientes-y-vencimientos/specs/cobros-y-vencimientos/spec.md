@@ -31,7 +31,7 @@ El sistema MUST informar el neto de todo cobro aprobado como `amount − marketp
 
 ### Requirement: Obligaciones calculadas
 
-El sistema MUST derivar las cuotas esperadas de cada membresía y suscripción con monto mayor a 0. La cuota `k` vence en el alta + `k − 1` meses. Las primeras `paid_installments` están pagadas. Una obligación sin pagar está vencida si su vencimiento es anterior a hoy, en hora argentina.
+El sistema MUST derivar las cuotas esperadas de cada membresía y suscripción con monto mayor a 0. La #1 vence en el alta y cada cuota siguiente un mes después de la anterior, igual que el motor de cuotas. Las primeras `paid_installments` están pagadas. Una obligación sin pagar está vencida si su vencimiento es anterior a hoy, en hora argentina.
 
 #### Scenario: Corredor que dejó de pagar
 

@@ -21,8 +21,8 @@
 
 ## 5. Obligaciones calculadas
 
-- [ ] 5.1 Funciones puras en `services/payment_obligations.go`: cuotas esperadas, próxima pendiente y vencido en hora argentina.
-- [ ] 5.2 Tests por tabla: alta a fin de mes, sin cuotas pagas, al día, varias vencidas, vence hoy, monto 0.
+- [x] 5.1 Funciones puras en `services/payment_obligations.go`: cuotas esperadas, próxima pendiente y vencido en hora argentina.
+- [x] 5.2 Tests por tabla: alta a fin de mes, sin cuotas pagas, al día, varias vencidas, vence hoy, monto 0.
 
 ## 6. DAO de obligaciones
 
