@@ -26,9 +26,9 @@
 
 ## 6. DAO de obligaciones
 
-- [ ] 6.1 Membresías con cuota de los equipos vivos de un entrenador, con corredor y equipo.
-- [ ] 6.2 Membresías con cuota y suscripciones de tier de un usuario, con equipo, entrenador y tier.
-- [ ] 6.3 Tests contra Postgres y ramas de error con `FailingDB`.
+- [x] 6.1 Membresías con cuota de los equipos vivos de un entrenador, con corredor y equipo.
+- [x] 6.2 Membresías con cuota y suscripciones de tier de un usuario, con equipo, entrenador y tier.
+- [x] 6.3 Tests contra Postgres y ramas de error con `FailingDB`.
 
 ## 7. Resumen y endpoint nuevo
 

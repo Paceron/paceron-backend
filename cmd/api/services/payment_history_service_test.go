@@ -17,6 +17,22 @@ type mockPaymentHistoryDao struct {
 	listReceivedBetweenFn func(ctx *gin.Context, sellerID int64, from, to time.Time) ([]daos.ReceivedPaymentRow, error)
 	earliestReceivedAtFn  func(ctx *gin.Context, sellerID int64) (*time.Time, error)
 	listHistoryFn        func(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error)
+	trainerMemberships   []daos.FeeMembershipRow
+	userMemberships      []daos.FeeMembershipRow
+	tierSubscriptions    []daos.TierSubscriptionRow
+	obligationsErr       error
+}
+
+func (m *mockPaymentHistoryDao) ListTrainerFeeMemberships(*gin.Context, int64) ([]daos.FeeMembershipRow, error) {
+	return m.trainerMemberships, m.obligationsErr
+}
+
+func (m *mockPaymentHistoryDao) ListUserFeeMemberships(*gin.Context, int64) ([]daos.FeeMembershipRow, error) {
+	return m.userMemberships, m.obligationsErr
+}
+
+func (m *mockPaymentHistoryDao) ListUserTierSubscriptions(*gin.Context, int64) ([]daos.TierSubscriptionRow, error) {
+	return m.tierSubscriptions, m.obligationsErr
 }
 
 func (m *mockPaymentHistoryDao) ListReceived(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error) {
