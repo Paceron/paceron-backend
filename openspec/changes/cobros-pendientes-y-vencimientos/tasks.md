@@ -32,9 +32,10 @@
 
 ## 7. Resumen y endpoint nuevo
 
-- [ ] 7.1 `GetReceivedSummary`: pendiente por mes, `due_this_month` y `overdue_this_month`.
-- [ ] 7.2 `GetUpcoming` y `GET /api/v1/payments/upcoming`, con controller, ruta y godoc.
-- [ ] 7.3 Tests del service y del controller (200, 401, 500).
+- [x] 7.1 `GetReceivedSummary`: pendiente por mes, `due_this_month` y `overdue_this_month`.
+- [x] 7.2 `GetUpcoming` y `GET /api/v1/payments/upcoming`, con controller, ruta y godoc.
+- [x] 7.3 Tests del service y del controller (200, 401, 500).
+- [x] 7.4 Los `500` del historial de pagos devolvían el texto del error, que envuelve el de la DB. Pasan a responder "error interno", como el resto de los controllers nuevos.
 
 ## 8. Verificación y documentación
 

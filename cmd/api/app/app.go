@@ -287,7 +287,7 @@ func NewApplication() *Application {
 
 	// Historial de pagos y cobros (change historial-pagos-cobros-entrenador)
 	paymentHistoryDao := daos.NewPaymentHistoryDao(db)
-	paymentHistoryService := services.NewPaymentHistoryService(paymentHistoryDao)
+	paymentHistoryService := services.NewPaymentHistoryService(paymentHistoryDao, settingDao)
 	paymentHistoryController := controllers.NewPaymentHistoryController(paymentHistoryService)
 
 	// Tier subscription flow (ledger de suscripciones de tier por usuario/rol)

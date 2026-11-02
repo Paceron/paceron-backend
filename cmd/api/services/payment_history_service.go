@@ -40,17 +40,22 @@ type PaymentHistoryServiceInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
 	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
+	GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
 }
 
 type paymentHistoryService struct {
-	dao daos.PaymentHistoryDaoInterface
-	now func() time.Time
+	dao        daos.PaymentHistoryDaoInterface
+	settingDao daos.PlatformSettingDaoInterface
+	now        func() time.Time
 }
 
-// NewPaymentHistoryService depende solo del DAO de historial: no combina
-// services, así que no hace falta un delegate (design D2).
-func NewPaymentHistoryService(dao daos.PaymentHistoryDaoInterface) PaymentHistoryServiceInterface {
-	return &paymentHistoryService{dao: dao, now: time.Now}
+// NewPaymentHistoryService depende del DAO de historial y del de ajustes, del
+// que solo lee el porcentaje de comisión vigente para el neto de lo pendiente
+// (change cobros-pendientes-y-vencimientos, design D5); settingDao nil = 5%.
+// No combina services, así que no hace falta un delegate (design D2 de
+// historial-pagos-cobros-entrenador).
+func NewPaymentHistoryService(dao daos.PaymentHistoryDaoInterface, settingDao daos.PlatformSettingDaoInterface) PaymentHistoryServiceInterface {
+	return &paymentHistoryService{dao: dao, settingDao: settingDao, now: time.Now}
 }
 
 func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
@@ -236,15 +241,22 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		return byTeam[i].TeamID < byTeam[j].TeamID
 	})
 
+	due, overdue, err := s.addPendingObligations(ctx, sellerID, now, monthly, monthIndex, end)
+	if err != nil {
+		return nil, err
+	}
+
 	return &payment.ReceivedSummaryResponse{
-		CurrencyID:    currency,
-		Months:        months,
-		Monthly:       monthly,
-		ByTeam:        byTeam,
-		PendingCount:  pending,
-		RejectedCount: rejected,
-		EarliestMonth: earliestMonth,
-		GeneratedAt:   formatUTC(s.now()),
+		CurrencyID:       currency,
+		Months:           months,
+		Monthly:          monthly,
+		ByTeam:           byTeam,
+		PendingCount:     pending,
+		RejectedCount:    rejected,
+		EarliestMonth:    earliestMonth,
+		DueThisMonth:     due,
+		OverdueThisMonth: overdue,
+		GeneratedAt:      formatUTC(s.now()),
 	}, nil
 }
 

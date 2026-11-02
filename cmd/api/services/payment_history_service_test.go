@@ -66,19 +66,19 @@ func (m *mockPaymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filt
 func floatPtr(f float64) *float64 { return &f }
 
 func TestNewPaymentHistoryService(t *testing.T) {
-	assert.NotNil(t, NewPaymentHistoryService(&mockPaymentHistoryDao{}))
+	assert.NotNil(t, NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil))
 }
 
 // --- ListReceived ---
 
 func TestPaymentHistoryService_ListReceived_InvalidPage(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "", 0)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 func TestPaymentHistoryService_ListReceived_InvalidStatus(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "other", 1)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
@@ -99,7 +99,7 @@ func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 			{ID: 813, Status: "approved", TeamID: 13, PayerID: 46},
 		}, true, nil
 	}}
-	svc := NewPaymentHistoryService(dao)
+	svc := NewPaymentHistoryService(dao, nil)
 
 	resp, err := svc.ListReceived(nil, 7, &teamID, "rejected", 2)
 
@@ -129,7 +129,7 @@ func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
 			{ID: 2, Status: "approved", GrossAmount: 0, FeeAmount: 0},
 		}, false, nil
 	}}
-	resp, err := NewPaymentHistoryService(dao).ListReceived(nil, 7, nil, "", 1)
+	resp, err := NewPaymentHistoryService(dao, nil).ListReceived(nil, 7, nil, "", 1)
 
 	require.NoError(t, err)
 	assert.Equal(t, 1000.0, resp.Payments[0].FeeAmount)
@@ -138,7 +138,7 @@ func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
 }
 
 func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	resp, err := svc.ListReceived(nil, 7, nil, "", 1)
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Payments)
@@ -148,7 +148,7 @@ func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
 func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listReceivedFn: func(*gin.Context, int64, daos.ReceivedPaymentFilters, int, int) ([]daos.ReceivedPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
-	}})
+	}}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "", 1)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
@@ -158,7 +158,7 @@ func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 
 
 func TestPaymentHistoryService_ListHistory_InvalidParams(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListHistory(nil, 7, "", "", 0)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 	_, err = svc.ListHistory(nil, 7, "order", "", 1)
@@ -184,7 +184,7 @@ func TestPaymentHistoryService_ListHistory_MapsBothTypes(t *testing.T) {
 		}, true, nil
 	}}
 
-	resp, err := NewPaymentHistoryService(dao).ListHistory(nil, 7, "trainer_payment", "approved", 1)
+	resp, err := NewPaymentHistoryService(dao, nil).ListHistory(nil, 7, "trainer_payment", "approved", 1)
 
 	require.NoError(t, err)
 	assert.True(t, resp.HasMore)
@@ -219,7 +219,7 @@ func TestPaymentHistoryService_ListHistory_MapsBothTypes(t *testing.T) {
 }
 
 func TestPaymentHistoryService_ListHistory_EmptyIsNotNil(t *testing.T) {
-	resp, err := NewPaymentHistoryService(&mockPaymentHistoryDao{}).ListHistory(nil, 7, "", "", 1)
+	resp, err := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil).ListHistory(nil, 7, "", "", 1)
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Payments)
 	assert.Empty(t, resp.Payments)
@@ -228,7 +228,7 @@ func TestPaymentHistoryService_ListHistory_EmptyIsNotNil(t *testing.T) {
 func TestPaymentHistoryService_ListHistory_DaoError(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listHistoryFn: func(*gin.Context, int64, daos.HistoryPaymentFilters, int, int) ([]daos.HistoryPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
-	}})
+	}}, nil)
 	_, err := svc.ListHistory(nil, 7, "", "", 1)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
