@@ -11,14 +11,20 @@ import (
 	"simple-arq-golang/cmd/api/domains/constants"
 )
 
-// netAmountExpr extrae el neto real que informó Mercado Pago. Solo el
-// payment.Response que guarda el webhook trae transaction_details; el
-// PaymentResult que guarda ProcessPayment no. Un pago no aprobado puede traer
-// el neto en 0, por eso se exige approved y > 0 (design D5).
-const netAmountExpr = `CASE WHEN p.status = 'approved'
-	AND jsonb_typeof(p.raw_response->'transaction_details'->'net_received_amount') = 'number'
-	AND (p.raw_response->'transaction_details'->>'net_received_amount')::numeric > 0
-	THEN (p.raw_response->'transaction_details'->>'net_received_amount')::float8 END AS net_amount`
+// DefaultMarketplaceFeePercent es la comisión que se asume para un cobro de
+// equipo sin marketplace_fee guardado: el mismo valor por defecto que usa
+// resolveTeamSplitConfig.
+const DefaultMarketplaceFeePercent = 5.0
+
+// feeAmountSQL es la comisión de Paceron de un cobro de equipo.
+var feeAmountSQL = fmt.Sprintf("COALESCE(p.marketplace_fee, ROUND((p.amount * %g / 100)::numeric, 2))", DefaultMarketplaceFeePercent)
+
+// netAmountExpr es el neto de un cobro aprobado: bruto menos la comisión de
+// Paceron (change cobros-pendientes-y-vencimientos, design D2). Reemplaza al
+// neto que informaba Mercado Pago, que solo llegaba por webhook y además
+// descontaba su costo de procesamiento. Un cobro no aprobado no tiene neto.
+var netAmountExpr = "CASE WHEN p.status = 'approved' THEN (p.amount - " + feeAmountSQL + ")::float8 END AS net_amount, " +
+	feeAmountSQL + "::float8 AS fee_amount"
 
 // withMercadoPagoPaymentID excluye las filas que nunca llegaron a MP: las que
 // deja CreatePreference y los intentos donde CreatePayment falló (design D7).
@@ -39,6 +45,7 @@ type ReceivedPaymentRow struct {
 	StatusDetail      string    `gorm:"column:status_detail"`
 	GrossAmount       float64   `gorm:"column:gross_amount"`
 	NetAmount         *float64  `gorm:"column:net_amount"`
+	FeeAmount         float64   `gorm:"column:fee_amount"`
 	CurrencyID        string    `gorm:"column:currency_id"`
 	PaymentMethodID   string    `gorm:"column:payment_method_id"`
 	CreatedAt         time.Time `gorm:"column:created_at"`

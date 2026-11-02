@@ -16,8 +16,8 @@
 
 ## 4. Neto = bruto − comisión
 
-- [ ] 4.1 DAO del historial: neto `amount − marketplace_fee` (5% si falta), y `fee_amount` y `fee_percent` en cada cobro.
-- [ ] 4.2 Ajustar los tests del DAO y del service que esperaban el neto de Mercado Pago.
+- [x] 4.1 DAO del historial: neto `amount − marketplace_fee` (5% si falta), y `fee_amount` y `fee_percent` en cada cobro.
+- [x] 4.2 Ajustar los tests del DAO y del service que esperaban el neto de Mercado Pago.
 
 ## 5. Obligaciones calculadas
 

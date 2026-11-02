@@ -60,6 +60,7 @@ type paymentFixture struct {
 	mpPaymentID   string
 	status        string
 	amount        float64
+	fee           *float64
 	raw           *string
 	createdAt     time.Time
 }
@@ -73,8 +74,9 @@ func persistPayment(db *gorm.DB, f paymentFixture) *dbs.Payment {
 		PaymentID:     f.mpPaymentID,
 		SellerUserID:  f.sellerID,
 		InstallmentID: &f.installmentID,
-		RawResponse:   f.raw,
-		CreatedAt:     f.createdAt,
+		RawResponse:    f.raw,
+		CreatedAt:      f.createdAt,
+		MarketplaceFee: f.fee,
 	}
 	db.Create(p)
 	return p
@@ -168,33 +170,47 @@ func TestPaymentHistoryDao_ListReceived_ExcludesOtherConcepts(t *testing.T) {
 	assert.Empty(t, rows)
 }
 
+// El neto es bruto menos la comisión de Paceron, no el que informa Mercado
+// Pago (change cobros-pendientes-y-vencimientos, design D2). Sin comisión
+// guardada se asume 5%. Un cobro no aprobado tiene comisión pero no neto.
 func TestPaymentHistoryDao_ListReceived_NetAmount(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewPaymentHistoryDao(db)
 	s := seedReceived(db, "000005")
 	base := time.Now().UTC().Add(-time.Hour)
+	fee := func(v float64) *float64 { return &v }
 
-	persistPayment(db, teamPayment(s, "mp-webhook", "approved", ptrStr(webhookRaw), base.Add(4*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-process", "approved", ptrStr(processPaymentRaw), base.Add(3*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-nil-raw", "approved", nil, base.Add(2*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-pending", "pending",
-		ptrStr(`{"transaction_details":{"net_received_amount":0}}`), base.Add(time.Minute)))
+	withFee := teamPayment(s, "mp-fee", "approved", ptrStr(webhookRaw), base.Add(4*time.Minute))
+	withFee.fee = fee(1200)
+	persistPayment(db, withFee)
+	persistPayment(db, teamPayment(s, "mp-no-fee", "approved", ptrStr(processPaymentRaw), base.Add(3*time.Minute)))
+	zeroFee := teamPayment(s, "mp-zero-fee", "approved", nil, base.Add(2*time.Minute))
+	zeroFee.fee = fee(0)
+	persistPayment(db, zeroFee)
+	pending := teamPayment(s, "mp-pending", "pending", nil, base.Add(time.Minute))
+	pending.fee = fee(750)
+	persistPayment(db, pending)
 	persistPayment(db, teamPayment(s, "mp-rejected", "rejected", ptrStr(webhookRaw), base))
 
 	rows, _, err := dao.ListReceived(nil, s.trainer.ID, ReceivedPaymentFilters{}, 1, 20)
 
 	require.NoError(t, err)
 	require.Len(t, rows, 5)
-	byID := map[string]*float64{}
+	byID := map[string]ReceivedPaymentRow{}
 	for _, r := range rows {
-		byID[r.MPPaymentID] = r.NetAmount
+		byID[r.MPPaymentID] = r
 	}
-	require.NotNil(t, byID["mp-webhook"])
-	assert.InDelta(t, 14101.5, *byID["mp-webhook"], 0.001)
-	assert.Nil(t, byID["mp-process"])
-	assert.Nil(t, byID["mp-nil-raw"])
-	assert.Nil(t, byID["mp-pending"])
-	assert.Nil(t, byID["mp-rejected"])
+	require.NotNil(t, byID["mp-fee"].NetAmount)
+	assert.InDelta(t, 13800, *byID["mp-fee"].NetAmount, 0.001, "15000 - 1200, no el neto de MP")
+	assert.InDelta(t, 1200, byID["mp-fee"].FeeAmount, 0.001)
+	require.NotNil(t, byID["mp-no-fee"].NetAmount)
+	assert.InDelta(t, 14250, *byID["mp-no-fee"].NetAmount, 0.001, "sin comisión guardada se asume 5%")
+	assert.InDelta(t, 750, byID["mp-no-fee"].FeeAmount, 0.001)
+	require.NotNil(t, byID["mp-zero-fee"].NetAmount)
+	assert.InDelta(t, 15000, *byID["mp-zero-fee"].NetAmount, 0.001, "una comisión 0 guardada es 0, no 5%")
+	assert.Nil(t, byID["mp-pending"].NetAmount)
+	assert.InDelta(t, 750, byID["mp-pending"].FeeAmount, 0.001)
+	assert.Nil(t, byID["mp-rejected"].NetAmount)
 }
 
 func TestPaymentHistoryDao_ListReceived_Filters(t *testing.T) {

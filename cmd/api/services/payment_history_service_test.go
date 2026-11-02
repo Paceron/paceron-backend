@@ -104,6 +104,23 @@ func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 	assert.Equal(t, "", resp.Payments[1].Payer.Email)
 }
 
+// La comisión viaja en cada cobro, como monto y como porcentaje del bruto
+// (change cobros-pendientes-y-vencimientos, design D2).
+func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
+	dao := &mockPaymentHistoryDao{listReceivedFn: func(*gin.Context, int64, daos.ReceivedPaymentFilters, int, int) ([]daos.ReceivedPaymentRow, bool, error) {
+		return []daos.ReceivedPaymentRow{
+			{ID: 1, Status: "approved", GrossAmount: 20000, NetAmount: floatPtr(19000), FeeAmount: 1000},
+			{ID: 2, Status: "approved", GrossAmount: 0, FeeAmount: 0},
+		}, false, nil
+	}}
+	resp, err := NewPaymentHistoryService(dao).ListReceived(nil, 7, nil, "", 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1000.0, resp.Payments[0].FeeAmount)
+	assert.Equal(t, 5.0, resp.Payments[0].FeePercent)
+	assert.Equal(t, 0.0, resp.Payments[1].FeePercent, "un bruto en 0 no divide por cero")
+}
+
 func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
 	resp, err := svc.ListReceived(nil, 7, nil, "", 1)

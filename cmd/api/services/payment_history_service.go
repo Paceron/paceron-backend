@@ -267,7 +267,16 @@ func (a *installmentAttempts) add(r daos.ReceivedPaymentRow, approved bool) {
 	}
 }
 
-// knownNet devuelve nil si no hubo ningún neto informado por Mercado Pago.
+// feePercentOf es la comisión como porcentaje del bruto, a 2 decimales.
+func feePercentOf(fee, gross float64) float64 {
+	if gross <= 0 {
+		return 0
+	}
+	return round2(fee / gross * 100)
+}
+
+// knownNet devuelve nil si ningún cobro del grupo tiene neto. Desde que el neto
+// es bruto − comisión (design D2), todo cobro aprobado lo tiene.
 func knownNet(sum float64, knownCount int) *float64 {
 	if knownCount == 0 {
 		return nil
@@ -285,6 +294,8 @@ func toReceivedPaymentItem(r daos.ReceivedPaymentRow) payment.ReceivedPaymentIte
 		StatusDetail:      r.StatusDetail,
 		GrossAmount:       round2(r.GrossAmount),
 		NetAmount:         roundPtr(r.NetAmount),
+		FeeAmount:         round2(r.FeeAmount),
+		FeePercent:        feePercentOf(r.FeeAmount, r.GrossAmount),
 		CurrencyID:        r.CurrencyID,
 		PaymentMethodID:   r.PaymentMethodID,
 		CreatedAt:         formatUTC(r.CreatedAt),
