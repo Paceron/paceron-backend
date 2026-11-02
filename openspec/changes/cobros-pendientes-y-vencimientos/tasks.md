@@ -41,4 +41,4 @@
 
 - [x] 8.1 `EXPLAIN ANALYZE` de las consultas nuevas contra testing: la del entrenador planifica con seq scan y tarda 0,12 ms (`team_users` 49 filas, `teams` 19). No hace falta índice (design D7).
 - [x] 8.2 Regenerar swagger. Actualizar README y `docs/DEUDA_TECNICA_Y_PENDIENTES.md`.
-- [ ] 8.3 `go vet ./...`, `go test ./...` y validar el change.
+- [x] 8.3 `go vet ./...`, `go test ./...` y validar el change.
