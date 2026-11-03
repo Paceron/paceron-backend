@@ -33,15 +33,15 @@
 - Test: `cmd/api/scripts/seed_dashboard/profile_full_test.go` (dispatch, defaults,
   rechazo de perfil inválido, guard de ids ocupados)
 
-- [ ] 1.1 Agregar `--profile dashboard|full` con default `dashboard`; el camino
+- [x] 1.1 Agregar `--profile dashboard|full` con default `dashboard`; el camino
       dashboard no cambia en absoluto.
-- [ ] 1.2 Implementar el despacho a `runFullSeed` con scope ids en rango alto
+- [x] 1.2 Implementar el despacho a `runFullSeed` con scope ids en rango alto
       (equipos 1001+, grupos 2001+) y marker `[seed_full]`; abortar si un id de scope
       ya existe sin el marker.
-- [ ] 1.3 Agregar targets `fullseed-seed`, `fullseed-reset`, `fullseed-cleanup`,
+- [x] 1.3 Agregar targets `fullseed-seed`, `fullseed-reset`, `fullseed-cleanup`,
       `fullseed-verify` sin tocar `seed-dashboard*` ni `demo-*`.
-- [ ] 1.4 Tests del dispatch y del guard; suite del paquete verde contra Postgres real.
-- [ ] 1.5 Commit `feat(seed): perfil full como modo del seed existente`.
+- [x] 1.4 Tests del dispatch y del guard; suite del paquete verde contra Postgres real.
+- [x] 1.5 Commit `feat(seed): perfil full como modo del seed existente`.
 
 ### Task 2: Identidad, roles, tiers y suscripciones
 
