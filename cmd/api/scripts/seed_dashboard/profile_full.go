@@ -121,6 +121,26 @@ func runFullSeed(db *gorm.DB, opts options) error {
 	}
 }
 
+func (s *fullSeeder) seedCatalogCalendar() error {
+	if s.ids.users["trainer_1"] <= 0 || s.ids.users["trainer_2"] <= 0 {
+		return fmt.Errorf("seedCatalogCalendar requiere seedIdentity")
+	}
+	for _, key := range []string{"team_a", "team_b", "team_f"} {
+		if s.ids.teams[key] <= 0 {
+			return fmt.Errorf("seedCatalogCalendar requiere seedTeams: falta %s", key)
+		}
+	}
+	for _, key := range []string{"group_a_main", "group_a_secondary", "group_b", "group_f"} {
+		if s.ids.groups[key] <= 0 {
+			return fmt.Errorf("seedCatalogCalendar requiere seedTeams: falta %s", key)
+		}
+	}
+	if err := s.seedFullCatalog(); err != nil {
+		return err
+	}
+	return s.seedFullCalendar()
+}
+
 func (s *fullSeeder) guardScope() error {
 	teams := []struct {
 		name string
