@@ -44,23 +44,25 @@ type fullScope struct {
 }
 
 type fullSeedIDs struct {
-	users             map[string]int64
-	roles             map[string]int64
-	tiers             map[string]int64
-	subscriptions     map[string]int64
-	teams             map[string]int64
-	groups            map[string]int64
-	exercises         map[string]int64
-	sessions          map[string]int64
-	trainingPlans     map[string]int64
-	calendarDays      map[string]int64
-	sessionInstances  map[string]int64
-	exerciseInstances map[string]int64
-	runnerSessions    map[string]int64
-	workoutFeedback   map[string]int64
-	attendances       map[string]int64
-	competitions      map[string]int64
-	payments          map[string]int64
+	users                map[string]int64
+	roles                map[string]int64
+	tiers                map[string]int64
+	subscriptions        map[string]int64
+	teams                map[string]int64
+	groups               map[string]int64
+	exercises            map[string]int64
+	sessions             map[string]int64
+	trainingPlans        map[string]int64
+	calendarDays         map[string]int64
+	sessionInstances     map[string]int64
+	exerciseInstances    map[string]int64
+	runnerSessions       map[string]int64
+	workoutFeedback      map[string]int64
+	attendances          map[string]int64
+	competitions         map[string]int64
+	competitionInstances map[string]int64
+	competitionAttempts  map[string]int64
+	payments             map[string]int64
 }
 
 type fullSeeder struct {
@@ -99,7 +101,8 @@ func newFullSeeder(db *gorm.DB, opts options) *fullSeeder {
 			sessionInstances: make(map[string]int64), exerciseInstances: make(map[string]int64),
 			runnerSessions: make(map[string]int64), workoutFeedback: make(map[string]int64),
 			attendances:  make(map[string]int64),
-			competitions: make(map[string]int64), payments: make(map[string]int64),
+			competitions: make(map[string]int64), competitionInstances: make(map[string]int64),
+			competitionAttempts: make(map[string]int64), payments: make(map[string]int64),
 		},
 	}
 }
