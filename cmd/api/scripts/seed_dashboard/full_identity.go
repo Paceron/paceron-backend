@@ -11,6 +11,8 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/services"
+	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
 const fullSeedPassword = "Paceron.123"
@@ -111,7 +113,7 @@ func (s *fullSeeder) seedIdentity() error {
 			return err
 		}
 
-		for _, subscription := range fullIdentitySubscriptions(s.now) {
+		for _, subscription := range fullIdentitySubscriptions(s.now, tierAmounts) {
 			userID := userIDs[subscription.userKey]
 			tierID := tierIDs[subscription.tierKey]
 			amount := tierAmounts[subscription.tierKey]
@@ -155,8 +157,8 @@ func (s *fullSeeder) seedIdentity() error {
 
 func fullIdentityUsers() []fullIdentityUser {
 	users := []fullIdentityUser{
-		{key: "trainer_1", name: "Lucía", surname: "Entrenadora", email: "trainer1.seed-full@paceron.test", dni: "990200001", status: "active", roleTiers: []string{"entrenador_base", "corredor_base"}, allowInvitations: true},
-		{key: "trainer_2", name: "Mateo", surname: "Entrenador", email: "trainer2.seed-full@paceron.test", dni: "990200002", status: "active", roleTiers: []string{"entrenador_base", "corredor_base"}, allowInvitations: true},
+		{key: "trainer_1", name: "Lucía", surname: "Entrenadora", email: "trainer1.seed-full@seed-full.local", dni: "990200001", status: "active", roleTiers: []string{"entrenador_base", "corredor_base"}, allowInvitations: true},
+		{key: "trainer_2", name: "Mateo", surname: "Entrenador", email: "trainer2.seed-full@seed-full.local", dni: "990200002", status: "active", roleTiers: []string{"entrenador_base", "corredor_base"}, allowInvitations: true},
 	}
 	for i := 1; i <= 12; i++ {
 		tierKey := "corredor_base"
@@ -167,52 +169,77 @@ func fullIdentityUsers() []fullIdentityUser {
 		}
 		users = append(users, fullIdentityUser{
 			key: fmt.Sprintf("r%d", i), name: fmt.Sprintf("Corredor %d", i), surname: "Perfil Full",
-			email: fmt.Sprintf("runner%d.seed-full@paceron.test", i), dni: fmt.Sprintf("990200%03d", i+2),
+			email: fmt.Sprintf("runner%d.seed-full@seed-full.local", i), dni: fmt.Sprintf("990200%03d", i+2),
 			status: "active", roleTiers: []string{tierKey}, allowInvitations: true,
 		})
 	}
 	return append(users,
-		fullIdentityUser{key: "blocked", name: "Corredor Bloqueado", surname: "Perfil Full", email: "blocked.seed-full@paceron.test", dni: "990200015", status: string(constants.UserStatusBlocked), roleTiers: []string{"corredor_base"}, allowInvitations: true},
-		fullIdentityUser{key: "inactive", name: "Corredor Inactivo", surname: "Perfil Full", email: "inactive.seed-full@paceron.test", dni: "990200016", status: string(constants.UserStatusInactive), roleTiers: []string{"corredor_base"}, allowInvitations: true},
-		fullIdentityUser{key: "no_role", name: "Sin Rol", surname: "Perfil Full", email: "no-role.seed-full@paceron.test", dni: "990200017", status: "active", allowInvitations: true},
-		fullIdentityUser{key: "invitations_off", name: "Invitaciones Desactivadas", surname: "Perfil Full", email: "invitations-off.seed-full@paceron.test", dni: "990200018", status: "active", roleTiers: []string{"corredor_base"}, allowInvitations: false},
+		fullIdentityUser{key: "blocked", name: "Corredor Bloqueado", surname: "Perfil Full", email: "blocked.seed-full@seed-full.local", dni: "990200015", status: string(constants.UserStatusBlocked), roleTiers: []string{"corredor_base"}, allowInvitations: true},
+		fullIdentityUser{key: "inactive", name: "Corredor Inactivo", surname: "Perfil Full", email: "inactive.seed-full@seed-full.local", dni: "990200016", status: string(constants.UserStatusInactive), roleTiers: []string{"corredor_base"}, allowInvitations: true},
+		fullIdentityUser{key: "no_role", name: "Sin Rol", surname: "Perfil Full", email: "no-role.seed-full@seed-full.local", dni: "990200017", status: "active", allowInvitations: true},
+		fullIdentityUser{key: "invitations_off", name: "Invitaciones Desactivadas", surname: "Perfil Full", email: "invitations-off.seed-full@seed-full.local", dni: "990200018", status: "active", roleTiers: []string{"corredor_base"}, allowInvitations: false},
 	)
 }
 
-func fullIdentitySubscriptions(now time.Time) []fullIdentitySubscription {
-	startR1 := now.AddDate(0, -3, 0)
-	startR2 := now.AddDate(0, -3, 0)
+func fullIdentitySubscriptions(now time.Time, tierAmounts map[string]float64) []fullIdentitySubscription {
+	r1Amount := tierAmounts["corredor_premium"]
+	r2Amount := tierAmounts["corredor_premium"]
+	r3Amount := tierAmounts["corredor_medium"]
+	startR1 := fullEndOfCordobaDay(now).AddDate(0, -2, 0)
+	startR2 := fullStartForThirdInstallmentDue(now.AddDate(0, 0, -32))
 	startR3 := now.AddDate(0, -2, 0)
-	firstPaid := dbs.Installment{InstallmentNumber: 1, Status: "paid"}
-	secondPaid := dbs.Installment{InstallmentNumber: 2, Status: "paid", DueDate: timePtr(now.AddDate(0, -1, 0)), BlockedDate: timePtr(now.AddDate(0, -1, 0).AddDate(0, 0, 7))}
 	return []fullIdentitySubscription{
 		{
 			key: "r1_premium_active", userKey: "r1", tierKey: "corredor_premium", status: "active",
-			start: startR1, paidInstallments: 2,
-			installments: []dbs.Installment{
-				firstPaid, secondPaid,
-				{InstallmentNumber: 3, Status: "pending", DueDate: timePtr(now), BlockedDate: timePtr(now.AddDate(0, 0, 7))},
-			},
+			start: startR1, paidInstallments: 2, installments: fullInstallmentSequence(startR1, r1Amount, 3, 2),
 		},
 		{
 			key: "r2_premium_debt", userKey: "r2", tierKey: "corredor_premium", status: "active",
-			start: startR2, paidInstallments: 1,
-			installments: []dbs.Installment{
-				firstPaid,
-				{InstallmentNumber: 2, Status: "pending", DueDate: timePtr(now.AddDate(0, 0, -14)), BlockedDate: timePtr(now.AddDate(0, 0, -7))},
-			},
+			start: startR2, paidInstallments: 2, installments: fullInstallmentSequence(startR2, r2Amount, 3, 2),
 		},
 		{
 			key: "r3_medium_active", userKey: "r3", tierKey: "corredor_medium", status: "active",
 			start: startR3, paidInstallments: 1,
-			installments: []dbs.Installment{{InstallmentNumber: 1, Status: "paid"}},
+			installments: fullInstallmentSequence(startR3, r3Amount, 1, 1),
 		},
 		{
 			key: "r3_premium_pending", userKey: "r3", tierKey: "corredor_premium", status: string(constants.SubscriptionStatusFirstPaymentPending),
 			start: now, paidInstallments: 0,
-			installments: []dbs.Installment{{InstallmentNumber: 1, Status: "pending"}},
+			installments: fullInstallmentSequence(now, r1Amount, 1, 0),
 		},
 	}
+}
+
+func fullEndOfCordobaDay(now time.Time) time.Time {
+	local := now.In(gametime.Location)
+	return time.Date(local.Year(), local.Month(), local.Day(), 23, 59, 59, 999_999_000, gametime.Location)
+}
+
+func fullStartForThirdInstallmentDue(target time.Time) time.Time {
+	if target.Day() > 28 {
+		// Día 28 existe en todos los meses; evita el rollover de AddDate al invertir el ciclo.
+		target = target.AddDate(0, 0, 28-target.Day())
+	}
+	return target.AddDate(0, -2, 0)
+}
+
+func fullInstallmentSequence(startDate time.Time, amount float64, count, paidThrough int) []dbs.Installment {
+	first := services.FirstInstallment(nil, nil, 0, amount)
+	if paidThrough >= 1 {
+		first.Status = string(constants.InstallmentStatusPaid)
+	}
+	sequence := []dbs.Installment{*first}
+	paid := first
+	cycle := services.CycleContext{StartDate: startDate, InitAmount: amount}
+	for number := 2; number <= count; number++ {
+		next := services.BuildNextInstallment(cycle, paid, nil, nil, 0)
+		if number <= paidThrough {
+			next.Status = string(constants.InstallmentStatusPaid)
+			paid = next
+		}
+		sequence = append(sequence, *next)
+	}
+	return sequence
 }
 
 func fullIdentityRole(tx *gorm.DB, name string, now time.Time) (*dbs.Role, error) {

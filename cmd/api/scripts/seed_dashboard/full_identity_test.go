@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ func TestFullSeederSeedIdentity_SeedsDashboardIdentityContract(t *testing.T) {
 	assert.Len(t, s.ids.users, 18)
 	for key, id := range s.ids.users {
 		assert.Positive(t, id, key)
+		user := fullIdentityUserByID(t, db, id)
+		assert.True(t, strings.HasSuffix(user.Email, "@seed-full.local"), key)
 	}
 	for _, fixture := range []struct {
 		key         string
@@ -42,14 +45,14 @@ func TestFullSeederSeedIdentity_SeedsDashboardIdentityContract(t *testing.T) {
 		hasRole     bool
 		invitations bool
 	}{
-		{"trainer_1", "trainer1.seed-full@paceron.test", "active", true, true},
-		{"trainer_2", "trainer2.seed-full@paceron.test", "active", true, true},
-		{"r1", "runner1.seed-full@paceron.test", "active", true, true},
-		{"r12", "runner12.seed-full@paceron.test", "active", true, true},
-		{"blocked", "blocked.seed-full@paceron.test", "blocked", true, true},
-		{"inactive", "inactive.seed-full@paceron.test", "inactive", true, true},
-		{"no_role", "no-role.seed-full@paceron.test", "active", false, true},
-		{"invitations_off", "invitations-off.seed-full@paceron.test", "active", true, false},
+		{"trainer_1", "trainer1.seed-full@seed-full.local", "active", true, true},
+		{"trainer_2", "trainer2.seed-full@seed-full.local", "active", true, true},
+		{"r1", "runner1.seed-full@seed-full.local", "active", true, true},
+		{"r12", "runner12.seed-full@seed-full.local", "active", true, true},
+		{"blocked", "blocked.seed-full@seed-full.local", "blocked", true, true},
+		{"inactive", "inactive.seed-full@seed-full.local", "inactive", true, true},
+		{"no_role", "no-role.seed-full@seed-full.local", "active", false, true},
+		{"invitations_off", "invitations-off.seed-full@seed-full.local", "active", true, false},
 	} {
 		user := fullIdentityUserByID(t, db, s.ids.users[fixture.key])
 		assert.Equal(t, fixture.email, user.Email)
@@ -94,22 +97,36 @@ func TestFullSeederSeedIdentity_SeedsDashboardIdentityContract(t *testing.T) {
 	assert.Equal(t, 2, r1.PaidInstallments)
 	assert.Equal(t, s.ids.users["r1"], r1.UserID)
 	assert.Equal(t, s.ids.tiers["corredor_premium"], r1.TierID)
-	assertInstallmentStatuses(t, db, r1.ID, []string{"paid", "paid", "pending"})
-	var r1Third dbs.Installment
-	require.NoError(t, db.Where("subscription_id = ? AND installment_number = 3", r1.ID).Take(&r1Third).Error)
-	require.NotNil(t, r1Third.DueDate)
-	dueDate := r1Third.DueDate.In(gametime.Location)
-	assert.Equal(t, s.now.Year(), dueDate.Year())
-	assert.Equal(t, s.now.Month(), dueDate.Month())
-	assert.Equal(t, s.now.Day(), dueDate.Day())
+	r1Installments := fullIdentityInstallments(t, db, r1.ID)
+	require.Len(t, r1Installments, 3)
+	assert.Equal(t, []string{"paid", "paid", "pending"}, installmentStatusList(r1Installments))
+	assert.Nil(t, r1Installments[0].DueDate)
+	assert.Nil(t, r1Installments[0].BlockedDate)
+	assertInstallmentMatchesEngine(t, &r1, &r1Installments[0], r1Installments[1])
+	assertInstallmentMatchesEngine(t, &r1, &r1Installments[1], r1Installments[2])
+	assert.Equal(t, r1.InitAmount, r1Installments[2].Amount)
+	r1DueDate := time.Date(s.now.Year(), s.now.Month(), s.now.Day(), 23, 59, 59, 999_999_000, gametime.Location)
+	require.NotNil(t, r1Installments[2].DueDate)
+	assert.True(t, r1DueDate.Equal(r1Installments[2].DueDate.In(gametime.Location)))
 
 	r2 := loadFullIdentitySubscription(t, db, s.ids.subscriptions["r2_premium_debt"])
 	assert.Equal(t, "active", r2.Status)
-	assertInstallmentStatuses(t, db, r2.ID, []string{"paid", "pending"})
-	var r2Debt dbs.Installment
-	require.NoError(t, db.Where("subscription_id = ? AND installment_number = 2", r2.ID).Take(&r2Debt).Error)
-	require.NotNil(t, r2Debt.BlockedDate)
-	assert.True(t, r2Debt.BlockedDate.Before(s.now))
+	assert.Equal(t, 2, r2.PaidInstallments)
+	r2Installments := fullIdentityInstallments(t, db, r2.ID)
+	require.Len(t, r2Installments, 3)
+	assert.Equal(t, []string{"paid", "paid", "pending"}, installmentStatusList(r2Installments))
+	assert.Nil(t, r2Installments[0].DueDate)
+	assert.Nil(t, r2Installments[0].BlockedDate)
+	assertInstallmentMatchesEngine(t, &r2, &r2Installments[0], r2Installments[1])
+	assertInstallmentMatchesEngine(t, &r2, &r2Installments[1], r2Installments[2])
+	require.NotNil(t, r2Installments[2].DueDate)
+	require.NotNil(t, r2Installments[2].BlockedDate)
+	r2DueAge := s.now.Sub(r2Installments[2].DueDate.In(gametime.Location))
+	r2BlockedAge := s.now.Sub(r2Installments[2].BlockedDate.In(gametime.Location))
+	assert.GreaterOrEqual(t, r2DueAge, 31*24*time.Hour)
+	assert.LessOrEqual(t, r2DueAge, 35*24*time.Hour)
+	assert.GreaterOrEqual(t, r2BlockedAge, 24*24*time.Hour)
+	assert.LessOrEqual(t, r2BlockedAge, 28*24*time.Hour)
 
 	r3Pending := loadFullIdentitySubscription(t, db, s.ids.subscriptions["r3_premium_pending"])
 	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), r3Pending.Status)
@@ -134,7 +151,7 @@ func TestFullSeederSeedIdentity_SeedsDashboardIdentityContract(t *testing.T) {
 	counts := fullIdentityTableCounts(t, db)
 	assert.Equal(t, map[string]int64{
 		"users": 18, "roles": 2, "permissions": 6, "tiers": 6, "tier_permissions": 12,
-		"user_roles": 19, "user_role_tier_subscriptions": 4, "installments": 7,
+		"user_roles": 19, "user_role_tier_subscriptions": 4, "installments": 8,
 		"platform_settings": 1,
 	}, counts)
 	firstIDs := copyFullIdentityIDs(s.ids)
@@ -219,6 +236,21 @@ func TestFullSeederSeedIdentity_UsesExistingCanonicalTierAmount(t *testing.T) {
 	assert.Equal(t, 4200.0, thirdInstallment.Amount)
 }
 
+func TestFullSeederSeedIdentity_R1IsNotInDebtImmediatelyAfterSeeding(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	now := gametime.Now().In(gametime.Location)
+	s := newFullSeeder(db, options{})
+	s.now = now
+	require.NoError(t, s.seedIdentity())
+
+	r1 := loadFullIdentitySubscription(t, db, s.ids.subscriptions["r1_premium_active"])
+	installments := fullIdentityInstallments(t, db, r1.ID)
+	require.Len(t, installments, 3)
+	pending := installments[2]
+
+	assert.False(t, services.HasPendingDebt([]dbs.Installment{pending}))
+}
+
 func fullIdentityUserByID(t *testing.T, db *gorm.DB, id int64) dbs.User {
 	t.Helper()
 	var user dbs.User
@@ -256,6 +288,34 @@ func assertInstallmentStatuses(t *testing.T, db *gorm.DB, subscriptionID int64, 
 		got[i] = rows[i].Status
 	}
 	assert.Equal(t, want, got)
+}
+
+func fullIdentityInstallments(t *testing.T, db *gorm.DB, subscriptionID int64) []dbs.Installment {
+	t.Helper()
+	var rows []dbs.Installment
+	require.NoError(t, db.Where("subscription_id = ?", subscriptionID).Order("installment_number").Find(&rows).Error)
+	return rows
+}
+
+func installmentStatusList(rows []dbs.Installment) []string {
+	statuses := make([]string, len(rows))
+	for i := range rows {
+		statuses[i] = rows[i].Status
+	}
+	return statuses
+}
+
+func assertInstallmentMatchesEngine(t *testing.T, subscription *dbs.UserRoleTierSubscription, paid *dbs.Installment, got dbs.Installment) {
+	t.Helper()
+	want := services.NextTierInstallment(subscription, paid)
+	assert.Equal(t, want.InstallmentNumber, got.InstallmentNumber)
+	assert.Equal(t, want.Amount, got.Amount)
+	require.NotNil(t, want.DueDate)
+	require.NotNil(t, got.DueDate)
+	assert.True(t, want.DueDate.Equal(*got.DueDate))
+	require.NotNil(t, want.BlockedDate)
+	require.NotNil(t, got.BlockedDate)
+	assert.True(t, want.BlockedDate.Equal(*got.BlockedDate))
 }
 
 func assertFullIdentityAuthContract(t *testing.T, db *gorm.DB, users map[string]int64) {
