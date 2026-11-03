@@ -19,16 +19,23 @@ DAOs para runner_session; las guardas son `SEEDING_ENABLED=true` +
   ya existe con datos que no llevan el marker, abortar con error en vez de mezclar.
 - El perfil full asume base local recién reseteada (`fullseed-reset`), pero es
   idempotente: segunda corrida sobre el mismo universo no duplica.
+- El estado de corrida vive en un `fullSeeder` creado una vez; las fases T2–T8 se
+  implementan como métodos del mismo tipo y se conectan en orden en `profile_full.go`.
+  T1 define ese contrato y cada fase preserva los IDs que consumen las siguientes.
 
 ## D2 — Un solo run que contiene el dashboard
 
-- `full` siembra primero el dataset dashboard-compatible: 2 semanas completas previas
-  (martes/jueves), 7 arquetipos, mismo plan de defectos y mismo verify de 6
-  contadores. Luego agrega el universo extendido.
+- `full` reutiliza el seeder dashboard existente bajo los IDs reservados del Team A y
+  su grupo principal: 2 semanas completas previas (martes/jueves), 7 arquetipos, mismo
+  plan de defectos y mismo verify de 6 contadores. Luego agrega el universo extendido.
 - Los 7 arquetipos viven en el grupo dashboard (grupo principal del Team A). Los 5
   corredores extra viven en un grupo secundario del Team A y en el Team B, fuera del
   scope del dashboard, para no alterar sus contadores.
 - Total: 12 corredores (7 + 5). El verify dashboard sigue corriendo y debe pasar.
+- Para conservar el perfil existente, ese segmento reutilizado mantiene su marker
+  `[seed_dashboard]`; los registros exclusivos del perfil full usan `[seed_full]`.
+  `fullseed-cleanup` reconoce ambos markers solo dentro del scope full reservado; los
+  comandos de dashboard siguen limitados a sus IDs default 29/39.
 
 ## D3 — Usuarios, roles, tiers y suscripciones
 
@@ -194,6 +201,11 @@ Todas en Team A, participantes = corredores (el trainer nunca compite):
   invitaciones/join requests, memberships, equipos/grupos y usuarios `@seed-full.local`.
 - No toca datos del perfil dashboard ni datos reales; pide `--yes` explícito, igual que
   el cleanup actual.
+- Primero borra los datos full-only que puedan referenciar instancias del calendario;
+  después limpia el segmento dashboard-compatible reutilizando sus WHEREs existentes,
+  acotado al Team A, grupo principal y ventana full reservados. Elimina también las
+  memberships y usuarios seed-full; nunca limpia `group_users`/usuarios fuera de ese
+  scope.
 
 ## D12 — Makefile y documentación
 
@@ -219,6 +231,20 @@ fullseed-verify    # --verify
 - Fechas siempre relativas a `NOW` en TZ Córdoba; nada hardcodeado a un día calendario.
 - Guardas existentes sin cambios: `SEEDING_ENABLED=true` + `--stage=local` obligatorios.
 - Sin red: no se llama a MP, Expo ni storage; todo sintético.
+
+## D14 — Contrato interno de fases
+
+- `profile_full.go` es el único orquestador del perfil full. `fullSeeder` mantiene la
+  conexión, opciones, scope, un instante de referencia y los IDs estables que pasan
+  entre fases.
+- Las fases usan estas firmas y se conectan en orden: `seedIdentity() error`,
+  `seedTeams() error`, `seedCatalogCalendar() error`, `seedActivity() error`,
+  `seedGamification() error`, `seedCompetitions() error` y
+  `seedPaymentsAndMessages() error`. T9 agrega `verifyFull() error` y
+  `cleanupFull() error`.
+- Cada task de fase modifica `profile_full.go` solo para añadir su implementación al
+  estado compartido y conectarla al pipeline; se mantiene el orden de dependencias.
+  Las pruebas de fase pueden invocar el método directamente contra una DB descartable.
 
 ## Riesgos
 

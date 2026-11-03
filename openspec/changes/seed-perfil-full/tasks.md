@@ -47,6 +47,7 @@
 
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_identity.go` (+ test).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedIdentity`).
 - Interfaces: requiere los DAOs/modelos de `dbs` y el paquete `crypto` para cifrado.
 
 - [ ] 2.1 Crear usuarios del perfil full con bcrypt de `Paceron.123` (protagonistas y
@@ -67,6 +68,7 @@
 
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_teams.go` (+ test).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedTeams`).
 
 - [ ] 3.1 Sembrar los 6 equipos de la matriz del design (A normal, B pago, C lleno, D
       oculto, E cerrado, F colisión) con su ubicación, fee, max_members y owner.
@@ -89,6 +91,7 @@
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_catalog.go` y `full_calendar.go`
   (+ tests).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedCatalogCalendar`).
 
 - [ ] 4.1 Catálogo ampliado: ejercicios de todos los kinds vigentes, sesiones con
       warmup/main/cooldown y planes de 7/14/21 días con `sequence_no` 1..N.
@@ -107,6 +110,7 @@
 
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_activity.go` (+ test).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedActivity`).
 
 - [ ] 5.1 `runner_session`: finished pasadas, wip de hoy, interrupted histórica.
 - [ ] 5.2 Feedback con todos los `completion_status`, métricas coherentes, feedback
@@ -123,6 +127,7 @@
 
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_gamification.go` (+ test).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedGamification`).
 
 - [ ] 6.1 Rachas garantizadas por el historial: una viva de 10 días (hito), una rota y
       una con días pre-membresía skipped; `streak_state` coherente.
@@ -138,6 +143,7 @@
 
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_competitions.go` (+ test).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedCompetitions`).
 
 - [ ] 7.1 Sembrar pending_approval, active metric, active route (max_attempts=3, un
       intento 100% y otro parcial + wip), finished metric con empate, finished route
@@ -157,6 +163,7 @@
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_payments.go`,
   `full_messages.go` (+ tests).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedPaymentsAndMessages`).
 
 - [ ] 8.1 Suscripciones/cuotas/pagos: historial pagado, próxima cuota, deuda que
       bloquea la baja del equipo, `first_payment_pending`, pagos rechazados; CHECK de
@@ -175,7 +182,8 @@
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_verify.go`,
   `full_cleanup.go` (+ tests).
-- Modify: `main.go` (wiring de `--verify` y cleanup full).
+- Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (orchestrate verify/cleanup).
+- Modify: `cmd/api/scripts/seed_dashboard/main.go` (wiring de `--verify` y cleanup full).
 
 - [ ] 9.1 `fullseed-verify`: login de protagonistas, calendario de hoy, banners,
       streaks/logros/estampas/unseen, leaderboard, competencias por estado e historial
