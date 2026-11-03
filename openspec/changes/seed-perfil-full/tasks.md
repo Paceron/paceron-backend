@@ -130,9 +130,14 @@
 **Files:**
 - Create: `cmd/api/scripts/seed_dashboard/full_gamification.go` (+ test).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedGamification`).
+- Modify: `cmd/api/scripts/seed_dashboard/full_catalog.go` (plan auxiliar de racha
+  usado solo en el grupo secundario del perfil full).
 
-- [ ] 6.1 Rachas garantizadas por el historial: una viva de 10 días (hito), una rota y
-      una con días pre-membresía skipped; `streak_state` coherente.
+- [ ] 6.1 Crear un plan full-only de 9 días de training en el grupo secundario de A
+      (-16..-8) y sesiones finished para R4 en esos días; junto al finished de T5 en
+      -7, debe dar strict/flexible current=10. R5 termina los primeros cuatro días y
+      deja fallar los siguientes (best=4, current=0); R9 prueba días skipped antes de
+      su alta futura en el grupo. `streak_state` debe ser coherente.
 - [ ] 6.2 `user_achievement_progress` con ids del catálogo: un corredor con varios
       desbloqueados y otro vacío.
 - [ ] 6.3 Filas de `gamification_unseen` para `streaks`/`achievements` (un protagonista

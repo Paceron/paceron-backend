@@ -126,10 +126,14 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
 
 ## D7 — Gamificación
 
-- Rachas: se derivan del historial (no hay tabla que sembrar); se garantiza R1 con 10
-  días consecutivos (hito → unseen), R2 con racha rota (reset) y R3 con días previos a
-  la membresía (skipped). `gamification_streak_state` se siembra opcionalmente para que
-  el próximo trigger no dispare hitos ya avisados.
+- Rachas: se derivan del historial (no hay tabla que sembrar). T6 agrega un plan
+  auxiliar full-only de 9 días de training al grupo secundario de A (-16..-8); con el
+  training finished que T5 ya siembra en -7, R4 tiene 10 días consecutivos. R5 termina
+  los primeros cuatro y deja fallar los siguientes (best=4, current=0). R9 tiene un
+  alta futura en ese grupo: los días anteriores al alta deben aparecer `skipped`.
+  `gamification_streak_state` se siembra con currents coherentes para que el próximo
+  trigger no dispare hitos ya avisados. El plan auxiliar queda fuera del grupo principal
+  del dashboard para preservar sus contadores.
 - Logros: `user_achievement_progress` con `unlocked_at` para un corredor con varios
   desbloqueados y otro vacío (empty state); ids del catálogo de
   `constants/achievements.go` (21 filas); `icon_key` = id.
