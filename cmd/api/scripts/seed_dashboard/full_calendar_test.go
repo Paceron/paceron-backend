@@ -198,7 +198,7 @@ func assertFullCatalogContents(t *testing.T, db *gorm.DB, s *fullSeeder) {
 	}
 	assert.Len(t, s.ids.exercises, 9)
 	assert.Len(t, s.ids.sessions, 3)
-	assert.Len(t, s.ids.trainingPlans, 3)
+	assert.Len(t, s.ids.trainingPlans, 4)
 	for _, id := range s.ids.exercises {
 		var exercise dbs.Exercise
 		require.NoError(t, db.First(&exercise, id).Error)

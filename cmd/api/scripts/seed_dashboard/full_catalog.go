@@ -261,6 +261,17 @@ func fullTrainingPlanSpecs() []fullTrainingPlanSpec {
 			17: {kind: "other", otherName: "Evaluación funcional"},
 			20: {kind: "training", sessionKey: "full_distance", presencial: true, timeFrom: "18:00", timeTo: "20:00"},
 		}},
+		{key: fullStreakPlanKey, name: "Semilla Full · Racha de 9 días", days: 9, assignments: map[int]fullPlanDaySpec{
+			1: {kind: "training", sessionKey: "full_interval"},
+			2: {kind: "training", sessionKey: "full_interval"},
+			3: {kind: "training", sessionKey: "full_interval"},
+			4: {kind: "training", sessionKey: "full_interval"},
+			5: {kind: "training", sessionKey: "full_interval"},
+			6: {kind: "training", sessionKey: "full_interval"},
+			7: {kind: "training", sessionKey: "full_interval"},
+			8: {kind: "training", sessionKey: "full_interval"},
+			9: {kind: "training", sessionKey: "full_interval"},
+		}},
 	}
 }
 
