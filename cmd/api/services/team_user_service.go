@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 )
+
+// ErrTeamLeaveWithDebt indica que el corredor quiso dejar el equipo con cuotas
+// sin pagar que ya vencieron o vencen hoy. El controller la mapea a 409.
+var ErrTeamLeaveWithDebt = errors.New("no podés dejar el equipo con cuotas pendientes")
 
 // TeamUserServiceInterface define las operaciones de negocio para la asociación usuario-equipo.
 type TeamUserServiceInterface interface {
@@ -264,25 +269,14 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 		return fmt.Errorf("no se puede quitar al entrenador del equipo")
 	}
 
-	// Gate D4: si el equipo cobra mensualidad, no se puede dejar el equipo con
-	// deuda (cuota pending pasada su blocked_date/due_date de la membresía
-	// vigente). La cuota #1 nunca es deuda. Sin deuda se permite la baja y el
-	// historial financiero queda en installments.
-	if teamDB.MembershipFee > 0 {
-		pending, err := s.installDao.FindPendingByUserTeam(ctx, teamID, targetUserID)
-		if err != nil {
-			customlogger.Error(ctx, "error checking membership debt for removal", err,
-				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-				customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
-				customlogger.TagMethod("RemoveUser"))
-			return fmt.Errorf("error al quitar usuario del equipo")
-		}
-		if HasPendingDebt(pending) {
-			customlogger.Warn(ctx, "blocking team user removal: membership has pending debt",
-				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-				customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
-				customlogger.TagMethod("RemoveUser"))
-			return fmt.Errorf("no podés dejar el equipo con deuda pendiente")
+	// Gate D4 (change cobros-pendientes-y-vencimientos, D7): el corredor no
+	// puede irse con cuotas que ya vencen hoy o antes, incluida la #1. La deuda
+	// se calcula desde la membresía (membershipDebt), así que vale aunque la
+	// cuota no exista como fila o el equipo haya pasado a ser gratis. El
+	// entrenador sí puede sacarlo: eso perdona la deuda y corta las cuotas.
+	if callerID == targetUserID {
+		if err := s.checkLeaveDebt(ctx, teamID, targetUserID, existing); err != nil {
+			return err
 		}
 	}
 
@@ -306,6 +300,39 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 	}
 
 	return nil
+}
+
+// checkLeaveDebt devuelve ErrTeamLeaveWithDebt si la membresía tiene cuotas
+// vencidas o que vencen hoy. Además de la deuda calculada, mira las cuotas
+// pending que ya existen como fila, por si el contador de pagadas quedó
+// desfasado o la cuota tiene una blocked_date propia.
+func (s *teamUserService) checkLeaveDebt(ctx *gin.Context, teamID, userID int64, membership *dbs.TeamUser) error {
+	owed := len(membershipDebt(membership, time.Now()))
+	if owed == 0 && s.installDao != nil {
+		pending, err := s.installDao.FindPendingByUserTeam(ctx, teamID, userID)
+		if err != nil {
+			customlogger.Error(ctx, "error checking membership debt for removal", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.TagMethod("RemoveUser"))
+			return fmt.Errorf("error al quitar usuario del equipo")
+		}
+		if HasPendingDebt(pending) {
+			owed = 1
+		}
+	}
+	if owed == 0 {
+		return nil
+	}
+	customlogger.Warn(ctx, "blocking team leave: membership has pending installments",
+		customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("owed_installments", fmt.Sprintf("%d", owed)),
+		customlogger.TagMethod("RemoveUser"))
+	if owed == 1 {
+		return fmt.Errorf("%w: tenés 1 cuota sin pagar", ErrTeamLeaveWithDebt)
+	}
+	return fmt.Errorf("%w: tenés %d cuotas sin pagar", ErrTeamLeaveWithDebt, owed)
 }
 
 // notifyTeamRemoval avisa al corredor expulsado, por mail y push. Best-effort:

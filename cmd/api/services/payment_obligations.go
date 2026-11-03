@@ -1,6 +1,10 @@
 package services
 
-import "time"
+import (
+	"time"
+
+	"simple-arq-golang/cmd/api/domains/dbs"
+)
 
 // Obligaciones de pago calculadas (change cobros-pendientes-y-vencimientos,
 // design D3). Las cuotas se crean de a una: la N+1 recién existe cuando se paga
@@ -86,6 +90,34 @@ func countOverdue(c obligationCycle, today time.Time) int {
 		}
 	}
 	return n
+}
+
+// membershipDebt son las cuotas sin pagar de una membresía de equipo que vencen
+// hoy o antes, incluida la #1 (vence en el alta). Es lo que impide dejar el
+// equipo. Se calcula en el momento desde la membresía: no depende de que la
+// cuota exista como fila (la N+1 recién se crea al pagar la N) ni de la cuota
+// que tenga el equipo hoy, que el entrenador puede haber cambiado.
+func membershipDebt(tu *dbs.TeamUser, now time.Time) []obligation {
+	if tu == nil || tu.AssignmentDate.IsZero() {
+		return nil
+	}
+	return obligationsUntil(membershipCycle(tu), now)
+}
+
+// membershipOverdue cuenta las cuotas de una membresía que ya vencieron (vencer
+// hoy no es estar vencida). Es el has_debt del estado de cuenta.
+func membershipOverdue(tu *dbs.TeamUser, now time.Time) int {
+	if tu == nil || tu.AssignmentDate.IsZero() {
+		return 0
+	}
+	return countOverdue(membershipCycle(tu), now)
+}
+
+// membershipCycle es el ciclo de cuotas de una membresía de equipo. Los dos
+// helpers de arriba descartan una fecha de alta vacía: contaría cuotas desde el
+// año 1.
+func membershipCycle(tu *dbs.TeamUser) obligationCycle {
+	return obligationCycle{Start: tu.AssignmentDate, Amount: tu.InitAmount, Paid: tu.PaidInstallments}
 }
 
 // argentinaDay es la medianoche, en hora argentina, del día de t.

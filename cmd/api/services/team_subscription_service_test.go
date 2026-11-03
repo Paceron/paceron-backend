@@ -206,3 +206,28 @@ func TestGetTeamSubscription_PendingInstallmentDaoError(t *testing.T) {
 	assert.Nil(t, resp)
 	assert.EqualError(t, err, "error al obtener el estado de cuenta")
 }
+
+// Una cuota vencida que no existe como fila (la N+1 recién se crea al pagar la
+// N) también es deuda, y un equipo que pasó a ser gratis no la borra.
+func TestGetTeamSubscription_ComputedOverdueIsDebt(t *testing.T) {
+	ctx := &gin.Context{}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, Name: "Los cracks", MembershipFee: 0}, nil
+		},
+	}
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{TeamID: teamID, UserID: userID,
+				SubscriptionStatus: string(constants.SubscriptionStatusFirstPaymentPending),
+				InitAmount:         12000, AssignmentDate: time.Now().AddDate(0, -2, -3)}, nil
+		},
+	}
+
+	svc := NewTeamSubscriptionService(teamDao, teamUserDao, &mockInstallmentDao{})
+	resp, err := svc.GetTeamSubscription(ctx, 19, 16)
+	require.NoError(t, err)
+	assert.True(t, resp.HasDebt)
+	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), resp.Membership.SubscriptionStatus)
+	require.NotNil(t, resp.MercadoPago, "sigue pudiendo pagar")
+}

@@ -106,3 +106,27 @@ func TestCountOverdue(t *testing.T) {
 	assert.Equal(t, 2, countOverdue(c, artDate(2026, 11, 2)))
 	assert.Equal(t, 0, countOverdue(obligationCycle{Start: artDate(2026, 10, 30), Amount: 1000, Paid: 1}, artDate(2026, 11, 2)))
 }
+
+func TestMembershipDebt(t *testing.T) {
+	now := artDate(2026, 11, 2)
+	// El caso de "Los cracks": alta el 22/08 a $12.000 sin ninguna cuota paga.
+	unpaid := &dbs.TeamUser{AssignmentDate: artDate(2026, 8, 22), InitAmount: 12000}
+	assert.Equal(t, []string{"2026-08-22", "2026-09-22", "2026-10-22"}, dueDays(membershipDebt(unpaid, now)))
+	assert.Equal(t, 3, membershipOverdue(unpaid, now))
+
+	// La #1 vence en el alta: alguien que se unió hoy ya la debe, pero no está vencida.
+	joinedToday := &dbs.TeamUser{AssignmentDate: artDate(2026, 11, 2), InitAmount: 12000}
+	assert.Len(t, membershipDebt(joinedToday, now), 1)
+	assert.Equal(t, 0, membershipOverdue(joinedToday, now))
+
+	// Al día: la próxima vence el 22/11.
+	upToDate := &dbs.TeamUser{AssignmentDate: artDate(2026, 8, 22), InitAmount: 12000, PaidInstallments: 3}
+	assert.Empty(t, membershipDebt(upToDate, now))
+
+	// Sin monto, sin alta o sin membresía no hay deuda.
+	assert.Empty(t, membershipDebt(&dbs.TeamUser{AssignmentDate: artDate(2026, 8, 22)}, now))
+	assert.Empty(t, membershipDebt(&dbs.TeamUser{InitAmount: 12000}, now))
+	assert.Empty(t, membershipDebt(nil, now))
+	assert.Equal(t, 0, membershipOverdue(&dbs.TeamUser{InitAmount: 12000}, now))
+	assert.Equal(t, 0, membershipOverdue(nil, now))
+}
