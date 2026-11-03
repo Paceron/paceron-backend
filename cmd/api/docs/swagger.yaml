@@ -2552,9 +2552,9 @@ definitions:
         allOf:
         - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock'
         description: |-
-          DueThisMonth vence desde hoy hasta fin del mes actual; OverdueThisMonth
-          venció desde el 1° del mes hasta ayer (design D4 y D5). No dependen de
-          la ventana de meses.
+          DueThisMonth vence desde hoy hasta fin del mes actual; Overdue es todo
+          lo que ya venció sin pagar, de este mes o de meses anteriores (design D4
+          y D5). No dependen de la ventana de meses.
       earliest_month:
         description: |-
           EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
@@ -2568,7 +2568,7 @@ definitions:
         type: array
       months:
         type: integer
-      overdue_this_month:
+      overdue:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock'
       pending_count:
         type: integer
@@ -7066,8 +7066,9 @@ paths:
         él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas
         según su último intento, dentro de la ventana. `earliest_month` es el primer
         mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin
-        pagar que vencen en él (`pending_*`), y `due_this_month` / `overdue_this_month`
-        traen lo que vence desde hoy y lo que venció en el mes actual.
+        pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence
+        desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de
+        este mes o de meses anteriores.
       parameters:
       - description: Meses de la ventana, entre 2 y 12 (default 6)
         in: query
@@ -8794,7 +8795,9 @@ paths:
   /api/v1/teams/{id}/users/{user_id}:
     delete:
       description: Quita un usuario de un equipo (soft-delete de la asociación). El
-        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro.
+        El corredor no puede irse con cuotas que vencen hoy o antes (409); el entrenador
+        sí puede sacarlo
       parameters:
       - description: Team ID
         in: path
@@ -8823,6 +8826,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Corredor que se va con cuotas sin pagar
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":

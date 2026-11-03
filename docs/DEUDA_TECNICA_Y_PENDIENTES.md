@@ -24,7 +24,9 @@ Desde el change `cobros-pendientes-y-vencimientos`, lo que un corredor todavía 
 - `paid_installments` coincide con las cuotas pagadas (en develop, sí en las 8 membresías con cuota al 2026-11-02);
 - ninguna cuota se crea fuera de `installment_engine.go`.
 
-Si alguna falla, lo pendiente que ve el entrenador no va a coincidir con las cuotas reales. Además, el neto de lo pendiente se estima con el porcentaje de comisión vigente: si cambia antes del pago, el neto real va a ser otro. Si el producto empieza a necesitar historia de deuda por mes (recargos, condonaciones), conviene materializar las cuotas en vez de seguir calculándolas.
+Si alguna falla, lo pendiente que ve el entrenador no va a coincidir con las cuotas reales. Además, el neto de lo pendiente se estima con el porcentaje de comisión vigente: si cambia antes del pago, el neto real va a ser otro. Si el producto empieza a necesitar historia de deuda por mes (recargos, condonaciones), conviene materializar las cuotas en vez de seguir calculándolas (por ejemplo, con un proceso batch que cree la cuota del mes aunque la anterior no se haya pagado).
+
+El mismo cálculo decide si un corredor puede dejar el equipo (`RemoveUser`, design D7): con cuotas que vencen hoy o antes, incluida la #1, responde `409`. Por eso un desfasaje en `paid_installments` también podría bloquear o dejar ir a alguien por error; el chequeo mira además las cuotas pending que ya existen como fila. El entrenador sí puede sacar a un corredor con deuda, y eso la perdona: no queda registro de lo que se debía.
 
 ### El webhook lee los pagos de equipo con el token de la plataforma
 

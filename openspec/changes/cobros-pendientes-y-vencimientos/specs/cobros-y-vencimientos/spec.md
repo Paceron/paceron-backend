@@ -51,7 +51,7 @@ El sistema MUST derivar las cuotas esperadas de cada membresía y suscripción c
 
 ### Requirement: Cobros pendientes en el resumen
 
-El resumen de cobros MUST sumar en cada mes de la ventana las obligaciones sin pagar que vencen en ese mes (`pending_amount`, `pending_net_amount`, `pending_count`). También MUST devolver `due_this_month` (vence desde hoy hasta fin de mes) y `overdue_this_month` (venció desde el 1° del mes hasta ayer), con sus ítems.
+El resumen de cobros MUST sumar en cada mes de la ventana las obligaciones sin pagar que vencen en ese mes (`pending_amount`, `pending_net_amount`, `pending_count`). También MUST devolver `due_this_month` (vence desde hoy hasta fin de mes) y `overdue` (todo lo que ya venció sin pagar, de cualquier mes), con sus ítems.
 
 #### Scenario: Pendiente por mes
 
@@ -61,7 +61,12 @@ El resumen de cobros MUST sumar en cada mes de la ventana las obligaciones sin p
 #### Scenario: Vence hoy
 
 - **WHEN** una obligación vence hoy
-- **THEN** cuenta en `due_this_month` y no en `overdue_this_month`
+- **THEN** cuenta en `due_this_month` y no en `overdue`
+
+#### Scenario: Vencida de un mes anterior
+
+- **WHEN** una obligación venció el 22/10 y hoy es 2026-11-02
+- **THEN** cuenta en `overdue` aunque sea de octubre
 
 #### Scenario: Cobros de tier
 
@@ -87,3 +92,33 @@ El sistema MUST devolver en `GET /payments/upcoming` la próxima obligación sin
 
 - **WHEN** el usuario no tiene membresías con cuota ni tier pago
 - **THEN** la respuesta es `200` con `items` vacío
+
+### Requirement: Salir del equipo con cuotas pendientes
+
+El sistema MUST rechazar con `409` que un corredor deje un equipo si su membresía tiene cuotas sin pagar que vencen hoy o antes, incluida la #1. La deuda MUST calcularse desde la membresía, sin depender de que la cuota exista como fila ni de la cuota actual del equipo. El entrenador MAY sacar a un corredor con deuda.
+
+#### Scenario: Corredor con cuotas vencidas
+
+- **WHEN** un corredor que se unió el 2026-08-22 a $12.000 sin pagar ninguna cuota se quiere ir el 2026-11-02
+- **THEN** la respuesta es `409` y dice que tiene 3 cuotas sin pagar
+- **AND** la membresía sigue activa
+
+#### Scenario: Cuota #1 sin pagar
+
+- **WHEN** un corredor se une hoy a un equipo pago y se quiere ir sin pagar la #1
+- **THEN** la respuesta es `409`
+
+#### Scenario: Corredor al día
+
+- **WHEN** el corredor pagó todas las cuotas que vencen hasta hoy
+- **THEN** puede dejar el equipo
+
+#### Scenario: El entrenador saca a un corredor que debe
+
+- **WHEN** el entrenador saca del equipo a un corredor con cuotas vencidas
+- **THEN** la baja se hace y no se generan más cuotas
+
+#### Scenario: Equipo que pasó a ser gratis
+
+- **WHEN** el corredor se unió pagando, el equipo después bajó la cuota a 0 y tiene cuotas vencidas
+- **THEN** no puede irse y `has_debt` es `true`

@@ -4198,7 +4198,7 @@
         },
         "/api/v1/payments/received/summary": {
             "get": {
-                "description": "Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` / `overdue_this_month` traen lo que vence desde hoy y lo que venció en el mes actual.",
+                "description": "Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores.",
                 "produces": [
                     "application/json"
                 ],
@@ -6846,7 +6846,7 @@
         },
         "/api/v1/teams/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
+                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro. El corredor no puede irse con cuotas que vencen hoy o antes (409); el entrenador sí puede sacarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -6891,6 +6891,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Corredor que se va con cuotas sin pagar",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -13456,7 +13462,7 @@
                     "type": "string"
                 },
                 "due_this_month": {
-                    "description": "DueThisMonth vence desde hoy hasta fin del mes actual; OverdueThisMonth\nvenció desde el 1° del mes hasta ayer (design D4 y D5). No dependen de\nla ventana de meses.",
+                    "description": "DueThisMonth vence desde hoy hasta fin del mes actual; Overdue es todo\nlo que ya venció sin pagar, de este mes o de meses anteriores (design D4\ny D5). No dependen de la ventana de meses.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
@@ -13479,7 +13485,7 @@
                 "months": {
                     "type": "integer"
                 },
-                "overdue_this_month": {
+                "overdue": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
                 },
                 "pending_count": {

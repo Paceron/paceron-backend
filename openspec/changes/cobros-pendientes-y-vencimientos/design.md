@@ -56,9 +56,9 @@ Decisión del equipo. Una obligación pendiente está vencida si su vencimiento 
 
 - en cada mes de `monthly`: `pending_amount`, `pending_net_amount` y `pending_count`. Son las obligaciones sin pagar que vencen en ese mes. La ventana es la misma del gráfico, así que se navega igual con `until`.
 - `due_this_month`: lo que vence desde hoy hasta fin del mes actual.
-- `overdue_this_month`: lo que venció desde el 1° del mes actual hasta ayer.
+- `overdue`: todo lo que ya venció sin pagar, de este mes o de meses anteriores. Una cuota de octubre que no se pagó se sigue debiendo en noviembre; con solo las del mes, un corredor que dejó de pagar hace tres meses no aparecería en ningún lado (caso real de testing, 2026-11-02).
 
-Los dos bloques traen `count`, `amount`, `net_amount` e `items` (corredor, equipo, número de cuota, monto y vencimiento), siempre del mes actual sin importar la ventana. El neto pendiente usa el porcentaje de comisión vigente, porque ese pago todavía no tiene comisión guardada.
+Los dos bloques traen `count`, `amount`, `net_amount` e `items` (corredor, equipo, número de cuota, monto y vencimiento) y no dependen de la ventana. El neto pendiente usa el porcentaje de comisión vigente, porque ese pago todavía no tiene comisión guardada.
 
 ### D6. Próximos vencimientos del usuario
 
@@ -69,9 +69,19 @@ Los dos bloques traen `count`, `amount`, `net_amount` e `items` (corredor, equip
 
 Cada ítem trae `installment_number`, `amount`, `due_date` y `overdue`. Si hay más de una cuota vencida, `overdue_count` dice cuántas. Se ordenan por vencimiento.
 
-### D7. Sin índice nuevo
+### D7. No se puede dejar el equipo con cuotas pendientes
 
-Las consultas leen `team_users` por `team_id` y `user_id`, y `user_role_tier_subscriptions` por `user_id`. Las tres columnas ya tienen índice. La lista de equipos de un entrenador se filtra por `teams.owner_id`, que no tiene índice, pero `teams` tiene 19 filas. Se mide con `EXPLAIN ANALYZE` antes de cerrar (tarea 8.1), y se agrega un índice solo si el plan lo pide.
+El corredor no puede irse de un equipo (`DELETE /teams/:id/users/:user_id` sobre sí mismo) si tiene cuotas que vencen hoy o antes, incluida la #1, que vence en el alta. Responde `409` con "no podés dejar el equipo con cuotas pendientes: tenés N cuotas sin pagar".
+
+La deuda se calcula desde la membresía con las mismas reglas de D3, en el momento: no depende de que la cuota exista como fila ni de la cuota que tenga hoy el equipo. El chequeo anterior solo corría si el equipo cobraba en ese momento, solo miraba cuotas ya creadas y nunca contaba la #1, así que alguien podía unirse, no pagar nunca e irse. Las cuotas pending que ya existen como fila se siguen mirando, por si el contador de pagadas quedó desfasado.
+
+El entrenador sí puede sacar a un corredor que debe (decisión del equipo, 2026-11-02): sacarlo perdona la deuda y corta las cuotas, porque la membresía deja de existir. Salir de un grupo no toca la membresía del equipo, así que las cuotas siguen.
+
+`has_debt` del estado de cuenta (`GET /users/:id/teams/:team_id/subscription`) usa el mismo cálculo, con cuotas ya vencidas (vencer hoy no es estar vencida), y una membresía que se dio de alta pagando sigue mostrando su deuda aunque el equipo haya pasado a ser gratis.
+
+### D8. Índice en `teams.owner_id`
+
+Las consultas leen `team_users` por `team_id` y `user_id`, y `user_role_tier_subscriptions` por `user_id`: esas columnas ya tienen índice. La lista de membresías de un entrenador se filtra por `teams.owner_id`, que no lo tenía. Hoy `teams` tiene 19 filas y el plan tarda 0,12 ms con seq scan, pero el resumen de cobros la corre en cada request y crece con la cantidad de equipos. Se agrega el índice con el tag de GORM (`AutoMigrate` lo crea al arrancar); también lo aprovechan las demás consultas de "mis equipos".
 
 ## Contrato
 
@@ -79,7 +89,7 @@ Las consultas leen `team_users` por `team_id` y `user_id`, y `user_role_tier_sub
 GET /api/v1/payments/received/summary        (cambios)
   monthly[]:            + pending_amount, pending_net_amount, pending_count
   + due_this_month:     { count, amount, net_amount, items[] }
-  + overdue_this_month: { count, amount, net_amount, items[] }
+  + overdue:            { count, amount, net_amount, items[] }
     items[]: { team: {id, name}, payer: {id, name, surname}, installment_number, amount, due_date }
   net_amount y net_known_count: ahora siempre informados para los aprobados (D2)
 
@@ -92,6 +102,9 @@ GET /api/v1/payments/upcoming                (nuevo)
                   tier?: {id, name, role_name},
                   installment_number, amount, currency_id, due_date, overdue, overdue_count }] }
 → 401 · 500
+
+DELETE /api/v1/teams/:id/users/:user_id     (cambios)
+→ 409 si el corredor se quiere ir con cuotas que vencen hoy o antes (D7)
 ```
 
 Las fechas van en RFC 3339 UTC, como el resto del historial.
@@ -99,5 +112,5 @@ Las fechas van en RFC 3339 UTC, como el resto del historial.
 ## Risks / Trade-offs
 
 - **El cálculo supone que el ciclo no se rompe.** Si alguna vez se cambia el monto de una membresía sin actualizar `init_amount`, o se crea una cuota fuera del motor, la obligación calculada no va a coincidir. Hoy las 8 membresías coinciden.
-- **La #1 cuenta como pendiente.** Un corredor que se une y no paga aparece debiendo desde el alta, aunque el backend no lo bloquee.
+- **La #1 cuenta como pendiente.** Un corredor que se une y no paga aparece debiendo desde el alta y no puede irse hasta pagarla (D7). Si se arrepiente el mismo día, el entrenador lo puede sacar.
 - **El neto pendiente es estimado.** Usa el porcentaje vigente: si se cambia antes de que el corredor pague, el neto real va a ser otro.

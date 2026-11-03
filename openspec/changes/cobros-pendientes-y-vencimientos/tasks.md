@@ -32,13 +32,21 @@
 
 ## 7. Resumen y endpoint nuevo
 
-- [x] 7.1 `GetReceivedSummary`: pendiente por mes, `due_this_month` y `overdue_this_month`.
+- [x] 7.1 `GetReceivedSummary`: pendiente por mes, `due_this_month` y `overdue` (vencidas de cualquier mes).
 - [x] 7.2 `GetUpcoming` y `GET /api/v1/payments/upcoming`, con controller, ruta y godoc.
 - [x] 7.3 Tests del service y del controller (200, 401, 500).
 - [x] 7.4 Los `500` del historial de pagos devolvían el texto del error, que envuelve el de la DB. Pasan a responder "error interno", como el resto de los controllers nuevos.
 
 ## 8. Verificación y documentación
 
-- [x] 8.1 `EXPLAIN ANALYZE` de las consultas nuevas contra testing: la del entrenador planifica con seq scan y tarda 0,12 ms (`team_users` 49 filas, `teams` 19). No hace falta índice (design D7).
+- [x] 8.1 `EXPLAIN ANALYZE` de las consultas nuevas contra testing: la del entrenador planifica con seq scan y tarda 0,12 ms (`team_users` 49 filas, `teams` 19). Se agrega igual el índice en `teams.owner_id` (design D8).
 - [x] 8.2 Regenerar swagger. Actualizar README y `docs/DEUDA_TECNICA_Y_PENDIENTES.md`.
 - [x] 8.3 `go vet ./...`, `go test ./...` y validar el change.
+
+## 9. Salida del equipo con deuda
+
+- [x] 9.1 `membershipDebt`/`membershipOverdue` en `payment_obligations.go`, con tests.
+- [x] 9.2 `RemoveUser`: el corredor no puede irse con cuotas que vencen hoy o antes (`ErrTeamLeaveWithDebt`, `409`); el entrenador sí lo puede sacar (design D7).
+- [x] 9.3 `has_debt` del estado de cuenta con el mismo cálculo.
+- [x] 9.4 Tests del service y del controller.
+- [x] 9.5 Datos de testing: "Los cracks" a $12.000 y la membresía de findmejuan desde el 22/08 con la cuota #1 (script manual, decisión del equipo).
