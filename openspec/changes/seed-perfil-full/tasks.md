@@ -50,19 +50,19 @@
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedIdentity`).
 - Interfaces: requiere los DAOs/modelos de `dbs` y el paquete `crypto` para cifrado.
 
-- [ ] 2.1 Crear usuarios del perfil full con bcrypt de `Paceron.123` (protagonistas y
+- [x] 2.1 Crear usuarios del perfil full con bcrypt de `Paceron.123` (protagonistas y
       extras), status `active` salvo los casos de borde (`blocked`, `inactive`, sin
       rol, `allow_team_invitations=false`).
-- [ ] 2.2 Sembrar roles `entrenador`/`corredor`, 3 tiers por rol (base gratuito
+- [x] 2.2 Sembrar roles `entrenador`/`corredor`, 3 tiers por rol (base gratuito
       hierarchy=1, medium, premium), permisos y `tier_permissions` completos.
-- [ ] 2.3 Asignar `user_roles` (trainer con entrenador+corredor; corredores con
+- [x] 2.3 Asignar `user_roles` (trainer con entrenador+corredor; corredores con
       corredor) y suscripciones coherentes con los índices únicos parciales: R1
       premium activa con #1/#2 pagas y #3 pendiente, R2 deuda, R3
       `first_payment_pending`.
-- [ ] 2.4 `platform_settings.marketplace_fee_percent` como jsonb numérico.
-- [ ] 2.5 Tests de contrato: login de protagonistas, rechazo de blocked/inactive,
+- [x] 2.4 `platform_settings.marketplace_fee_percent` como jsonb numérico.
+- [x] 2.5 Tests de contrato: login de protagonistas, rechazo de blocked/inactive,
       `GET /auth/permissions` completo, slugs/estados de suscripción.
-- [ ] 2.6 Commit `feat(seed): identidad, roles y suscripciones del perfil full`.
+- [x] 2.6 Commit `feat(seed): identidad, roles y suscripciones del perfil full`.
 
 ### Task 3: Equipos, grupos, memberships, invitaciones y solicitudes
 
@@ -70,21 +70,21 @@
 - Create: `cmd/api/scripts/seed_dashboard/full_teams.go` (+ test).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedTeams`).
 
-- [ ] 3.1 Sembrar los 6 equipos de la matriz del design (A normal, B pago, C lleno, D
+- [x] 3.1 Sembrar los 6 equipos de la matriz del design (A normal, B pago, C lleno, D
       oculto, E cerrado, F colisión) con su ubicación, fee, max_members y owner.
-- [ ] 3.2 `team_users` (owner entrenador + corredores con `subscription_status`
+- [x] 3.2 `team_users` (owner entrenador + corredores con `subscription_status`
       correcto) y `group_users` (activa, vencida y futura), incluyendo un runner en
       dos equipos.
-- [ ] 3.3 Invitaciones: vigente, expirada, aceptada y rechazada; una al usuario con
+- [x] 3.3 Invitaciones: vigente, expirada, aceptada y rechazada; una al usuario con
       invitaciones desactivadas. Join requests: pendiente a A y E, una a C (cupo) y
       una rechazada.
-- [ ] 3.4 `seller_connections`: trainer 1 conectado (client_id = `MP_OAUTH_CLIENT_ID`,
+- [x] 3.4 `seller_connections`: trainer 1 conectado (client_id = `MP_OAUTH_CLIENT_ID`,
       `public_key` no vacía, tokens cifrados con `TOKEN_ENCRYPTION_KEY`); trainer 2
       sin conexión.
-- [ ] 3.5 Tests de contrato: búsqueda de equipos (visible/oculto/ajeno), cupo lleno,
+- [x] 3.5 Tests de contrato: búsqueda de equipos (visible/oculto/ajeno), cupo lleno,
       join request a cerrado, invitación a usuario con invitaciones off,
       `can_receive_payments`.
-- [ ] 3.6 Commit `feat(seed): equipos, memberships e invitaciones del perfil full`.
+- [x] 3.6 Commit `feat(seed): equipos, memberships e invitaciones del perfil full`.
 
 ### Task 4: Catálogo y calendario dinámico
 
@@ -93,18 +93,20 @@
   (+ tests).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedCatalogCalendar`).
 
-- [ ] 4.1 Catálogo ampliado: ejercicios de todos los kinds vigentes, sesiones con
+- [x] 4.1 Catálogo ampliado: ejercicios de todos los kinds vigentes, sesiones con
       warmup/main/cooldown y planes de 7/14/21 días con `sequence_no` 1..N.
-- [ ] 4.2 Calendario pasado (-21..-1) con stamp real; futuro (+1..+14) con training
+- [x] 4.2 Calendario pasado (-21..-1) con stamp real; futuro (+1..+14) con training
       presencial/async, other, rest y cancelled con motivo.
-- [ ] 4.3 HOY por inserción directa: presencial abierto en el grupo principal de A
+- [x] 4.3 HOY por inserción directa: presencial abierto en el grupo principal de A
       (ventana `now-30m..now+2h`, `opened_at` seteado), presencial no abierto en el
-      secundario, presencial cerrado en F y training async en A.
-- [ ] 4.4 Colisión presencial A vs F y warning same-team entre grupos de A.
-- [ ] 4.5 Tests de contrato: GetRange de -21..+14, calendar de hoy con presencial
+      secundario, presencial cerrado en F y training async hoy en `group_b` (Equipo B).
+      El async va en B porque los dos grupos de A tienen ocupada su única fila de hoy
+      por los escenarios presenciales; R1/R2 tienen acceso a B.
+- [x] 4.4 Colisión presencial A vs F y warning same-team entre grupos de A.
+- [x] 4.5 Tests de contrato: GetRange de A de -21..+14 y async de hoy en B, presencial
       abierto, next-session y next-presencial-session con banners, estados 409 de las
       variantes no-abierto/cerrado.
-- [ ] 4.6 Commit `feat(seed): catalogo y calendario dinamico del perfil full`.
+- [x] 4.6 Commit `feat(seed): catalogo y calendario dinamico del perfil full`.
 
 ### Task 5: Actividad histórica y de hoy
 

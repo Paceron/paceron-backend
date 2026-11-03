@@ -99,7 +99,9 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
     `session_not_opened`.
   - Un grupo de F: presencial **cerrado** (`closed_at` seteado) → demo 409
     `session_closed`.
-  - A: un training **async** de hoy.
+  - Equipo B (`group_b`): un training **async** de hoy. Se ubica en B porque
+    `group_calendar_days` permite una fila por grupo/fecha y los dos grupos de A ya
+    están ocupados por los dos estados presenciales requeridos; R1/R2 tienen acceso a B.
 - Futuro (+1..+14): training presencial y async, un `other`, días `rest` y un
   `cancelled` con motivo. Via stamp (futuro está permitido).
 - Horarios presenciales guardados con la convención UTC existente (fecha 0000-01-01 +
@@ -183,7 +185,8 @@ Todas en Team A, participantes = corredores (el trainer nunca compite):
 - `fullseed-verify` (y `--profile full --verify`): además del verify dashboard,
   comprueba coherencia del universo full:
   - login de los 4 protagonistas (bcrypt) y rechazo de blocked/inactive.
-  - calendario de HOY de A devuelve presencial abierto y async.
+  - calendario de HOY devuelve el presencial abierto de `group_a_main` y el async de
+    `group_b`.
   - next-session/next-presencial-session devuelven banners.
   - streaks/logros/estampas/unseen responden con datos.
   - leaderboard de las 6 métricas devuelve filas; competencias por estado existen con
