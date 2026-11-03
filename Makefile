@@ -1,5 +1,5 @@
 .PHONY: test coverage coverage-html test-db-up test-db-down test-db-restart test-with-db coverage-with-db
-.PHONY: seed-dashboard seed-dashboard-cleanup
+.PHONY: seed-dashboard seed-dashboard-cleanup fullseed-seed fullseed-reset fullseed-cleanup fullseed-verify
 .PHONY: local-up local-down local-ps local-logs local-dump local-restore local-reset local-shell
 .PHONY: demo-baseline demo-baseline-force demo-restore demo-reset demo-verify demo-status
 
@@ -79,6 +79,19 @@ seed-dashboard: ## Informa qué sembraría el dataset del dashboard (SEED_FLAGS=
 
 seed-dashboard-cleanup: ## Informa qué borraría la limpieza (SEED_FLAGS=--yes para borrar de verdad)
 	go run ./cmd/api/scripts/seed_dashboard --stage=local --cleanup --dry-run $(SEED_FLAGS)
+
+fullseed-seed: ## Siembra el perfil full en el entorno local
+	go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --seed --bootstrap-scope
+
+fullseed-reset: ## Borra los volúmenes locales y siembra el perfil full
+	$(MAKE) local-reset
+	$(MAKE) fullseed-seed
+
+fullseed-cleanup: ## Limpia el perfil full
+	go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --cleanup --yes
+
+fullseed-verify: ## Verifica el perfil full
+	go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --verify
 
 # =============================================================================
 # Tests — abajo, la base de test descartable para los tests de daos/

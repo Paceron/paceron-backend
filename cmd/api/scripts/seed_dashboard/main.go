@@ -30,7 +30,9 @@ type options struct {
 	seed       bool
 	cleanup    bool
 	dryRun     bool
+	verify     bool
 	yes        bool
+	profile    string
 	start      string
 	force      bool
 	bootstrap  bool
@@ -40,24 +42,39 @@ type options struct {
 }
 
 func parseOptions() options {
+	opts, err := parseOptionsArgs(flag.CommandLine, os.Args[1:])
+	if err != nil {
+		fatal("%v", err)
+	}
+	return opts
+}
+
+func parseOptionsArgs(fs *flag.FlagSet, args []string) (options, error) {
 	var opts options
 	// --stage lo lee config desde os.Args (IsLocalStage/IsProductionStage), pero
 	// flag.Parse aborta con cualquier flag que no declared: sin esta entrada
 	// vacía, `--stage=local` —que el seed necesita para no pegar contra
 	// testing— sería un error de línea de comandos.
-	flag.String("stage", "", "ignorado acá: config lo lee de os.Args (--stage=local es obligatorio)")
-	flag.BoolVar(&opts.seed, "seed", false, "sembrar el dataset (sin el flag solo informa qué hay)")
-	flag.BoolVar(&opts.cleanup, "cleanup", false, "borrar lo que sembró el seed (requiere --yes)")
-	flag.BoolVar(&opts.dryRun, "dry-run", false, "no escribir nada: solo informar qué se haría")
-	flag.BoolVar(&opts.yes, "yes", false, "confirmación explícita, obligatoria para --cleanup")
-	flag.StringVar(&opts.start, "start", "", "primer día de la ventana (YYYY-MM-DD, lunes). Default: las dos semanas completas anteriores")
-	flag.BoolVar(&opts.force, "force", false, "sobrescribir días de calendario ya existentes en el stamp (StampRequest.Force)")
-	flag.BoolVar(&opts.bootstrap, "bootstrap-scope", false, "crear equipo, grupo y corredores si el scope no existe (solo para bases vacías)")
-	flag.StringVar(&opts.dbOverride, "db", "", "DSN alternativo para sembrar una base descartable (ej. la de tests)")
-	flag.Int64Var(&opts.teamID, "team-id", seedTeamID, "equipo del scope a sembrar")
-	flag.Int64Var(&opts.groupID, "group-id", seedGroupID, "grupo del scope a sembrar")
-	flag.Parse()
-	return opts
+	fs.String("stage", "", "ignorado acá: config lo lee de os.Args (--stage=local es obligatorio)")
+	fs.BoolVar(&opts.seed, "seed", false, "sembrar el dataset (sin el flag solo informa qué hay)")
+	fs.BoolVar(&opts.cleanup, "cleanup", false, "borrar lo que sembró el seed (requiere --yes)")
+	fs.BoolVar(&opts.dryRun, "dry-run", false, "no escribir nada: solo informar qué se haría")
+	fs.BoolVar(&opts.verify, "verify", false, "verificar el universo full")
+	fs.BoolVar(&opts.yes, "yes", false, "confirmación explícita, obligatoria para --cleanup")
+	fs.StringVar(&opts.profile, "profile", dashboardProfile, "perfil del seed: dashboard o full")
+	fs.StringVar(&opts.start, "start", "", "primer día de la ventana (YYYY-MM-DD, lunes). Default: las dos semanas completas anteriores")
+	fs.BoolVar(&opts.force, "force", false, "sobrescribir días de calendario ya existentes en el stamp (StampRequest.Force)")
+	fs.BoolVar(&opts.bootstrap, "bootstrap-scope", false, "crear equipo, grupo y corredores si el scope no existe (solo para bases vacías)")
+	fs.StringVar(&opts.dbOverride, "db", "", "DSN alternativo para sembrar una base descartable (ej. la de tests)")
+	fs.Int64Var(&opts.teamID, "team-id", seedTeamID, "equipo del scope a sembrar")
+	fs.Int64Var(&opts.groupID, "group-id", seedGroupID, "grupo del scope a sembrar")
+	if err := fs.Parse(args); err != nil {
+		return options{}, err
+	}
+	if err := validateSeedProfile(opts.profile); err != nil {
+		return options{}, err
+	}
+	return opts, nil
 }
 
 func main() {
@@ -96,9 +113,21 @@ func main() {
 	if opts.cleanup && opts.seed {
 		fatal("--seed y --cleanup son modos distintos: elegí uno")
 	}
+	if opts.verify && (opts.seed || opts.cleanup) {
+		fatal("--verify es un modo distinto: no se combina con --seed ni --cleanup")
+	}
 	if opts.cleanup {
-		runCleanupMode(db, opts)
+		if opts.profile == fullProfile {
+			if err := runFullSeed(db, opts); err != nil {
+				fatal("%v", err)
+			}
+		} else {
+			runCleanupMode(db, opts)
+		}
 		return
+	}
+	if opts.verify && opts.profile != fullProfile {
+		fatal("--verify requiere --profile=full")
 	}
 	runSeedMode(db, opts)
 }
@@ -137,7 +166,27 @@ type seedAthlete struct {
 	Archetype archetype
 }
 
+func dispatchSeedMode(db *gorm.DB, opts options) error {
+	if err := validateSeedProfile(opts.profile); err != nil {
+		return err
+	}
+	if opts.profile == fullProfile {
+		return runFullSeed(db, opts)
+	}
+	if opts.verify {
+		return fmt.Errorf("--verify requiere --profile=full")
+	}
+	runDashboardSeedMode(db, opts)
+	return nil
+}
+
 func runSeedMode(db *gorm.DB, opts options) {
+	if err := dispatchSeedMode(db, opts); err != nil {
+		fatal("%v", err)
+	}
+}
+
+func runDashboardSeedMode(db *gorm.DB, opts options) {
 	window, err := resolveWindow(opts.start)
 	if err != nil {
 		fatal("%v", err)
