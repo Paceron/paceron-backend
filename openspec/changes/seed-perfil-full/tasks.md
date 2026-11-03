@@ -114,16 +114,16 @@
 - Create: `cmd/api/scripts/seed_dashboard/full_activity.go` (+ test).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedActivity`).
 
-- [ ] 5.1 `runner_session`: finished pasadas, wip de hoy, interrupted histórica.
-- [ ] 5.2 Feedback con todos los `completion_status`, métricas coherentes, feedback
+- [x] 5.1 `runner_session`: finished pasadas, wip de hoy, interrupted histórica.
+- [x] 5.2 Feedback con todos los `completion_status`, métricas coherentes, feedback
       del entrenador como owner y un soft-deleted; puntos GPS en 2 series para
       recomputar pace/peak.
-- [ ] 5.3 Asistencias en -14/-7 y hoy, mezcla `qr`/`manual`, con no-confirmados en el
+- [x] 5.3 Asistencias en -14/-7 y hoy, mezcla `qr`/`manual`, con no-confirmados en el
       roster.
-- [ ] 5.4 Tests de contrato: historial de feedback (filtros team/group/fecha/
+- [x] 5.4 Tests de contrato: historial de feedback (filtros team/group/fecha/
       ejercicio/set), roster con attended/not_confirmed, feedback soft-deleted
       ausente.
-- [ ] 5.5 Commit `feat(seed): actividad, feedback y asistencias del perfil full`.
+- [x] 5.5 Commit `feat(seed): actividad, feedback y asistencias del perfil full`.
 
 ### Task 6: Gamificación
 
@@ -135,10 +135,12 @@
       una con días pre-membresía skipped; `streak_state` coherente.
 - [ ] 6.2 `user_achievement_progress` con ids del catálogo: un corredor con varios
       desbloqueados y otro vacío.
-- [ ] 6.3 Estampas de competencias terminadas y filas de `gamification_unseen` para
-      streaks/achievements/competitions (un protagonista con punto rojo y otro visto).
-- [ ] 6.4 Tests de contrato: GET streaks (current/best y estados por día), achievements
-      y stamps, unseen por sección y leaderboard de las 6 métricas con record all.
+- [ ] 6.3 Filas de `gamification_unseen` para `streaks`/`achievements` (un protagonista
+      con punto rojo y otro visto); T7 sembrará `competitions` y las estampas al crear
+      competencias terminadas con winners.
+- [ ] 6.4 Tests de contrato: GET streaks (current/best y estados por día), achievements,
+      stamps en estado vacío hasta T7, unseen por sección y leaderboard de las 6 métricas
+      con record all.
 - [ ] 6.5 Commit `feat(seed): gamificacion del perfil full`.
 
 ### Task 7: Competencias en todos los estados

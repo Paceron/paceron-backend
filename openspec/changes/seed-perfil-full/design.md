@@ -134,9 +134,11 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
   desbloqueados y otro vacío (empty state); ids del catálogo de
   `constants/achievements.go` (21 filas); `icon_key` = id.
 - Estampas: solo `type='competition'` de competencias terminadas, `source_name
-  "Competencia N"`.
-- Unseen: filas para streaks/achievements/competitions de modo que un protagonista
-  tenga punto rojo y otro ya visto (demo de `POST seen`).
+  "Competencia N"`. T6 deja el endpoint en su estado vacío; T7 siembra stamps junto
+  con las competencias terminadas y sus winners.
+- Unseen: T6 siembra filas de `streaks`/`achievements`; T7 agrega `competitions`
+  junto con el cierre de las competencias. En el perfil completo un protagonista
+  queda con novedades y otro con esas secciones ya vistas (demo de `POST seen`).
 - Leaderboard: datos en Team A para las 6 métricas, con record `period=all`; el owner
   no puntúa.
 
