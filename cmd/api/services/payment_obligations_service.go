@@ -18,8 +18,9 @@ import (
 // salen de payment_obligations.go.
 
 // addPendingObligations suma a cada mes de la ventana las obligaciones sin
-// pagar que vencen en él, y arma los dos bloques del mes actual: lo que vence
-// desde hoy hasta fin de mes y lo que venció desde el 1° hasta ayer.
+// pagar que vencen en él, y arma los dos bloques: lo que vence desde hoy hasta
+// fin de mes y todo lo que ya venció sin pagar, también de meses anteriores
+// (una cuota de octubre que no se pagó se sigue debiendo en noviembre).
 // windowEnd es el primer día del último mes de la ventana.
 func (s *paymentHistoryService) addPendingObligations(ctx *gin.Context, sellerID int64, now time.Time, monthly []payment.MonthlyAmount, monthIndex map[string]int, windowEnd time.Time) (payment.ObligationsBlock, payment.ObligationsBlock, error) {
 	due := payment.ObligationsBlock{Items: []payment.ObligationItem{}}
@@ -52,11 +53,12 @@ func (s *paymentHistoryService) addPendingObligations(ctx *gin.Context, sellerID
 				monthly[i].PendingNetAmount += net
 				monthly[i].PendingCount++
 			}
-			if month != currentMonth {
+			late := isOverdue(o.DueDate, today)
+			if !late && month != currentMonth {
 				continue
 			}
 			block := &due
-			if isOverdue(o.DueDate, today) {
+			if late {
 				block = &overdue
 			}
 			block.Count++

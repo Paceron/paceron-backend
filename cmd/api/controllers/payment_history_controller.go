@@ -83,7 +83,7 @@ func (pc *paymentHistoryController) ListReceived(c *gin.Context) {
 
 // GetReceivedSummary godoc
 // @Summary      Resumen de cobros recibidos
-// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` / `overdue_this_month` traen lo que vence desde hoy y lo que venció en el mes actual.
+// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores.
 // @Tags         payments
 // @Produce      json
 // @Param        months  query     int     false  "Meses de la ventana, entre 2 y 12 (default 6)"

@@ -255,7 +255,7 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		RejectedCount:    rejected,
 		EarliestMonth:    earliestMonth,
 		DueThisMonth:     due,
-		OverdueThisMonth: overdue,
+		Overdue:          overdue,
 		GeneratedAt:      formatUTC(s.now()),
 	}, nil
 }

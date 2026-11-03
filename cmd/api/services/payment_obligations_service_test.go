@@ -32,7 +32,7 @@ func TestGetReceivedSummary_PendingObligations(t *testing.T) {
 	dao := &mockPaymentHistoryDao{trainerMemberships: []daos.FeeMembershipRow{
 		// Dejó de pagar: la 2 venció el 6/10 (octubre) y la 3 vence el 6/11.
 		membership(20, 4, artDate(2026, 9, 6), 1500, 1),
-		// La 2 venció ayer, 1/11: vencida del mes.
+		// La 2 venció ayer, 1/11: vencida.
 		membership(21, 5, artDate(2026, 10, 1), 2000, 1),
 		// La 2 vence hoy: a vencer, no vencida.
 		membership(21, 6, artDate(2026, 10, 2), 3000, 1),
@@ -53,10 +53,14 @@ func TestGetReceivedSummary_PendingObligations(t *testing.T) {
 	assert.Equal(t, 1500.0+2000+3000, nov.PendingAmount)
 	assert.Equal(t, 3, nov.PendingCount)
 
-	assert.Equal(t, 1, resp.OverdueThisMonth.Count)
-	assert.Equal(t, 2000.0, resp.OverdueThisMonth.Amount)
-	assert.Equal(t, int64(5), resp.OverdueThisMonth.Items[0].Payer.ID)
-	assert.Equal(t, 2, resp.OverdueThisMonth.Items[0].InstallmentNumber)
+	// Vencidas: la de octubre que no se pagó sigue contando en noviembre.
+	assert.Equal(t, 2, resp.Overdue.Count)
+	assert.Equal(t, 3500.0, resp.Overdue.Amount)
+	require.Len(t, resp.Overdue.Items, 2)
+	assert.Equal(t, int64(4), resp.Overdue.Items[0].Payer.ID, "ordenadas por vencimiento")
+	assert.Equal(t, "2026-10-06T15:00:00Z", resp.Overdue.Items[0].DueDate)
+	assert.Equal(t, int64(5), resp.Overdue.Items[1].Payer.ID)
+	assert.Equal(t, 2, resp.Overdue.Items[1].InstallmentNumber)
 
 	assert.Equal(t, 2, resp.DueThisMonth.Count, "vence hoy y vence el 6/11")
 	assert.Equal(t, 4500.0, resp.DueThisMonth.Amount)
@@ -74,7 +78,7 @@ func TestGetReceivedSummary_PendingUsesCurrentFeePercent(t *testing.T) {
 	resp, err := obligationsService(dao, settings).GetReceivedSummary(nil, 3, 6, "")
 
 	require.NoError(t, err)
-	assert.Equal(t, 1800.0, resp.OverdueThisMonth.NetAmount)
+	assert.Equal(t, 1800.0, resp.Overdue.NetAmount)
 }
 
 func TestGetReceivedSummary_NoMembershipsKeepsEmptyBlocks(t *testing.T) {
@@ -83,7 +87,7 @@ func TestGetReceivedSummary_NoMembershipsKeepsEmptyBlocks(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, resp.DueThisMonth.Items)
 	assert.Empty(t, resp.DueThisMonth.Items)
-	assert.NotNil(t, resp.OverdueThisMonth.Items)
+	assert.NotNil(t, resp.Overdue.Items)
 }
 
 func TestGetReceivedSummary_MembershipsError(t *testing.T) {

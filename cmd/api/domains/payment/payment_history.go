@@ -143,12 +143,12 @@ type ReceivedSummaryResponse struct {
 	// EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
 	// argentina), o null si no tiene ninguno (design D14).
 	EarliestMonth *string `json:"earliest_month"`
-	// DueThisMonth vence desde hoy hasta fin del mes actual; OverdueThisMonth
-	// venció desde el 1° del mes hasta ayer (design D4 y D5). No dependen de
-	// la ventana de meses.
-	DueThisMonth     ObligationsBlock `json:"due_this_month"`
-	OverdueThisMonth ObligationsBlock `json:"overdue_this_month"`
-	GeneratedAt      string           `json:"generated_at"`
+	// DueThisMonth vence desde hoy hasta fin del mes actual; Overdue es todo
+	// lo que ya venció sin pagar, de este mes o de meses anteriores (design D4
+	// y D5). No dependen de la ventana de meses.
+	DueThisMonth ObligationsBlock `json:"due_this_month"`
+	Overdue      ObligationsBlock `json:"overdue"`
+	GeneratedAt  string           `json:"generated_at"`
 }
 
 // UpcomingPaymentItem es la próxima cuota sin pagar de una membresía de equipo
