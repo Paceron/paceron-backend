@@ -56,6 +56,7 @@ Decisión del equipo. Una obligación pendiente está vencida si su vencimiento 
 
 - en cada mes de `monthly`: `pending_amount`, `pending_net_amount` y `pending_count`. Son las obligaciones sin pagar que vencen en ese mes. La ventana es la misma del gráfico, así que se navega igual con `until`.
 - `due_this_month`: lo que vence desde hoy hasta fin del mes actual.
+- `pending_amount`/`pending_net_amount` y `rejected_amount`/`rejected_net_amount` a nivel raíz: el monto de las cuotas que ya cuentan `pending_count` y `rejected_count` (el último intento de cada una, el neto descontando la comisión guardada del intento). El dashboard muestra el monto como dato principal y la cantidad de cuotas como aclaración (pedido del tutor, 2026-11-03).
 - `overdue`: todo lo que ya venció sin pagar, de este mes o de meses anteriores. Una cuota de octubre que no se pagó se sigue debiendo en noviembre; con solo las del mes, un corredor que dejó de pagar hace tres meses no aparecería en ningún lado (caso real de testing, 2026-11-02).
 
 Los dos bloques traen `count`, `amount`, `net_amount` e `items` (corredor, equipo, número de cuota, monto y vencimiento) y no dependen de la ventana. El neto pendiente usa el porcentaje de comisión vigente, porque ese pago todavía no tiene comisión guardada.
@@ -88,6 +89,7 @@ Las consultas leen `team_users` por `team_id` y `user_id`, y `user_role_tier_sub
 ```
 GET /api/v1/payments/received/summary        (cambios)
   monthly[]:            + pending_amount, pending_net_amount, pending_count
+  + pending_amount, pending_net_amount, rejected_amount, rejected_net_amount
   + due_this_month:     { count, amount, net_amount, items[] }
   + overdue:            { count, amount, net_amount, items[] }
     items[]: { team: {id, name}, payer: {id, name, surname}, installment_number, amount, due_date }

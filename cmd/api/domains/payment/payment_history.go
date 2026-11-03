@@ -140,6 +140,12 @@ type ReceivedSummaryResponse struct {
 	ByTeam        []TeamAmount    `json:"by_team"`
 	PendingCount  int             `json:"pending_count"`
 	RejectedCount int             `json:"rejected_count"`
+	// Montos de esas mismas cuotas (el último intento de cada una), en bruto y
+	// en neto (bruto menos la comisión del intento).
+	PendingAmount     float64 `json:"pending_amount"`
+	PendingNetAmount  float64 `json:"pending_net_amount"`
+	RejectedAmount    float64 `json:"rejected_amount"`
+	RejectedNetAmount float64 `json:"rejected_net_amount"`
 	// EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
 	// argentina), o null si no tiene ninguno (design D14).
 	EarliestMonth *string `json:"earliest_month"`

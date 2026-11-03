@@ -13494,11 +13494,24 @@ const docTemplate = `{
                 "overdue": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
                 },
+                "pending_amount": {
+                    "description": "Montos de esas mismas cuotas (el último intento de cada una), en bruto y\nen neto (bruto menos la comisión del intento).",
+                    "type": "number"
+                },
                 "pending_count": {
                     "type": "integer"
                 },
+                "pending_net_amount": {
+                    "type": "number"
+                },
+                "rejected_amount": {
+                    "type": "number"
+                },
                 "rejected_count": {
                     "type": "integer"
+                },
+                "rejected_net_amount": {
+                    "type": "number"
                 }
             }
         },

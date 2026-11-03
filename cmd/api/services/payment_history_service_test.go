@@ -306,6 +306,8 @@ func TestPaymentHistoryService_GetReceivedSummary_Aggregates(t *testing.T) {
 		// Reembolsado: no suma ni cuenta.
 		receivedRow(10, 107, 18, "Trail", "refunded", 30000, nil, sep10),
 	}
+	// Comisión del intento pendiente: el neto de lo pendiente la descuenta.
+	rows[5].FeeAmount = 750
 	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedBetweenFn: func(*gin.Context, int64, time.Time, time.Time) ([]daos.ReceivedPaymentRow, error) {
 		return rows, nil
 	}})
@@ -328,6 +330,11 @@ func TestPaymentHistoryService_GetReceivedSummary_Aggregates(t *testing.T) {
 
 	assert.Equal(t, 1, resp.PendingCount)
 	assert.Equal(t, 1, resp.RejectedCount)
+	// Montos del último intento de cada cuota: 104 (in_process) y 105 (cancelled).
+	assert.Equal(t, float64(15000), resp.PendingAmount)
+	assert.Equal(t, float64(30000), resp.RejectedAmount)
+	assert.Equal(t, 14250.0, resp.PendingNetAmount)
+	assert.Equal(t, float64(30000), resp.RejectedNetAmount)
 
 	require.Len(t, resp.ByTeam, 2)
 	runners, trail := resp.ByTeam[0], resp.ByTeam[1]

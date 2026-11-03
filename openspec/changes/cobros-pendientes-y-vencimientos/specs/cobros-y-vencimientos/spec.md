@@ -68,6 +68,11 @@ El resumen de cobros MUST sumar en cada mes de la ventana las obligaciones sin p
 - **WHEN** una obligación venció el 22/10 y hoy es 2026-11-02
 - **THEN** cuenta en `overdue` aunque sea de octubre
 
+#### Scenario: Monto de las cuotas pendientes y rechazadas
+
+- **WHEN** el último intento de una cuota de $15.000 está en proceso y el de otra de $30.000 fue rechazado
+- **THEN** el resumen trae `pending_amount` 15000 y `rejected_amount` 30000, y sus netos descuentan la comisión de cada intento
+
 #### Scenario: Cobros de tier
 
 - **WHEN** existen pagos de tier

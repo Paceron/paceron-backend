@@ -206,16 +206,23 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 	}
 
 	pending, rejected := 0, 0
+	var pendingAmt, pendingNet, rejectedAmt, rejectedNet float64
 	for _, a := range installments {
 		if a.anyApproved {
 			continue
 		}
+		gross := a.latest.GrossAmount
+		net := gross - a.latest.FeeAmount
 		switch constants.GroupOfPaymentStatus(a.latest.Status) {
 		case constants.PaymentStatusGroupPending:
 			pending++
+			pendingAmt += gross
+			pendingNet += net
 			teams[a.latest.TeamID].PendingCount++
 		case constants.PaymentStatusGroupRejected:
 			rejected++
+			rejectedAmt += gross
+			rejectedNet += net
 			teams[a.latest.TeamID].RejectedCount++
 		}
 	}
@@ -247,16 +254,20 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 	}
 
 	return &payment.ReceivedSummaryResponse{
-		CurrencyID:       currency,
-		Months:           months,
-		Monthly:          monthly,
-		ByTeam:           byTeam,
-		PendingCount:     pending,
-		RejectedCount:    rejected,
-		EarliestMonth:    earliestMonth,
-		DueThisMonth:     due,
-		Overdue:          overdue,
-		GeneratedAt:      formatUTC(s.now()),
+		CurrencyID:        currency,
+		Months:            months,
+		Monthly:           monthly,
+		ByTeam:            byTeam,
+		PendingCount:      pending,
+		RejectedCount:     rejected,
+		PendingAmount:     round2(pendingAmt),
+		PendingNetAmount:  round2(pendingNet),
+		RejectedAmount:    round2(rejectedAmt),
+		RejectedNetAmount: round2(rejectedNet),
+		EarliestMonth:     earliestMonth,
+		DueThisMonth:      due,
+		Overdue:           overdue,
+		GeneratedAt:       formatUTC(s.now()),
 	}, nil
 }
 

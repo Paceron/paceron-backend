@@ -50,3 +50,4 @@
 - [x] 9.3 `has_debt` del estado de cuenta con el mismo cálculo.
 - [x] 9.4 Tests del service y del controller.
 - [x] 9.5 Datos de testing: "Los cracks" a $12.000 y la membresía de findmejuan desde el 22/08 con la cuota #1 (script manual, decisión del equipo).
+- [x] 9.6 Montos de las cuotas pendientes y rechazadas del resumen (`pending_amount`, `rejected_amount` y sus netos), con test y swagger.
