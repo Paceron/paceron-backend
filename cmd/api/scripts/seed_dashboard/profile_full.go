@@ -113,6 +113,7 @@ func runFullSeed(db *gorm.DB, opts options) error {
 	case opts.verify:
 		return fmt.Errorf("perfil full incompleto: verifyFull todavía no está implementado")
 	default:
+		// Orden D14: identidad, equipos, catálogo/calendario, actividad, gamificación, competencias y pagos/mensajes.
 		return fmt.Errorf("perfil full incompleto: las fases de siembra todavía no están conectadas; no se sembró ningún stage")
 	}
 }
