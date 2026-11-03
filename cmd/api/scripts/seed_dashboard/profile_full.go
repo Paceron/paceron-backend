@@ -48,6 +48,8 @@ type fullSeedIDs struct {
 	roles             map[string]int64
 	tiers             map[string]int64
 	subscriptions     map[string]int64
+	teams             map[string]int64
+	groups            map[string]int64
 	exercises         map[string]int64
 	sessions          map[string]int64
 	trainingPlans     map[string]int64
@@ -90,6 +92,7 @@ func newFullSeeder(db *gorm.DB, opts options) *fullSeeder {
 		ids: fullSeedIDs{
 			users: make(map[string]int64), roles: make(map[string]int64),
 			tiers: make(map[string]int64), subscriptions: make(map[string]int64),
+			teams: make(map[string]int64), groups: make(map[string]int64),
 			exercises: make(map[string]int64), sessions: make(map[string]int64),
 			trainingPlans: make(map[string]int64), calendarDays: make(map[string]int64),
 			sessionInstances: make(map[string]int64), exerciseInstances: make(map[string]int64),
