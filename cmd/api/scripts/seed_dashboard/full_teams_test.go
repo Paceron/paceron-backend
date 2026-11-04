@@ -57,8 +57,11 @@ func TestFullSeederSeedTeams_SeedsMatrixAndRelations(t *testing.T) {
 	assert.Equal(t, s.ids.users["trainer_1"], teams[s.scope.teamAID].OwnerID)
 	assert.Equal(t, s.ids.users["trainer_2"], teams[s.scope.teamBID].OwnerID)
 	assert.Equal(t, s.ids.users["trainer_1"], teams[s.scope.teamFID].OwnerID)
+	assert.Equal(t, -31.4201, *teams[s.scope.teamFID].Lat)
+	assert.Equal(t, -64.1888, *teams[s.scope.teamFID].Lng)
 	assert.Zero(t, teams[s.scope.teamAID].MembershipFee)
 	assert.Positive(t, teams[s.scope.teamBID].MembershipFee)
+	assert.Equal(t, 4500.0, teams[s.scope.teamFID].MembershipFee)
 	assert.True(t, teams[s.scope.teamAID].Visible)
 	assert.False(t, teams[s.scope.teamDID].Visible)
 	assert.False(t, teams[s.scope.teamEID].IsPublic)
@@ -71,7 +74,12 @@ func TestFullSeederSeedTeams_SeedsMatrixAndRelations(t *testing.T) {
 	assertTeamMember(t, teamUsers, s.scope.teamBID, s.ids.users["r6"], string(constants.TeamUserRoleCorredor), string(constants.SubscriptionStatusFirstPaymentPending))
 	assertTeamMember(t, teamUsers, s.scope.teamBID, s.ids.users["r11"], string(constants.TeamUserRoleCorredor), string(constants.SubscriptionStatusFirstPaymentPending))
 	assertTeamMember(t, teamUsers, s.scope.teamCID, s.ids.users["r10"], string(constants.TeamUserRoleCorredor), string(constants.SubscriptionStatusActive))
-	assertTeamMember(t, teamUsers, s.scope.teamFID, s.ids.users["r10"], string(constants.TeamUserRoleCorredor), string(constants.SubscriptionStatusActive))
+	assertTeamMember(t, teamUsers, s.scope.teamFID, s.ids.users["r10"], string(constants.TeamUserRoleCorredor), string(constants.SubscriptionStatusFirstPaymentPending))
+	var teamFR10 dbs.TeamUser
+	require.NoError(t, db.Where("team_id = ? AND user_id = ?", s.scope.teamFID, s.ids.users["r10"]).Take(&teamFR10).Error)
+	assert.Equal(t, 4500.0, teamFR10.InitAmount)
+	assert.Zero(t, teamFR10.PaidInstallments)
+	assert.True(t, teamFR10.AssignmentDate.Equal(time.Date(2026, time.April, 18, 9, 0, 0, 0, gametime.Location)))
 
 	var groupUsers []dbs.GroupUser
 	require.NoError(t, db.Where("group_id IN ? AND deleted_at IS NULL", []int64{s.scope.groupAMainID, s.scope.groupASecondaryID, s.scope.groupBID, s.scope.groupCID, s.scope.groupDID, s.scope.groupEID, s.scope.groupFID}).Find(&groupUsers).Error)

@@ -11,6 +11,7 @@ import (
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/services"
 )
 
 type fullPaymentInstallmentSpec struct {
@@ -39,6 +40,9 @@ func (s *fullSeeder) seedPaymentsAndMessages() error {
 	messageIDs := make(map[string]int64)
 	pushTokenIDs := make(map[string]int64)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.rejectObsoleteFullPaymentRows(tx); err != nil {
+			return err
+		}
 		var err error
 		paymentIDs, installmentIDs, err = s.seedFullPayments(tx)
 		if err != nil {
@@ -58,12 +62,12 @@ func (s *fullSeeder) seedPaymentsAndMessages() error {
 }
 
 func (s *fullSeeder) requireFullPaymentsAndMessagesPrerequisites() error {
-	for _, key := range []string{"trainer_1", "trainer_2", "r1", "r2", "r3", "r4", "r5", "r10"} {
+	for _, key := range []string{"trainer_1", "trainer_2", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r10", "r11"} {
 		if s.ids.users[key] <= 0 {
 			return fmt.Errorf("seedPaymentsAndMessages requiere seedIdentity: falta %s", key)
 		}
 	}
-	for _, key := range []string{"team_a", "team_b"} {
+	for _, key := range []string{"team_a", "team_b", "team_f"} {
 		if s.ids.teams[key] <= 0 {
 			return fmt.Errorf("seedPaymentsAndMessages requiere seedTeams: falta %s", key)
 		}
@@ -77,19 +81,33 @@ func (s *fullSeeder) requireFullPaymentsAndMessagesPrerequisites() error {
 		return fmt.Errorf("seedPaymentsAndMessages requiere seedActivity y seedCatalogCalendar: faltan instancias de calendario")
 	}
 	var teams []dbs.Team
-	if err := s.db.Where("id IN ?", []int64{s.ids.teams["team_a"], s.ids.teams["team_b"]}).Find(&teams).Error; err != nil {
+	if err := s.db.Where("id IN ?", []int64{s.ids.teams["team_a"], s.ids.teams["team_b"], s.ids.teams["team_f"]}).Find(&teams).Error; err != nil {
 		return fmt.Errorf("validar equipos para pagos full: %w", err)
 	}
-	if len(teams) != 2 {
-		return fmt.Errorf("seedPaymentsAndMessages requiere los equipos A y B de seedTeams")
+	if len(teams) != 3 {
+		return fmt.Errorf("seedPaymentsAndMessages requiere los equipos A, B y F de seedTeams")
 	}
+	teamByID := make(map[int64]dbs.Team, len(teams))
 	for _, team := range teams {
 		if !containsFullSeedMarker(team.Description) {
 			return fmt.Errorf("seedPaymentsAndMessages rechaza el equipo %d sin marker full", team.ID)
 		}
+		teamByID[team.ID] = team
+	}
+	if teamByID[s.ids.teams["team_a"]].MembershipFee != 0 ||
+		teamByID[s.ids.teams["team_b"]].OwnerID != s.ids.users["trainer_2"] || teamByID[s.ids.teams["team_b"]].MembershipFee != 5000 ||
+		teamByID[s.ids.teams["team_f"]].OwnerID != s.ids.users["trainer_1"] || teamByID[s.ids.teams["team_f"]].MembershipFee != 4500 {
+		return fmt.Errorf("seedPaymentsAndMessages requiere A gratis, B pago y F pago de trainer_1")
 	}
 	if config.MyMP.OAuthClientID == "" {
 		return fmt.Errorf("seedPaymentsAndMessages requiere MP_OAUTH_CLIENT_ID")
+	}
+	var trainerTwoConnections int64
+	if err := s.db.Model(&dbs.SellerConnection{}).Where("user_id = ? AND client_id = ?", s.ids.users["trainer_2"], config.MyMP.OAuthClientID).Count(&trainerTwoConnections).Error; err != nil {
+		return err
+	}
+	if trainerTwoConnections != 0 {
+		return fmt.Errorf("seedPaymentsAndMessages requiere que trainer_2 no tenga seller connection")
 	}
 	var connection dbs.SellerConnection
 	if err := s.db.Where("user_id = ? AND client_id = ?", s.ids.users["trainer_1"], config.MyMP.OAuthClientID).Take(&connection).Error; err != nil {
@@ -134,22 +152,80 @@ func (s *fullSeeder) seedFullPayments(tx *gorm.DB) (map[string]int64, map[string
 		}
 		paymentIDs[spec.key] = payment.ID
 		paymentID := payment.PaymentID
-		if installment.InternalPaymentID != nil && *installment.InternalPaymentID != payment.ID {
-			return nil, nil, fmt.Errorf("cuota %s ya apunta a otro pago interno", spec.installmentKey)
+		if spec.status == string(constants.PaymentStatusApproved) {
+			if installment.InternalPaymentID != nil && *installment.InternalPaymentID != payment.ID {
+				return nil, nil, fmt.Errorf("cuota %s ya apunta a otro pago interno", spec.installmentKey)
+			}
+			if installment.ExternalPaymentID != nil && *installment.ExternalPaymentID != paymentID {
+				return nil, nil, fmt.Errorf("cuota %s ya apunta a otro payment_id", spec.installmentKey)
+			}
+			if err := tx.Model(&dbs.Installment{}).Where("id = ?", installment.ID).Updates(map[string]any{
+				"internal_payment_id": payment.ID, "external_payment_id": paymentID, "updated_at": s.now,
+			}).Error; err != nil {
+				return nil, nil, fmt.Errorf("enlazar pago aprobado a cuota %s: %w", spec.installmentKey, err)
+			}
+			internalPaymentID := payment.ID
+			installment.InternalPaymentID = &internalPaymentID
+			installment.ExternalPaymentID = &paymentID
+		} else if installment.InternalPaymentID != nil || installment.ExternalPaymentID != nil {
+			return nil, nil, fmt.Errorf("cuota %s no aprobada no debe enlazar payment_id", spec.installmentKey)
 		}
-		if installment.ExternalPaymentID != nil && *installment.ExternalPaymentID != paymentID {
-			return nil, nil, fmt.Errorf("cuota %s ya apunta a otro payment_id", spec.installmentKey)
-		}
-		if err := tx.Model(&dbs.Installment{}).Where("id = ?", installment.ID).Updates(map[string]any{
-			"internal_payment_id": payment.ID, "external_payment_id": paymentID, "updated_at": s.now,
-		}).Error; err != nil {
-			return nil, nil, fmt.Errorf("enlazar pago a cuota %s: %w", spec.installmentKey, err)
-		}
-		internalPaymentID := payment.ID
-		installment.InternalPaymentID = &internalPaymentID
-		installment.ExternalPaymentID = &paymentID
+	}
+	if err := s.activateFullTeamFMemberAfterPaidFirstInstallment(tx); err != nil {
+		return nil, nil, err
 	}
 	return paymentIDs, installmentIDs, nil
+}
+
+func (s *fullSeeder) rejectObsoleteFullPaymentRows(tx *gorm.DB) error {
+	var oldPayments int64
+	if err := tx.Model(&dbs.Payment{}).Where("external_reference IN ?", []string{
+		"seed_full:payment:team-a-r10-1", "seed_full:payment:team-b-r1-1",
+		"seed_full:payment:team-b-r2-1", "seed_full:payment:team-b-r2-2",
+	}).Count(&oldPayments).Error; err != nil {
+		return err
+	}
+	if oldPayments != 0 {
+		return fmt.Errorf("hay pagos de la versión anterior de Task 8; no se adoptan")
+	}
+	var oldInstallments int64
+	if err := tx.Model(&dbs.Installment{}).Where(
+		"(team_id = ? AND user_id = ? AND installment_number = 1) OR (team_id = ? AND user_id = ? AND installment_number = 2)",
+		s.ids.teams["team_a"], s.ids.users["r10"], s.ids.teams["team_b"], s.ids.users["r2"],
+	).Count(&oldInstallments).Error; err != nil {
+		return err
+	}
+	if oldInstallments != 0 {
+		return fmt.Errorf("hay cuotas de la versión anterior de Task 8; no se adoptan")
+	}
+	return nil
+}
+
+func (s *fullSeeder) activateFullTeamFMemberAfterPaidFirstInstallment(tx *gorm.DB) error {
+	var member dbs.TeamUser
+	if err := tx.Where("team_id = ? AND user_id = ? AND deleted_at IS NULL", s.ids.teams["team_f"], s.ids.users["r10"]).Take(&member).Error; err != nil {
+		return fmt.Errorf("leer membresía Team F/R10 después del pago: %w", err)
+	}
+	if member.InitAmount != 4500 || !member.AssignmentDate.Equal(fullTeamFR10AssignmentDate(s.now)) {
+		return fmt.Errorf("membresía Team F/R10 distinta al ciclo full")
+	}
+	var paidCount int64
+	if err := tx.Model(&dbs.Installment{}).Where("team_id = ? AND user_id = ? AND status = ?",
+		s.ids.teams["team_f"], s.ids.users["r10"], string(constants.InstallmentStatusPaid)).Count(&paidCount).Error; err != nil {
+		return err
+	}
+	if paidCount != 1 {
+		return fmt.Errorf("membresía Team F/R10 requiere exactamente una cuota pagada")
+	}
+	if member.SubscriptionStatus == string(constants.SubscriptionStatusActive) && member.PaidInstallments == 1 {
+		return nil
+	}
+	if member.SubscriptionStatus != string(constants.SubscriptionStatusFirstPaymentPending) || member.PaidInstallments != 0 {
+		return fmt.Errorf("membresía Team F/R10 no está en el estado inicial de primer pago")
+	}
+	return tx.Model(&dbs.TeamUser{}).Where("id = ?", member.ID).Updates(map[string]any{
+		"subscription_status": string(constants.SubscriptionStatusActive), "paid_installments": 1, "updated_at": s.now,
+	}).Error
 }
 
 func (s *fullSeeder) fullPaymentInstallmentSpecs(tx *gorm.DB) ([]fullPaymentInstallmentSpec, error) {
@@ -163,7 +239,7 @@ func (s *fullSeeder) fullPaymentInstallmentSpecs(tx *gorm.DB) ([]fullPaymentInst
 	}
 	r1, r2 := subscriptions["r1_premium_active"], subscriptions["r2_premium_debt"]
 	r3Medium, r3Premium := subscriptions["r3_medium_active"], subscriptions["r3_premium_pending"]
-	return []fullPaymentInstallmentSpec{
+	specs := []fullPaymentInstallmentSpec{
 		{key: "r1_tier_1", subscriptionKey: "r1_premium_active", userKey: "r1", number: 1, status: "paid", amount: r1.InitAmount},
 		{key: "r1_tier_2", subscriptionKey: "r1_premium_active", userKey: "r1", number: 2, status: "paid", amount: r1.InitAmount},
 		{key: "r1_tier_3", subscriptionKey: "r1_premium_active", userKey: "r1", number: 3, status: "pending", amount: r1.InitAmount},
@@ -172,12 +248,47 @@ func (s *fullSeeder) fullPaymentInstallmentSpecs(tx *gorm.DB) ([]fullPaymentInst
 		{key: "r2_tier_3", subscriptionKey: "r2_premium_debt", userKey: "r2", number: 3, status: "pending", amount: r2.InitAmount},
 		{key: "r3_tier_medium_1", subscriptionKey: "r3_medium_active", userKey: "r3", number: 1, status: "paid", amount: r3Medium.InitAmount},
 		{key: "r3_tier_premium_1", subscriptionKey: "r3_premium_pending", userKey: "r3", number: 1, status: "pending", amount: r3Premium.InitAmount},
-		{key: "team_b_r1_1", teamKey: "team_b", userKey: "r1", number: 1, status: "pending", amount: 5000},
-		{key: "team_b_r2_1", teamKey: "team_b", userKey: "r2", number: 1, status: "pending", amount: 5000},
-		{key: "team_b_r2_2", teamKey: "team_b", userKey: "r2", number: 2, status: "pending", amount: 5000,
-			dueDate: timePointer(s.now.AddDate(0, 0, -40)), blockedDate: timePointer(s.now.AddDate(0, 0, -33))},
-		{key: "team_a_r10_history_1", teamKey: "team_a", userKey: "r10", number: 1, status: "paid", amount: 4500},
-	}, nil
+	}
+	teamBID := s.ids.teams["team_b"]
+	for _, key := range []string{"r1", "r2", "r6", "r7", "r8", "r11"} {
+		userID := s.ids.users[key]
+		var member dbs.TeamUser
+		if err := tx.Where("team_id = ? AND user_id = ? AND deleted_at IS NULL", teamBID, userID).Take(&member).Error; err != nil {
+			return nil, fmt.Errorf("leer membresía Team B/%s: %w", key, err)
+		}
+		if member.SubscriptionStatus != string(constants.SubscriptionStatusFirstPaymentPending) || member.PaidInstallments != 0 || member.InitAmount != 5000 {
+			return nil, fmt.Errorf("membresía Team B/%s debe permanecer first_payment_pending sin pagos", key)
+		}
+		teamID := teamBID
+		first := services.FirstInstallment(nil, &teamID, userID, member.InitAmount)
+		specs = append(specs, fullPaymentInstallmentSpec{
+			key: "team_b_" + key + "_1", teamKey: "team_b", userKey: key, number: 1,
+			status: first.Status, amount: first.Amount,
+		})
+	}
+	teamFID, r10ID := s.ids.teams["team_f"], s.ids.users["r10"]
+	var member dbs.TeamUser
+	if err := tx.Where("team_id = ? AND user_id = ? AND deleted_at IS NULL", teamFID, r10ID).Take(&member).Error; err != nil {
+		return nil, fmt.Errorf("leer membresía Team F/R10: %w", err)
+	}
+	wantAssignment := fullTeamFR10AssignmentDate(s.now)
+	initial := member.SubscriptionStatus == string(constants.SubscriptionStatusFirstPaymentPending) && member.PaidInstallments == 0
+	final := member.SubscriptionStatus == string(constants.SubscriptionStatusActive) && member.PaidInstallments == 1
+	if member.InitAmount != 4500 || !member.AssignmentDate.Equal(wantAssignment) || (!initial && !final) {
+		return nil, fmt.Errorf("membresía Team F/R10 no coincide con el ciclo de pago full")
+	}
+	teamID := teamFID
+	first := services.FirstInstallment(nil, &teamID, r10ID, member.InitAmount)
+	first.Status = string(constants.InstallmentStatusPaid)
+	next := services.NextTeamInstallment(&member, first)
+	if next.DueDate == nil || next.BlockedDate == nil || !next.BlockedDate.Before(s.now) {
+		return nil, fmt.Errorf("Team F/R10 requiere cuota #2 vencida desde su assignment_date")
+	}
+	specs = append(specs,
+		fullPaymentInstallmentSpec{key: "team_f_r10_1", teamKey: "team_f", userKey: "r10", number: 1, status: first.Status, amount: first.Amount},
+		fullPaymentInstallmentSpec{key: "team_f_r10_2", teamKey: "team_f", userKey: "r10", number: 2, status: next.Status, amount: next.Amount, dueDate: next.DueDate, blockedDate: next.BlockedDate},
+	)
+	return specs, nil
 }
 
 func (s *fullSeeder) fullPaymentSpecs(tx *gorm.DB) ([]fullPaymentSpec, error) {
@@ -198,7 +309,11 @@ func (s *fullSeeder) fullPaymentSpecs(tx *gorm.DB) ([]fullPaymentSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	fee, net := 225.0, 4275.0
+	fee, net, err := fullTeamPaymentSplit(tx, 4500)
+	if err != nil {
+		return nil, err
+	}
+	teamFAssignment := fullTeamFR10AssignmentDate(s.now)
 	return []fullPaymentSpec{
 		{key: "r1-tier-1", installmentKey: "r1_tier_1", userKey: "r1", concept: string(constants.PaymentConceptSubscription), status: "approved", createdAt: r1.StartDate.Add(time.Hour)},
 		{key: "r1-tier-2", installmentKey: "r1_tier_2", userKey: "r1", concept: string(constants.PaymentConceptSubscription), status: "approved", createdAt: r1SecondDue.Add(-time.Hour)},
@@ -208,15 +323,22 @@ func (s *fullSeeder) fullPaymentSpecs(tx *gorm.DB) ([]fullPaymentSpec, error) {
 		{key: "r2-tier-3", installmentKey: "r2_tier_3", userKey: "r2", concept: string(constants.PaymentConceptSubscription), status: "rejected", statusDetail: "cc_rejected_insufficient_amount", createdAt: s.now.AddDate(0, 0, -31)},
 		{key: "r3-tier-medium-1", installmentKey: "r3_tier_medium_1", userKey: "r3", concept: string(constants.PaymentConceptSubscription), status: "approved", createdAt: r3Medium.StartDate.Add(time.Hour)},
 		{key: "r3-tier-premium-1", installmentKey: "r3_tier_premium_1", userKey: "r3", concept: string(constants.PaymentConceptSubscription), status: "rejected", statusDetail: "cc_rejected_other_reason", createdAt: s.now},
-		{key: "team-a-r10-1", installmentKey: "team_a_r10_history_1", userKey: "r10", concept: string(constants.PaymentConceptTeamSubscription), status: "approved", createdAt: s.now.AddDate(0, -2, 0),
+		{key: "team-f-r10-1", installmentKey: "team_f_r10_1", userKey: "r10", concept: string(constants.PaymentConceptTeamSubscription), status: string(constants.PaymentStatusApproved), createdAt: teamFAssignment.Add(time.Hour),
 			sellerKey: "trainer_1", marketplaceFee: &fee, netReceived: &net},
-		{key: "team-b-r1-1", installmentKey: "team_b_r1_1", userKey: "r1", concept: string(constants.PaymentConceptTeamSubscription), status: "rejected", statusDetail: "cc_rejected_insufficient_amount", createdAt: s.now,
-			sellerKey: "trainer_2"},
-		{key: "team-b-r2-1", installmentKey: "team_b_r2_1", userKey: "r2", concept: string(constants.PaymentConceptTeamSubscription), status: "rejected", statusDetail: "cc_rejected_other_reason", createdAt: s.now,
-			sellerKey: "trainer_2"},
-		{key: "team-b-r2-2", installmentKey: "team_b_r2_2", userKey: "r2", concept: string(constants.PaymentConceptTeamSubscription), status: "rejected", statusDetail: "cc_rejected_insufficient_amount", createdAt: s.now.AddDate(0, 0, -39),
-			sellerKey: "trainer_2"},
 	}, nil
+}
+
+func fullTeamPaymentSplit(tx *gorm.DB, amount float64) (float64, float64, error) {
+	var setting dbs.PlatformSetting
+	if err := tx.Where("key = ?", "marketplace_fee_percent").Take(&setting).Error; err != nil {
+		return 0, 0, fmt.Errorf("leer marketplace_fee_percent: %w", err)
+	}
+	var feePercent float64
+	if err := json.Unmarshal([]byte(setting.Value), &feePercent); err != nil || feePercent < 0 || feePercent > 100 {
+		return 0, 0, fmt.Errorf("marketplace_fee_percent no es un porcentaje numérico válido")
+	}
+	fee := float64(int(amount*feePercent/100*100+0.5)) / 100
+	return fee, amount - fee, nil
 }
 
 func (s *fullSeeder) ensureFullPaymentInstallment(tx *gorm.DB, spec fullPaymentInstallmentSpec) (dbs.Installment, error) {
@@ -255,6 +377,9 @@ func (s *fullSeeder) ensureFullPaymentInstallment(tx *gorm.DB, spec fullPaymentI
 		if row.SubscriptionID != nil || row.Status != expected.Status || row.Amount != expected.Amount ||
 			!sameTimePointer(row.DueDate, expected.DueDate) || !sameTimePointer(row.BlockedDate, expected.BlockedDate) {
 			return dbs.Installment{}, fmt.Errorf("cuota existente en la clave equipo/usuario/número distinta al perfil full")
+		}
+		if expected.Status == string(constants.InstallmentStatusPending) && (row.InternalPaymentID != nil || row.ExternalPaymentID != nil) {
+			return dbs.Installment{}, fmt.Errorf("cuota pendiente no debe enlazar payment_id")
 		}
 		return row, nil
 	}

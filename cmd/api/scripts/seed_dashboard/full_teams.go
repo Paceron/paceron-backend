@@ -40,6 +40,7 @@ type fullTeamMemberSpec struct {
 	role, subscriptionStatus string
 	initAmount               float64
 	paidInstallments         int
+	assignmentDate           time.Time
 }
 
 type fullGroupMemberSpec struct {
@@ -71,7 +72,7 @@ func (s *fullSeeder) seedTeams() error {
 
 	teamSpecs := fullTeamSpecs(s.scope, ids)
 	groupSpecs := fullGroupSpecs(s.scope)
-	teamMembers := fullTeamMembers(s.scope, ids, teamSpecs)
+	teamMembers := fullTeamMembers(s.scope, ids, teamSpecs, s.now)
 	groupMembers := fullGroupMembers(s.scope, ids, s.now)
 
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -168,8 +169,8 @@ func fullTeamSpecs(scope fullScope, users map[string]int64) []fullTeamSpec {
 		},
 		{
 			id: scope.teamFID, ownerID: users["trainer_1"], key: "F", name: "Semilla Full · Equipo F Colisión",
-			description: fullSeedMarker + " Equipo para escenarios de colisión.", level: "intermedio",
-			requirements: "Sin requisitos especiales.", maxMembers: 20, visible: true, public: true,
+			description: fullSeedMarker + " Equipo para escenarios de colisión y mensualidad.", level: "intermedio",
+			requirements: "Cuota mensual.", fee: 4500, maxMembers: 20, visible: true, public: true,
 			street: "Avenida del Parque", number: "600", lat: -31.4201, lng: -64.1888,
 		},
 	}
@@ -187,7 +188,7 @@ func fullGroupSpecs(scope fullScope) []fullGroupSpec {
 	}
 }
 
-func fullTeamMembers(scope fullScope, users map[string]int64, teams []fullTeamSpec) []fullTeamMemberSpec {
+func fullTeamMembers(scope fullScope, users map[string]int64, teams []fullTeamSpec, now time.Time) []fullTeamMemberSpec {
 	fees := make(map[int64]float64, len(teams))
 	for _, spec := range teams {
 		fees[spec.id] = spec.fee
@@ -197,6 +198,7 @@ func fullTeamMembers(scope fullScope, users map[string]int64, teams []fullTeamSp
 		status := ""
 		amount := float64(0)
 		paid := 0
+		assignmentDate := now
 		if role == string(constants.TeamUserRoleCorredor) {
 			status = string(constants.SubscriptionStatusActive)
 			if fees[teamID] > 0 {
@@ -204,9 +206,12 @@ func fullTeamMembers(scope fullScope, users map[string]int64, teams []fullTeamSp
 				amount = fees[teamID]
 			}
 		}
+		if teamID == scope.teamFID && userKey == "r10" {
+			assignmentDate = fullTeamFR10AssignmentDate(now)
+		}
 		members = append(members, fullTeamMemberSpec{
 			teamID: teamID, userID: users[userKey], role: role,
-			subscriptionStatus: status, initAmount: amount, paidInstallments: paid,
+			subscriptionStatus: status, initAmount: amount, paidInstallments: paid, assignmentDate: assignmentDate,
 		})
 	}
 	add(scope.teamAID, "trainer_1", string(constants.TeamUserRoleEntrenador))
@@ -226,6 +231,10 @@ func fullTeamMembers(scope fullScope, users map[string]int64, teams []fullTeamSp
 	add(scope.teamFID, "trainer_1", string(constants.TeamUserRoleEntrenador))
 	add(scope.teamFID, "r10", string(constants.TeamUserRoleCorredor))
 	return members
+}
+
+func fullTeamFR10AssignmentDate(now time.Time) time.Time {
+	return fullDate(now.AddDate(0, -3, 0)).Add(9 * time.Hour)
 }
 
 func fullGroupMembers(scope fullScope, users map[string]int64, now time.Time) []fullGroupMemberSpec {
@@ -346,13 +355,13 @@ func ensureFullTeamMember(tx *gorm.DB, spec fullTeamMemberSpec, now time.Time) e
 	values := map[string]any{
 		"role_in_team": spec.role, "status": "active", "subscription_status": nullableString(spec.subscriptionStatus),
 		"init_amount": spec.initAmount, "paid_installments": spec.paidInstallments,
-		"assignment_date": now, "deleted_at": nil, "updated_at": now,
+		"assignment_date": spec.assignmentDate, "deleted_at": nil, "updated_at": now,
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		member := dbs.TeamUser{
 			TeamID: spec.teamID, UserID: spec.userID, RoleInTeam: spec.role, Status: "active",
 			SubscriptionStatus: spec.subscriptionStatus, InitAmount: spec.initAmount,
-			PaidInstallments: spec.paidInstallments, AssignmentDate: now, CreatedAt: now, UpdatedAt: now,
+			PaidInstallments: spec.paidInstallments, AssignmentDate: spec.assignmentDate, CreatedAt: now, UpdatedAt: now,
 		}
 		return tx.Create(&member).Error
 	}
