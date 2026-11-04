@@ -10,6 +10,7 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
@@ -77,10 +78,11 @@ func (s *fullSeeder) seedCompetitions() error {
 			}
 
 			if spec.key == "finished_metric_tie" {
-				ids, err := s.ensureFullCompetitionTieFeedback(tx)
+				ids, instanceID, err := s.ensureFullCompetitionTieFeedback(tx, row.ID)
 				if err != nil {
 					return fmt.Errorf("feedback de empate métrico: %w", err)
 				}
+				instanceIDs[spec.key+"_metric"] = instanceID
 				for key, id := range ids {
 					feedbackIDs[key] = id
 				}
@@ -473,13 +475,12 @@ func (s *fullSeeder) ensureFullCompetitionRouteEvidence(tx *gorm.DB, row *dbs.Co
 	durationMS := attempt.duration.Milliseconds()
 	distance := 500.0
 	status := "completed"
-	teamID := s.ids.teams["team_a"]
 	feedback := dbs.WorkoutFeedback{
-		TeamID: &teamID, AssignedSessionID: instanceID, AssignedExerciseID: exerciseID,
+		AssignedSessionID: instanceID, AssignedExerciseID: exerciseID,
 		AthleteUserID: s.ids.users[attempt.athleteKey], FeedbackOwnerUserID: s.ids.users[attempt.athleteKey],
 		ReportSource: "corredor", SessionDate: fullDate(start), SetNumber: 1,
 		StartedAt: &start, EndedAt: &end, DurationMs: &durationMS, DistanceMeters: &distance,
-		CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " Evidencia sintética de intento de competencia."),
+		CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + constants.CompetitionSeedFeedbackMarker + " Evidencia GPS de intento de competencia."),
 	}
 	feedback.MediaURLs.Status = pgtype.Null
 	feedbackID, err := ensureFullCompetitionFeedback(tx, feedback)
@@ -487,17 +488,16 @@ func (s *fullSeeder) ensureFullCompetitionRouteEvidence(tx *gorm.DB, row *dbs.Co
 		return 0, err
 	}
 	points := fullCompetitionGPSPoints(*comp.route, attempt.compliance)
-	if err := ensureFullCompetitionGPSPoints(tx, feedbackID, instanceID, exerciseID, points, s.now); err != nil {
+	if err := ensureFullCompetitionGPSPoints(tx, feedbackID, instanceID, exerciseID, points, attempt.startedAt); err != nil {
 		return 0, err
 	}
 	return feedbackID, nil
 }
 
-func (s *fullSeeder) ensureFullCompetitionTieFeedback(tx *gorm.DB) (map[string]int64, error) {
-	sourceID := s.ids.workoutFeedback["completed_r1_minus14_set1"]
-	var source dbs.WorkoutFeedback
-	if err := tx.First(&source, sourceID).Error; err != nil {
-		return nil, fmt.Errorf("leer feedback full de referencia: %w", err)
+func (s *fullSeeder) ensureFullCompetitionTieFeedback(tx *gorm.DB, competitionID int64) (map[string]int64, int64, error) {
+	instanceID, exerciseID, err := ensureFullCompetitionMetricInstance(tx, competitionID, s.now)
+	if err != nil {
+		return nil, 0, err
 	}
 	ids := make(map[string]int64, 2)
 	for _, athlete := range []string{"r6", "r7"} {
@@ -505,19 +505,74 @@ func (s *fullSeeder) ensureFullCompetitionTieFeedback(tx *gorm.DB) (map[string]i
 		distance := 5000.0
 		status := "completed"
 		feedback := dbs.WorkoutFeedback{
-			TeamID: &teamID, AssignedSessionID: source.AssignedSessionID, AssignedExerciseID: source.AssignedExerciseID,
+			TeamID: &teamID, AssignedSessionID: instanceID, AssignedExerciseID: exerciseID,
 			AthleteUserID: s.ids.users[athlete], FeedbackOwnerUserID: s.ids.users[athlete], ReportSource: "corredor",
 			SessionDate: fullDate(s.now.AddDate(0, 0, -14)), SetNumber: 7, DistanceMeters: &distance,
-			CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " Dato de empate métrico de competencia."),
+			CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + constants.CompetitionSeedFeedbackMarker + " Dato de empate métrico de competencia."),
 		}
 		feedback.MediaURLs.Status = pgtype.Null
 		id, err := ensureFullCompetitionFeedback(tx, feedback)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		ids[fullCompetitionMetricFeedbackKey+"_"+athlete] = id
 	}
-	return ids, nil
+	return ids, instanceID, nil
+}
+
+func ensureFullCompetitionMetricInstance(tx *gorm.DB, competitionID int64, now time.Time) (int64, int64, error) {
+	name := fmt.Sprintf("Competencia métrica %d", competitionID)
+	var instances []dbs.SessionInstance
+	if err := tx.Where("name = ?", name).Find(&instances).Error; err != nil {
+		return 0, 0, err
+	}
+	if len(instances) > 1 {
+		return 0, 0, fmt.Errorf("hay instancias duplicadas con clave %q", name)
+	}
+	var instance dbs.SessionInstance
+	if len(instances) == 1 {
+		instance = instances[0]
+		if !containsFullSeedMarker(pointerValue(instance.Description)) || instance.SourceSessionID != nil {
+			return 0, 0, fmt.Errorf("la instancia %q no es sintética del perfil full", name)
+		}
+	} else {
+		description := fullSeedMarker + " Instancia de evidencia métrica de competencia."
+		instance = dbs.SessionInstance{Name: name, Description: &description, CreatedAt: now}
+		if err := tx.Create(&instance).Error; err != nil {
+			return 0, 0, err
+		}
+	}
+	var links []dbs.SessionExerciseInstance
+	if err := tx.Where("session_instance_id = ?", instance.ID).Find(&links).Error; err != nil {
+		return 0, 0, err
+	}
+	if len(links) == 0 {
+		description := fullSeedMarker + " Ejercicio sintético para empate métrico."
+		exercise := dbs.ExerciseInstance{
+			Name:        fmt.Sprintf("Métrica de competencia %d %s", competitionID, fullSeedMarker),
+			Description: &description, Kind: "velocidad_distancia", CreatedAt: now,
+		}
+		if err := tx.Create(&exercise).Error; err != nil {
+			return 0, 0, err
+		}
+		link := dbs.SessionExerciseInstance{SessionInstanceID: instance.ID, ExerciseInstanceID: exercise.ID, Role: "main", RepeatCount: 1}
+		if err := tx.Create(&link).Error; err != nil {
+			return 0, 0, err
+		}
+		links = append(links, link)
+	}
+	if len(links) != 1 || links[0].Role != "main" || links[0].RepeatCount != 1 || links[0].RestMinutes != 0 {
+		return 0, 0, fmt.Errorf("la instancia %q no tiene el ejercicio sintético esperado", name)
+	}
+	var exercise dbs.ExerciseInstance
+	if err := tx.First(&exercise, links[0].ExerciseInstanceID).Error; err != nil {
+		return 0, 0, err
+	}
+	wantName := fmt.Sprintf("Métrica de competencia %d %s", competitionID, fullSeedMarker)
+	if exercise.Name != wantName || exercise.Kind != "velocidad_distancia" || exercise.SourceExerciseID != nil || !containsFullSeedMarker(pointerValue(exercise.Description)) {
+		return 0, 0, fmt.Errorf("el ejercicio de la instancia %q no tiene identidad full", name)
+	}
+	return instance.ID, exercise.ID, nil
 }
 
 func ensureFullCompetitionFeedback(tx *gorm.DB, expected dbs.WorkoutFeedback) (int64, error) {
@@ -545,7 +600,7 @@ func ensureFullCompetitionFeedback(tx *gorm.DB, expected dbs.WorkoutFeedback) (i
 	return rows[0].ID, nil
 }
 
-func ensureFullCompetitionGPSPoints(tx *gorm.DB, feedbackID, sessionID, exerciseID int64, expected []routematch.Point, now time.Time) error {
+func ensureFullCompetitionGPSPoints(tx *gorm.DB, feedbackID, sessionID, exerciseID int64, expected []routematch.Point, startedAt time.Time) error {
 	var actual []dbs.WorkoutFeedbackPoint
 	if err := tx.Where("feedback_id = ?", feedbackID).Order(`"order"`).Find(&actual).Error; err != nil {
 		return err
@@ -554,7 +609,7 @@ func ensureFullCompetitionGPSPoints(tx *gorm.DB, feedbackID, sessionID, exercise
 		for i, point := range expected {
 			row := dbs.WorkoutFeedbackPoint{
 				FeedbackID: feedbackID, SessionInstanceID: sessionID, ExerciseInstanceID: exerciseID,
-				Order: i, Latitude: point.Lat, Longitude: point.Lng, RecordedAt: now.Add(time.Duration(i) * time.Second),
+				Order: i, Latitude: point.Lat, Longitude: point.Lng, RecordedAt: startedAt.Add(time.Duration(i) * time.Second),
 			}
 			if err := tx.Create(&row).Error; err != nil {
 				return err
@@ -567,7 +622,7 @@ func ensureFullCompetitionGPSPoints(tx *gorm.DB, feedbackID, sessionID, exercise
 	}
 	for i := range expected {
 		if actual[i].Order != i || actual[i].SessionInstanceID != sessionID || actual[i].ExerciseInstanceID != exerciseID ||
-			actual[i].Latitude != expected[i].Lat || actual[i].Longitude != expected[i].Lng || !actual[i].RecordedAt.Equal(now.Add(time.Duration(i)*time.Second)) {
+			actual[i].Latitude != expected[i].Lat || actual[i].Longitude != expected[i].Lng || !actual[i].RecordedAt.Equal(startedAt.Add(time.Duration(i)*time.Second)) {
 			return fmt.Errorf("punto GPS %d distinto al intento full", i)
 		}
 	}

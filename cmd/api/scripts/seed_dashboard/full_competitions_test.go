@@ -11,7 +11,9 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/gamification"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/testutils"
@@ -43,6 +45,11 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	require.NoError(t, s.seedCatalogCalendar())
 	require.NoError(t, s.seedActivity())
 	require.NoError(t, s.seedGamification())
+	teamID := s.ids.teams["team_a"]
+	trainerID := s.ids.users["trainer_1"]
+	leaderboardBefore := fullCompetitionLeaderboardSnapshot(t, db, s.ids.users["r4"], teamID)
+	activeMetricBefore := fullCompetitionMetricSnapshot(t, db, teamID, s.ids.users["r1"], s.ids.users["r4"], s.now)
+	achievementDistanceBefore := fullCompetitionAchievementDistanceSnapshot(t, db, s.ids.users)
 
 	require.NoError(t, s.seedCompetitions())
 	before := fullCompetitionCounts(t, db)
@@ -51,10 +58,12 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	assert.Equal(t, before, fullCompetitionCounts(t, db))
 	assert.Equal(t, competitionIDs, s.ids.competitions)
 	assert.Len(t, s.ids.competitions, 8)
+	assert.Equal(t, leaderboardBefore, fullCompetitionLeaderboardSnapshot(t, db, s.ids.users["r4"], teamID),
+		"la evidencia sintética de competencias no debe alterar el leaderboard del equipo")
+	assert.Equal(t, achievementDistanceBefore, fullCompetitionAchievementDistanceSnapshot(t, db, s.ids.users),
+		"la evidencia sintética de competencias no debe alterar los agregados de distancia de logros")
 
 	service := services.NewCompetitionService(daos.NewCompetitionDao(db), nil, nil)
-	teamID := s.ids.teams["team_a"]
-	trainerID := s.ids.users["trainer_1"]
 	r1ID, r2ID := s.ids.users["r1"], s.ids.users["r2"]
 
 	for status, want := range map[string]int{
@@ -87,6 +96,8 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	}
 	assert.Positive(t, metricProgress[s.ids.users["r1"]])
 	assert.Positive(t, metricProgress[s.ids.users["r4"]])
+	assert.Equal(t, activeMetricBefore[s.ids.users["r1"]], metricProgress[s.ids.users["r1"]])
+	assert.Equal(t, activeMetricBefore[s.ids.users["r4"]], metricProgress[s.ids.users["r4"]])
 	assert.Nil(t, activeMetric.Data.AttemptsUsed)
 	assert.False(t, activeMetric.Data.CanAttempt)
 
@@ -102,6 +113,24 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	}
 	assert.Equal(t, 5000.0, tieProgress[s.ids.users["r6"]])
 	assert.Equal(t, 5000.0, tieProgress[s.ids.users["r7"]])
+	sourceFeedback := dbs.WorkoutFeedback{}
+	require.NoError(t, db.First(&sourceFeedback, s.ids.workoutFeedback["completed_r1_minus14_set1"]).Error)
+	for _, athlete := range []string{"r6", "r7"} {
+		var synthetic dbs.WorkoutFeedback
+		require.NoError(t, db.First(&synthetic, s.ids.workoutFeedback[fullCompetitionMetricFeedbackKey+"_"+athlete]).Error)
+		assert.NotEqual(t, sourceFeedback.AssignedSessionID, synthetic.AssignedSessionID,
+			"el feedback del empate debe vivir fuera de la instancia del calendario")
+		assert.Contains(t, pointerValue(synthetic.Annotations), constants.CompetitionSeedFeedbackMarker)
+	}
+	var metricInstance dbs.SessionInstance
+	require.NoError(t, db.First(&metricInstance, s.ids.competitionInstances["finished_metric_tie_metric"]).Error)
+	assert.Equal(t, fmt.Sprintf("Competencia métrica %d", s.ids.competitions["finished_metric_tie"]), metricInstance.Name)
+	assert.Contains(t, pointerValue(metricInstance.Description), fullSeedMarker)
+	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(db))
+	r6ID := s.ids.users["r6"]
+	calendarFeedback, err := feedbackService.GetSessionFeedback(nil, trainerID, sourceFeedback.AssignedSessionID, &r6ID)
+	require.NoError(t, err)
+	assert.Empty(t, calendarFeedback, "el feedback métrico sintético no debe aparecer en el detalle de calendario")
 
 	activeRoute, err := service.Get(nil, r2ID, s.ids.competitions["active_route"])
 	require.NoError(t, err)
@@ -144,6 +173,10 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	assert.Contains(t, pointerValue(attemptInstance.Description), fullSeedMarker)
 	fullCompetitionAssertGPSWithinRoute(t, db, s.ids.workoutFeedback["active_route_r1_1"], vertices, 10)
 	fullCompetitionAssertGPSWithinRoute(t, db, s.ids.workoutFeedback["active_route_r2_1"], vertices, 10)
+	var routeEvidence dbs.WorkoutFeedback
+	require.NoError(t, db.First(&routeEvidence, s.ids.workoutFeedback["active_route_r1_1"]).Error)
+	assert.Nil(t, routeEvidence.TeamID)
+	assert.Contains(t, pointerValue(routeEvidence.Annotations), constants.CompetitionSeedFeedbackMarker)
 	r1Route, err := service.Get(nil, r1ID, s.ids.competitions["active_route"])
 	require.NoError(t, err)
 	require.NotNil(t, r1Route.Data.AttemptsUsed)
@@ -207,7 +240,72 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 		Where("user_id = ? AND competition_id IN ?", trainerID, fullCompetitionIDs(s.ids.competitions)).Count(&ownerParticipation).Error)
 	assert.Zero(t, ownerParticipation)
 	assert.Len(t, s.ids.competitionAttempts, 8)
-	assert.Len(t, s.ids.competitionInstances, 12)
+	assert.Len(t, s.ids.competitionInstances, 13)
+
+	later := newFullSeeder(db, options{})
+	later.now = s.now.Add(23 * time.Minute)
+	later.ids = s.ids
+	assert.Equal(t, fullDate(s.now), fullDate(later.now))
+	laterIDs := copyInt64Map(later.ids.competitions)
+	laterCounts := fullCompetitionCounts(t, db)
+	gametime.Now = func() time.Time { return later.now }
+	require.NoError(t, later.seedCompetitions())
+	gametime.Now = func() time.Time { return s.now }
+	assert.Equal(t, laterCounts, fullCompetitionCounts(t, db))
+	assert.Equal(t, laterIDs, later.ids.competitions)
+}
+
+func fullCompetitionLeaderboardSnapshot(t *testing.T, db *gorm.DB, callerID, teamID int64) map[string]*gamification.LeaderboardResponse {
+	t.Helper()
+	service := services.NewLeaderboardService(daos.NewLeaderboardDao(db))
+	snapshot := make(map[string]*gamification.LeaderboardResponse)
+	for _, metric := range gamification.GetValidLeaderboardMetrics() {
+		response, err := service.GetLeaderboard(nil, callerID, teamID, metric, gamification.LeaderboardPeriodAll, nil, nil)
+		require.NoError(t, err, metric)
+		snapshot[metric] = response
+	}
+	return snapshot
+}
+
+func fullCompetitionMetricSnapshot(t *testing.T, db *gorm.DB, teamID, r1ID, r4ID int64, now time.Time) map[int64]float64 {
+	t.Helper()
+	rows, err := daos.NewCompetitionDao(db).AggregateFeedbackWindow(nil, teamID, []int64{r1ID, r4ID}, fullDate(now.AddDate(0, 0, -21)), fullDate(now))
+	require.NoError(t, err)
+	values := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		if row.SumDistance != nil {
+			values[row.UserID] = *row.SumDistance
+		}
+	}
+	return values
+}
+
+type fullCompetitionAchievementSnapshot struct {
+	distance, maxDistance float64
+	finished, gpsFinished int64
+	finishedStarts        []time.Time
+}
+
+func fullCompetitionAchievementDistanceSnapshot(t *testing.T, db *gorm.DB, users map[string]int64) map[string]fullCompetitionAchievementSnapshot {
+	t.Helper()
+	dao := daos.NewAchievementDao(db)
+	snapshot := make(map[string]fullCompetitionAchievementSnapshot)
+	for _, user := range []string{"r1", "r2", "r3", "r4", "r5", "r6", "r7"} {
+		total, err := dao.SumDistanceMeters(nil, users[user])
+		require.NoError(t, err)
+		max, err := dao.MaxDistanceSingleSession(nil, users[user])
+		require.NoError(t, err)
+		finished, err := dao.CountFinishedSessions(nil, users[user])
+		require.NoError(t, err)
+		starts, err := dao.ListFinishedSessionStarts(nil, users[user])
+		require.NoError(t, err)
+		gpsFinished, err := dao.CountGPSFinishedSessions(nil, users[user])
+		require.NoError(t, err)
+		snapshot[user] = fullCompetitionAchievementSnapshot{
+			distance: total, maxDistance: max, finished: finished, finishedStarts: starts, gpsFinished: gpsFinished,
+		}
+	}
+	return snapshot
 }
 
 func fullCompetitionRouteProgress(t *testing.T, progress []competition.CompetitionProgress) map[int64]competition.CompetitionRouteProgressItem {
@@ -223,11 +321,17 @@ func fullCompetitionRouteProgress(t *testing.T, progress []competition.Competiti
 
 func fullCompetitionAssertGPSWithinRoute(t *testing.T, db *gorm.DB, feedbackID int64, route []routematch.Point, maxMeters float64) {
 	t.Helper()
+	feedback := dbs.WorkoutFeedback{}
+	require.NoError(t, db.First(&feedback, feedbackID).Error)
+	require.NotNil(t, feedback.StartedAt)
+	require.NotNil(t, feedback.EndedAt)
 	var points []dbs.WorkoutFeedbackPoint
 	require.NoError(t, db.Where("feedback_id = ?", feedbackID).Order(`"order"`).Find(&points).Error)
 	require.NotEmpty(t, points)
 	samples := routematch.SampleRoute(route)
 	for _, point := range points {
+		assert.False(t, point.RecordedAt.Before(*feedback.StartedAt))
+		assert.False(t, point.RecordedAt.After(*feedback.EndedAt))
 		nearest := 1e12
 		for _, sample := range samples {
 			distance := routematch.HaversineMeters(point.Latitude, point.Longitude, sample.Lat, sample.Lng)
