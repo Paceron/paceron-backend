@@ -76,7 +76,7 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
 
 | Equipo | Owner | Config | Casos que habilita |
 |---|---|---|---|
-| A normal | trainer 1 | fee 0, visible, público, seller conectado | Todos los flujos normales; grupo principal (dashboard) + secundario |
+| A normal | trainer 1 | fee 0, visible, público, seller conectado | Todos los flujos normales; grupo principal (dashboard-facing) + secundario |
 | B pago | trainer 2 | fee > 0, visible, público, sin seller connection | Deuda/baja bloqueada; 409 SELLER_NOT_CONNECTED; búsqueda de equipos ajenos |
 | C lleno | trainer 1 | max_members alcanzado | AddUser / join request / aceptar invitación fallan por cupo |
 | D oculto | trainer 2 | visible=false | No aparece en búsqueda |
@@ -146,7 +146,7 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
   alta futura en ese grupo: los días anteriores al alta deben aparecer `skipped`.
   `gamification_streak_state` se siembra con currents coherentes para que el próximo
   trigger no dispare hitos ya avisados. El plan auxiliar queda fuera del grupo principal
-  del dashboard para preservar sus contadores.
+  de Team A, que contiene los datos protagonistas dashboard-facing del universo full.
 - Logros: `user_achievement_progress` con `unlocked_at` para un corredor con varios
   desbloqueados y otro vacío (empty state); ids del catálogo de
   `constants/achievements.go` (21 filas); `icon_key` = id.
@@ -201,8 +201,9 @@ Todas en Team A, participantes = corredores (el trainer nunca compite):
 
 ## D10 — Verificación
 
-- `fullseed-verify` (y `--profile full --verify`): además del verify dashboard,
-  comprueba coherencia del universo full:
+- `fullseed-verify` (y `--profile full --verify`) ejecuta solo `verifyFull`. No invoca
+  `runDashboardSeedMode` ni el verify de seis contadores del dashboard; comprueba
+  coherencia del universo full:
   - login de los 4 protagonistas (bcrypt) y rechazo de blocked/inactive.
   - calendario de HOY devuelve el presencial abierto de `group_a_main` y el async de
     `group_b`.
@@ -221,13 +222,16 @@ Todas en Team A, participantes = corredores (el trainer nunca compite):
   instancias sintéticas), mensajes, pagos/cuotas/suscripciones de tier, asistencias,
   feedback y points, runner_session, calendario/instancias, planes/sesiones/ejercicios,
   invitaciones/join requests, memberships, equipos/grupos y usuarios `@seed-full.local`.
-- No toca datos del perfil dashboard ni datos reales; pide `--yes` explícito, igual que
-  el cleanup actual.
-- Primero borra los datos full-only que puedan referenciar instancias del calendario;
-  después limpia el segmento dashboard-compatible reutilizando sus WHEREs existentes,
-  acotado al Team A, grupo principal y ventana full reservados. Elimina también las
-  memberships y usuarios seed-full; nunca limpia `group_users`/usuarios fuera de ese
-  scope.
+- Cleanup independiente: `cleanupFull` tiene sus propios selectores, identidades y
+  markers reservados (IDs de scope full, `[seed_full]`, `@seed-full.local`, ventanas de
+  fechas full). No llama al cleanup del dashboard (`cleanup.go`) ni reutiliza sus
+  WHEREs.
+- No toca datos del perfil dashboard (IDs default 29/39, marker `[seed_dashboard]`) ni
+  datos reales; pide `--yes` explícito.
+- Primero borra los datos full-only que puedan referenciar instancias del calendario,
+  luego las filas dashboard-facing del universo full dentro de sus IDs reservados
+  (Team A y su grupo principal con su ventana), y por último memberships y usuarios
+  seed-full. Nunca limpia `group_users`/usuarios fuera de ese scope.
 
 ## D12 — Makefile y documentación
 
@@ -248,8 +252,8 @@ fullseed-verify    # --verify
 
 ## D13 — Determinismo y medio ambiente
 
-- Misma semilla fija para el generador; el perfil full usa una semilla propia para no
-  acoplar el plan de defectos del dashboard.
+- Misma semilla fija para el generador; el perfil full usa una semilla propia y no
+  comparte el plan de defectos del dashboard.
 - Fechas siempre relativas a `NOW` en TZ Córdoba; nada hardcodeado a un día calendario.
 - Guardas existentes sin cambios: `SEEDING_ENABLED=true` + `--stage=local` obligatorios.
 - Sin red: no se llama a MP, Expo ni storage; todo sintético.
@@ -273,7 +277,10 @@ fullseed-verify    # --verify
 1. **Deriva con el código**: si cambia un flujo real, el seed puede quedar
    incoherente. Mitigación: D10 verifica por los reads reales y falla ruidosamente.
 2. **Choque de ids/scope**: mitigado por rango alto + marker + guard de aborto.
-3. **Contadores del dashboard**: mitigado manteniendo los 7 arquetipos y su defect plan
-   en el grupo dashboard y poniendo los extras fuera del scope.
+3. **Desvío respecto del dashboard**: el perfil full no comparte el dataset, el plan de
+   defectos ni los contadores del dashboard; su verificación es `verifyFull`. El perfil
+   `dashboard`/default queda intacto (IDs 29/39, su propio seed, cleanup y verify), así
+   que un cambio en el full no altera sus contadores. Mitigación: su propio verify y
+   cleanup acotados a IDs reservados.
 4. **Cifrado de tokens**: si `TOKEN_ENCRYPTION_KEY` falta o cambia, el seller
    connection queda inutilizable; el RUNBOOK lo exige y D10 lo detecta.
