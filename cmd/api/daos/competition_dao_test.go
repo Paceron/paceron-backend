@@ -496,9 +496,10 @@ func TestCompetitionDAO_AttemptSessionsYPoints(t *testing.T) {
 	points, err := dao.ListAttemptPoints(nil, []int64{771, 772}, []int64{fx.runnerA.ID, fx.runnerB.ID})
 	require.NoError(t, err)
 	require.Len(t, points, 2)
-	assert.Equal(t, int64(771), points[0].SessionInstanceID)
-	assert.Equal(t, fx.runnerA.ID, points[0].AthleteUserID)
-	assert.Equal(t, -31.42, points[0].Latitude)
+	assert.ElementsMatch(t, []dbs.CompetitionAttemptPoint{
+		{SessionInstanceID: 771, AthleteUserID: fx.runnerA.ID, Latitude: -31.42, Longitude: -64.18},
+		{SessionInstanceID: 771, AthleteUserID: fx.runnerA.ID, Latitude: -31.421, Longitude: -64.181},
+	}, points)
 	// ídola nueva instancia fuera del filtro devuelva 0.
 	none, err := dao.ListAttemptPoints(nil, []int64{999}, []int64{fx.runnerA.ID})
 	require.NoError(t, err)
