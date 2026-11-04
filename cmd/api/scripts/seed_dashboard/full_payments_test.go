@@ -33,6 +33,10 @@ func TestFullSeederSeedPaymentsAndMessages_RequiresPreviousPhases(t *testing.T) 
 }
 
 func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently(t *testing.T) {
+	localNow := time.Now().In(gametime.Location)
+	if localNow.Hour() == 23 && localNow.Minute() == 59 {
+		t.Skip("la prueba consulta deuda contra el reloj real y cruza la medianoche local")
+	}
 	db := testutils.SetupTestDB(t)
 	s := seedFullPaymentsPrerequisites(t, db)
 
@@ -149,9 +153,10 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	require.NotNil(t, r10TeamF.NextInstallment)
 	assert.Equal(t, 2, r10TeamF.NextInstallment.InstallmentNumber)
 	require.NotNil(t, r10TeamF.NextInstallment.NextDueDate)
-	assert.True(t, r10TeamF.NextInstallment.NextDueDate.Equal(time.Date(2026, time.August, 13, 9, 0, 0, 0, gametime.Location)))
+	teamFAssignment := fullTeamFR10AssignmentDate(s.now)
+	assert.True(t, r10TeamF.NextInstallment.NextDueDate.Equal(teamFAssignment.AddDate(0, 1, 0)))
 	require.NotNil(t, r10TeamF.NextInstallment.BlockedDate)
-	assert.True(t, r10TeamF.NextInstallment.BlockedDate.Equal(time.Date(2026, time.August, 20, 9, 0, 0, 0, gametime.Location)))
+	assert.True(t, r10TeamF.NextInstallment.BlockedDate.Equal(teamFAssignment.AddDate(0, 1, 7)))
 	assert.True(t, r10TeamF.NextInstallment.BlockedDate.Before(s.now))
 
 	teamUserService := services.NewTeamUserService(
@@ -160,7 +165,7 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	)
 	err = teamUserService.RemoveUser(nil, s.ids.teams["team_f"], s.ids.users["r10"], s.ids.users["r10"])
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "deuda pendiente")
+	assert.Contains(t, err.Error(), "no podés dejar el equipo")
 
 	var installments []dbs.Installment
 	require.NoError(t, db.Where("id IN ?", fullPaymentIDs(s.ids.installments)).Order("id").Find(&installments).Error)
@@ -340,7 +345,8 @@ func seedFullPaymentsPrerequisites(t *testing.T, db *gorm.DB) *fullSeeder {
 	t.Helper()
 	seedFullActivityTestConfig(t)
 	s := newFullSeeder(db, options{})
-	s.now = time.Date(2026, time.October, 13, 15, 0, 0, 0, gametime.Location)
+	today := time.Now().In(gametime.Location)
+	s.now = time.Date(today.Year(), today.Month(), today.Day(), 9, 0, 0, 0, gametime.Location)
 	oldNow := gametime.Now
 	gametime.Now = func() time.Time { return s.now }
 	t.Cleanup(func() { gametime.Now = oldNow })
