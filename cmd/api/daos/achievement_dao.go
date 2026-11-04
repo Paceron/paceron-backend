@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
@@ -84,12 +83,6 @@ func (d *achievementDao) CountFinishedSessions(ctx *gin.Context, userID int64) (
 	var n int64
 	err := d.DB.Model(&dbs.RunnerSession{}).
 		Where("athlete_user_id = ? AND status = ?", userID, runnersession.RunnerSessionStatusFinished).
-		Where(`NOT EXISTS (
-			SELECT 1 FROM workout_feedback wf
-			WHERE wf.assigned_session_id = runner_session.session_instance_id
-			  AND wf.athlete_user_id = runner_session.athlete_user_id
-			  AND COALESCE(wf.annotations, '') LIKE ?
-		)`, "%"+constants.CompetitionSeedFeedbackMarker+"%").
 		Count(&n).Error
 	if err != nil {
 		return 0, fmt.Errorf("error counting finished runner sessions: %w", err)
@@ -102,7 +95,6 @@ func (d *achievementDao) SumDistanceMeters(ctx *gin.Context, userID int64) (floa
 	err := d.DB.Model(&dbs.WorkoutFeedback{}).
 		Select("COALESCE(SUM(distance_meters), 0)").
 		Where("athlete_user_id = ? AND deleted_at IS NULL AND distance_meters IS NOT NULL", userID).
-		Where("COALESCE(annotations, '') NOT LIKE ?", "%"+constants.CompetitionSeedFeedbackMarker+"%").
 		Scan(&total).Error
 	if err != nil {
 		return 0, fmt.Errorf("error summing feedback distance: %w", err)
@@ -117,9 +109,8 @@ func (d *achievementDao) MaxDistanceSingleSession(ctx *gin.Context, userID int64
 			SELECT SUM(distance_meters) AS total
 			FROM workout_feedback
 			WHERE athlete_user_id = ? AND deleted_at IS NULL AND distance_meters IS NOT NULL
-			  AND COALESCE(annotations, '') NOT LIKE ?
 			GROUP BY assigned_session_id
-		) per_session`, userID, "%"+constants.CompetitionSeedFeedbackMarker+"%").Scan(&max).Error
+		) per_session`, userID).Scan(&max).Error
 	if err != nil {
 		return 0, fmt.Errorf("error computing max single-session distance: %w", err)
 	}
@@ -135,14 +126,7 @@ func (d *achievementDao) CountGPSFinishedSessions(ctx *gin.Context, userID int64
 			ON rs.session_instance_id = points.session_instance_id
 			AND rs.athlete_user_id = ?
 			AND rs.status = ?
-		WHERE NOT EXISTS (
-			SELECT 1 FROM workout_feedback wf
-			WHERE wf.assigned_session_id = points.session_instance_id
-			  AND wf.athlete_user_id = rs.athlete_user_id
-			  AND wf.deleted_at IS NULL
-			  AND COALESCE(wf.annotations, '') LIKE ?
-		)`, userID, runnersession.RunnerSessionStatusFinished,
-		"%"+constants.CompetitionSeedFeedbackMarker+"%").Scan(&n).Error
+		`, userID, runnersession.RunnerSessionStatusFinished).Scan(&n).Error
 	if err != nil {
 		return 0, fmt.Errorf("error counting gps finished sessions: %w", err)
 	}
@@ -153,12 +137,6 @@ func (d *achievementDao) ListFinishedSessionStarts(ctx *gin.Context, userID int6
 	var starts []time.Time
 	err := d.DB.Model(&dbs.RunnerSession{}).
 		Where("athlete_user_id = ? AND status = ?", userID, runnersession.RunnerSessionStatusFinished).
-		Where(`NOT EXISTS (
-			SELECT 1 FROM workout_feedback wf
-			WHERE wf.assigned_session_id = runner_session.session_instance_id
-			  AND wf.athlete_user_id = runner_session.athlete_user_id
-			  AND COALESCE(wf.annotations, '') LIKE ?
-		)`, "%"+constants.CompetitionSeedFeedbackMarker+"%").
 		Pluck("start_date", &starts).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing finished session starts: %w", err)

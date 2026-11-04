@@ -10,7 +10,6 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
-	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
@@ -19,6 +18,11 @@ import (
 )
 
 const fullCompetitionMetricFeedbackKey = "competition_finished_metric_tie"
+
+// fullCompetitionEvidenceMarker identifica la evidencia sintética de competencias
+// del perfil full. Solo sirve para identidad y cleanup: los agregados de producto
+// la cuentan como cualquier otra actividad.
+const fullCompetitionEvidenceMarker = "[seed_full_competition]"
 
 type fullCompetitionSpec struct {
 	key, typeName, creatorKey string
@@ -480,7 +484,7 @@ func (s *fullSeeder) ensureFullCompetitionRouteEvidence(tx *gorm.DB, row *dbs.Co
 		AthleteUserID: s.ids.users[attempt.athleteKey], FeedbackOwnerUserID: s.ids.users[attempt.athleteKey],
 		ReportSource: "corredor", SessionDate: fullDate(start), SetNumber: 1,
 		StartedAt: &start, EndedAt: &end, DurationMs: &durationMS, DistanceMeters: &distance,
-		CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + constants.CompetitionSeedFeedbackMarker + " Evidencia GPS de intento de competencia."),
+		CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + fullCompetitionEvidenceMarker + " Evidencia GPS de intento de competencia."),
 	}
 	feedback.MediaURLs.Status = pgtype.Null
 	feedbackID, err := ensureFullCompetitionFeedback(tx, feedback)
@@ -508,7 +512,7 @@ func (s *fullSeeder) ensureFullCompetitionTieFeedback(tx *gorm.DB, competitionID
 			TeamID: &teamID, AssignedSessionID: instanceID, AssignedExerciseID: exerciseID,
 			AthleteUserID: s.ids.users[athlete], FeedbackOwnerUserID: s.ids.users[athlete], ReportSource: "corredor",
 			SessionDate: fullDate(s.now.AddDate(0, 0, -14)), SetNumber: 7, DistanceMeters: &distance,
-			CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + constants.CompetitionSeedFeedbackMarker + " Dato de empate métrico de competencia."),
+			CompletionStatus: &status, Annotations: stringPointer(fullSeedMarker + " " + fullCompetitionEvidenceMarker + " Dato de empate métrico de competencia."),
 		}
 		feedback.MediaURLs.Status = pgtype.Null
 		id, err := ensureFullCompetitionFeedback(tx, feedback)

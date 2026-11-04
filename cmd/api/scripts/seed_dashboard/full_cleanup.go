@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/config"
-	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/crypto"
 	"simple-arq-golang/cmd/api/utils/gametime"
@@ -627,7 +626,7 @@ func collectFullActivityRows(db *gorm.DB, state *fullCleanupState) error {
 			return err
 		}
 		for _, row := range feedback {
-			if !strings.Contains(pointerValue(row.Annotations), constants.CompetitionSeedFeedbackMarker) || !containsID(state.users, row.AthleteUserID) {
+			if !strings.Contains(pointerValue(row.Annotations), fullCompetitionEvidenceMarker) || !containsID(state.users, row.AthleteUserID) {
 				return fmt.Errorf("feedback de competencia sin identidad sintética clara; cleanup abortado")
 			}
 			state.competitionFeedbackIDs = append(state.competitionFeedbackIDs, row.ID)

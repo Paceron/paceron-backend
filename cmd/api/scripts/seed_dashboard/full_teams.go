@@ -139,7 +139,7 @@ func fullTeamSpecs(scope fullScope, users map[string]int64) []fullTeamSpec {
 	return []fullTeamSpec{
 		{
 			id: scope.teamAID, ownerID: users["trainer_1"], key: "A", name: "Semilla Full · Equipo A Normal",
-			description: "[seed_dashboard] [seed_full] Equipo normal del perfil full.", level: "intermedio",
+			description: fullSeedMarker + " Equipo normal del perfil full.", level: "intermedio",
 			requirements: "Sin requisitos especiales.", maxMembers: 20, visible: true, public: true,
 			street: "Avenida del Parque", number: "100", lat: -31.4201, lng: -64.1888,
 		},
@@ -178,7 +178,7 @@ func fullTeamSpecs(scope fullScope, users map[string]int64) []fullTeamSpec {
 
 func fullGroupSpecs(scope fullScope) []fullGroupSpec {
 	return []fullGroupSpec{
-		{scope.groupAMainID, scope.teamAID, "group_a_main", "Semilla Full · Grupo A principal", "[seed_dashboard] " + fullSeedMarker + " Grupo principal del equipo A.", true},
+		{scope.groupAMainID, scope.teamAID, "group_a_main", "Semilla Full · Grupo A principal", fullSeedMarker + " Grupo principal del equipo A.", true},
 		{scope.groupASecondaryID, scope.teamAID, "group_a_secondary", "Semilla Full · Grupo A secundario", fullSeedMarker + " Grupo secundario del equipo A.", false},
 		{scope.groupBID, scope.teamBID, "group_b", "Semilla Full · Grupo B", fullSeedMarker + " Grupo del equipo B.", true},
 		{scope.groupCID, scope.teamCID, "group_c", "Semilla Full · Grupo C", fullSeedMarker + " Grupo del equipo C.", true},

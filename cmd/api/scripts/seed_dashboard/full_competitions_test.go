@@ -11,9 +11,7 @@ import (
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
-	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
-	"simple-arq-golang/cmd/api/domains/gamification"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/testutils"
@@ -47,21 +45,26 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	require.NoError(t, s.seedGamification())
 	teamID := s.ids.teams["team_a"]
 	trainerID := s.ids.users["trainer_1"]
-	leaderboardBefore := fullCompetitionLeaderboardSnapshot(t, db, s.ids.users["r4"], teamID)
 	activeMetricBefore := fullCompetitionMetricSnapshot(t, db, teamID, s.ids.users["r1"], s.ids.users["r4"], s.now)
-	achievementDistanceBefore := fullCompetitionAchievementDistanceSnapshot(t, db, s.ids.users)
+	achievementBefore := fullCompetitionAchievementSnapshot(t, db, s.ids.users)
+	teamDistanceBefore := fullCompetitionTeamDistance(t, db, teamID)
 
 	require.NoError(t, s.seedCompetitions())
+	achievementAfter := fullCompetitionAchievementSnapshot(t, db, s.ids.users)
+	teamDistanceAfter := fullCompetitionTeamDistance(t, db, teamID)
+	assertFullCompetitionAchievementDeltas(t, achievementBefore, achievementAfter, s.ids.users)
+	assertFullCompetitionTeamDistanceDeltas(t, teamDistanceBefore, teamDistanceAfter, s.ids.users)
+
 	before := fullCompetitionCounts(t, db)
 	competitionIDs := copyInt64Map(s.ids.competitions)
 	require.NoError(t, s.seedCompetitions())
 	assert.Equal(t, before, fullCompetitionCounts(t, db))
 	assert.Equal(t, competitionIDs, s.ids.competitions)
 	assert.Len(t, s.ids.competitions, 8)
-	assert.Equal(t, leaderboardBefore, fullCompetitionLeaderboardSnapshot(t, db, s.ids.users["r4"], teamID),
-		"la evidencia sintética de competencias no debe alterar el leaderboard del equipo")
-	assert.Equal(t, achievementDistanceBefore, fullCompetitionAchievementDistanceSnapshot(t, db, s.ids.users),
-		"la evidencia sintética de competencias no debe alterar los agregados de distancia de logros")
+	assert.Equal(t, achievementAfter, fullCompetitionAchievementSnapshot(t, db, s.ids.users),
+		"reejecutar competencias no debe volver a sumar evidencia a los logros")
+	assert.Equal(t, teamDistanceAfter, fullCompetitionTeamDistance(t, db, teamID),
+		"reejecutar competencias no debe volver a sumar distancia al equipo")
 
 	service := services.NewCompetitionService(daos.NewCompetitionDao(db), nil, nil)
 	r1ID, r2ID := s.ids.users["r1"], s.ids.users["r2"]
@@ -120,7 +123,7 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 		require.NoError(t, db.First(&synthetic, s.ids.workoutFeedback[fullCompetitionMetricFeedbackKey+"_"+athlete]).Error)
 		assert.NotEqual(t, sourceFeedback.AssignedSessionID, synthetic.AssignedSessionID,
 			"el feedback del empate debe vivir fuera de la instancia del calendario")
-		assert.Contains(t, pointerValue(synthetic.Annotations), constants.CompetitionSeedFeedbackMarker)
+		assert.Contains(t, pointerValue(synthetic.Annotations), fullCompetitionEvidenceMarker)
 	}
 	var metricInstance dbs.SessionInstance
 	require.NoError(t, db.First(&metricInstance, s.ids.competitionInstances["finished_metric_tie_metric"]).Error)
@@ -176,7 +179,7 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	var routeEvidence dbs.WorkoutFeedback
 	require.NoError(t, db.First(&routeEvidence, s.ids.workoutFeedback["active_route_r1_1"]).Error)
 	assert.Nil(t, routeEvidence.TeamID)
-	assert.Contains(t, pointerValue(routeEvidence.Annotations), constants.CompetitionSeedFeedbackMarker)
+	assert.Contains(t, pointerValue(routeEvidence.Annotations), fullCompetitionEvidenceMarker)
 	r1Route, err := service.Get(nil, r1ID, s.ids.competitions["active_route"])
 	require.NoError(t, err)
 	require.NotNil(t, r1Route.Data.AttemptsUsed)
@@ -255,18 +258,6 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	assert.Equal(t, laterIDs, later.ids.competitions)
 }
 
-func fullCompetitionLeaderboardSnapshot(t *testing.T, db *gorm.DB, callerID, teamID int64) map[string]*gamification.LeaderboardResponse {
-	t.Helper()
-	service := services.NewLeaderboardService(daos.NewLeaderboardDao(db))
-	snapshot := make(map[string]*gamification.LeaderboardResponse)
-	for _, metric := range gamification.GetValidLeaderboardMetrics() {
-		response, err := service.GetLeaderboard(nil, callerID, teamID, metric, gamification.LeaderboardPeriodAll, nil, nil)
-		require.NoError(t, err, metric)
-		snapshot[metric] = response
-	}
-	return snapshot
-}
-
 func fullCompetitionMetricSnapshot(t *testing.T, db *gorm.DB, teamID, r1ID, r4ID int64, now time.Time) map[int64]float64 {
 	t.Helper()
 	rows, err := daos.NewCompetitionDao(db).AggregateFeedbackWindow(nil, teamID, []int64{r1ID, r4ID}, fullDate(now.AddDate(0, 0, -21)), fullDate(now))
@@ -280,16 +271,16 @@ func fullCompetitionMetricSnapshot(t *testing.T, db *gorm.DB, teamID, r1ID, r4ID
 	return values
 }
 
-type fullCompetitionAchievementSnapshot struct {
+type fullCompetitionAchievementRow struct {
 	distance, maxDistance float64
 	finished, gpsFinished int64
 	finishedStarts        []time.Time
 }
 
-func fullCompetitionAchievementDistanceSnapshot(t *testing.T, db *gorm.DB, users map[string]int64) map[string]fullCompetitionAchievementSnapshot {
+func fullCompetitionAchievementSnapshot(t *testing.T, db *gorm.DB, users map[string]int64) map[string]fullCompetitionAchievementRow {
 	t.Helper()
 	dao := daos.NewAchievementDao(db)
-	snapshot := make(map[string]fullCompetitionAchievementSnapshot)
+	snapshot := make(map[string]fullCompetitionAchievementRow)
 	for _, user := range []string{"r1", "r2", "r3", "r4", "r5", "r6", "r7"} {
 		total, err := dao.SumDistanceMeters(nil, users[user])
 		require.NoError(t, err)
@@ -301,11 +292,58 @@ func fullCompetitionAchievementDistanceSnapshot(t *testing.T, db *gorm.DB, users
 		require.NoError(t, err)
 		gpsFinished, err := dao.CountGPSFinishedSessions(nil, users[user])
 		require.NoError(t, err)
-		snapshot[user] = fullCompetitionAchievementSnapshot{
+		snapshot[user] = fullCompetitionAchievementRow{
 			distance: total, maxDistance: max, finished: finished, finishedStarts: starts, gpsFinished: gpsFinished,
 		}
 	}
 	return snapshot
+}
+
+// assertFullCompetitionAchievementDeltas fija el aporte natural de la evidencia
+// de competencia a los agregados globales de logros: sin filtros por marker,
+// cada intento terminado con GPS suma 500 m y una sesión finalizada más.
+func assertFullCompetitionAchievementDeltas(t *testing.T, before, after map[string]fullCompetitionAchievementRow, users map[string]int64) {
+	t.Helper()
+	distanceDelta := map[string]float64{"r1": 500, "r2": 500, "r3": 1500, "r6": 5500, "r7": 5500}
+	finishedDelta := map[string]int64{"r1": 1, "r2": 1, "r3": 3, "r6": 1, "r7": 1}
+	for _, user := range []string{"r1", "r2", "r3", "r4", "r5", "r6", "r7"} {
+		b, a := before[user], after[user]
+		assert.InDelta(t, distanceDelta[user], a.distance-b.distance, 0.001, "distancia total de %s (user %d)", user, users[user])
+		assert.Equal(t, finishedDelta[user], a.finished-b.finished, "sesiones finalizadas de %s", user)
+		assert.Equal(t, finishedDelta[user], int64(len(a.finishedStarts)-len(b.finishedStarts)), "inicios de sesiones finalizadas de %s", user)
+		assert.Equal(t, finishedDelta[user], a.gpsFinished-b.gpsFinished, "sesiones finalizadas con GPS de %s", user)
+		assert.GreaterOrEqual(t, a.maxDistance, b.maxDistance, "máximo por sesión de %s", user)
+	}
+	assert.GreaterOrEqual(t, after["r6"].maxDistance, 5000.0, "el empate métrico de R6 es una sesión de 5 km")
+	assert.GreaterOrEqual(t, after["r7"].maxDistance, 5000.0, "el empate métrico de R7 es una sesión de 5 km")
+}
+
+// fullCompetitionTeamDistance agrega la distancia del equipo como lo hace el
+// leaderboard de distancia (mismo agregado DAO, sin top-5 truncado).
+func fullCompetitionTeamDistance(t *testing.T, db *gorm.DB, teamID int64) map[int64]float64 {
+	t.Helper()
+	rows, err := daos.NewLeaderboardDao(db).AggregateFeedback(nil, teamID, nil, nil)
+	require.NoError(t, err)
+	values := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		if row.SumDistance != nil {
+			values[row.UserID] = *row.SumDistance
+		}
+	}
+	return values
+}
+
+// assertFullCompetitionTeamDistanceDeltas: los intentos de ruta no tienen
+// team_id, así que solo el empate métrico de R6/R7 (5 km cada uno) aporta.
+func assertFullCompetitionTeamDistanceDeltas(t *testing.T, before, after map[int64]float64, users map[string]int64) {
+	t.Helper()
+	for _, user := range []string{"r1", "r2", "r3", "r4", "r5", "r6", "r7"} {
+		want := 0.0
+		if user == "r6" || user == "r7" {
+			want = 5000
+		}
+		assert.InDelta(t, want, after[users[user]]-before[users[user]], 0.001, "distancia de equipo de %s", user)
+	}
 }
 
 func fullCompetitionRouteProgress(t *testing.T, progress []competition.CompetitionProgress) map[int64]competition.CompetitionRouteProgressItem {

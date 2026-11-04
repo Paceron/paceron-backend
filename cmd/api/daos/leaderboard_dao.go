@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/utils/gametime"
 )
@@ -91,7 +90,6 @@ func (d *leaderboardDao) AggregateFeedback(ctx *gin.Context, teamID int64, from,
 			MAX(wf.session_date) FILTER (WHERE wf.duration_ms > 0 AND wf.distance_meters > 0) AS pace_last_date,
 			(ARRAY_AGG(wf.session_date ORDER BY wf.peak_speed_kph DESC NULLS LAST, wf.session_date DESC))[1] AS peak_argmax_date`).
 		Where("wf.deleted_at IS NULL AND wf.team_id = ?", teamID).
-		Where("COALESCE(wf.annotations, '') NOT LIKE ?", "%"+constants.CompetitionSeedFeedbackMarker+"%").
 		Where("wf.athlete_user_id <> (SELECT owner_id FROM teams WHERE id = ? AND deleted_at IS NULL)", teamID)
 	query = applyLeaderboardDateRange(query, "wf.session_date", from, to)
 
