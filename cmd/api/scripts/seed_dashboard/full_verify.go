@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -234,7 +235,7 @@ func (s *fullSeeder) verifyFullUsers() error {
 				verifyErr = fmt.Errorf("login de %s: contraseña inválida", key)
 				return errFullVerifyRollback
 			}
-			ctx, _ := gin.CreateTestContext(nil)
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 			if _, err := service.Login(ctx, user.Email, fullSeedPassword); err != nil {
 				verifyErr = fmt.Errorf("login de %s: %w", key, err)
 				return errFullVerifyRollback

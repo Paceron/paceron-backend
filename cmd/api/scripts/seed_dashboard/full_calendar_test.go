@@ -194,6 +194,10 @@ func TestFullCalendarClockRangeCapsAtEndOfDay(t *testing.T) {
 }
 
 func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *testing.T) {
+	today := time.Now().In(gametime.Location)
+	onToday := func(hour, minute int) time.Time {
+		return time.Date(today.Year(), today.Month(), today.Day(), hour, minute, 0, 0, gametime.Location)
+	}
 	cases := []struct {
 		name                 string
 		now                  time.Time
@@ -205,7 +209,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 	}{
 		{
 			name:           "normal hours",
-			now:            time.Date(2026, time.November, 3, 18, 0, 0, 0, gametime.Location),
+			now:            onToday(18, 0),
 			wantFrom:       "17:30",
 			wantTo:         "20:00",
 			wantOpened:     "17:40",
@@ -213,7 +217,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 		},
 		{
 			name:           "late evening",
-			now:            time.Date(2026, time.November, 3, 22, 8, 0, 0, gametime.Location),
+			now:            onToday(22, 8),
 			wantFrom:       "21:38",
 			wantTo:         "23:59",
 			wantOpened:     "21:48",
@@ -221,7 +225,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 		},
 		{
 			name:           "shortly after midnight",
-			now:            time.Date(2026, time.November, 3, 0, 15, 0, 0, gametime.Location),
+			now:            onToday(0, 15),
 			wantFrom:       "00:00",
 			wantTo:         "02:15",
 			wantOpened:     "00:00",
@@ -229,7 +233,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 		},
 		{
 			name:           "first minutes after midnight",
-			now:            time.Date(2026, time.November, 3, 0, 2, 0, 0, gametime.Location),
+			now:            onToday(0, 2),
 			wantFrom:       "00:00",
 			wantTo:         "02:02",
 			wantOpened:     "00:00",
@@ -237,7 +241,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 		},
 		{
 			name:                 "exact midnight",
-			now:                  time.Date(2026, time.November, 3, 0, 0, 0, 0, gametime.Location),
+			now:                  onToday(0, 0),
 			wantFrom:             "00:00",
 			wantTo:               "02:00",
 			wantOpened:           "00:00",
@@ -250,6 +254,7 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 		t.Run(tc.name, func(t *testing.T) {
 			db := testutils.SetupTestDB(t)
 			seedFullCalendarPrerequisites(t)
+
 			s := newFullSeeder(db, options{})
 			s.now = tc.now
 			require.NoError(t, s.seedIdentity())

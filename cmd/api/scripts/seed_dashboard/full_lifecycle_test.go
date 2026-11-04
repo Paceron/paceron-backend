@@ -9,9 +9,24 @@ import (
 	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/testutils"
 	"simple-arq-golang/cmd/api/utils/gametime"
 )
+
+func TestFullSeederVerifyFullUsersWithRequestIDLogging(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	seedFullActivityTestConfig(t)
+	s := newFullSeeder(db, options{profile: fullProfile})
+	require.NoError(t, s.seedIdentity())
+
+	customlogger.CustomConfig(customlogger.DebugLevel, true, true, true)
+	t.Cleanup(func() {
+		customlogger.CustomConfig(customlogger.DebugLevel, false, false, false)
+	})
+
+	require.NoError(t, s.verifyFullUsers())
+}
 
 func TestRunFullSeed_CycleIsIdempotentAndCleanupStaysInFullScope(t *testing.T) {
 	db := testutils.SetupTestDB(t)
