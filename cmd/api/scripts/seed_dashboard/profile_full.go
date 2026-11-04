@@ -63,6 +63,9 @@ type fullSeedIDs struct {
 	competitionInstances map[string]int64
 	competitionAttempts  map[string]int64
 	payments             map[string]int64
+	installments         map[string]int64
+	sessionMessages      map[string]int64
+	pushTokens           map[string]int64
 }
 
 type fullSeeder struct {
@@ -103,6 +106,8 @@ func newFullSeeder(db *gorm.DB, opts options) *fullSeeder {
 			attendances:  make(map[string]int64),
 			competitions: make(map[string]int64), competitionInstances: make(map[string]int64),
 			competitionAttempts: make(map[string]int64), payments: make(map[string]int64),
+			installments: make(map[string]int64), sessionMessages: make(map[string]int64),
+			pushTokens: make(map[string]int64),
 		},
 	}
 }
