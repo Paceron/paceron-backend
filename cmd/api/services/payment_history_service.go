@@ -40,17 +40,22 @@ type PaymentHistoryServiceInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
 	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
+	GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
 }
 
 type paymentHistoryService struct {
-	dao daos.PaymentHistoryDaoInterface
-	now func() time.Time
+	dao        daos.PaymentHistoryDaoInterface
+	settingDao daos.PlatformSettingDaoInterface
+	now        func() time.Time
 }
 
-// NewPaymentHistoryService depende solo del DAO de historial: no combina
-// services, así que no hace falta un delegate (design D2).
-func NewPaymentHistoryService(dao daos.PaymentHistoryDaoInterface) PaymentHistoryServiceInterface {
-	return &paymentHistoryService{dao: dao, now: time.Now}
+// NewPaymentHistoryService depende del DAO de historial y del de ajustes, del
+// que solo lee el porcentaje de comisión vigente para el neto de lo pendiente
+// (change cobros-pendientes-y-vencimientos, design D5); settingDao nil = 5%.
+// No combina services, así que no hace falta un delegate (design D2 de
+// historial-pagos-cobros-entrenador).
+func NewPaymentHistoryService(dao daos.PaymentHistoryDaoInterface, settingDao daos.PlatformSettingDaoInterface) PaymentHistoryServiceInterface {
+	return &paymentHistoryService{dao: dao, settingDao: settingDao, now: time.Now}
 }
 
 func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
@@ -201,16 +206,23 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 	}
 
 	pending, rejected := 0, 0
+	var pendingAmt, pendingNet, rejectedAmt, rejectedNet float64
 	for _, a := range installments {
 		if a.anyApproved {
 			continue
 		}
+		gross := a.latest.GrossAmount
+		net := gross - a.latest.FeeAmount
 		switch constants.GroupOfPaymentStatus(a.latest.Status) {
 		case constants.PaymentStatusGroupPending:
 			pending++
+			pendingAmt += gross
+			pendingNet += net
 			teams[a.latest.TeamID].PendingCount++
 		case constants.PaymentStatusGroupRejected:
 			rejected++
+			rejectedAmt += gross
+			rejectedNet += net
 			teams[a.latest.TeamID].RejectedCount++
 		}
 	}
@@ -236,15 +248,26 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		return byTeam[i].TeamID < byTeam[j].TeamID
 	})
 
+	due, overdue, err := s.addPendingObligations(ctx, sellerID, now, monthly, monthIndex, end)
+	if err != nil {
+		return nil, err
+	}
+
 	return &payment.ReceivedSummaryResponse{
-		CurrencyID:    currency,
-		Months:        months,
-		Monthly:       monthly,
-		ByTeam:        byTeam,
-		PendingCount:  pending,
-		RejectedCount: rejected,
-		EarliestMonth: earliestMonth,
-		GeneratedAt:   formatUTC(s.now()),
+		CurrencyID:        currency,
+		Months:            months,
+		Monthly:           monthly,
+		ByTeam:            byTeam,
+		PendingCount:      pending,
+		RejectedCount:     rejected,
+		PendingAmount:     round2(pendingAmt),
+		PendingNetAmount:  round2(pendingNet),
+		RejectedAmount:    round2(rejectedAmt),
+		RejectedNetAmount: round2(rejectedNet),
+		EarliestMonth:     earliestMonth,
+		DueThisMonth:      due,
+		Overdue:           overdue,
+		GeneratedAt:       formatUTC(s.now()),
 	}, nil
 }
 
@@ -267,7 +290,16 @@ func (a *installmentAttempts) add(r daos.ReceivedPaymentRow, approved bool) {
 	}
 }
 
-// knownNet devuelve nil si no hubo ningún neto informado por Mercado Pago.
+// feePercentOf es la comisión como porcentaje del bruto, a 2 decimales.
+func feePercentOf(fee, gross float64) float64 {
+	if gross <= 0 {
+		return 0
+	}
+	return round2(fee / gross * 100)
+}
+
+// knownNet devuelve nil si ningún cobro del grupo tiene neto. Desde que el neto
+// es bruto − comisión (design D2), todo cobro aprobado lo tiene.
 func knownNet(sum float64, knownCount int) *float64 {
 	if knownCount == 0 {
 		return nil
@@ -285,6 +317,8 @@ func toReceivedPaymentItem(r daos.ReceivedPaymentRow) payment.ReceivedPaymentIte
 		StatusDetail:      r.StatusDetail,
 		GrossAmount:       round2(r.GrossAmount),
 		NetAmount:         roundPtr(r.NetAmount),
+		FeeAmount:         round2(r.FeeAmount),
+		FeePercent:        feePercentOf(r.FeeAmount, r.GrossAmount),
 		CurrencyID:        r.CurrencyID,
 		PaymentMethodID:   r.PaymentMethodID,
 		CreatedAt:         formatUTC(r.CreatedAt),

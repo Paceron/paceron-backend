@@ -3,11 +3,13 @@ package services
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/teamuser"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
@@ -917,4 +919,90 @@ func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 0)
+}
+
+// leaveDebtService arma el servicio para los casos de salida con deuda: el
+// corredor 1 se quiere ir del equipo 1 con la membresía que se pase.
+func leaveDebtService(member *dbs.TeamUser, installDao daos.InstallmentDaoInterface, softDeleted *bool) TeamUserServiceInterface {
+	teamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return member, nil
+		}),
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			*softDeleted = true
+			return nil
+		},
+	}
+	// El equipo ya no cobra: la deuda sale de la membresía, no de la cuota actual.
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: 1, MembershipFee: 0}, nil
+	}}
+	return NewTeamUserService(teamUserDao, teamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, installDao, nil)
+}
+
+func TestTeamUserService_RemoveUser_SelfWithComputedDebtIsBlocked(t *testing.T) {
+	softDeleted := false
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, AssignmentDate: time.Now().AddDate(0, -2, -3)}
+	err := leaveDebtService(member, &mockInstallmentDao{}, &softDeleted).RemoveUser(nil, 1, 1, 1)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTeamLeaveWithDebt)
+	assert.Contains(t, err.Error(), "tenés 3 cuotas sin pagar")
+	assert.False(t, softDeleted)
+}
+
+func TestTeamUserService_RemoveUser_SelfWithUnpaidFirstInstallmentIsBlocked(t *testing.T) {
+	softDeleted := false
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, AssignmentDate: time.Now()}
+	err := leaveDebtService(member, nil, &softDeleted).RemoveUser(nil, 1, 1, 1)
+
+	assert.ErrorIs(t, err, ErrTeamLeaveWithDebt)
+	assert.Contains(t, err.Error(), "tenés 1 cuota sin pagar")
+	assert.False(t, softDeleted)
+}
+
+func TestTeamUserService_RemoveUser_SelfUpToDateCanLeave(t *testing.T) {
+	softDeleted := false
+	// Pagó la #1; la #2 vence dentro de un mes.
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, PaidInstallments: 1, AssignmentDate: time.Now().AddDate(0, 0, -1)}
+	err := leaveDebtService(member, &mockInstallmentDao{}, &softDeleted).RemoveUser(nil, 1, 1, 1)
+
+	assert.NoError(t, err)
+	assert.True(t, softDeleted)
+}
+
+func TestTeamUserService_RemoveUser_SelfWithOverdueInstallmentRowIsBlocked(t *testing.T) {
+	softDeleted := false
+	overdue := time.Now().AddDate(0, 0, -3)
+	// El contador dice que está al día, pero hay una cuota pending vencida como fila.
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, PaidInstallments: 1, AssignmentDate: time.Now().AddDate(0, 0, -1)}
+	installDao := &mockInstallmentDao{findPendingByTeamFn: func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error) {
+		return []dbs.Installment{{ID: 9, Status: "pending", DueDate: &overdue}}, nil
+	}}
+	err := leaveDebtService(member, installDao, &softDeleted).RemoveUser(nil, 1, 1, 1)
+
+	assert.ErrorIs(t, err, ErrTeamLeaveWithDebt)
+	assert.False(t, softDeleted)
+}
+
+func TestTeamUserService_RemoveUser_SelfDebtCheckDaoError(t *testing.T) {
+	softDeleted := false
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, PaidInstallments: 1, AssignmentDate: time.Now().AddDate(0, 0, -1)}
+	installDao := &mockInstallmentDao{findPendingByTeamFn: func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error) {
+		return nil, errors.New("db down")
+	}}
+	err := leaveDebtService(member, installDao, &softDeleted).RemoveUser(nil, 1, 1, 1)
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrTeamLeaveWithDebt)
+	assert.False(t, softDeleted)
+}
+
+func TestTeamUserService_RemoveUser_TrainerCanRemoveRunnerWithDebt(t *testing.T) {
+	softDeleted := false
+	member := &dbs.TeamUser{ID: 1, RoleInTeam: "corredor", InitAmount: 12000, AssignmentDate: time.Now().AddDate(0, -2, -3)}
+	err := leaveDebtService(member, &mockInstallmentDao{}, &softDeleted).RemoveUser(nil, 1, testEntrenadorCallerID, 1)
+
+	assert.NoError(t, err)
+	assert.True(t, softDeleted, "sacarlo perdona la deuda")
 }

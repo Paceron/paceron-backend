@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -72,8 +73,9 @@ func (s *teamSubscriptionService) GetTeamSubscription(ctx *gin.Context, userID, 
 		},
 	}
 
-	// Equipo gratis: sin suscripción (membership active sin cuotas).
-	if teamDB.MembershipFee == 0 {
+	// Equipo gratis: sin suscripción (membership active sin cuotas). Si se unió
+	// cuando cobraba (init_amount > 0) sigue debiendo lo de esa membresía.
+	if teamDB.MembershipFee == 0 && membership.InitAmount <= 0 {
 		resp.Membership = teambio.MembershipInfo{
 			SubscriptionStatus: string(constants.SubscriptionStatusActive),
 			InitAmount:         membership.InitAmount,
@@ -111,7 +113,9 @@ func (s *teamSubscriptionService) GetTeamSubscription(ctx *gin.Context, userID, 
 			customlogger.TagMethod("GetTeamSubscription"))
 		return nil, fmt.Errorf("error al obtener el estado de cuenta")
 	}
-	resp.HasDebt = HasPendingDebt(pending)
+	// Las cuotas vencidas sin fila (la N+1 recién existe al pagar la N) también
+	// son deuda: se calculan desde la membresía (change cobros-pendientes-y-vencimientos).
+	resp.HasDebt = HasPendingDebt(pending) || membershipOverdue(membership, time.Now()) > 0
 
 	next, err := s.installDao.FindNextByUserTeam(ctx, teamID, userID)
 	if err != nil {

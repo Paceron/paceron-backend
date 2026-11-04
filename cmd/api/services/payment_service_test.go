@@ -1375,6 +1375,81 @@ func TestCreatePreference_TeamSubscription_SellerPublicKey(t *testing.T) {
 	client.AssertExpectations(t)
 }
 
+// teamSplitDeps arma los mocks de un cobro de equipo con split, con el
+// porcentaje de comisión que se pida (change cobros-pendientes-y-vencimientos).
+func teamSplitDeps(feePercent float64) (*mockInstallmentDao, *mockTeamDao, *mockSellerConnectionDao, *mockPlatformSettingDao) {
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			teamID := int64(20)
+			return &dbs.Installment{ID: id, TeamID: &teamID, UserID: 1, Amount: 1500}, nil
+		},
+	}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: id, OwnerID: 3}, nil
+		},
+	}
+	connDao := &mockSellerConnectionDao{
+		findByUserAndClFn: func(ctx *gin.Context, userID int64, _ string) (*dbs.SellerConnection, error) {
+			return &dbs.SellerConnection{UserID: userID, AccessToken: "enc(seller-access)", PublicKey: "TEST-seller-public-key",
+				Status: string(constants.SellerConnectionStatusAuthorized)}, nil
+		},
+	}
+	settingDao := &mockPlatformSettingDao{
+		getFn: func(ctx *gin.Context, key string, defaultValue float64) (float64, *dbs.PlatformSetting, error) {
+			return feePercent, &dbs.PlatformSetting{Key: key}, nil
+		},
+	}
+	return installDao, teamDao, connDao, settingDao
+}
+
+// Una comisión que redondea a 0 se guarda como 0, no como NULL: NULL queda
+// solo para los pagos sin split (design D1).
+func TestCreatePreference_TeamSubscription_ZeroFeeIsStored(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao, teamDao, connDao, settingDao := teamSplitDeps(0.00001)
+	svc := NewPaymentService(dao, client, nil, connDao, teamDao, nil, settingDao, installDao, &mockEncryptor{})
+
+	ctx := config.GetTestContext()
+	insID := int64(5)
+	req := payment.CreatePreferenceRequest{
+		Concept: string(constants.PaymentConceptTeamSubscription), Description: "Cuota equipo", InstallmentID: &insID,
+		Items: []payment.PreferenceItem{{Title: "Mensualidad", Quantity: 1, UnitPrice: 1500}},
+	}
+	dao.On("Create", ctx, mock.MatchedBy(func(p *dbs.Payment) bool {
+		return p.MarketplaceFee != nil && *p.MarketplaceFee == 0
+	})).Return(nil)
+	dao.On("UpdateExternalRef", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+	client.On("CreatePreference", ctx, "seller-access", mock.AnythingOfType("[]mercadopagoclient.PreferenceItem"), mock.AnythingOfType("string"), "https://test.com/webhook", "0.00", "ARS").Return("pref-team", nil)
+
+	_, err := svc.CreatePreference(ctx, req)
+
+	require.NoError(t, err)
+	dao.AssertExpectations(t)
+}
+
+// Sin installment_id, un pago de equipo se rechazaba tarde: salía sin split,
+// sin comisión y con el token de Paceron. Ahora es 400 antes de tocar MP (D1).
+func TestProcessPayment_TeamSubscription_WithoutInstallmentIsRejected(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao, teamDao, connDao, settingDao := teamSplitDeps(5)
+	svc := NewPaymentService(dao, client, nil, connDao, teamDao, nil, settingDao, installDao, &mockEncryptor{})
+
+	ctx := config.GetTestContext()
+	_, err := svc.ProcessPayment(ctx, payment.ProcessPaymentRequest{
+		Concept: string(constants.PaymentConceptTeamSubscription), Token: "tok", TransactionAmount: 1500,
+		PaymentMethodID: "visa", Installments: 1, PayerEmail: "corredor@example.com",
+	})
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrPaymentInvalid), "esperaba ErrPaymentInvalid, tuve: %v", err)
+	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	client.AssertNotCalled(t, "CreatePayment", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // Matriz de sentinels del flujo CreatePreference (design D4, Gap 16) sobre
 // resolveTeamSplitConfig: el mensaje original se preserva y cada falla
 // matchea su sentinel con errors.Is. resolveTeamSplitConfig corre ANTES de

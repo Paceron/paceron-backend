@@ -4134,7 +4134,7 @@
         },
         "/api/v1/payments/received": {
             "get": {
-                "description": "Cobros de membresía de equipo recibidos por el usuario autenticado, del más reciente al más antiguo. Paginado de a 20. `net_amount` es null salvo que Mercado Pago haya informado el neto real.",
+                "description": "Cobros de membresía de equipo recibidos por el usuario autenticado, del más reciente al más antiguo. Paginado de a 20. `net_amount` es el bruto menos la comisión de Paceron (`fee_amount`, `fee_percent`) y es null si el cobro no está aprobado.",
                 "produces": [
                     "application/json"
                 ],
@@ -4198,7 +4198,7 @@
         },
         "/api/v1/payments/received/summary": {
             "get": {
-                "description": "Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor.",
+                "description": "Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores.",
                 "produces": [
                     "application/json"
                 ],
@@ -4281,6 +4281,38 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/upcoming": {
+            "get": {
+                "description": "Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`) y de cada suscripción de tier (`type=subscription`) del usuario autenticado, ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que ya vencieron.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payments"
+                ],
+                "summary": "Próximos vencimientos del usuario",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -6814,7 +6846,7 @@
         },
         "/api/v1/teams/{id}/users/{user_id}": {
             "delete": {
-                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro",
+                "description": "Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro. El corredor no puede irse con cuotas que vencen hoy o antes (409); el entrenador sí puede sacarlo",
                 "produces": [
                     "application/json"
                 ],
@@ -6859,6 +6891,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Corredor que se va con cuotas sin pagar",
                         "schema": {
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
                         }
@@ -13125,6 +13163,55 @@
                 },
                 "net_known_count": {
                     "type": "integer"
+                },
+                "pending_amount": {
+                    "type": "number"
+                },
+                "pending_count": {
+                    "type": "integer"
+                },
+                "pending_net_amount": {
+                    "type": "number"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.ObligationItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "payer": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef"
+                },
+                "team": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.ObligationsBlock": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationItem"
+                    }
+                },
+                "net_amount": {
+                    "type": "number"
                 }
             }
         },
@@ -13304,6 +13391,12 @@
                 "currency_id": {
                     "type": "string"
                 },
+                "fee_amount": {
+                    "type": "number"
+                },
+                "fee_percent": {
+                    "type": "number"
+                },
                 "gross_amount": {
                     "type": "number"
                 },
@@ -13368,6 +13461,14 @@
                 "currency_id": {
                     "type": "string"
                 },
+                "due_this_month": {
+                    "description": "DueThisMonth vence desde hoy hasta fin del mes actual; Overdue es todo\nlo que ya venció sin pagar, de este mes o de meses anteriores (design D4\ny D5). No dependen de la ventana de meses.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
+                        }
+                    ]
+                },
                 "earliest_month": {
                     "description": "EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora\nargentina), o null si no tiene ninguno (design D14).",
                     "type": "string"
@@ -13384,11 +13485,27 @@
                 "months": {
                     "type": "integer"
                 },
+                "overdue": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
+                },
+                "pending_amount": {
+                    "description": "Montos de esas mismas cuotas (el último intento de cada una), en bruto y\nen neto (bruto menos la comisión del intento).",
+                    "type": "number"
+                },
                 "pending_count": {
                     "type": "integer"
                 },
+                "pending_net_amount": {
+                    "type": "number"
+                },
+                "rejected_amount": {
+                    "type": "number"
+                },
                 "rejected_count": {
                     "type": "integer"
+                },
+                "rejected_net_amount": {
+                    "type": "number"
                 }
             }
         },
@@ -13468,6 +13585,52 @@
             "properties": {
                 "token": {
                     "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "currency_id": {
+                    "type": "string"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "installment_number": {
+                    "type": "integer"
+                },
+                "overdue": {
+                    "type": "boolean"
+                },
+                "overdue_count": {
+                    "type": "integer"
+                },
+                "team": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef"
+                },
+                "tier": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef"
+                },
+                "trainer": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentItem"
+                    }
                 }
             }
         },

@@ -16,13 +16,25 @@ Dos alternativas, a decidir:
 
 **RESUELTO** (change `optimizaciones-y-seguridad-api`, 2026-10-19, Task 7): ambos webhooks MP (pagos y deauth) validan la firma con `MERCADOPAGO_WEBHOOK_SECRET`; sin secret configurado aceptan sin validar + warning (rollout gradual). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.15. Residual: tolerancia temporal no configurada — ver sección "Seguridad" de esta lista.
 
+### Las cuotas esperadas se calculan, no se guardan
+
+Desde el change `cobros-pendientes-y-vencimientos`, lo que un corredor todavía debe (cobros pendientes, a vencer y vencidos, y los próximos vencimientos del usuario) se deriva del alta, `init_amount` y `paid_installments` de cada membresía o suscripción. El motor de cuotas crea la N+1 recién cuando se paga la N, así que los meses no pagados no existen como filas. El cálculo supone tres cosas:
+
+- el monto no cambia sin actualizar `init_amount`;
+- `paid_installments` coincide con las cuotas pagadas (en develop, sí en las 8 membresías con cuota al 2026-11-02);
+- ninguna cuota se crea fuera de `installment_engine.go`.
+
+Si alguna falla, lo pendiente que ve el entrenador no va a coincidir con las cuotas reales. Además, el neto de lo pendiente se estima con el porcentaje de comisión vigente: si cambia antes del pago, el neto real va a ser otro. Si el producto empieza a necesitar historia de deuda por mes (recargos, condonaciones), conviene materializar las cuotas en vez de seguir calculándolas (por ejemplo, con un proceso batch que cree la cuota del mes aunque la anterior no se haya pagado).
+
+El mismo cálculo decide si un corredor puede dejar el equipo (`RemoveUser`, design D7): con cuotas que vencen hoy o antes, incluida la #1, responde `409`. Por eso un desfasaje en `paid_installments` también podría bloquear o dejar ir a alguien por error; el chequeo mira además las cuotas pending que ya existen como fila. El entrenador sí puede sacar a un corredor con deuda, y eso la perdona: no queda registro de lo que se debía.
+
 ### El webhook lee los pagos de equipo con el token de la plataforma
 
 `HandleWebhook` (`services/payment_service.go`) consulta el pago a Mercado Pago con `s.accessToken`, el token de Paceron. Los pagos de membresía de equipo (`concept = team_subscription`) se crean con el token OAuth del **entrenador** (`resolveTeamSplitConfig`), así que el pago vive en la cuenta del vendedor y esa lectura probablemente falla (404/403). No verificado contra MP.
 
 Consecuencias, si se confirma:
 - La cuota de equipo no pasa a `paid`: el paso que la confirma (`applyApprovedTeamInstallment`) corre dentro del webhook.
-- `payments.raw_response` se queda con el `PaymentResult` que guardó `ProcessPayment`, que no trae `transaction_details`. Por eso el historial de cobros (`GET /api/v1/payments/received`, change `historial-pagos-cobros-entrenador`) devuelve `net_amount = null` en casi todos los cobros: el neto real solo existe cuando el webhook guardó el `payment.Response` completo.
+- `payments.raw_response` se queda con el `PaymentResult` que guardó `ProcessPayment`, que no trae `transaction_details`. Ya no afecta al historial de cobros: desde el change `cobros-pendientes-y-vencimientos` el neto es bruto − comisión de Paceron y no depende de lo que informe Mercado Pago. Lo que sigue sin verse es el neto que efectivamente acreditó MP, que además descuenta su costo de procesamiento.
 
 Fix probable: en el webhook, si el pago local es `team_subscription`, resolver el vendedor por `seller_user_id`, descifrar su token desde `seller_connections` y consultar con ese. Toca el flujo de pagos, así que va en su propio change.
 
