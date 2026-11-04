@@ -124,3 +124,19 @@ func fullLifecycleCount(t *testing.T, db *gorm.DB, table, where string, args ...
 	require.NoError(t, db.Table(table).Where(where, args...).Count(&count).Error)
 	return count
 }
+
+func TestFullRunnerKey_IdentifiesInstantNotOffset(t *testing.T) {
+	cordoba := time.Date(2026, time.October, 13, 8, 0, 0, 0, gametime.Location)
+	utc := cordoba.In(time.UTC)
+	end := cordoba.Add(time.Hour)
+	endUTC := end.In(time.UTC)
+
+	base := fullRunnerKey(10, 20, "finished", cordoba, &end)
+	assert.Equal(t, base, fullRunnerKey(10, 20, "finished", utc, &endUTC))
+	assert.NotEqual(t, base, fullRunnerKey(11, 20, "finished", cordoba, &end))
+	assert.NotEqual(t, base, fullRunnerKey(10, 21, "finished", cordoba, &end))
+	assert.NotEqual(t, base, fullRunnerKey(10, 20, "wip", cordoba, &end))
+	assert.NotEqual(t, base, fullRunnerKey(10, 20, "finished", cordoba.Add(time.Second), &end))
+	assert.NotEqual(t, base, fullRunnerKey(10, 20, "finished", cordoba, nil))
+	assert.NotEqual(t, base, fullRunnerKey(10, 20, "finished", cordoba, timePointer(end.Add(time.Microsecond))))
+}

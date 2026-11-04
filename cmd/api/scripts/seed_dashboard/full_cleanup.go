@@ -999,12 +999,16 @@ func parseFullCalendarKey(key string) (int64, time.Time, error) {
 	return groupID, date, err
 }
 
+// fullRunnerKey identifica un runner_session por instante, no por offset: los
+// valores sembrados viven en Cordoba y los leídos de Postgres pueden venir en UTC
+// o Local. timestamptz guarda microsegundos, así que se redondea a esa precisión.
 func fullRunnerKey(instanceID, athleteID int64, status string, start time.Time, end *time.Time) string {
+	const layout = "2006-01-02T15:04:05.000000Z"
 	endKey := "nil"
 	if end != nil {
-		endKey = end.Format(time.RFC3339Nano)
+		endKey = end.UTC().Round(time.Microsecond).Format(layout)
 	}
-	return fmt.Sprintf("%d/%d/%s/%s/%s", instanceID, athleteID, status, start.Format(time.RFC3339Nano), endKey)
+	return fmt.Sprintf("%d/%d/%s/%s/%s", instanceID, athleteID, status, start.UTC().Round(time.Microsecond).Format(layout), endKey)
 }
 
 func containsID(ids []int64, wanted int64) bool {
