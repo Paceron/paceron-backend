@@ -221,8 +221,7 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	}
 	beforeRun := fullPaymentCounts(t, db)
 	err = runFullSeed(db, options{profile: fullProfile, seed: true})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "incompleto")
+	require.NoError(t, err)
 	assert.Equal(t, beforeRun, fullPaymentCounts(t, db))
 }
 

@@ -39,12 +39,11 @@ func TestParseOptions_AcceptsFullProfile(t *testing.T) {
 	assert.Equal(t, fullProfile, opts.profile)
 }
 
-func TestDispatchSeedMode_FullFailsClosedUntilAllStagesExist(t *testing.T) {
-	db := testutils.SetupTestDB(t)
-	err := dispatchSeedMode(db, options{profile: fullProfile, seed: true})
+func TestDispatchSeedMode_FullRequiresExplicitMode(t *testing.T) {
+	err := dispatchSeedMode(nil, options{profile: fullProfile})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "incompleto")
+	assert.Contains(t, err.Error(), "--seed, --verify o --cleanup")
 }
 
 func TestFullScopeGuard_RejectsOccupiedIDsWithoutMarker(t *testing.T) {

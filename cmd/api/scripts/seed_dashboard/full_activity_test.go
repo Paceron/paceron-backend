@@ -204,9 +204,12 @@ func TestFullSeederSeedActivity_DoesNotOverwriteForeignRunnerSession(t *testing.
 func seedFullActivityTestConfig(t *testing.T) {
 	t.Helper()
 	oldClientID, oldKey, oldSeeding := config.MyMP.OAuthClientID, config.TokenEncryptionKey, config.Seeding
+	oldJWTSecret, oldJWTIssuer, oldJWTAudience := config.JWTSecret, config.JWTIssuer, config.JWTAudience
 	config.MyMP.OAuthClientID, config.TokenEncryptionKey, config.Seeding = fullCalendarTestClientID, fullCalendarTestKey, true
+	config.JWTSecret, config.JWTIssuer, config.JWTAudience = "test-full-seed-jwt-secret", "test-full-seed", "test-full-seed"
 	t.Cleanup(func() {
 		config.MyMP.OAuthClientID, config.TokenEncryptionKey, config.Seeding = oldClientID, oldKey, oldSeeding
+		config.JWTSecret, config.JWTIssuer, config.JWTAudience = oldJWTSecret, oldJWTIssuer, oldJWTAudience
 	})
 }
 

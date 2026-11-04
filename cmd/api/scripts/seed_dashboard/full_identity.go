@@ -429,7 +429,7 @@ func ensureFullInstallment(tx *gorm.DB, spec dbs.Installment, now time.Time) err
 	err := tx.Where("subscription_id = ? AND installment_number = ?", spec.SubscriptionID, spec.InstallmentNumber).Take(&existing).Error
 	values := map[string]any{
 		"team_id": nil, "user_id": spec.UserID, "status": spec.Status,
-		"internal_payment_id": nil, "external_payment_id": nil, "amount": spec.Amount,
+		"amount":   spec.Amount,
 		"due_date": spec.DueDate, "blocked_date": spec.BlockedDate, "updated_at": now,
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {

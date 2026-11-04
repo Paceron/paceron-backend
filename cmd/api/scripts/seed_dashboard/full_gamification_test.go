@@ -167,9 +167,12 @@ func TestFullSeederSeedGamification_SeedsProfileContractsIdempotently(t *testing
 	}
 	beforeRun := fullGamificationCounts(t, db)
 	err = runFullSeed(db, options{profile: fullProfile, seed: true})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "incompleto")
-	assert.Equal(t, beforeRun, fullGamificationCounts(t, db))
+	require.NoError(t, err)
+	completeRun := fullGamificationCounts(t, db)
+	assert.Greater(t, completeRun["instances"], beforeRun["instances"])
+	assert.Greater(t, completeRun["stamps"], beforeRun["stamps"])
+	require.NoError(t, runFullSeed(db, options{profile: fullProfile, seed: true}))
+	assert.Equal(t, completeRun, fullGamificationCounts(t, db))
 }
 
 func fullGamificationCounts(t *testing.T, db *gorm.DB) map[string]int64 {

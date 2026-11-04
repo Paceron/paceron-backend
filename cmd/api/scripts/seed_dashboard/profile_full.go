@@ -116,18 +116,50 @@ func runFullSeed(db *gorm.DB, opts options) error {
 	if err := validateSeedProfile(opts.profile); err != nil {
 		return err
 	}
+	if !opts.cleanup && !opts.verify && !opts.seed {
+		return fmt.Errorf("--profile=full requiere --seed, --verify o --cleanup")
+	}
+	if opts.cleanup && !opts.yes {
+		return fmt.Errorf("cleanup del perfil full requiere --yes")
+	}
 	s := newFullSeeder(db, opts)
 	if err := s.guardScope(); err != nil {
 		return err
 	}
 	switch {
 	case opts.cleanup:
-		return fmt.Errorf("perfil full incompleto: cleanupFull todavía no está implementado")
+		return s.cleanupFull()
 	case opts.verify:
-		return fmt.Errorf("perfil full incompleto: verifyFull todavía no está implementado")
+		return s.verifyFull()
 	default:
-		// Orden D14: identidad, equipos, catálogo/calendario, actividad, gamificación, competencias y pagos/mensajes.
-		return fmt.Errorf("perfil full incompleto: las fases de siembra todavía no están conectadas; no se sembró ningún stage")
+		if opts.dryRun {
+			fmt.Println("[dry-run] perfil full: no se escribió nada.")
+			return nil
+		}
+		if err := s.resolveExistingFullClock(); err != nil {
+			return err
+		}
+		originalNow := gametime.Now
+		gametime.Now = func() time.Time { return s.now }
+		defer func() { gametime.Now = originalNow }()
+		phases := []struct {
+			name string
+			run  func() error
+		}{
+			{"identidad", s.seedIdentity},
+			{"equipos", s.seedTeams},
+			{"catálogo y calendario", s.seedCatalogCalendar},
+			{"actividad", s.seedActivity},
+			{"gamificación", s.seedGamification},
+			{"competencias", s.seedCompetitions},
+			{"pagos y mensajes", s.seedPaymentsAndMessages},
+		}
+		for _, phase := range phases {
+			if err := phase.run(); err != nil {
+				return fmt.Errorf("fase full %s: %w", phase.name, err)
+			}
+		}
+		return s.verifyFull()
 	}
 }
 
