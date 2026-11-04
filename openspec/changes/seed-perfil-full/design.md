@@ -224,7 +224,7 @@ Familia nueva, sin tocar la existente:
 
 ```
 fullseed-seed      # go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --seed --bootstrap-scope
-fullseed-reset     # local-reset + fullseed-seed
+fullseed-reset     # local-reset + local-up + espera de Postgres + fullseed-seed
 fullseed-cleanup   # --cleanup --yes
 fullseed-verify    # --verify
 ```

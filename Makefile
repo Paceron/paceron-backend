@@ -85,6 +85,12 @@ fullseed-seed: ## Siembra el perfil full en el entorno local
 
 fullseed-reset: ## Borra los volúmenes locales y siembra el perfil full
 	$(MAKE) local-reset
+	$(MAKE) local-up
+	@ready=false; for _ in $$(seq 1 60); do \
+		if docker compose $(COMPOSE_ENV) exec -T db sh -c 'pg_isready -q -U "$${POSTGRES_USER:-postgres}" -d "$${POSTGRES_DB:-paceron_local}"' >/dev/null 2>&1; then ready=true; break; fi; \
+		sleep 1; \
+	done; \
+	if [ "$$ready" != true ]; then echo "Postgres no respondió al healthcheck. Mirá los logs: make local-logs"; exit 1; fi
 	$(MAKE) fullseed-seed
 
 fullseed-cleanup: ## Limpia el perfil full

@@ -252,7 +252,7 @@ Son los targets de `Makefile` (`fullseed-*`); los `seed-dashboard*` no se tocan.
 | `make fullseed-seed` | `go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --seed --bootstrap-scope` | Siembra el perfil y al final corre la verificación. |
 | `make fullseed-verify` | `... --profile=full --verify` | Verifica el universo: sale con error si algo no es coherente. |
 | `make fullseed-cleanup` | `... --profile=full --cleanup --yes` | Borra solo lo marcado `[seed_full]`, en una transacción. |
-| `make fullseed-reset` | `make local-reset` + `make fullseed-seed` | Ver la advertencia de abajo: hoy no deja la base lista. |
+| `make fullseed-reset` | `make local-reset` + `make local-up` + espera de Postgres + `make fullseed-seed` | Borra los volúmenes locales y crea un perfil full nuevo. |
 
 `--bootstrap-scope` está en el target pero el perfil full no lo usa (la creación
 del scope mínimo es del dashboard); es inocuo.
@@ -272,15 +272,10 @@ make fullseed-cleanup     # vuelve a dejar el perfil fuera de la base
 los volúmenes** (base y bucket). Se pierde todo lo local, incluido lo clonado de
 Supabase; si lo querés conservar, `make local-dump` antes.
 
-`local-reset` no vuelve a levantar la base, así que `make fullseed-reset` termina con
-Postgres apagado y el seed falla al conectar. Mientras el target no se corrija, el
-flujo que funciona es:
-
-```bash
-make local-reset
-make local-up             # esperar a que db esté healthy: make local-ps
-make fullseed-seed
-```
+`make fullseed-reset` es destructivo y elimina la base local, el bucket y todos sus
+datos. Después vuelve a levantar los servicios, espera a que Postgres responda y
+siembra el perfil full. Para conservar la base actual, usa `make local-dump` antes
+del reset.
 
 Sembrar sobre una base que ya tiene el perfil es esperado (las fases están pensadas
 para re-ejecutarse), pero las fechas se recalculan y el scope ya está; para un estado
