@@ -176,17 +176,17 @@
   `full_messages.go` (+ tests).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedPaymentsAndMessages`).
 
-- [ ] 8.1 Suscripciones/cuotas/pagos: historial pagado, próxima cuota, deuda que
+- [x] 8.1 Suscripciones/cuotas/pagos: historial pagado, próxima cuota, deuda que
       bloquea la baja del equipo, `first_payment_pending`, pagos rechazados; CHECK de
       arco exclusivo y contadores coherentes.
-- [ ] 8.2 Cobros del entrenador con split (`seller_user_id`, `marketplace_fee`,
+- [x] 8.2 Cobros del entrenador con split (`seller_user_id`, `marketplace_fee`,
       `raw_response.net_received_amount`) y `payment_id`/`external_reference` válidos.
-- [ ] 8.3 Mensajes de sesión en hoy y en una pasada: tipos, modos, reply y recipients
+- [x] 8.3 Mensajes de sesión en hoy y en una pasada: tipos, modos, reply y recipients
       coherentes.
-- [ ] 8.4 Push tokens sintéticos por protagonista.
-- [ ] 8.5 Tests de contrato: historial del corredor, cobros del entrenador, deuda
+- [x] 8.4 Push tokens sintéticos por protagonista.
+- [x] 8.5 Tests de contrato: historial del corredor, cobros del entrenador, deuda
       bloqueando la baja, mensajes visibles por modo, `can_receive_payments`.
-- [ ] 8.6 Commit `feat(seed): pagos, mensajeria y push del perfil full`.
+- [x] 8.6 Commit `feat(seed): pagos, mensajeria y push del perfil full`.
 
 ### Task 9: Verify y cleanup del perfil full
 
@@ -196,14 +196,14 @@
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (orchestrate verify/cleanup).
 - Modify: `cmd/api/scripts/seed_dashboard/main.go` (wiring de `--verify` y cleanup full).
 
-- [ ] 9.1 `fullseed-verify`: login de protagonistas, calendario de hoy, banners,
+- [x] 9.1 `fullseed-verify`: login de protagonistas, calendario de hoy, banners,
       streaks/logros/estampas/unseen, leaderboard, competencias por estado e historial
       de pagos; sale con error si algo no es coherente.
-- [ ] 9.2 Cleanup full transaccional en orden inverso de FK, acotado a scope + marker,
+- [x] 9.2 Cleanup full transaccional en orden inverso de FK, acotado a scope + marker,
       sin tocar el perfil dashboard ni datos reales; exige `--yes`.
-- [ ] 9.3 Test de ciclo completo: seed → verify → cleanup → verify vacío (contra
+- [x] 9.3 Test de ciclo completo: seed → verify → cleanup → verify vacío (contra
       Postgres descartable).
-- [ ] 9.4 Commit `feat(seed): verificacion y limpieza del perfil full`.
+- [x] 9.4 Commit `feat(seed): verificacion y limpieza del perfil full`.
 
 ### Task 10: Documentación y verificación final
 
@@ -211,9 +211,9 @@
 - Modify: `cmd/api/scripts/seed_dashboard/RUNBOOK.md`,
   `docs/ENTORNO_LOCAL.md`, `README.md` (si corresponde).
 
-- [ ] 10.1 RUNBOOK: sección "perfil full" con requisitos de `.env.local`, comandos,
+- [x] 10.1 RUNBOOK: sección "perfil full" con requisitos de `.env.local`, comandos,
       usuarios/password, mapa de equipos y casos, y advertencia de base reseteada.
-- [ ] 10.2 `docs/ENTORNO_LOCAL.md`: reemplazar la deuda "no existe todavía" por el
+- [x] 10.2 `docs/ENTORNO_LOCAL.md`: reemplazar la deuda "no existe todavía" por el
       perfil full y su familia de comandos.
-- [ ] 10.3 Verificación final completa (build/vet/suite/coverage/validate) y tildes.
-- [ ] 10.4 Commit `docs(seed): documentar el perfil full`.
+- [x] 10.3 Verificación final completa (build/vet/suite/coverage/validate) y tildes.
+- [x] 10.4 Commit `docs(seed): documentar el perfil full`.

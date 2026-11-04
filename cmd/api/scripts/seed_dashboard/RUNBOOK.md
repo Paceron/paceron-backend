@@ -219,3 +219,143 @@ sin filtrar (`TestWorkoutFeedbackDao_History_NoScopeReturnsAllActive`, entre
 otros). Después de sembrar a mano contra `paceron_test`, corré el `--cleanup --yes`
 —o `make test-db-restart`— antes de `make test-with-db`, o la suite falla por datos
 que el seed dejó, no por código.
+
+## Perfil full (`--profile=full`)
+
+Perfil aparte del dataset del dashboard: un universo sintético de todo el producto
+(identidad y suscripciones, equipos y grupos, calendario, actividad, gamificación,
+competencias, pagos y mensajes), con fechas relativas a hoy en
+`America/Argentina/Cordoba`. El perfil `dashboard` de arriba no cambia. Diseño y
+contrato: `openspec/changes/seed-perfil-full/` (D12–D14).
+
+Es datos **100% sintéticos**: no llama a Mercado Pago, Expo ni storage.
+
+### Requisitos
+
+En `.env.local` (con `--stage=local` pisa a `.env`):
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `SEEDING_ENABLED` | `true` | Sin ella el stamp rechaza fechas pasadas y el seed no arranca. |
+| `MP_OAUTH_CLIENT_ID` | client_id de la app MP (cualquiera sirve, no se llama a MP) | Queda como `client_id` de la conexión de seller del entrenador 1. Sin valor, `seedTeams` aborta. |
+| `TOKEN_ENCRYPTION_KEY` | 16, 24 o 32 bytes; p. ej. `openssl rand -hex 16` | Cifra los tokens sintéticos de `seller_connections`. Sin valor, `seedTeams` aborta. |
+
+Además, Postgres local arriba (`make local-up`). El seed migra el schema al
+conectarse, así que no hace falta correr el backend antes.
+
+### Comandos
+
+Son los targets de `Makefile` (`fullseed-*`); los `seed-dashboard*` no se tocan.
+
+| Target | Equivale a | Qué hace |
+|---|---|---|
+| `make fullseed-seed` | `go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --seed --bootstrap-scope` | Siembra el perfil y al final corre la verificación. |
+| `make fullseed-verify` | `... --profile=full --verify` | Verifica el universo: sale con error si algo no es coherente. |
+| `make fullseed-cleanup` | `... --profile=full --cleanup --yes` | Borra solo lo marcado `[seed_full]`, en una transacción. |
+| `make fullseed-reset` | `make local-reset` + `make fullseed-seed` | Ver la advertencia de abajo: hoy no deja la base lista. |
+
+`--bootstrap-scope` está en el target pero el perfil full no lo usa (la creación
+del scope mínimo es del dashboard); es inocuo.
+
+Flujo típico:
+
+```bash
+make local-up
+make fullseed-seed        # siembra y verifica
+make fullseed-verify      # re-verificar cuando quieras
+make fullseed-cleanup     # vuelve a dejar el perfil fuera de la base
+```
+
+### Advertencia: base reseteada
+
+`make local-reset` ejecuta `docker compose down -v`: baja los contenedores **y borra
+los volúmenes** (base y bucket). Se pierde todo lo local, incluido lo clonado de
+Supabase; si lo querés conservar, `make local-dump` antes.
+
+`local-reset` no vuelve a levantar la base, así que `make fullseed-reset` termina con
+Postgres apagado y el seed falla al conectar. Mientras el target no se corrija, el
+flujo que funciona es:
+
+```bash
+make local-reset
+make local-up             # esperar a que db esté healthy: make local-ps
+make fullseed-seed
+```
+
+Sembrar sobre una base que ya tiene el perfil es esperado (las fases están pensadas
+para re-ejecutarse), pero las fechas se recalculan y el scope ya está; para un estado
+limpio, `make fullseed-cleanup` antes o el reset de arriba.
+
+### Seguridad
+
+- Solo corre con `--stage=local` y `SEEDING_ENABLED=true`
+  (`config.AssertSeedingStage`).
+- Los IDs de scope están reservados: equipos `1001`–`1006`, grupos `2001`–`2007`. Si
+  esos IDs existen sin el marker `[seed_full]`, aborta antes de tocar nada.
+- Cleanup exige `--yes` y solo borra filas del scope con marker.
+- Las credenciales son sintéticas y conocidas (ver abajo): no usar con una base que
+  tenga usuarios reales.
+
+### Usuarios
+
+Contraseña **de todos**: `Paceron.123`. Email: `<clave>.seed-full@seed-full.local`.
+
+| Usuario | Email | Rol / tier | Estado |
+|---|---|---|---|
+| Lucía Entrenadora (`trainer_1`) | `trainer1` | entrenador base + corredor base | active |
+| Mateo Entrenador (`trainer_2`) | `trainer2` | entrenador base + corredor base | active |
+| Corredor 1 (`r1`) | `runner1` | corredor premium | active |
+| Corredor 2 (`r2`) | `runner2` | corredor premium | active |
+| Corredor 3 (`r3`) | `runner3` | corredor medium | active |
+| Corredores 4–12 (`r4`–`r12`) | `runner4`…`runner12` | corredor base | active |
+| Corredor Bloqueado | `blocked` | corredor base | blocked (no puede loguear) |
+| Corredor Inactivo | `inactive` | corredor base | inactive (no puede loguear) |
+| Sin Rol | `no-role` | sin rol | active |
+| Invitaciones Desactivadas | `invitations-off` | corredor base | active, `allow_team_invitations=false` |
+
+Los emails van con guiones, p. ej. `no-role.seed-full@seed-full.local`.
+
+### Equipos y grupos
+
+| Equipo (id) | Grupos | Entrenador | Particularidad | Corredores |
+|---|---|---|---|---|
+| A Normal (1001) | principal 2001, secundario 2002 | Lucía | Sin cuota, cupo 20 | r1–r9 |
+| B Pago (1002) | 2003 | Mateo | Cuota 5000 | r1, r2, r6, r7, r8, r11 |
+| C Lleno (1003) | 2004 | Lucía | Cupo 2, ya completo | r10 |
+| D Oculto (1004) | 2005 | Mateo | No aparece en búsqueda | r11 |
+| E Cerrado (1005) | 2006 | Mateo | No acepta solicitudes | r12 |
+| F Colisión (1006) | 2007 | Lucía | Cuota 4500, colisiona con A | r10 |
+
+Dentro de A: en el secundario r4 y r5 activos, r8 con membresía vencida, r9 con alta
+futura. r10 y r11 pertenecen a dos equipos cada uno (C y F; B y D).
+
+### Casos que cubre
+
+- **Identidad**: login de protagonistas; `blocked` e `inactive` rechazados;
+  `GET /auth/permissions` completo por tier.
+- **Suscripciones y cuotas**: R1 premium activa con 2 cuotas pagas y la 3.ª pendiente;
+  R2 premium en deuda (bloquea la baja del equipo); R3 medium activa y una premium en
+  `first_payment_pending`.
+- **Solicitudes e invitaciones**: vigente, expirada, aceptada y rechazada; invitación a
+  un usuario con invitaciones desactivadas; join requests pendientes a A, E y C (cupo
+  lleno) y una rechazada en B.
+- **Calendario**: pasado (-21 a -1) con stamp real, futuro (+1 a +14) con training
+  presencial y asincrónico, descanso y cancelado con motivo. Hoy: presencial abierto
+  en A, presencial no abierto en el secundario, presencial cerrado en F y asincrónico
+  en B. Colisión presencial A vs F.
+- **Actividad**: runner sessions finished, wip de hoy e interrumpida; feedback con
+  todos los `completion_status` (uno soft-deleted); puntos GPS para pace/peak;
+  asistencias `qr` y `manual` con no-confirmados.
+- **Gamificación**: racha de 10 días para R4 (strict y flexible), racha cortada en 4
+  para R5 y un corredor con días skipped; logros desbloqueados; estampas y punto
+  rojo de `unseen`; leaderboard de las 6 métricas.
+- **Competencias**: pendiente de aprobación, activa por métrica, activa por ruta
+  (con intentos parciales y completos), terminada con empate, terminada con ganador
+  por duración, terminada sin intentos, rechazada con motivo y una con límite de
+  intentos agotado.
+- **Pagos y mensajes**: cuotas, pagos rechazados, cobros del entrenador con split
+  (`marketplace_fee`, `net_received_amount`), mensajes de sesión por modo y push tokens
+  sintéticos.
+
+`fullseed-verify` comprueba estos casos contra los servicios reales: si algo no
+coincide, sale con error en lugar de dejar un dataset incoherente.
