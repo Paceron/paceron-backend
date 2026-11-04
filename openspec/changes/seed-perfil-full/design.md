@@ -23,19 +23,30 @@ DAOs para runner_session; las guardas son `SEEDING_ENABLED=true` +
   implementan como métodos del mismo tipo y se conectan en orden en `profile_full.go`.
   T1 define ese contrato y cada fase preserva los IDs que consumen las siguientes.
 
-## D2 — Un solo run que contiene el dashboard
+## D2 — Universo independiente, no un run que contiene el dashboard
 
-- `full` reutiliza el seeder dashboard existente bajo los IDs reservados del Team A y
-  su grupo principal: 2 semanas completas previas (martes/jueves), 7 arquetipos, mismo
-  plan de defectos y mismo verify de 6 contadores. Luego agrega el universo extendido.
-- Los 7 arquetipos viven en el grupo dashboard (grupo principal del Team A). Los 5
-  corredores extra viven en un grupo secundario del Team A y en el Team B, fuera del
-  scope del dashboard, para no alterar sus contadores.
-- Total: 12 corredores (7 + 5). El verify dashboard sigue corriendo y debe pasar.
-- Para conservar el perfil existente, ese segmento reutilizado mantiene su marker
-  `[seed_dashboard]`; los registros exclusivos del perfil full usan `[seed_full]`.
-  `fullseed-cleanup` reconoce ambos markers solo dentro del scope full reservado; los
-  comandos de dashboard siguen limitados a sus IDs default 29/39.
+- `full` es un universo independiente con su propio pipeline de fases
+  (`seedIdentity` → `seedTeams` → `seedCatalogCalendar` → `seedActivity` →
+  `seedGamification` → `seedCompetitions` → `seedPaymentsAndMessages`) y termina en
+  `verifyFull`. No ejecuta `runDashboardSeedMode`, no reutiliza el plan de defectos del
+  dashboard y no corre su verify de 6 contadores.
+- Team A y su grupo principal contienen datos protagonistas visibles en el dashboard
+  (los corredores R1-R7 con su historial de 2 semanas, calendario y feedback), pero el
+  dataset se genera con las fases full. Los escenarios exclusivos del full (competencias
+  extra, pagos, mensajería, borde de roles/tiers, equipos de colisión) viven en grupos
+  secundarios o en otros equipos.
+- Los protagonistas del grupo principal de Team A son el único punto de contacto con el
+  dashboard por datos: no comparten plan de defectos ni contadores verificados por
+  dashboard.
+- Total: corredores protagonistas, de borde y extra según D3. El verify dashboard no
+  aplica al perfil full; su verificación es `verifyFull` (D10).
+- Marker: los registros del perfil full usan `[seed_full]`. Las descripciones de Team A
+  y su grupo principal no llevan el label vestigial `[seed_dashboard]`. Los comandos de
+  dashboard siguen limitados a sus IDs default 29/39 y a su marker `[seed_dashboard]`.
+- Marker privado de evidencia de competencia (`[seed_full_competition]`): solo lo usa el
+  seed para identidad y cleanup de la evidencia sintética. Los agregados de producto no
+  lo filtran; la evidencia de competencia contribuye a logros y leaderboard de forma
+  natural (ver tasks de competencias).
 
 ## D3 — Usuarios, roles, tiers y suscripciones
 

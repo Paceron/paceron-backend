@@ -24,8 +24,10 @@ Extender `cmd/api/scripts/seed_dashboard` con `--profile dashboard|full`:
 
 - `dashboard` (default): comportamiento actual, byte-idéntico, para no afectar el
   workflow del compañero.
-- `full`: siembra el dataset dashboard (mismas 2 semanas y 7 arquetipos, verify de
-  contadores intacto) **más** un universo extendido:
+- `full`: universo independiente con su propio pipeline de fases y su verify
+  (`verifyFull`). No ejecuta el seeder dashboard ni su verify de contadores. Team A y su
+  grupo principal contienen datos protagonistas visibles en el dashboard, y el resto del
+  universo extendido vive en grupos secundarios y otros equipos:
   1. **Usuarios logueables**: entrenador protagonista + 3 corredores protagonistas con
      password bcrypt `Paceron.123` (pasa `ValidatePassword`), más usuarios de borde
      (bloqueado, inactivo, sin rol, con invitaciones desactivadas).
