@@ -98,14 +98,16 @@
 - [x] 4.2 Calendario pasado (-21..-1) con stamp real; futuro (+1..+14) con training
       presencial/async, other, rest y cancelled con motivo.
 - [x] 4.3 HOY por inserción directa: presencial abierto en el grupo principal de A
-      (ventana `now-30m..now+2h`, `opened_at` seteado), presencial no abierto en el
-      secundario, presencial cerrado en F y training async hoy en `group_b` (Equipo B).
+      (ventana desde `max(now-30m, 00:00 local)` hasta `min(now+2h, 23:59 local)`,
+      `opened_at` seteado), presencial no abierto en el secundario, presencial cerrado
+      en F y training async hoy en `group_b` (Equipo B).
       El async va en B porque los dos grupos de A tienen ocupada su única fila de hoy
       por los escenarios presenciales; R1/R2 tienen acceso a B.
 - [x] 4.4 Colisión presencial A vs F y warning same-team entre grupos de A.
 - [x] 4.5 Tests de contrato: GetRange de A de -21..+14 y async de hoy en B, presencial
       abierto, next-session y next-presencial-session con banners, estados 409 de las
-      variantes no-abierto/cerrado.
+      variantes no-abierto/cerrado, y ventana HOY en horarios normales, tarde-noche y
+      poco después de medianoche.
 - [x] 4.6 Commit `feat(seed): catalogo y calendario dinamico del perfil full`.
 
 ### Task 5: Actividad histórica y de hoy
@@ -133,20 +135,20 @@
 - Modify: `cmd/api/scripts/seed_dashboard/full_catalog.go` (plan auxiliar de racha
   usado solo en el grupo secundario del perfil full).
 
-- [ ] 6.1 Crear un plan full-only de 9 días de training en el grupo secundario de A
+- [x] 6.1 Crear un plan full-only de 9 días de training en el grupo secundario de A
       (-16..-8) y sesiones finished para R4 en esos días; junto al finished de T5 en
       -7, debe dar strict/flexible current=10. R5 termina los primeros cuatro días y
       deja fallar los siguientes (best=4, current=0); R9 prueba días skipped antes de
       su alta futura en el grupo. `streak_state` debe ser coherente.
-- [ ] 6.2 `user_achievement_progress` con ids del catálogo: un corredor con varios
+- [x] 6.2 `user_achievement_progress` con ids del catálogo: un corredor con varios
       desbloqueados y otro vacío.
-- [ ] 6.3 Filas de `gamification_unseen` para `streaks`/`achievements` (un protagonista
+- [x] 6.3 Filas de `gamification_unseen` para `streaks`/`achievements` (un protagonista
       con punto rojo y otro visto); T7 sembrará `competitions` y las estampas al crear
       competencias terminadas con winners.
-- [ ] 6.4 Tests de contrato: GET streaks (current/best y estados por día), achievements,
+- [x] 6.4 Tests de contrato: GET streaks (current/best y estados por día), achievements,
       stamps en estado vacío hasta T7, unseen por sección y leaderboard de las 6 métricas
       con record all.
-- [ ] 6.5 Commit `feat(seed): gamificacion del perfil full`.
+- [x] 6.5 Commit `feat(seed): gamificacion del perfil full`.
 
 ### Task 7: Competencias en todos los estados
 
@@ -154,18 +156,18 @@
 - Create: `cmd/api/scripts/seed_dashboard/full_competitions.go` (+ test).
 - Modify: `cmd/api/scripts/seed_dashboard/profile_full.go` (wire `seedCompetitions`).
 
-- [ ] 7.1 Sembrar pending_approval, active metric, active route (max_attempts=3, un
+- [x] 7.1 Sembrar pending_approval, active metric, active route (max_attempts=3, un
       intento 100% y otro parcial + wip), finished metric con empate, finished route
       con ganador por duración, finished route sin intentos, rejected con motivo y una
       con límite agotado.
-- [ ] 7.2 Geometría de ruta válida ([lng,lat], ≤500 vértices, ≤100 km, radio 50 m),
+- [x] 7.2 Geometría de ruta válida ([lng,lat], ≤500 vértices, ≤100 km, radio 50 m),
       instancias sintéticas compartidas y por intento, y puntos GPS sobre el feedback
       del intento (±10 m) para compliance 100%/parcial.
-- [ ] 7.3 Efectos del cierre para las finished: winners, estampas y unseen coherentes;
+- [x] 7.3 Efectos del cierre para las finished: winners, estampas y unseen coherentes;
       `attempts_used`/`can_attempt` correctos por participante.
-- [ ] 7.4 Tests de contrato: listado/detalle por estado, attempts por atleta, progress
+- [x] 7.4 Tests de contrato: listado/detalle por estado, attempts por atleta, progress
       route/metric, winners y `can_attempt`.
-- [ ] 7.5 Commit `feat(seed): competencias del perfil full`.
+- [x] 7.5 Commit `feat(seed): competencias del perfil full`.
 
 ### Task 8: Pagos, mensajería y push
 

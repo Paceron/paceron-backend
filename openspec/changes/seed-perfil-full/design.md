@@ -92,9 +92,11 @@ Matriz de equipos (todos con ubicación cargada; la búsqueda compara igualdad e
 - Pasado (-21..-1): calendario sembrado con stamp (`SEEDING_ENABLED=true` relaja el
   guard de fechas pasadas) y feedback/asistencias.
 - **HOY**: se inserta por DAO/SQL directo, sin pasar por el guard de día cerrado:
-  - Grupo principal de A: training **presencial** con `time_from=now-30m`,
-    `time_to=now+2h`, `presencial_opened_at=now-20m`, `closed_at=NULL` → usable al
-    instante por el corredor.
+  - Grupo principal de A: training **presencial** con una ventana desde
+    `max(now-30m, 00:00 local)` hasta `min(now+2h, 23:59 local)`. Los timestamps
+    `presencial_opened_at=now-20m` y el cierre de F se acotan para no preceder el
+    inicio local del día. Así la sesión sigue abierta y sus horarios se representan
+    con `HH:MM` incluso cerca de medianoche.
   - Grupo secundario de A: presencial **no abierto** (`opened_at=NULL`) → demo 409
     `session_not_opened`.
   - Un grupo de F: presencial **cerrado** (`closed_at` seteado) → demo 409

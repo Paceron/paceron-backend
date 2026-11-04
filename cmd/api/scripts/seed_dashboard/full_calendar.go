@@ -31,8 +31,8 @@ func (s *fullSeeder) seedFullCalendar() error {
 	if err != nil {
 		return err
 	}
-	openedAt := s.now.Add(-20 * time.Minute)
-	closedAt := s.now.Add(-5 * time.Minute)
+	openedAt := fullCalendarTimeOnToday(s.now, s.now.Add(-20*time.Minute))
+	closedAt := fullCalendarTimeOnToday(s.now, s.now.Add(-5*time.Minute))
 	location := trainingplan.Location{Lat: -31.4201, Lng: -64.1888, Label: strPtr("Parque del equipo")}
 	fixtures := []fullTodayCalendarSpec{
 		{key: "today_a_main", groupKey: "group_a_main", ownerKey: "trainer_1", sessionKey: "full_interval", presencial: true, from: from, to: to, location: &location, openedAt: &openedAt},
@@ -322,9 +322,30 @@ func fullClock(value time.Time) time.Time {
 }
 
 func fullCalendarClockRange(now time.Time) (*time.Time, *time.Time, error) {
-	from, to := fullClock(now.Add(-30*time.Minute)), fullClock(now.Add(2*time.Hour))
+	localNow := now.In(gametime.Location)
+	year, month, day := localNow.Date()
+	dayStart := time.Date(year, month, day, 0, 0, 0, 0, gametime.Location)
+	dayEnd := time.Date(year, month, day, 23, 59, 0, 0, gametime.Location)
+	fromTime, toTime := localNow.Add(-30*time.Minute), localNow.Add(2*time.Hour)
+	if fromTime.Before(dayStart) {
+		fromTime = dayStart
+	}
+	if toTime.After(dayEnd) {
+		toTime = dayEnd
+	}
+	from, to := fullClock(fromTime), fullClock(toTime)
 	if !from.Before(to) {
 		return nil, nil, fmt.Errorf("la ventana presencial full cruza la medianoche y no puede representarse como HH:MM")
 	}
 	return &from, &to, nil
+}
+
+func fullCalendarTimeOnToday(now, value time.Time) time.Time {
+	localNow, localValue := now.In(gametime.Location), value.In(gametime.Location)
+	year, month, day := localNow.Date()
+	dayStart := time.Date(year, month, day, 0, 0, 0, 0, gametime.Location)
+	if localValue.Before(dayStart) {
+		return dayStart
+	}
+	return localValue
 }

@@ -60,8 +60,9 @@ func TestFullSeederSeedCatalogCalendar_SeedsCalendarAndAPIContracts(t *testing.T
 	require.Equal(t, string(constants.GroupCalendarDayKindTraining), today.Kind)
 	require.True(t, today.IsPresencial)
 	require.NotNil(t, today.SessionInstance)
-	assert.Equal(t, fullCalendarHHMM(s.now.Add(-30*time.Minute)), *today.PresencialTimeFrom)
-	assert.Equal(t, fullCalendarHHMM(s.now.Add(2*time.Hour)), *today.PresencialTimeTo)
+	nowClock := fullClock(s.now)
+	assert.LessOrEqual(t, *today.PresencialTimeFrom, nowClock.Format("15:04"))
+	assert.GreaterOrEqual(t, *today.PresencialTimeTo, nowClock.Format("15:04"))
 	roles := make(map[string]int, len(today.SessionInstance.Exercises))
 	for _, exercise := range today.SessionInstance.Exercises {
 		roles[exercise.Role]++
@@ -161,17 +162,90 @@ func TestFullSeederSeedCatalogCalendar_SeedsCalendarAndAPIContracts(t *testing.T
 	assert.True(t, sameTeamPair)
 }
 
-func TestFullCalendarClockRangeRejectsUnrepresentableMidnightWindow(t *testing.T) {
-	from, to, err := fullCalendarClockRange(time.Date(2026, time.November, 3, 23, 0, 0, 0, gametime.Location))
-	require.Error(t, err)
-	assert.Nil(t, from)
-	assert.Nil(t, to)
-	assert.Contains(t, err.Error(), "cruza la medianoche")
+func TestFullCalendarClockRangeCapsAtEndOfDay(t *testing.T) {
+	cases := []struct {
+		name     string
+		now      time.Time
+		wantFrom string
+		wantTo   string
+	}{
+		{
+			name:     "normal hours",
+			now:      time.Date(2026, time.November, 3, 18, 0, 0, 0, gametime.Location),
+			wantFrom: "17:30",
+			wantTo:   "20:00",
+		},
+		{
+			name:     "late evening",
+			now:      time.Date(2026, time.November, 3, 23, 0, 0, 0, gametime.Location),
+			wantFrom: "22:30",
+			wantTo:   "23:59",
+		},
+	}
 
-	from, to, err = fullCalendarClockRange(time.Date(2026, time.November, 3, 18, 0, 0, 0, gametime.Location))
-	require.NoError(t, err)
-	assert.Equal(t, "17:30", from.UTC().Format("15:04"))
-	assert.Equal(t, "20:00", to.UTC().Format("15:04"))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			from, to, err := fullCalendarClockRange(tc.now)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantFrom, from.UTC().Format("15:04"))
+			assert.Equal(t, tc.wantTo, to.UTC().Format("15:04"))
+		})
+	}
+}
+
+func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *testing.T) {
+	cases := []struct {
+		name           string
+		now            time.Time
+		wantFrom       string
+		wantTo         string
+		wantOpened     string
+		wantClosedTime string
+	}{
+		{
+			name:           "late evening",
+			now:            time.Date(2026, time.November, 3, 22, 8, 0, 0, gametime.Location),
+			wantFrom:       "21:38",
+			wantTo:         "23:59",
+			wantOpened:     "21:48",
+			wantClosedTime: "22:03",
+		},
+		{
+			name:           "shortly after midnight",
+			now:            time.Date(2026, time.November, 3, 0, 15, 0, 0, gametime.Location),
+			wantFrom:       "00:00",
+			wantTo:         "02:15",
+			wantOpened:     "00:00",
+			wantClosedTime: "00:10",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testutils.SetupTestDB(t)
+			seedFullCalendarPrerequisites(t)
+			s := newFullSeeder(db, options{})
+			s.now = tc.now
+			require.NoError(t, s.seedIdentity())
+			require.NoError(t, s.seedTeams())
+			require.NoError(t, s.seedCatalogCalendar())
+
+			var day dbs.GroupCalendarDay
+			require.NoError(t, db.Where("group_id = ? AND date = ?", s.ids.groups["group_a_main"], fullCalendarDate(s.now)).Take(&day).Error)
+			require.NotNil(t, day.PresencialTimeFrom)
+			require.NotNil(t, day.PresencialTimeTo)
+			require.NotNil(t, day.PresencialOpenedAt)
+			assert.Nil(t, day.PresencialClosedAt)
+			assert.Equal(t, tc.wantFrom, day.PresencialTimeFrom.UTC().Format("15:04"))
+			assert.Equal(t, tc.wantTo, day.PresencialTimeTo.UTC().Format("15:04"))
+			assert.Equal(t, tc.wantOpened, day.PresencialOpenedAt.In(gametime.Location).Format("15:04"))
+
+			var closedDay dbs.GroupCalendarDay
+			require.NoError(t, db.Where("group_id = ? AND date = ?", s.ids.groups["group_f"], fullCalendarDate(s.now)).Take(&closedDay).Error)
+			require.NotNil(t, closedDay.PresencialClosedAt)
+			assert.Equal(t, tc.wantClosedTime, closedDay.PresencialClosedAt.In(gametime.Location).Format("15:04"))
+		})
+	}
 }
 
 func seedFullCalendarPrerequisites(t *testing.T) {
