@@ -56,12 +56,14 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	assert.Equal(t, subscriptionsBefore, subscriptionsAfter)
 	var membershipsBefore []dbs.TeamUser
 	require.NoError(t, db.Order("id").Find(&membershipsBefore).Error)
+	rowsBefore := snapshotFullPaymentAndMessagingRows(t, db)
 
 	independent := newFullSeeder(db, options{})
 	independent.now = s.now.Add(4 * time.Hour)
 	independent.ids = s.ids
 	require.NoError(t, independent.seedPaymentsAndMessages())
 	assert.Equal(t, counts, fullPaymentCounts(t, db))
+	assert.Equal(t, rowsBefore, snapshotFullPaymentAndMessagingRows(t, db))
 	var membershipsAfter []dbs.TeamUser
 	require.NoError(t, db.Order("id").Find(&membershipsAfter).Error)
 	assert.Equal(t, membershipsBefore, membershipsAfter)
@@ -224,6 +226,25 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	assert.Equal(t, beforeRun, fullPaymentCounts(t, db))
 }
 
+type fullPaymentAndMessagingSnapshot struct {
+	payments     []dbs.Payment
+	installments []dbs.Installment
+	messages     []dbs.SessionMessage
+	recipients   []dbs.SessionMessageRecipient
+	pushTokens   []dbs.PushToken
+}
+
+func snapshotFullPaymentAndMessagingRows(t *testing.T, db *gorm.DB) fullPaymentAndMessagingSnapshot {
+	t.Helper()
+	var snapshot fullPaymentAndMessagingSnapshot
+	require.NoError(t, db.Order("id").Find(&snapshot.payments).Error)
+	require.NoError(t, db.Order("id").Find(&snapshot.installments).Error)
+	require.NoError(t, db.Order("id").Find(&snapshot.messages).Error)
+	require.NoError(t, db.Order("message_id, user_id").Find(&snapshot.recipients).Error)
+	require.NoError(t, db.Order("id").Find(&snapshot.pushTokens).Error)
+	return snapshot
+}
+
 func TestFullSeederPayments_RejectsConflictingExternalReferenceAndRollsBackPhase(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	s := seedFullPaymentsPrerequisites(t, db)
@@ -272,6 +293,25 @@ func TestFullSeederPayments_RejectsLegacyTask8RowsWithoutAdoptingThem(t *testing
 	assert.Equal(t, installmentsBefore, fullPaymentCount(t, db, &dbs.Installment{}))
 	assert.Zero(t, fullPaymentCount(t, db, &dbs.SessionMessage{}))
 	assert.Zero(t, len(s.ids.payments))
+}
+
+func TestFullSeederPayments_RejectsExistingPaymentWithMissingPaidInstallmentLink(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	s := seedFullPaymentsPrerequisites(t, db)
+	require.NoError(t, s.seedPaymentsAndMessages())
+	installmentID := s.ids.installments["r1_tier_1"]
+	require.NoError(t, db.Model(&dbs.Installment{}).Where("id = ?", installmentID).
+		UpdateColumns(map[string]any{"internal_payment_id": nil, "external_payment_id": nil}).Error)
+	before := snapshotFullPaymentAndMessagingRows(t, db)
+
+	independent := newFullSeeder(db, options{})
+	independent.now = s.now.Add(4 * time.Hour)
+	independent.ids = s.ids
+	err := independent.seedPaymentsAndMessages()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pago existente")
+	assert.Equal(t, before, snapshotFullPaymentAndMessagingRows(t, db))
 }
 
 func TestFullSeederPayments_SplitUsesConfiguredMarketplaceFee(t *testing.T) {

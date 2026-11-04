@@ -160,10 +160,6 @@ func ensureFullSessionMessage(tx *gorm.DB, expected dbs.SessionMessage, recipien
 	if err := validateFullMessageRecipients(tx, row.ID, recipientIDs); err != nil {
 		return nil, err
 	}
-	if err := tx.Model(&dbs.SessionMessage{}).Where("id = ?", row.ID).Update("created_at", expected.CreatedAt).Error; err != nil {
-		return nil, err
-	}
-	row.CreatedAt = expected.CreatedAt
 	return &row, nil
 }
 
@@ -203,9 +199,5 @@ func ensureFullPushToken(tx *gorm.DB, userID int64, token, platform string, now 
 	if row.UserID != userID || row.Token != token || row.Platform != platform {
 		return nil, fmt.Errorf("token existente no coincide con el perfil full")
 	}
-	if err := tx.Model(&dbs.PushToken{}).Where("id = ?", row.ID).Updates(map[string]any{"created_at": now, "updated_at": now}).Error; err != nil {
-		return nil, err
-	}
-	row.CreatedAt, row.UpdatedAt = now, now
 	return &row, nil
 }

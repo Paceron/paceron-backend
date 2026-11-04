@@ -146,6 +146,10 @@ func (s *fullSeeder) seedFullPayments(tx *gorm.DB) (map[string]int64, map[string
 		if !ok {
 			return nil, nil, fmt.Errorf("pago %s refiere cuota desconocida %q", spec.key, spec.installmentKey)
 		}
+		var existingPaymentCount int64
+		if err := tx.Model(&dbs.Payment{}).Where("external_reference = ?", "seed_full:payment:"+spec.key).Count(&existingPaymentCount).Error; err != nil {
+			return nil, nil, err
+		}
 		payment, err := s.ensureFullPayment(tx, spec, installment)
 		if err != nil {
 			return nil, nil, fmt.Errorf("pago %s: %w", spec.key, err)
@@ -153,20 +157,28 @@ func (s *fullSeeder) seedFullPayments(tx *gorm.DB) (map[string]int64, map[string
 		paymentIDs[spec.key] = payment.ID
 		paymentID := payment.PaymentID
 		if spec.status == string(constants.PaymentStatusApproved) {
+			if (installment.InternalPaymentID == nil) != (installment.ExternalPaymentID == nil) {
+				return nil, nil, fmt.Errorf("cuota %s tiene enlace de pago incompleto", spec.installmentKey)
+			}
 			if installment.InternalPaymentID != nil && *installment.InternalPaymentID != payment.ID {
 				return nil, nil, fmt.Errorf("cuota %s ya apunta a otro pago interno", spec.installmentKey)
 			}
 			if installment.ExternalPaymentID != nil && *installment.ExternalPaymentID != paymentID {
 				return nil, nil, fmt.Errorf("cuota %s ya apunta a otro payment_id", spec.installmentKey)
 			}
-			if err := tx.Model(&dbs.Installment{}).Where("id = ?", installment.ID).Updates(map[string]any{
-				"internal_payment_id": payment.ID, "external_payment_id": paymentID, "updated_at": s.now,
-			}).Error; err != nil {
-				return nil, nil, fmt.Errorf("enlazar pago aprobado a cuota %s: %w", spec.installmentKey, err)
+			if installment.InternalPaymentID == nil {
+				if existingPaymentCount != 0 {
+					return nil, nil, fmt.Errorf("pago existente %s tiene una cuota sin enlace", spec.key)
+				}
+				if err := tx.Model(&dbs.Installment{}).Where("id = ?", installment.ID).Updates(map[string]any{
+					"internal_payment_id": payment.ID, "external_payment_id": paymentID, "updated_at": s.now,
+				}).Error; err != nil {
+					return nil, nil, fmt.Errorf("enlazar pago aprobado a cuota %s: %w", spec.installmentKey, err)
+				}
+				internalPaymentID := payment.ID
+				installment.InternalPaymentID = &internalPaymentID
+				installment.ExternalPaymentID = &paymentID
 			}
-			internalPaymentID := payment.ID
-			installment.InternalPaymentID = &internalPaymentID
-			installment.ExternalPaymentID = &paymentID
 		} else if installment.InternalPaymentID != nil || installment.ExternalPaymentID != nil {
 			return nil, nil, fmt.Errorf("cuota %s no aprobada no debe enlazar payment_id", spec.installmentKey)
 		}
@@ -444,12 +456,6 @@ func (s *fullSeeder) ensureFullPayment(tx *gorm.DB, spec fullPaymentSpec, instal
 	if len(byPaymentID) != 1 || byPaymentID[0].ID != row.ID || !sameFullPaymentIdentity(row, expected) {
 		return nil, fmt.Errorf("la fila de external_reference no coincide con la identidad completa full")
 	}
-	if err := tx.Model(&dbs.Payment{}).Where("id = ?", row.ID).Updates(map[string]any{
-		"created_at": expected.CreatedAt, "updated_at": s.now,
-	}).Error; err != nil {
-		return nil, err
-	}
-	row.CreatedAt, row.UpdatedAt = expected.CreatedAt, s.now
 	return &row, nil
 }
 
