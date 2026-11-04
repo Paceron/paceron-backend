@@ -195,13 +195,22 @@ func TestFullCalendarClockRangeCapsAtEndOfDay(t *testing.T) {
 
 func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *testing.T) {
 	cases := []struct {
-		name           string
-		now            time.Time
-		wantFrom       string
-		wantTo         string
-		wantOpened     string
-		wantClosedTime string
+		name                 string
+		now                  time.Time
+		wantFrom             string
+		wantTo               string
+		wantOpened           string
+		wantClosedTime       string
+		allowEqualAtMidnight bool
 	}{
+		{
+			name:           "normal hours",
+			now:            time.Date(2026, time.November, 3, 18, 0, 0, 0, gametime.Location),
+			wantFrom:       "17:30",
+			wantTo:         "20:00",
+			wantOpened:     "17:40",
+			wantClosedTime: "17:55",
+		},
 		{
 			name:           "late evening",
 			now:            time.Date(2026, time.November, 3, 22, 8, 0, 0, gametime.Location),
@@ -217,6 +226,23 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 			wantTo:         "02:15",
 			wantOpened:     "00:00",
 			wantClosedTime: "00:10",
+		},
+		{
+			name:           "first minutes after midnight",
+			now:            time.Date(2026, time.November, 3, 0, 2, 0, 0, gametime.Location),
+			wantFrom:       "00:00",
+			wantTo:         "02:02",
+			wantOpened:     "00:00",
+			wantClosedTime: "00:02",
+		},
+		{
+			name:                 "exact midnight",
+			now:                  time.Date(2026, time.November, 3, 0, 0, 0, 0, gametime.Location),
+			wantFrom:             "00:00",
+			wantTo:               "02:00",
+			wantOpened:           "00:00",
+			wantClosedTime:       "00:00",
+			allowEqualAtMidnight: true,
 		},
 	}
 
@@ -242,7 +268,21 @@ func TestFullSeederSeedCatalogCalendar_ClampsTodayWindowAtLocalDayBoundaries(t *
 
 			var closedDay dbs.GroupCalendarDay
 			require.NoError(t, db.Where("group_id = ? AND date = ?", s.ids.groups["group_f"], fullCalendarDate(s.now)).Take(&closedDay).Error)
+			require.NotNil(t, closedDay.PresencialOpenedAt)
 			require.NotNil(t, closedDay.PresencialClosedAt)
+			dayStart := fullCalendarDate(s.now)
+			nextDay := dayStart.AddDate(0, 0, 1)
+			assert.False(t, closedDay.PresencialOpenedAt.Before(dayStart))
+			assert.True(t, closedDay.PresencialOpenedAt.Before(nextDay))
+			assert.False(t, closedDay.PresencialClosedAt.Before(dayStart))
+			assert.True(t, closedDay.PresencialClosedAt.Before(nextDay))
+			assert.False(t, closedDay.PresencialOpenedAt.After(s.now))
+			assert.False(t, closedDay.PresencialClosedAt.After(s.now))
+			if tc.allowEqualAtMidnight {
+				assert.True(t, closedDay.PresencialOpenedAt.Equal(*closedDay.PresencialClosedAt))
+			} else {
+				assert.True(t, closedDay.PresencialOpenedAt.Before(*closedDay.PresencialClosedAt))
+			}
 			assert.Equal(t, tc.wantClosedTime, closedDay.PresencialClosedAt.In(gametime.Location).Format("15:04"))
 		})
 	}

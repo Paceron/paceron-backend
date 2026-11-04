@@ -33,6 +33,9 @@ func (s *fullSeeder) seedFullCalendar() error {
 	}
 	openedAt := fullCalendarTimeOnToday(s.now, s.now.Add(-20*time.Minute))
 	closedAt := fullCalendarTimeOnToday(s.now, s.now.Add(-5*time.Minute))
+	if !openedAt.Before(closedAt) {
+		closedAt = s.now
+	}
 	location := trainingplan.Location{Lat: -31.4201, Lng: -64.1888, Label: strPtr("Parque del equipo")}
 	fixtures := []fullTodayCalendarSpec{
 		{key: "today_a_main", groupKey: "group_a_main", ownerKey: "trainer_1", sessionKey: "full_interval", presencial: true, from: from, to: to, location: &location, openedAt: &openedAt},
