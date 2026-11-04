@@ -381,7 +381,9 @@ func (s *fullSeeder) verifyFullCompetitions() error {
 }
 
 func (s *fullSeeder) verifyFullPayments() error {
-	history := services.NewPaymentHistoryService(daos.NewPaymentHistoryDao(s.db))
+	history := services.NewPaymentHistoryService(
+		daos.NewPaymentHistoryDao(s.db), daos.NewPlatformSettingDao(s.db),
+	)
 	response, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", 1)
 	if err != nil {
 		return fmt.Errorf("historial de pagos de R1: %w", err)

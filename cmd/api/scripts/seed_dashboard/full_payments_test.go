@@ -68,7 +68,9 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	require.NoError(t, db.Order("id").Find(&membershipsAfter).Error)
 	assert.Equal(t, membershipsBefore, membershipsAfter)
 
-	history := services.NewPaymentHistoryService(daos.NewPaymentHistoryDao(db))
+	history := services.NewPaymentHistoryService(
+		daos.NewPaymentHistoryDao(db), daos.NewPlatformSettingDao(db),
+	)
 	r1History, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", 1)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pending", "approved", "approved"}, fullPaymentStatuses(r1History.Payments))
