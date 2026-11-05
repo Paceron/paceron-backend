@@ -346,6 +346,10 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/mercadopago/connect/status` | Mercado Pago connection status of the authenticated user |
 | GET | `/api/v1/platform-settings/marketplace-fee` | Get Paceron marketplace fee percentage |
 | PUT | `/api/v1/platform-settings/marketplace-fee` | Update Paceron marketplace fee percentage (app owner only) |
+| GET | `/api/v1/payments/received` | Team membership payments received by the authenticated trainer, paginated. `net_amount` = gross − Paceron fee (`fee_amount`, `fee_percent`) |
+| GET | `/api/v1/payments/received/summary` | Monthly totals of received payments, by team, plus expected unpaid installments per month (`pending_*`) and what is due / overdue this month |
+| GET | `/api/v1/payments/history` | Payments made by the authenticated user: tier subscriptions and team memberships |
+| GET | `/api/v1/payments/upcoming` | Next unpaid installment of each team membership and tier subscription of the authenticated user, with `overdue` and `overdue_count` |
 | GET | `/api/v1/attendance/qr?team_id=&training_session_id=` | Generate a deterministic QR (base64 + encoded URL) to register attendance for a team's training session. The token user must be a **coach of that team** (403 otherwise), and the session must be presencial, not cancelled and belong to the team (422 otherwise) |
 | POST | `/api/v1/attendance/team/:team_id/session/:training_session_id` | Register attendance (idempotent: `201` first time, `200` if already registered). The token user must be an **active member of the session's group on the session's date** (403 otherwise). Writes `source='qr'` and `registered_by_user_id` = the runner |
 | GET | `/api/v1/attendance/search` | Search attendances. `team_id` is mandatory (plus at least one query param, 400 otherwise). The token user must be a coach or runner of that team: coaches see all team attendances, runners only their own |

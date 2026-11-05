@@ -2350,6 +2350,38 @@ definitions:
         type: number
       net_known_count:
         type: integer
+      pending_amount:
+        type: number
+      pending_count:
+        type: integer
+      pending_net_amount:
+        type: number
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.ObligationItem:
+    properties:
+      amount:
+        type: number
+      due_date:
+        type: string
+      installment_number:
+        type: integer
+      payer:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef'
+      team:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef'
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.ObligationsBlock:
+    properties:
+      amount:
+        type: number
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationItem'
+        type: array
+      net_amount:
+        type: number
     type: object
   simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef:
     properties:
@@ -2470,6 +2502,10 @@ definitions:
         type: string
       currency_id:
         type: string
+      fee_amount:
+        type: number
+      fee_percent:
+        type: number
       gross_amount:
         type: number
       id:
@@ -2512,6 +2548,13 @@ definitions:
         type: array
       currency_id:
         type: string
+      due_this_month:
+        allOf:
+        - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock'
+        description: |-
+          DueThisMonth vence desde hoy hasta fin del mes actual; Overdue es todo
+          lo que ya venció sin pagar, de este mes o de meses anteriores (design D4
+          y D5). No dependen de la ventana de meses.
       earliest_month:
         description: |-
           EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
@@ -2525,10 +2568,23 @@ definitions:
         type: array
       months:
         type: integer
+      overdue:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock'
+      pending_amount:
+        description: |-
+          Montos de esas mismas cuotas (el último intento de cada una), en bruto y
+          en neto (bruto menos la comisión del intento).
+        type: number
       pending_count:
         type: integer
+      pending_net_amount:
+        type: number
+      rejected_amount:
+        type: number
       rejected_count:
         type: integer
+      rejected_net_amount:
+        type: number
     type: object
   simple-arq-golang_cmd_api_domains_payment.TeamAmount:
     properties:
@@ -2586,6 +2642,36 @@ definitions:
     properties:
       token:
         type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentItem:
+    properties:
+      amount:
+        type: number
+      currency_id:
+        type: string
+      due_date:
+        type: string
+      installment_number:
+        type: integer
+      overdue:
+        type: boolean
+      overdue_count:
+        type: integer
+      team:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTeamRef'
+      tier:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTierRef'
+      trainer:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentTrainerRef'
+      type:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentItem'
+        type: array
     type: object
   simple-arq-golang_cmd_api_domains_payment.WebhookNotification:
     properties:
@@ -6942,8 +7028,9 @@ paths:
   /api/v1/payments/received:
     get:
       description: Cobros de membresía de equipo recibidos por el usuario autenticado,
-        del más reciente al más antiguo. Paginado de a 20. `net_amount` es null salvo
-        que Mercado Pago haya informado el neto real.
+        del más reciente al más antiguo. Paginado de a 20. `net_amount` es el bruto
+        menos la comisión de Paceron (`fee_amount`, `fee_percent`) y es null si el
+        cobro no está aprobado.
       parameters:
       - description: Página (default 1)
         in: query
@@ -6989,7 +7076,10 @@ paths:
       description: Totales mensuales (hora argentina; el último es `until` o, sin
         él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas
         según su último intento, dentro de la ventana. `earliest_month` es el primer
-        mes con cobros del vendedor.
+        mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin
+        pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence
+        desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de
+        este mes o de meses anteriores.
       parameters:
       - description: Meses de la ventana, entre 2 y 12 (default 6)
         in: query
@@ -7050,6 +7140,30 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: Generate test card token
+      tags:
+      - payments
+  /api/v1/payments/upcoming:
+    get:
+      description: Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`)
+        y de cada suscripción de tier (`type=subscription`) del usuario autenticado,
+        ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que
+        ya vencieron.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.UpcomingPaymentsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Próximos vencimientos del usuario
       tags:
       - payments
   /api/v1/payments/webhook:
@@ -8692,7 +8806,9 @@ paths:
   /api/v1/teams/{id}/users/{user_id}:
     delete:
       description: Quita un usuario de un equipo (soft-delete de la asociación). El
-        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
+        propio usuario puede salirse, o el entrenador del equipo puede quitar a otro.
+        El corredor no puede irse con cuotas que vencen hoy o antes (409); el entrenador
+        sí puede sacarlo
       parameters:
       - description: Team ID
         in: path
@@ -8721,6 +8837,10 @@ paths:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "409":
+          description: Corredor que se va con cuotas sin pagar
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
         "500":

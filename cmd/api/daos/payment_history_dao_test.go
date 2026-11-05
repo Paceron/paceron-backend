@@ -60,6 +60,7 @@ type paymentFixture struct {
 	mpPaymentID   string
 	status        string
 	amount        float64
+	fee           *float64
 	raw           *string
 	createdAt     time.Time
 }
@@ -73,8 +74,9 @@ func persistPayment(db *gorm.DB, f paymentFixture) *dbs.Payment {
 		PaymentID:     f.mpPaymentID,
 		SellerUserID:  f.sellerID,
 		InstallmentID: &f.installmentID,
-		RawResponse:   f.raw,
-		CreatedAt:     f.createdAt,
+		RawResponse:    f.raw,
+		CreatedAt:      f.createdAt,
+		MarketplaceFee: f.fee,
 	}
 	db.Create(p)
 	return p
@@ -168,33 +170,47 @@ func TestPaymentHistoryDao_ListReceived_ExcludesOtherConcepts(t *testing.T) {
 	assert.Empty(t, rows)
 }
 
+// El neto es bruto menos la comisión de Paceron, no el que informa Mercado
+// Pago (change cobros-pendientes-y-vencimientos, design D2). Sin comisión
+// guardada se asume 5%. Un cobro no aprobado tiene comisión pero no neto.
 func TestPaymentHistoryDao_ListReceived_NetAmount(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewPaymentHistoryDao(db)
 	s := seedReceived(db, "000005")
 	base := time.Now().UTC().Add(-time.Hour)
+	fee := func(v float64) *float64 { return &v }
 
-	persistPayment(db, teamPayment(s, "mp-webhook", "approved", ptrStr(webhookRaw), base.Add(4*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-process", "approved", ptrStr(processPaymentRaw), base.Add(3*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-nil-raw", "approved", nil, base.Add(2*time.Minute)))
-	persistPayment(db, teamPayment(s, "mp-pending", "pending",
-		ptrStr(`{"transaction_details":{"net_received_amount":0}}`), base.Add(time.Minute)))
+	withFee := teamPayment(s, "mp-fee", "approved", ptrStr(webhookRaw), base.Add(4*time.Minute))
+	withFee.fee = fee(1200)
+	persistPayment(db, withFee)
+	persistPayment(db, teamPayment(s, "mp-no-fee", "approved", ptrStr(processPaymentRaw), base.Add(3*time.Minute)))
+	zeroFee := teamPayment(s, "mp-zero-fee", "approved", nil, base.Add(2*time.Minute))
+	zeroFee.fee = fee(0)
+	persistPayment(db, zeroFee)
+	pending := teamPayment(s, "mp-pending", "pending", nil, base.Add(time.Minute))
+	pending.fee = fee(750)
+	persistPayment(db, pending)
 	persistPayment(db, teamPayment(s, "mp-rejected", "rejected", ptrStr(webhookRaw), base))
 
 	rows, _, err := dao.ListReceived(nil, s.trainer.ID, ReceivedPaymentFilters{}, 1, 20)
 
 	require.NoError(t, err)
 	require.Len(t, rows, 5)
-	byID := map[string]*float64{}
+	byID := map[string]ReceivedPaymentRow{}
 	for _, r := range rows {
-		byID[r.MPPaymentID] = r.NetAmount
+		byID[r.MPPaymentID] = r
 	}
-	require.NotNil(t, byID["mp-webhook"])
-	assert.InDelta(t, 14101.5, *byID["mp-webhook"], 0.001)
-	assert.Nil(t, byID["mp-process"])
-	assert.Nil(t, byID["mp-nil-raw"])
-	assert.Nil(t, byID["mp-pending"])
-	assert.Nil(t, byID["mp-rejected"])
+	require.NotNil(t, byID["mp-fee"].NetAmount)
+	assert.InDelta(t, 13800, *byID["mp-fee"].NetAmount, 0.001, "15000 - 1200, no el neto de MP")
+	assert.InDelta(t, 1200, byID["mp-fee"].FeeAmount, 0.001)
+	require.NotNil(t, byID["mp-no-fee"].NetAmount)
+	assert.InDelta(t, 14250, *byID["mp-no-fee"].NetAmount, 0.001, "sin comisión guardada se asume 5%")
+	assert.InDelta(t, 750, byID["mp-no-fee"].FeeAmount, 0.001)
+	require.NotNil(t, byID["mp-zero-fee"].NetAmount)
+	assert.InDelta(t, 15000, *byID["mp-zero-fee"].NetAmount, 0.001, "una comisión 0 guardada es 0, no 5%")
+	assert.Nil(t, byID["mp-pending"].NetAmount)
+	assert.InDelta(t, 750, byID["mp-pending"].FeeAmount, 0.001)
+	assert.Nil(t, byID["mp-rejected"].NetAmount)
 }
 
 func TestPaymentHistoryDao_ListReceived_Filters(t *testing.T) {
@@ -456,4 +472,113 @@ func TestPaymentHistoryDao_DBFail(t *testing.T) {
 	_, _, err = dao.ListHistory(nil, 1, HistoryPaymentFilters{}, 1, 20)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error listing payment history")
+}
+
+// --- obligaciones (change cobros-pendientes-y-vencimientos) ---
+
+func persistMembership(db *gorm.DB, teamID, userID int64, role string, amount float64, paid int, deleted bool) {
+	tu := &dbs.TeamUser{TeamID: teamID, UserID: userID, RoleInTeam: role, Status: "active", InitAmount: amount,
+		PaidInstallments: paid, AssignmentDate: time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)}
+	if deleted {
+		now := time.Now()
+		tu.DeletedAt = &now
+	}
+	db.Create(tu)
+}
+
+func TestPaymentHistoryDao_ListTrainerFeeMemberships(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	trainer := persistUser(db, "ob-trainer@test.com", "43000001")
+	other := persistUser(db, "ob-other@test.com", "43000002")
+	paying := persistUser(db, "ob-paying@test.com", "43000003")
+	free := persistUser(db, "ob-free@test.com", "43000004")
+	left := persistUser(db, "ob-left@test.com", "43000005")
+	team := testTeam(db, "Equipo con cuota", trainer.ID)
+	otherTeam := testTeam(db, "Equipo ajeno", other.ID)
+	deletedTeam := testTeam(db, "Equipo borrado", trainer.ID)
+	db.Model(deletedTeam).Update("deleted_at", time.Now())
+
+	persistMembership(db, team.ID, paying.ID, string(constants.TeamUserRoleCorredor), 1500, 1, false)
+	persistMembership(db, team.ID, free.ID, string(constants.TeamUserRoleCorredor), 0, 0, false)
+	persistMembership(db, team.ID, left.ID, string(constants.TeamUserRoleCorredor), 1500, 0, true)
+	persistMembership(db, team.ID, trainer.ID, string(constants.TeamUserRoleEntrenador), 1500, 0, false)
+	persistMembership(db, otherTeam.ID, paying.ID, string(constants.TeamUserRoleCorredor), 2000, 0, false)
+	persistMembership(db, deletedTeam.ID, paying.ID, string(constants.TeamUserRoleCorredor), 2000, 0, false)
+
+	rows, err := dao.ListTrainerFeeMemberships(nil, trainer.ID)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "solo corredores vivos, con cuota, de equipos vivos del entrenador")
+	r := rows[0]
+	assert.Equal(t, team.ID, r.TeamID)
+	assert.Equal(t, paying.ID, r.UserID)
+	require.NotNil(t, r.UserEmail)
+	assert.Equal(t, paying.Email, *r.UserEmail)
+	assert.Equal(t, 1500.0, r.InitAmount)
+	assert.Equal(t, 1, r.PaidInstallments)
+}
+
+func TestPaymentHistoryDao_ListUserFeeMemberships(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	trainer := persistUser(db, "ob-u-trainer@test.com", "44000001")
+	runner := persistUser(db, "ob-u-runner@test.com", "44000002")
+	teamA := testTeam(db, "Equipo A", trainer.ID)
+	teamB := testTeam(db, "Equipo B", trainer.ID)
+	persistMembership(db, teamA.ID, runner.ID, string(constants.TeamUserRoleCorredor), 1500, 1, false)
+	persistMembership(db, teamB.ID, runner.ID, string(constants.TeamUserRoleCorredor), 0, 0, false)
+
+	rows, err := dao.ListUserFeeMemberships(nil, runner.ID)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, teamA.ID, rows[0].TeamID)
+	require.NotNil(t, rows[0].TrainerID)
+	assert.Equal(t, trainer.ID, *rows[0].TrainerID)
+	require.NotNil(t, rows[0].TrainerSurname)
+	assert.Equal(t, trainer.Surname, *rows[0].TrainerSurname)
+}
+
+func TestPaymentHistoryDao_ListUserTierSubscriptions(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	user := persistUser(db, "ob-tier@test.com", "45000001")
+	start := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	for i, s := range []struct {
+		status string
+		amount float64
+	}{
+		{string(constants.SubscriptionStatusActive), 50000},
+		{string(constants.SubscriptionStatusFirstPaymentPending), 200000},
+		{string(constants.SubscriptionStatusEnded), 50000},
+		{string(constants.SubscriptionStatusActive), 0},
+	} {
+		// Un rol distinto por fila: hay un índice único de activa por usuario y rol.
+		db.Create(&dbs.UserRoleTierSubscription{UserID: user.ID, RoleID: int64(100 + i), TierID: 1, Status: s.status,
+			InitAmount: s.amount, StartDate: start.AddDate(0, 0, i)})
+	}
+
+	rows, err := dao.ListUserTierSubscriptions(nil, user.ID)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "activas o esperando el primer pago, con cuota")
+	assert.Equal(t, 50000.0, rows[0].InitAmount)
+	assert.Equal(t, 200000.0, rows[1].InitAmount)
+}
+
+func TestPaymentHistoryDao_ObligationsDBFail(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	_, err := NewPaymentHistoryDao(testutils.FailingDB(t, db, nthFail("select", 1))).ListTrainerFeeMemberships(nil, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error listing trainer fee memberships")
+
+	_, err = NewPaymentHistoryDao(testutils.FailingDB(t, db, nthFail("select", 1))).ListUserFeeMemberships(nil, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error listing user fee memberships")
+
+	_, err = NewPaymentHistoryDao(testutils.FailingDB(t, db, nthFail("select", 1))).ListUserTierSubscriptions(nil, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error listing user tier subscriptions")
 }

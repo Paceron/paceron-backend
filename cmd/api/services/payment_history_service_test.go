@@ -17,6 +17,22 @@ type mockPaymentHistoryDao struct {
 	listReceivedBetweenFn func(ctx *gin.Context, sellerID int64, from, to time.Time) ([]daos.ReceivedPaymentRow, error)
 	earliestReceivedAtFn  func(ctx *gin.Context, sellerID int64) (*time.Time, error)
 	listHistoryFn        func(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error)
+	trainerMemberships   []daos.FeeMembershipRow
+	userMemberships      []daos.FeeMembershipRow
+	tierSubscriptions    []daos.TierSubscriptionRow
+	obligationsErr       error
+}
+
+func (m *mockPaymentHistoryDao) ListTrainerFeeMemberships(*gin.Context, int64) ([]daos.FeeMembershipRow, error) {
+	return m.trainerMemberships, m.obligationsErr
+}
+
+func (m *mockPaymentHistoryDao) ListUserFeeMemberships(*gin.Context, int64) ([]daos.FeeMembershipRow, error) {
+	return m.userMemberships, m.obligationsErr
+}
+
+func (m *mockPaymentHistoryDao) ListUserTierSubscriptions(*gin.Context, int64) ([]daos.TierSubscriptionRow, error) {
+	return m.tierSubscriptions, m.obligationsErr
 }
 
 func (m *mockPaymentHistoryDao) ListReceived(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error) {
@@ -50,19 +66,19 @@ func (m *mockPaymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filt
 func floatPtr(f float64) *float64 { return &f }
 
 func TestNewPaymentHistoryService(t *testing.T) {
-	assert.NotNil(t, NewPaymentHistoryService(&mockPaymentHistoryDao{}))
+	assert.NotNil(t, NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil))
 }
 
 // --- ListReceived ---
 
 func TestPaymentHistoryService_ListReceived_InvalidPage(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "", 0)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 func TestPaymentHistoryService_ListReceived_InvalidStatus(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "other", 1)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
@@ -83,7 +99,7 @@ func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 			{ID: 813, Status: "approved", TeamID: 13, PayerID: 46},
 		}, true, nil
 	}}
-	svc := NewPaymentHistoryService(dao)
+	svc := NewPaymentHistoryService(dao, nil)
 
 	resp, err := svc.ListReceived(nil, 7, &teamID, "rejected", 2)
 
@@ -104,8 +120,25 @@ func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 	assert.Equal(t, "", resp.Payments[1].Payer.Email)
 }
 
+// La comisión viaja en cada cobro, como monto y como porcentaje del bruto
+// (change cobros-pendientes-y-vencimientos, design D2).
+func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
+	dao := &mockPaymentHistoryDao{listReceivedFn: func(*gin.Context, int64, daos.ReceivedPaymentFilters, int, int) ([]daos.ReceivedPaymentRow, bool, error) {
+		return []daos.ReceivedPaymentRow{
+			{ID: 1, Status: "approved", GrossAmount: 20000, NetAmount: floatPtr(19000), FeeAmount: 1000},
+			{ID: 2, Status: "approved", GrossAmount: 0, FeeAmount: 0},
+		}, false, nil
+	}}
+	resp, err := NewPaymentHistoryService(dao, nil).ListReceived(nil, 7, nil, "", 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1000.0, resp.Payments[0].FeeAmount)
+	assert.Equal(t, 5.0, resp.Payments[0].FeePercent)
+	assert.Equal(t, 0.0, resp.Payments[1].FeePercent, "un bruto en 0 no divide por cero")
+}
+
 func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	resp, err := svc.ListReceived(nil, 7, nil, "", 1)
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Payments)
@@ -115,7 +148,7 @@ func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
 func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listReceivedFn: func(*gin.Context, int64, daos.ReceivedPaymentFilters, int, int) ([]daos.ReceivedPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
-	}})
+	}}, nil)
 	_, err := svc.ListReceived(nil, 7, nil, "", 1)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
@@ -125,7 +158,7 @@ func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 
 
 func TestPaymentHistoryService_ListHistory_InvalidParams(t *testing.T) {
-	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{})
+	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
 	_, err := svc.ListHistory(nil, 7, "", "", 0)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 	_, err = svc.ListHistory(nil, 7, "order", "", 1)
@@ -151,7 +184,7 @@ func TestPaymentHistoryService_ListHistory_MapsBothTypes(t *testing.T) {
 		}, true, nil
 	}}
 
-	resp, err := NewPaymentHistoryService(dao).ListHistory(nil, 7, "trainer_payment", "approved", 1)
+	resp, err := NewPaymentHistoryService(dao, nil).ListHistory(nil, 7, "trainer_payment", "approved", 1)
 
 	require.NoError(t, err)
 	assert.True(t, resp.HasMore)
@@ -186,7 +219,7 @@ func TestPaymentHistoryService_ListHistory_MapsBothTypes(t *testing.T) {
 }
 
 func TestPaymentHistoryService_ListHistory_EmptyIsNotNil(t *testing.T) {
-	resp, err := NewPaymentHistoryService(&mockPaymentHistoryDao{}).ListHistory(nil, 7, "", "", 1)
+	resp, err := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil).ListHistory(nil, 7, "", "", 1)
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Payments)
 	assert.Empty(t, resp.Payments)
@@ -195,7 +228,7 @@ func TestPaymentHistoryService_ListHistory_EmptyIsNotNil(t *testing.T) {
 func TestPaymentHistoryService_ListHistory_DaoError(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listHistoryFn: func(*gin.Context, int64, daos.HistoryPaymentFilters, int, int) ([]daos.HistoryPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
-	}})
+	}}, nil)
 	_, err := svc.ListHistory(nil, 7, "", "", 1)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
@@ -273,6 +306,8 @@ func TestPaymentHistoryService_GetReceivedSummary_Aggregates(t *testing.T) {
 		// Reembolsado: no suma ni cuenta.
 		receivedRow(10, 107, 18, "Trail", "refunded", 30000, nil, sep10),
 	}
+	// Comisión del intento pendiente: el neto de lo pendiente la descuenta.
+	rows[5].FeeAmount = 750
 	svc := newSummaryService(&mockPaymentHistoryDao{listReceivedBetweenFn: func(*gin.Context, int64, time.Time, time.Time) ([]daos.ReceivedPaymentRow, error) {
 		return rows, nil
 	}})
@@ -295,6 +330,11 @@ func TestPaymentHistoryService_GetReceivedSummary_Aggregates(t *testing.T) {
 
 	assert.Equal(t, 1, resp.PendingCount)
 	assert.Equal(t, 1, resp.RejectedCount)
+	// Montos del último intento de cada cuota: 104 (in_process) y 105 (cancelled).
+	assert.Equal(t, float64(15000), resp.PendingAmount)
+	assert.Equal(t, float64(30000), resp.RejectedAmount)
+	assert.Equal(t, 14250.0, resp.PendingNetAmount)
+	assert.Equal(t, float64(30000), resp.RejectedNetAmount)
 
 	require.Len(t, resp.ByTeam, 2)
 	runners, trail := resp.ByTeam[0], resp.ByTeam[1]

@@ -11,14 +11,20 @@ import (
 	"simple-arq-golang/cmd/api/domains/constants"
 )
 
-// netAmountExpr extrae el neto real que informó Mercado Pago. Solo el
-// payment.Response que guarda el webhook trae transaction_details; el
-// PaymentResult que guarda ProcessPayment no. Un pago no aprobado puede traer
-// el neto en 0, por eso se exige approved y > 0 (design D5).
-const netAmountExpr = `CASE WHEN p.status = 'approved'
-	AND jsonb_typeof(p.raw_response->'transaction_details'->'net_received_amount') = 'number'
-	AND (p.raw_response->'transaction_details'->>'net_received_amount')::numeric > 0
-	THEN (p.raw_response->'transaction_details'->>'net_received_amount')::float8 END AS net_amount`
+// DefaultMarketplaceFeePercent es la comisión que se asume para un cobro de
+// equipo sin marketplace_fee guardado: el mismo valor por defecto que usa
+// resolveTeamSplitConfig.
+const DefaultMarketplaceFeePercent = 5.0
+
+// feeAmountSQL es la comisión de Paceron de un cobro de equipo.
+var feeAmountSQL = fmt.Sprintf("COALESCE(p.marketplace_fee, ROUND((p.amount * %g / 100)::numeric, 2))", DefaultMarketplaceFeePercent)
+
+// netAmountExpr es el neto de un cobro aprobado: bruto menos la comisión de
+// Paceron (change cobros-pendientes-y-vencimientos, design D2). Reemplaza al
+// neto que informaba Mercado Pago, que solo llegaba por webhook y además
+// descontaba su costo de procesamiento. Un cobro no aprobado no tiene neto.
+var netAmountExpr = "CASE WHEN p.status = 'approved' THEN (p.amount - " + feeAmountSQL + ")::float8 END AS net_amount, " +
+	feeAmountSQL + "::float8 AS fee_amount"
 
 // withMercadoPagoPaymentID excluye las filas que nunca llegaron a MP: las que
 // deja CreatePreference y los intentos donde CreatePayment falló (design D7).
@@ -39,6 +45,7 @@ type ReceivedPaymentRow struct {
 	StatusDetail      string    `gorm:"column:status_detail"`
 	GrossAmount       float64   `gorm:"column:gross_amount"`
 	NetAmount         *float64  `gorm:"column:net_amount"`
+	FeeAmount         float64   `gorm:"column:fee_amount"`
 	CurrencyID        string    `gorm:"column:currency_id"`
 	PaymentMethodID   string    `gorm:"column:payment_method_id"`
 	CreatedAt         time.Time `gorm:"column:created_at"`
@@ -85,6 +92,36 @@ type HistoryPaymentRow struct {
 	TrainerSurname    *string    `gorm:"column:trainer_surname"`
 }
 
+// FeeMembershipRow es la membresía con cuota de un corredor en un equipo vivo,
+// con lo necesario para calcular sus obligaciones (change
+// cobros-pendientes-y-vencimientos, design D3). El corredor y el entrenador
+// vienen resueltos según quién consulte.
+type FeeMembershipRow struct {
+	TeamID           int64     `gorm:"column:team_id"`
+	TeamName         *string   `gorm:"column:team_name"`
+	UserID           int64     `gorm:"column:user_id"`
+	UserName         *string   `gorm:"column:user_name"`
+	UserSurname      *string   `gorm:"column:user_surname"`
+	UserEmail        *string   `gorm:"column:user_email"`
+	TrainerID        *int64    `gorm:"column:trainer_id"`
+	TrainerName      *string   `gorm:"column:trainer_name"`
+	TrainerSurname   *string   `gorm:"column:trainer_surname"`
+	AssignmentDate   time.Time `gorm:"column:assignment_date"`
+	InitAmount       float64   `gorm:"column:init_amount"`
+	PaidInstallments int       `gorm:"column:paid_installments"`
+}
+
+// TierSubscriptionRow es una suscripción de tier con cuota de un usuario.
+type TierSubscriptionRow struct {
+	ID               int64     `gorm:"column:id"`
+	TierID           int64     `gorm:"column:tier_id"`
+	TierName         *string   `gorm:"column:tier_name"`
+	TierRoleName     *string   `gorm:"column:tier_role_name"`
+	StartDate        time.Time `gorm:"column:start_date"`
+	InitAmount       float64   `gorm:"column:init_amount"`
+	PaidInstallments int       `gorm:"column:paid_installments"`
+}
+
 // PaymentHistoryDaoInterface es el acceso de solo lectura al historial de
 // pagos. Vive aparte de PaymentDaoInterface para no tocar sus mocks (design D1).
 type PaymentHistoryDaoInterface interface {
@@ -92,6 +129,9 @@ type PaymentHistoryDaoInterface interface {
 	ListReceivedBetween(ctx *gin.Context, sellerID int64, from, to time.Time) ([]ReceivedPaymentRow, error)
 	EarliestReceivedAt(ctx *gin.Context, sellerID int64) (*time.Time, error)
 	ListHistory(ctx *gin.Context, userID int64, filters HistoryPaymentFilters, page, pageSize int) ([]HistoryPaymentRow, bool, error)
+	ListTrainerFeeMemberships(ctx *gin.Context, ownerID int64) ([]FeeMembershipRow, error)
+	ListUserFeeMemberships(ctx *gin.Context, userID int64) ([]FeeMembershipRow, error)
+	ListUserTierSubscriptions(ctx *gin.Context, userID int64) ([]TierSubscriptionRow, error)
 }
 
 type paymentHistoryDao struct {
@@ -199,6 +239,58 @@ func (d *paymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filters 
 		return nil, false, fmt.Errorf("error listing payment history: %w", err)
 	}
 	return trimPage(rows, pageSize)
+}
+
+// feeMembershipsQuery son las membresías vivas de corredores con cuota en
+// equipos vivos: las únicas que generan obligaciones (design D3).
+func (d *paymentHistoryDao) feeMembershipsQuery() *gorm.DB {
+	return d.DB.Table("team_users AS tu").
+		Select(`tu.team_id, t.name AS team_name, tu.user_id, u.name AS user_name, u.surname AS user_surname,
+			u.email AS user_email, o.id AS trainer_id, o.name AS trainer_name, o.surname AS trainer_surname,
+			tu.assignment_date, tu.init_amount, tu.paid_installments`).
+		Joins("JOIN teams t ON t.id = tu.team_id AND t.deleted_at IS NULL").
+		Joins("LEFT JOIN users u ON u.id = tu.user_id").
+		Joins("LEFT JOIN users o ON o.id = t.owner_id").
+		Where("tu.deleted_at IS NULL AND tu.role_in_team = ? AND tu.init_amount > 0", string(constants.TeamUserRoleCorredor))
+}
+
+// ListTrainerFeeMemberships lista las membresías con cuota de los equipos vivos
+// del entrenador. Se filtra por teams.owner_id: lo que se va a cobrar es del
+// dueño actual, a diferencia del historial, que usa seller_user_id.
+func (d *paymentHistoryDao) ListTrainerFeeMemberships(ctx *gin.Context, ownerID int64) ([]FeeMembershipRow, error) {
+	var rows []FeeMembershipRow
+	if err := d.feeMembershipsQuery().Where("t.owner_id = ?", ownerID).
+		Order("tu.team_id, tu.user_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("error listing trainer fee memberships: %w", err)
+	}
+	return rows, nil
+}
+
+// ListUserFeeMemberships lista las membresías con cuota del usuario como corredor.
+func (d *paymentHistoryDao) ListUserFeeMemberships(ctx *gin.Context, userID int64) ([]FeeMembershipRow, error) {
+	var rows []FeeMembershipRow
+	if err := d.feeMembershipsQuery().Where("tu.user_id = ?", userID).
+		Order("tu.team_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("error listing user fee memberships: %w", err)
+	}
+	return rows, nil
+}
+
+// ListUserTierSubscriptions lista las suscripciones de tier con cuota del
+// usuario que siguen en curso: activas o esperando el primer pago.
+func (d *paymentHistoryDao) ListUserTierSubscriptions(ctx *gin.Context, userID int64) ([]TierSubscriptionRow, error) {
+	var rows []TierSubscriptionRow
+	err := d.DB.Table("user_role_tier_subscriptions AS s").
+		Select(`s.id, s.tier_id, tr.name AS tier_name, tr.role_name AS tier_role_name,
+			s.start_date, s.init_amount, s.paid_installments`).
+		Joins("LEFT JOIN tiers tr ON tr.id = s.tier_id").
+		Where("s.user_id = ? AND s.status IN ? AND s.init_amount > 0", userID,
+			[]string{string(constants.SubscriptionStatusActive), string(constants.SubscriptionStatusFirstPaymentPending)}).
+		Order("s.start_date, s.id").Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error listing user tier subscriptions: %w", err)
+	}
+	return rows, nil
 }
 
 func trimPage[T any](rows []T, pageSize int) ([]T, bool, error) {

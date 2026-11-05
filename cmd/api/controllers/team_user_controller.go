@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -97,7 +98,7 @@ func (tuc *teamUserController) AddUser(c *gin.Context) {
 
 // RemoveUser godoc
 // @Summary      Quitar usuario de equipo
-// @Description  Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro
+// @Description  Quita un usuario de un equipo (soft-delete de la asociación). El propio usuario puede salirse, o el entrenador del equipo puede quitar a otro. El corredor no puede irse con cuotas que vencen hoy o antes (409); el entrenador sí puede sacarlo
 // @Tags         team-users
 // @Produce      json
 // @Param        id       path  int  true  "Team ID"
@@ -106,6 +107,7 @@ func (tuc *teamUserController) AddUser(c *gin.Context) {
 // @Failure      400  {object}  apierror.APIError
 // @Failure      403  {object}  apierror.APIError
 // @Failure      404  {object}  apierror.APIError
+// @Failure      409  {object}  apierror.APIError  "Corredor que se va con cuotas sin pagar"
 // @Failure      500  {object}  apierror.APIError
 // @Router       /api/v1/teams/{id}/users/{user_id} [delete]
 func (tuc *teamUserController) RemoveUser(c *gin.Context) {
@@ -141,6 +143,9 @@ func (tuc *teamUserController) RemoveUser(c *gin.Context) {
 		} else if errMsg == "solo el entrenador puede quitar a otro usuario del equipo" {
 			statusCode = http.StatusForbidden
 			code = "Forbidden"
+		} else if errors.Is(err, services.ErrTeamLeaveWithDebt) {
+			statusCode = http.StatusConflict
+			code = "Conflict"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

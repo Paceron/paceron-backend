@@ -20,6 +20,7 @@ type PaymentHistoryController interface {
 	ListReceived(c *gin.Context)
 	GetReceivedSummary(c *gin.Context)
 	ListHistory(c *gin.Context)
+	GetUpcoming(c *gin.Context)
 }
 
 // Los tipos de respuesta se nombran acá para que swag los resuelva: los
@@ -28,6 +29,7 @@ var (
 	_ *payment.ReceivedPaymentsResponse
 	_ *payment.ReceivedSummaryResponse
 	_ *payment.HistoryPaymentsResponse
+	_ *payment.UpcomingPaymentsResponse
 )
 
 type paymentHistoryController struct {
@@ -40,7 +42,7 @@ func NewPaymentHistoryController(service services.PaymentHistoryServiceInterface
 
 // ListReceived godoc
 // @Summary      Listar cobros recibidos
-// @Description  Cobros de membresía de equipo recibidos por el usuario autenticado, del más reciente al más antiguo. Paginado de a 20. `net_amount` es null salvo que Mercado Pago haya informado el neto real.
+// @Description  Cobros de membresía de equipo recibidos por el usuario autenticado, del más reciente al más antiguo. Paginado de a 20. `net_amount` es el bruto menos la comisión de Paceron (`fee_amount`, `fee_percent`) y es null si el cobro no está aprobado.
 // @Tags         payments
 // @Produce      json
 // @Param        page     query     int     false  "Página (default 1)"
@@ -81,7 +83,7 @@ func (pc *paymentHistoryController) ListReceived(c *gin.Context) {
 
 // GetReceivedSummary godoc
 // @Summary      Resumen de cobros recibidos
-// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor.
+// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores.
 // @Tags         payments
 // @Produce      json
 // @Param        months  query     int     false  "Meses de la ventana, entre 2 y 12 (default 6)"
@@ -170,5 +172,30 @@ func respondPaymentHistoryError(c *gin.Context, err error) {
 		respondInvalidQuery(c, err.Error())
 		return
 	}
-	c.JSON(http.StatusInternalServerError, apierror.APIError{StatusCode: http.StatusInternalServerError, Code: "Internal Server Error", Message: err.Error()})
+	// El detalle queda en el log del service: el error envuelve el de la DB, y
+	// devolverlo filtraría SQL al cliente.
+	c.JSON(http.StatusInternalServerError, apierror.APIError{StatusCode: http.StatusInternalServerError, Code: "Internal Server Error", Message: "error interno"})
+}
+
+// GetUpcoming godoc
+// @Summary      Próximos vencimientos del usuario
+// @Description  Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`) y de cada suscripción de tier (`type=subscription`) del usuario autenticado, ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que ya vencieron.
+// @Tags         payments
+// @Produce      json
+// @Success      200  {object}  payment.UpcomingPaymentsResponse
+// @Failure      401  {object}  apierror.APIError
+// @Failure      500  {object}  apierror.APIError
+// @Router       /api/v1/payments/upcoming [get]
+func (pc *paymentHistoryController) GetUpcoming(c *gin.Context) {
+	userID, ok := utils.GetAuthUserID(c)
+	if !ok {
+		respondUnauthorized(c)
+		return
+	}
+	resp, err := pc.service.GetUpcoming(c, userID)
+	if err != nil {
+		respondPaymentHistoryError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }

@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"simple-arq-golang/cmd/api/domains/teamuser"
+	"simple-arq-golang/cmd/api/services"
 )
 
 type mockTeamUserService struct {
@@ -288,4 +290,24 @@ func TestTeamUserController_GetUsersByTeam_Forbidden(t *testing.T) {
 	controller.GetUsersByTeam(c)
 
 	assert.Equal(t, http.StatusForbidden, response.Code)
+}
+
+func TestTeamUserController_RemoveUser_DebtIsConflict(t *testing.T) {
+	mockSvc := &mockTeamUserService{
+		removeUserFn: func(ctx *gin.Context, teamID, callerID, targetUserID int64) error {
+			return fmt.Errorf("%w: tenés 2 cuotas sin pagar", services.ErrTeamLeaveWithDebt)
+		},
+	}
+
+	controller := NewTeamUserController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/teams/1/users/2", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "user_id", Value: "2"}}
+	setAuthUserID(c, 2)
+
+	controller.RemoveUser(c)
+
+	assert.Equal(t, http.StatusConflict, response.Code)
+	assert.Contains(t, response.Body.String(), "tenés 2 cuotas sin pagar")
 }

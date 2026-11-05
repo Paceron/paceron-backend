@@ -158,7 +158,10 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	if sellerUserID != 0 {
 		sellerUserIDPtr = &sellerUserID
 	}
-	if marketplaceFee > 0 {
+	// Todo cobro de equipo guarda su comisión, también cuando redondea a 0:
+	// NULL queda solo para los pagos sin split (change
+	// cobros-pendientes-y-vencimientos, design D1).
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		marketplaceFeePtr = &marketplaceFee
 	}
 
@@ -230,8 +233,10 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	var marketplaceFee float64
 	var sellerUserID int64
 
-	// Resolver configuración de split si es team_subscription
-	if req.Concept == string(constants.PaymentConceptTeamSubscription) && req.InstallmentID != nil {
+	// Resolver configuración de split si es team_subscription. Sin installment_id,
+	// resolveTeamSplitConfig devuelve 400: antes el pago salía sin split, sin
+	// comisión y con el token de Paceron.
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		var err error
 		mpAccessToken, marketplaceFee, sellerUserID, _, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, validatedInstallment)
 		if err != nil {
@@ -279,7 +284,10 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 	if sellerUserID != 0 {
 		sellerUserIDPtr = &sellerUserID
 	}
-	if marketplaceFee > 0 {
+	// Todo cobro de equipo guarda su comisión, también cuando redondea a 0:
+	// NULL queda solo para los pagos sin split (change
+	// cobros-pendientes-y-vencimientos, design D1).
+	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		marketplaceFeePtr = &marketplaceFee
 	}
 
