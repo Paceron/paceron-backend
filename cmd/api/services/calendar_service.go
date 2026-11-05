@@ -400,8 +400,8 @@ func (s *calendarService) isGroupOwnerOrMember(ctx *gin.Context, groupID, caller
 //
 // La rama `date < hoy` se relaja SOLO con SEEDING_ENABLED (design.md D14): es
 // la única vía que tiene el seed para cargar histórico, porque no hay endpoint
-// que corte una fecha pasada. La presencial de hoy ya empezada y el async de hoy
-// siguen cerrando igual — el flag no abre la escritura del día en curso.
+// que corte una fecha pasada. La presencial de hoy ya empezada sigue cerrando;
+// el async de hoy es escribible a discreción del entrenador (Gap 39).
 func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
@@ -412,7 +412,7 @@ func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
 		return false
 	}
 	if !day.IsPresencial {
-		return true
+		return false
 	}
 	if day.PresencialTimeFrom == nil {
 		return false

@@ -47,10 +47,10 @@ func TestSeeding_ConBanderaElPasadoSeAbrie(t *testing.T) {
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: past}, today.Add(12*time.Hour)))
 }
 
-// El flag no abre el día en curso: la presencial de hoy ya empezada y el async
-// de hoy siguen cerrando, porque cargar histórico y estampar el día que se está
-// corriendo siguen siendo reglas distintas.
-func TestSeeding_ConBanderaElDiaDeHoySigueCerrando(t *testing.T) {
+// El flag no abre el día en curso: la presencial de hoy ya empezada sigue
+// cerrando. El async de hoy, en cambio, es escribible por decisión del
+// entrenador (Gap 39).
+func TestSeeding_ConBanderaElDiaDeHoySoloCierraLaPresencialYaEmpezada(t *testing.T) {
 	setSeedingFlag(t, true)
 	today, _ := seedingTestNow()
 	now := today.Add(12 * time.Hour)
@@ -61,7 +61,7 @@ func TestSeeding_ConBanderaElDiaDeHoySigueCerrando(t *testing.T) {
 		"la presencial de hoy ya empezada sigue cerrada")
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &notStarted}, now),
 		"la presencial de hoy que todavía no empieza sigue abierta")
-	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "el async de hoy sigue cerrado")
+	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "el async de hoy es escribible a discreción del entrenador")
 }
 
 // `seeding_enabled` en el body se ignora: la decisión es del servidor, no del
