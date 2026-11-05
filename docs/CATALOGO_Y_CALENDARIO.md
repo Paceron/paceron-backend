@@ -253,9 +253,9 @@ La regla de cuándo un día está "cerrado" (calculada al vuelo contra `time.Now
 | `date < hoy` | Sí, siempre |
 | `date > hoy` | No, nunca |
 | `date == hoy` y `is_presencial = true` | Sí **a partir de** `presencial_time_from` de ese día |
-| `date == hoy` y `is_presencial = false` (async) | Sí, siempre — no hay forma de saber si ya la arrancaron |
+| `date == hoy` y `is_presencial = false` (async) | No — el entrenador decide si opera hoy o espera a mañana (Gap 39) |
 
-Pero su rol cambió: de "trigger de clonado" (mecanismo anterior, eliminado) pasó a **guard de escritura**. Si el día ya existe y está cerrado, no se puede asignar, reasignar ni borrar su contenido — ni siquiera reasignarlo con el mismo contenido. Aplica a los 5 endpoints de escritura:
+Pero su rol cambió: de "trigger de clonado" (mecanismo anterior, eliminado) pasó a **guard de escritura**. Si el día ya existe y está cerrado, no se puede asignar, reasignar ni borrar su contenido — ni siquiera reasignarlo con el mismo contenido. El día async de hoy no está cerrado (Gap 39): todas las escrituras quedan a discreción del entrenador. Aplica a todos los endpoints de escritura:
 
 - `PUT`/`Bulk`/`Stamp`: rechaza crear o reemplazar contenido sobre un día cerrado (`422 ErrCalendarDayClosed`, `{"message": "el día de calendario está cerrado: <fecha>"}`).
 - `DeleteDay`/`BulkClear`: mismo guard, por simetría — no se puede "borrar la historia" tampoco.

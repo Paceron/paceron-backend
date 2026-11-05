@@ -74,9 +74,9 @@ Notas:
 
 ## 4. Guard de día cerrado: `422` con la lista de fechas
 
-La regla de "día cerrado" es la misma de siempre (`calendario-asignacion-grupos` D13): `date` pasada; hoy presencial después de `presencial_time_from`; hoy async. Cambia su uso: ya no clonea, **bloquea la escritura**.
+La regla de "día cerrado" (`calendario-asignacion-grupos` D13) es: `date` pasada, y hoy presencial después de `presencial_time_from`. **Hoy async ya no se cierra** (Gap 39): queda a discreción del entrenador, que decide si asigna hoy o espera a mañana. Cambia su uso: ya no clonea, **bloquea la escritura** de los días que sí están cerrados.
 
-Aplica a los 5 endpoints: `PUT /groups/{id}/calendar/{date}`, `DELETE`, `stamp`, `bulk`, `bulk-clear`, y a `shift` sobre las filas afectadas. En bulk es **todo-o-nada**: se validan todas las fechas antes de escribir y si alguna está cerrada se rechaza el lote completo con las fechas listadas:
+Aplica a todos los endpoints de escritura: `PUT /groups/{id}/calendar/{date}`, `DELETE`, `stamp`, `bulk`, `bulk-clear`, y a `shift` sobre las filas afectadas. En bulk es **todo-o-nada**: se validan todas las fechas antes de escribir y si alguna está cerrada se rechaza el lote completo con las fechas listadas:
 
 ```json
 HTTP 422
