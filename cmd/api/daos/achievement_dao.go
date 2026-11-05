@@ -125,7 +125,8 @@ func (d *achievementDao) CountGPSFinishedSessions(ctx *gin.Context, userID int64
 		INNER JOIN runner_session rs
 			ON rs.session_instance_id = points.session_instance_id
 			AND rs.athlete_user_id = ?
-			AND rs.status = ?`, userID, runnersession.RunnerSessionStatusFinished).Scan(&n).Error
+			AND rs.status = ?
+		`, userID, runnersession.RunnerSessionStatusFinished).Scan(&n).Error
 	if err != nil {
 		return 0, fmt.Errorf("error counting gps finished sessions: %w", err)
 	}
