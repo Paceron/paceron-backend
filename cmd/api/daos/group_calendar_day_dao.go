@@ -34,7 +34,8 @@ type GroupCalendarDaoInterface interface {
 	// FindNextForGroupsByKind devuelve el día más próximo del kind indicado
 	// entre los grupos dados con el filtro "hoy cuenta" del banner (design.md
 	// D6): date > hoy, o date == hoy solo si no es presencial o el horario
-	// presencial todavía no arrancó (mismo criterio que isCalendarDayClosed).
+	// presencial todavía no arrancó. Es criterio de lectura/banner, independiente
+	// del guard de escritura (Gap 39: el async de hoy es escribible).
 	// nowHHMM es la hora actual en "HH:MM"; today es la medianoche local.
 	FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	// FindNextPresencialForGroups devuelve el próximo día training+presencial
@@ -301,8 +302,9 @@ func (d *groupCalendarDayDao) DeleteByDates(ctx *gin.Context, groupID int64, dat
 
 // FindNextForGroupsByKind implementa el filtro "hoy cuenta" del banner de
 // próxima sesión (design.md D6): un día de HOY solo cuenta si no es
-// presencial, o si su presencial_time_from todavía no pasó — el mismo
-// criterio que isCalendarDayClosed (calendar_service.go), que compara el
+// presencial, o si su presencial_time_from todavía no pasó. Es el criterio de
+// lectura del banner, independiente del guard de escritura (Gap 39: el async
+// de hoy es escribible a discreción del entrenador). La query compara el
 // hour/minute del valor en UTC contra la hora local de now. La query hace el
 // mismo par de valores en SQL: TO_CHAR(... AT TIME ZONE 'UTC') para el horario
 // persistido (convención UTC, ver dbs.GroupCalendarDay) contra nowHHMM, la
@@ -328,8 +330,8 @@ func (d *groupCalendarDayDao) FindNextForGroupsByKind(ctx *gin.Context, groupIDs
 
 // FindNextPresencialForGroups es la variante training+presencial del filtro
 // "hoy cuenta" (design.md D7, banner del entrenador): mismo criterio SQL que
-// FindNextForGroupsByKind (espejo de isCalendarDayClosed en calendar_service.go),
-// acotado a días training+presencial.
+// FindNextForGroupsByKind (lectura/banner, independiente del guard de escritura
+// — Gap 39), acotado a días training+presencial.
 func (d *groupCalendarDayDao) FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 	if len(groupIDs) == 0 {
 		return nil, nil

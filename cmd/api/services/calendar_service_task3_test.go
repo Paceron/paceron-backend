@@ -421,7 +421,7 @@ func TestCalendarService_Task3_CurrentDayClosureVariants(t *testing.T) {
 	// el resultado esperado).
 	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.Local)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "async current day must be closed")
+	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "async current day is writable by trainer discretion")
 	futureTime := time.Date(0, 1, 1, 13, 0, 0, 0, time.UTC)
 	pastTime := time.Date(0, 1, 1, 11, 0, 0, 0, time.UTC)
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &futureTime}, now))
