@@ -344,10 +344,10 @@ func TestCobertura_StampConflictMezclaCerradoGana(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "cobmix")
 	plan := exclPlan(t, db, owner.ID, "plan cobmix", []string{"rest", "rest"}, nil)
-	today := time.Now()
-	d1, d2 := today, today.AddDate(0, 0, 1)
+	d1 := time.Now().AddDate(0, 0, -1)
+	d2 := time.Now()
 	calendarDao := daos.NewGroupCalendarDayDao(db)
-	// Day 2 ocupado (conflicto) + day 1 async hoy (cerrado).
+	// Day 1 ayer (cerrado) + day 2 hoy async (conflicto, pero abierto).
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: d2, Kind: "rest"}))
 	svc := exclSvc(db)
 	startStr := d1.Format("2006-01-02")

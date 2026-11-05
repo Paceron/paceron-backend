@@ -147,7 +147,7 @@ func TestStampExcludeDates_DiaCerradoExcluidoNoDispara422(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := exclOwnerGroup(t, db, "closedex")
 	plan := exclPlan(t, db, owner.ID, "plan closedex", []string{"rest", "rest", "rest"}, nil)
-	// start = ayer → día 0 ayer (cerrado), día 1 hoy (cerrado), día 2 mañana (abierto).
+	// start = ayer → día 0 ayer (cerrado), día 1 hoy async (abierto), día 2 mañana (abierto).
 	start := time.Now().AddDate(0, 0, -1)
 	startStr := start.Format("2006-01-02")
 	svc := exclSvc(db)
