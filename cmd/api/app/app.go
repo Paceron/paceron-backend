@@ -58,6 +58,7 @@ type Application struct {
 	attendanceController        controllers.AttendanceController
 	workoutFeedbackController   controllers.WorkoutFeedbackController
 	dashboardController         controllers.DashboardController
+	trainerHomeKpisController   controllers.TrainerHomeKpisController
 	sessionMessageController    controllers.SessionMessageController
 	runnerSessionController     controllers.RunnerSessionController
 	streakController            controllers.StreakController
@@ -378,6 +379,10 @@ func NewApplication() *Application {
 	dashboardScopeService := services.NewDashboardScopeService(groupDao, groupUserDao, teamDao)
 	dashboardService := services.NewDashboardService(dashboardDao, dashboardScopeService, userDao, groupUserDao)
 	dashboardController := controllers.NewDashboardController(dashboardService)
+	trainerHomeKpisService := services.NewTrainerHomeKpisService(
+		daos.NewTrainerHomeKpisDao(db), paymentHistoryDao,
+	)
+	trainerHomeKpisController := controllers.NewTrainerHomeKpisController(trainerHomeKpisService)
 
 	// `runnerSessionDao` ya se creó arriba: el intake de competencias de ruta
 	// (develop) lo comparte con el flujo normal del corredor.
@@ -420,6 +425,7 @@ func NewApplication() *Application {
 		attendanceController:         attendanceController,
 		workoutFeedbackController:    workoutFeedbackController,
 		dashboardController:          dashboardController,
+		trainerHomeKpisController:    trainerHomeKpisController,
 		sessionMessageController:     sessionMessageController,
 		runnerSessionController:      runnerSessionController,
 		streakController:             streakController,

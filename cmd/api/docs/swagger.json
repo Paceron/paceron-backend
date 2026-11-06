@@ -2295,6 +2295,63 @@
                 }
             }
         },
+        "/api/v1/dashboard/trainer-home-kpis": {
+            "get": {
+                "description": "Resumen del período del entrenador autenticado: sesiones programadas/realizadas, presencial, cobranzas netas y cuotas pendientes; además de equipos y corredores activos actuales. La identidad se toma del token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "dashboard"
+                ],
+                "summary": "KPIs del Home del entrenador",
+                "parameters": [
+                    {
+                        "enum": [
+                            "month",
+                            "week",
+                            "day"
+                        ],
+                        "type": "string",
+                        "description": "Período calendario (default month)",
+                        "name": "period",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fecha de referencia YYYY-MM-DD (default fecha del servidor)",
+                        "name": "reference_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeKpisResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/exercises": {
             "get": {
                 "produces": [
@@ -12064,6 +12121,80 @@
                 },
                 "units": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeCollections": {
+            "type": "object",
+            "properties": {
+                "currency_id": {
+                    "type": "string"
+                },
+                "net_collected": {
+                    "type": "number"
+                },
+                "pending_amount": {
+                    "type": "number"
+                },
+                "pending_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeKpisResponse": {
+            "type": "object",
+            "properties": {
+                "collections": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeCollections"
+                },
+                "days_considered": {
+                    "type": "integer"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "reference_date": {
+                    "type": "string"
+                },
+                "sessions": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeSessions"
+                },
+                "structure": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeStructure"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeSessions": {
+            "type": "object",
+            "properties": {
+                "presencial_realized": {
+                    "type": "integer"
+                },
+                "presencial_scheduled": {
+                    "type": "integer"
+                },
+                "realized": {
+                    "type": "integer"
+                },
+                "scheduled": {
+                    "type": "integer"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeStructure": {
+            "type": "object",
+            "properties": {
+                "active_runners": {
+                    "type": "integer"
+                },
+                "active_teams": {
+                    "type": "integer"
                 }
             }
         },
