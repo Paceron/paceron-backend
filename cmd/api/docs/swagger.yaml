@@ -1610,6 +1610,54 @@ definitions:
       units:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.Units'
     type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeCollections:
+    properties:
+      currency_id:
+        type: string
+      net_collected:
+        type: number
+      pending_amount:
+        type: number
+      pending_count:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeKpisResponse:
+    properties:
+      collections:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeCollections'
+      days_considered:
+        type: integer
+      from:
+        type: string
+      period:
+        type: string
+      reference_date:
+        type: string
+      sessions:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeSessions'
+      structure:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeStructure'
+      to:
+        type: string
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeSessions:
+    properties:
+      presencial_realized:
+        type: integer
+      presencial_scheduled:
+        type: integer
+      realized:
+        type: integer
+      scheduled:
+        type: integer
+    type: object
+  simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeStructure:
+    properties:
+      active_runners:
+        type: integer
+      active_teams:
+        type: integer
+    type: object
   simple-arq-golang_cmd_api_domains_dashboard.Trend:
     properties:
       trend_pct:
@@ -5747,6 +5795,46 @@ paths:
           schema:
             $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
       summary: KPIs del Home del corredor
+      tags:
+      - dashboard
+  /api/v1/dashboard/trainer-home-kpis:
+    get:
+      description: 'Resumen del período del entrenador autenticado: sesiones programadas/realizadas,
+        presencial, cobranzas netas y cuotas pendientes; además de equipos y corredores
+        activos actuales. La identidad se toma del token.'
+      parameters:
+      - description: Período calendario (default month)
+        enum:
+        - month
+        - week
+        - day
+        in: query
+        name: period
+        type: string
+      - description: Fecha de referencia YYYY-MM-DD (default fecha del servidor)
+        in: query
+        name: reference_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.TrainerHomeKpisResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: KPIs del Home del entrenador
       tags:
       - dashboard
   /api/v1/exercises:
