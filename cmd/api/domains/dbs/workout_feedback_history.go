@@ -20,6 +20,7 @@ type WorkoutFeedbackHistoryRow struct {
 	AthleteUserID     int64      `gorm:"column:athlete_user_id"`
 	TeamID            *int64     `gorm:"column:team_id"`
 	GroupID           *int64     `gorm:"column:group_id"`
+	IsPresencial      bool       `gorm:"column:is_presencial"`
 	SessionDate       time.Time  `gorm:"column:session_date"`
 	SetNumber         int        `gorm:"column:set_number"`
 	CompletionStatus  *string    `gorm:"column:completion_status"`

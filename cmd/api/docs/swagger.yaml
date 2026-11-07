@@ -3971,6 +3971,8 @@ definitions:
         type: string
       id:
         type: integer
+      is_presencial:
+        type: boolean
       session_instance_id:
         type: integer
       session_name:

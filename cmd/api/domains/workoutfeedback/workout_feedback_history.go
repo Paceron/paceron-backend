@@ -36,6 +36,7 @@ type WorkoutFeedbackHistoryItem struct {
 	TeamName          *string    `json:"team_name"`
 	GroupID           *int64     `json:"group_id"`
 	GroupName         *string    `json:"group_name"`
+	IsPresencial      bool       `json:"is_presencial"`
 	Date              string     `json:"date"`
 	SessionName       *string    `json:"session_name"`
 	SessionInstanceID int64      `json:"session_instance_id"`

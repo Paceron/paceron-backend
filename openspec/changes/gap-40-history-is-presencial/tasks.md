@@ -19,10 +19,10 @@
 - Modify: `cmd/api/services/workout_feedback_service.go`
 - Test: `cmd/api/daos/workout_feedback_history_dao_test.go`
 
-- [ ] 1.1 Agregar `IsPresencial bool` a `WorkoutFeedbackHistoryRow` y a `WorkoutFeedbackHistoryItem` (`json:"is_presencial"` sin `omitempty`).
-- [ ] 1.2 Agregar `COALESCE(gcd.is_presencial, false) AS is_presencial` al `SELECT` de `HistorySearch` y mapear el campo en `historyItems`.
-- [ ] 1.3 Verificar que `HistoryCount` y los pools no cambian.
-- [ ] 1.4 `go build ./...` y `go vet ./cmd/api/...` verdes.
+- [x] 1.1 Agregar `IsPresencial bool` a `WorkoutFeedbackHistoryRow` y a `WorkoutFeedbackHistoryItem` (`json:"is_presencial"` sin `omitempty`).
+- [x] 1.2 Agregar `COALESCE(gcd.is_presencial, false) AS is_presencial` al `SELECT` de `HistorySearch` y mapear el campo en `historyItems`.
+- [x] 1.3 Verificar que `HistoryCount` y los pools no cambian.
+- [x] 1.4 `go build ./...` y `go vet ./cmd/api/...` verdes.
 
 ### Task 2: Tests de contrato
 
@@ -30,9 +30,9 @@
 - Modify: `cmd/api/daos/workout_feedback_history_dao_test.go`
 - Modify: `cmd/api/services/workout_feedback_service_history_test.go`
 
-- [ ] 2.1 Test DAO contra Postgres: feedback de día presencial → `is_presencial=true`; feedback de día async → `false`; huérfano → `false`; el resto de los campos y el orden no cambian.
-- [ ] 2.2 Test de service: el shape de `AthleteHistory` y `AdministeredHistory` incluye `is_presencial` en cada ítem y conserva los filtros actuales.
-- [ ] 2.3 Correr tests focales y suite completa con Postgres real; 0 FAIL.
+- [x] 2.1 Test DAO contra Postgres: feedback de día presencial → `is_presencial=true`; feedback de día async → `false`; huérfano → `false`; el resto de los campos y el orden no cambian.
+- [x] 2.2 Test de service: el shape de `AthleteHistory` y `AdministeredHistory` incluye `is_presencial` en cada ítem y conserva los filtros actuales.
+- [x] 2.3 Correr tests focales y suite completa con Postgres real; 0 FAIL.
 
 ### Task 3: Documentación, Swagger y verificación final
 
@@ -41,7 +41,7 @@
 - Modify: `docs/FRONTEND_IMPACTO_INSTANCIACION.md`
 - Modify: `cmd/api/docs/docs.go`, `swagger.json`, `swagger.yaml` (regenerados)
 
-- [ ] 3.1 Documentar `is_presencial` en §8.9 del catálogo y §9 del impacto frontend, incluyendo huérfanos y valor `false`.
-- [ ] 3.2 Regenerar Swagger y verificar el campo en los tres artefactos.
-- [ ] 3.3 `openspec validate gap-40-history-is-presencial --strict`, gofmt, `git diff --check`, suite completa y coverage ≥85.
-- [ ] 3.4 Commit conventional y reporte de verificación.
+- [x] 3.1 Documentar `is_presencial` en §8.9 del catálogo y §9 del impacto frontend, incluyendo huérfanos y valor `false`.
+- [x] 3.2 Regenerar Swagger y verificar el campo en los tres artefactos.
+- [x] 3.3 `openspec validate gap-40-history-is-presencial --strict`, gofmt, `git diff --check`, suite completa y coverage ≥85.
+- [x] 3.4 Commit conventional y reporte de verificación.
