@@ -440,11 +440,11 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 // weekTargets son las dos fechas de una semana que se estamparan.
 func (s *seeder) weekTargets(weekIndex int) []time.Time {
 	start := s.window.weekStart(weekIndex)
-	return []time.Time{
-		start.AddDate(0, 0, planDayMonday-1),
-		start.AddDate(0, 0, planDayWednesday-1),
-		start.AddDate(0, 0, planDayFriday-1),
+	dates := make([]time.Time, 0, 5)
+	for seq := planDayMonday; seq <= planDayFriday; seq++ {
+		dates = append(dates, start.AddDate(0, 0, seq-1))
 	}
+	return dates
 }
 
 func (s *seeder) existingCalendarDays() (map[string]dbs.GroupCalendarDay, error) {
