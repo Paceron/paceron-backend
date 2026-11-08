@@ -38,15 +38,10 @@ func (s *seeder) run() error {
 			if err == nil {
 				continue
 			}
-			status := constants.InstallmentStatusPending
+			status := constants.InstallmentStatusPaid
 			var dueDate *time.Time
 			d := time.Now().AddDate(0, 0, -10*(n-1))
 			dueDate = &d
-			if n == 1 {
-				status = constants.InstallmentStatusPaid
-			} else if n == s.opts.count {
-				status = constants.InstallmentStatusCanceled
-			}
 			inst := dbs.Installment{
 				TeamID:            &s.opts.teamID,
 				UserID:            uid,
