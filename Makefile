@@ -83,7 +83,8 @@ seed-dashboard-cleanup: ## Informa qué borraría la limpieza (SEED_FLAGS=--yes 
 fullseed-seed: ## Siembra el perfil full en el entorno local
 	go run ./cmd/api/scripts/seed_dashboard --stage=local --profile=full --seed --bootstrap-scope
 
-fullseed-reset: ## Borra los volúmenes locales y siembra el perfil full
+fullseed-reset: ## Borra los volúmenes locales y siembra el perfil full (solo si no hay datos ajenos; forzar con FULLSEED_RESET_FORCE=1)
+	./scripts/assert_fullseed_reset_safe.sh
 	$(MAKE) local-reset
 	$(MAKE) local-up
 	@ready=false; for _ in $$(seq 1 60); do \

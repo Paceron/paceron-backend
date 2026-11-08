@@ -15676,6 +15676,9 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "is_presencial": {
+                    "type": "boolean"
+                },
                 "session_instance_id": {
                     "type": "integer"
                 },

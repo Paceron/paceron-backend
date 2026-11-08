@@ -896,6 +896,7 @@ func (s *workoutFeedbackService) historyItems(ctx *gin.Context, rows []dbs.Worko
 			AthleteName:       athleteNameByID[r.AthleteUserID],
 			TeamID:            r.TeamID,
 			GroupID:           r.GroupID,
+			IsPresencial:      r.IsPresencial,
 			Date:              r.SessionDate.Format("2006-01-02"),
 			SessionName:       r.SessionName,
 			SessionInstanceID: r.SessionInstanceID,

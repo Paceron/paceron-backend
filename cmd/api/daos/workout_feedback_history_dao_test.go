@@ -100,6 +100,7 @@ func setupWorkoutFeedbackHistoryFixture(t *testing.T, db *gorm.DB) *workoutFeedb
 		Date:              time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC),
 		Kind:              "training",
 		SessionInstanceID: &sessionInst.ID,
+		IsPresencial:      true,
 	}
 	require.NoError(t, db.Create(day).Error)
 
@@ -174,6 +175,7 @@ func TestWorkoutFeedbackDao_HistorySearch_TeamScopeEnrichedRows(t *testing.T) {
 	require.NotNil(t, row.SessionName)
 	assert.Equal(t, "WF Hist Sesión", *row.SessionName)
 	assert.Equal(t, f.sessionInst.ID, row.SessionInstanceID)
+	assert.True(t, row.IsPresencial)
 
 	// Huérfano sin día: group/session nulls, pero team y ejercicio sí.
 	orphan := historyRowByID(rows, f.fbOrphan.ID)
@@ -186,6 +188,7 @@ func TestWorkoutFeedbackDao_HistorySearch_TeamScopeEnrichedRows(t *testing.T) {
 	require.NotNil(t, orphan.ExerciseName)
 	assert.Equal(t, "Fartlek corto", *orphan.ExerciseName)
 	assert.Nil(t, orphan.CatalogExerciseID)
+	assert.False(t, orphan.IsPresencial)
 
 	// Instancia inexistente: exercise_name null.
 	noName := historyRowByID(rows, f.fbNoName.ID)
@@ -193,6 +196,30 @@ func TestWorkoutFeedbackDao_HistorySearch_TeamScopeEnrichedRows(t *testing.T) {
 	assert.Nil(t, noName.ExerciseName)
 	assert.Nil(t, noName.CatalogExerciseID)
 	require.NotNil(t, noName.SessionName)
+}
+
+func TestWorkoutFeedbackDao_HistorySearch_IsPresencialAsyncDay(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+	f := setupWorkoutFeedbackHistoryFixture(t, db)
+
+	asyncInst := &dbs.SessionInstance{Name: "WF Hist Async"}
+	require.NoError(t, db.Create(asyncInst).Error)
+	asyncDay := &dbs.GroupCalendarDay{
+		GroupID:           f.groupB.ID,
+		Date:              time.Date(2026, 1, 16, 0, 0, 0, 0, time.UTC),
+		Kind:              "training",
+		SessionInstanceID: &asyncInst.ID,
+	}
+	require.NoError(t, db.Create(asyncDay).Error)
+	fb := historyFeedback(t, db, f.athleteB.ID, asyncInst.ID, f.exB.ID, &f.teamB.ID, 0, time.Date(2026, 1, 16, 0, 0, 0, 0, time.UTC))
+
+	rows, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &f.teamB.ID}, "feedback_date", "desc", 0, 0)
+	require.NoError(t, err)
+	row := historyRowByID(rows, fb.ID)
+	require.NotNil(t, row)
+	assert.False(t, row.IsPresencial)
+
 }
 
 func TestWorkoutFeedbackDao_HistorySearch_AthleteScopeIncludesNoTeam(t *testing.T) {

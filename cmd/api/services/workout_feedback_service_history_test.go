@@ -181,7 +181,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	catalog := int64(12)
 
 	rows := []dbs.WorkoutFeedbackHistoryRow{
-		{ID: 1, AthleteUserID: 7, TeamID: &teamID, GroupID: &groupID, SessionDate: sessionDate,
+		{ID: 1, AthleteUserID: 7, TeamID: &teamID, GroupID: &groupID, IsPresencial: true, SessionDate: sessionDate,
 			SetNumber: 1, CompletionStatus: &status, DurationMs: &duration, ActiveDurationMs: &active,
 			DistanceMeters: &distance, StartedAt: &started, EndedAt: &ended,
 			ExerciseID: 3, ExerciseName: &exName, CatalogExerciseID: &catalog, SessionName: &sessionName,
@@ -222,6 +222,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	require.NotNil(t, first.SessionName)
 	assert.Equal(t, "Fuerza piernas", *first.SessionName)
 	assert.Equal(t, int64(404), first.SessionInstanceID)
+	assert.True(t, first.IsPresencial)
 	assert.Equal(t, int64(3), first.ExerciseID)
 	require.NotNil(t, first.ExerciseName)
 	assert.Equal(t, "Sentadilla", *first.ExerciseName)
@@ -248,6 +249,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	assert.Equal(t, int64(5), resp.Items[2].ExerciseID)
 	assert.Nil(t, resp.Items[2].ExerciseName)
 	assert.Nil(t, resp.Items[2].SessionName)
+	assert.False(t, resp.Items[2].IsPresencial)
 	assert.Equal(t, int64(0), resp.Items[2].SessionInstanceID)
 
 	// team no resuelto: team_id presente, team_name null
@@ -364,7 +366,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_NoOwner_403(t *testing.T) {
 func TestWorkoutFeedbackService_AdministeredHistory_OK_AthleteFilterSegundoNivel(t *testing.T) {
 	calls := &historyDAOCalls{}
 	svc := NewWorkoutFeedbackService(newHistoryMock(calls, []dbs.WorkoutFeedbackHistoryRow{
-		{ID: 1, AthleteUserID: 9, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 3},
+		{ID: 1, AthleteUserID: 9, IsPresencial: true, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 3},
 	}))
 
 	athleteFilter := int64(9)
@@ -386,6 +388,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_OK_AthleteFilterSegundoNivel
 	assert.Equal(t, "desc", calls.order)
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "Atleta9", resp.Items[0].AthleteName)
+	assert.True(t, resp.Items[0].IsPresencial)
 	// pools passthrough: el service no los recorta por el filtro de 2do nivel
 	assert.Equal(t, []dbs.IDName{{ID: 7, Name: "Juan"}}, resp.AvailableAthletes)
 	assert.Equal(t, []dbs.IDName{{ID: 3, Name: "Sentadilla"}}, resp.AvailableExercises)

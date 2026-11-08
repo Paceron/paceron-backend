@@ -462,6 +462,7 @@ func applyHistoryFilters(query *gorm.DB, filters WorkoutFeedbackHistoryFilters, 
 func (d *workoutFeedbackDao) HistorySearch(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters, sortCol string, order string, limit int, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error) {
 	query := d.DB.Table("workout_feedback AS wf").
 		Select(`wf.id, wf.athlete_user_id, wf.team_id, gcd.group_id, wf.session_date,
+			COALESCE(gcd.is_presencial, false) AS is_presencial,
 			wf.set_number, wf.completion_status, wf.duration_ms, wf.active_duration_ms,
 			wf.distance_meters, wf.started_at, wf.ended_at,
 			wf.assigned_exercise_id AS exercise_id, ei.name AS exercise_name,

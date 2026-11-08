@@ -277,6 +277,13 @@ datos. Después vuelve a levantar los servicios, espera a que Postgres responda 
 siembra el perfil full. Para conservar la base actual, usa `make local-dump` antes
 del reset.
 
+El target aborta si detecta usuarios o equipos ajenos al perfil full, para no
+borrar datos clonados de Supabase por accidente. Para forzar el reset igual:
+
+```bash
+FULLSEED_RESET_FORCE=1 make fullseed-reset
+```
+
 Sembrar sobre una base que ya tiene el perfil es esperado (las fases están pensadas
 para re-ejecutarse), pero las fechas se recalculan y el scope ya está; para un estado
 limpio, `make fullseed-cleanup` antes o el reset de arriba.
