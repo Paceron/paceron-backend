@@ -368,14 +368,14 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 		return nil, err
 	}
 
-	if s.opts.target == "testing" {
+	if s.opts.target == "testing" && !s.opts.force {
 		planIDSet := make(map[int64]bool, len(planIDs))
 		for _, id := range planIDs {
 			planIDSet[id] = true
 		}
 		for date, day := range existingDays {
 			if day.SourcePlanID != nil && planIDSet[*day.SourcePlanID] {
-				return nil, fmt.Errorf("idempotencia estricta: la fecha %s ya tiene un día del seed (plan %d). Abortando en modo remoto", date, *day.SourcePlanID)
+				return nil, fmt.Errorf("idempotencia estricta: la fecha %s ya tiene un día del seed (plan %d). Pasá --force para sobrescribir, o elegí otra ventana", date, *day.SourcePlanID)
 			}
 		}
 	}
