@@ -10,10 +10,13 @@ import (
 // start_date: el martes es el sequence_no 2 y el jueves el 4.
 const (
 	planDaysPerWeek   = 7
+	planDayMonday     = 1
 	planDayTuesday    = 2
+	planDayWednesday  = 3
 	planDayThursday   = 4
+	planDayFriday     = 5
 	seedWeeks         = 2
-	seedSessionsCount = seedWeeks * 2 // 2 por semana: martes y jueves
+	seedSessionsCount = seedWeeks * 5 // 5 por semana: lunes a viernes
 )
 
 const dateLayout = "2006-01-02"
@@ -67,7 +70,8 @@ func (w seedWindow) weekIndexOfDay(dayIndex int) int {
 func (w seedWindow) stampTargetDates() []time.Time {
 	dates := make([]time.Time, 0, seedSessionsCount)
 	for day := 0; day < seedWeeks*planDaysPerWeek; day++ {
-		if day%planDaysPerWeek+1 == planDayTuesday || day%planDaysPerWeek+1 == planDayThursday {
+		seq := day%planDaysPerWeek + 1
+		if seq >= planDayMonday && seq <= planDayFriday {
 			dates = append(dates, w.dayDate(day))
 		}
 	}
@@ -78,9 +82,9 @@ func (w seedWindow) stampTargetDates() []time.Time {
 // exclude_dates del stamp: el seed no crea los días de descanso, los saltea.
 func (w seedWindow) excludeDatesForWeek(weekIndex int) []string {
 	weekStart := w.weekStart(weekIndex)
-	excluded := make([]string, 0, planDaysPerWeek-2)
+	excluded := make([]string, 0, planDaysPerWeek-5)
 	for seq := 1; seq <= planDaysPerWeek; seq++ {
-		if seq == planDayTuesday || seq == planDayThursday {
+		if seq >= planDayMonday && seq <= planDayFriday {
 			continue
 		}
 		excluded = append(excluded, weekStart.AddDate(0, 0, seq-1).Format(dateLayout))
@@ -89,6 +93,6 @@ func (w seedWindow) excludeDatesForWeek(weekIndex int) []string {
 }
 
 func (w seedWindow) String() string {
-	return fmt.Sprintf("%s..%s (%d sesiones: martes y jueves de %d semanas)",
+	return fmt.Sprintf("%s..%s (%d sesiones: lunes a viernes de %d semanas)",
 		w.from().Format(dateLayout), w.to().Format(dateLayout), seedSessionsCount, seedWeeks)
 }

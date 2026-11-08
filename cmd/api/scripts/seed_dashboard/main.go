@@ -39,6 +39,7 @@ type options struct {
 	dbOverride string
 	teamID     int64
 	groupID    int64
+	target     string
 }
 
 func parseOptions() options {
@@ -68,6 +69,7 @@ func parseOptionsArgs(fs *flag.FlagSet, args []string) (options, error) {
 	fs.StringVar(&opts.dbOverride, "db", "", "DSN alternativo para sembrar una base descartable (ej. la de tests)")
 	fs.Int64Var(&opts.teamID, "team-id", seedTeamID, "equipo del scope a sembrar")
 	fs.Int64Var(&opts.groupID, "group-id", seedGroupID, "grupo del scope a sembrar")
+	fs.StringVar(&opts.target, "target", "local", "destino de escritura: local (default) o testing (remoto, requiere SEEDING_ALLOW_REMOTE)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
@@ -86,10 +88,24 @@ func main() {
 		customlogger.Tag("team_id", fmt.Sprintf("%d", opts.teamID)),
 		customlogger.Tag("group_id", fmt.Sprintf("%d", opts.groupID)))
 
-	// Mismo guard que la app en arranque (design.md D14): con SEEDING_ENABLED
-	// activo y sin --stage=local, AssertSeedingStage aborta el proceso. No se
-	// reimplementa: el seed usa la función que ya protege a la app.
-	config.AssertSeedingStage()
+	remote := opts.target == "testing"
+	if opts.target != "local" && opts.target != "testing" {
+		fatal("--target inválido %q: usá local o testing", opts.target)
+	}
+	if remote {
+		// En modo remoto no aplica el guard de stage local: se valida con
+		// AssertSeedingRemoteAllowed (producción bloqueada + opt-in explícito).
+		config.AssertSeedingRemoteAllowed()
+		if opts.teamID == 0 || opts.groupID == 0 {
+			fatal("--team-id y --group-id son obligatorios en modo remoto")
+		}
+		if opts.start == "" {
+			fatal("--start es obligatorio en modo remoto (YYYY-MM-DD, lunes)")
+		}
+	} else {
+		// Mismo guard que la app en arranque (design.md D14).
+		config.AssertSeedingStage()
+	}
 	if !config.SeedingEnabled() {
 		fatal("--seed necesita SEEDING_ENABLED=true en el entorno: sin la bandera el stamp rechaza toda fecha pasada")
 	}
@@ -128,6 +144,14 @@ func main() {
 	}
 	if opts.verify && opts.profile != fullProfile {
 		fatal("--verify requiere --profile=full")
+	}
+	if remote && opts.seed && !opts.dryRun && !opts.yes {
+		fmt.Printf("Modo remoto (testing). team=%d group=%d ventana=%s. Escribir? (yes/no): ", opts.teamID, opts.groupID, opts.start)
+		var answer string
+		fmt.Scanln(&answer)
+		if answer != "yes" {
+			fatal("abortado por el operador")
+		}
 	}
 	runSeedMode(db, opts)
 }

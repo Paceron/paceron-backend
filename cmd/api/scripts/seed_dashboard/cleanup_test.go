@@ -42,7 +42,7 @@ func newCleanupFixture(t *testing.T, tag string) *cleanupFixture {
 	otherGroup := cleanupTestGroup(t, db, "grupo_otro_"+tag, otherTeam.ID)
 
 	window := seedWindow{Start: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)}
-	inWindow := window.weekStart(0).AddDate(0, 0, planDayTuesday-1)
+	inWindow := window.weekStart(0).AddDate(0, 0, planDayMonday-1)
 	outsideWindow := window.to().AddDate(0, 0, 7)
 
 	seedPlan := &dbs.TrainingPlan{OwnerID: owner.ID, Name: "Semilla dashboard · Semana 1",

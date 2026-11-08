@@ -58,7 +58,24 @@ aborta con cualquier flag que no conozca, y sin esa entrada no se podría pasar.
 | `--bootstrap-scope` | off | Crea equipo, grupo, entrenador y corredores si el scope no existe. |
 | `--db` | el del stage | DSN alternativo, para sembrar una base descartable. |
 | `--team-id` / `--group-id` | `29` / `39` | Scope a sembrar, para reutilizar el seed en otro equipo. |
+| `--target` | `local` | Destino de escritura: `local` (default) o `testing` (remoto). |
 
+## Modo remoto (testing cloud)
+
+Permite sembrar la base de testing de Render de forma deliberada. Requiere:
+
+1. `SEEDING_ENABLED=true` y `SEEDING_ALLOW_REMOTE=true` en el entorno.
+2. `--stage` distinto de producción (el guard `AssertSeedingRemoteAllowed` hace panic en producción).
+3. `--target=testing`, con `--team-id`, `--group-id` y `--start` explícitos.
+4. Confirmación interactiva (`yes`) o `--yes` para CI.
+
+En modo remoto la idempotencia es estricta: si ya existen días del seed en la ventana, aborta en vez de reutilizar.
+
+```bash
+SEEDING_ENABLED=true SEEDING_ALLOW_REMOTE=true go run ./cmd/api/scripts/seed_dashboard --stage=testing --target=testing --team-id=29 --group-id=39 --start=2026-11-02 --seed
+```
+
+Dry-run por default: sin `--seed` solo informa.
 ### Ventana
 
 Por default son **las dos semanas completas que terminan la semana pasada**: el

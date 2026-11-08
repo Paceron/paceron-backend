@@ -181,26 +181,36 @@ var sessions = []sessionTemplate{
 type planTemplate struct {
 	Key            string
 	Name           string
+	Monday         string // sessionTemplate.Key
 	Tuesday        string // sessionTemplate.Key
+	Wednesday      string // sessionTemplate.Key
 	Thursday       string // sessionTemplate.Key
+	Friday         string // sessionTemplate.Key
 	PresencialFrom string
 	PresencialTo   string
 }
 
-// plans son las dos semanas del seed: 4 días de calendario en total.
+// plans son las dos semanas del seed: 6 días de calendario en total
+// (lunes, miércoles y viernes de cada semana).
 var plans = []planTemplate{
-	{Key: "semana_1", Name: "Semilla dashboard · Semana 1", Tuesday: "velocidad", Thursday: "volumen", PresencialFrom: "18:00", PresencialTo: "20:00"},
-	{Key: "semana_2", Name: "Semilla dashboard · Semana 2", Tuesday: "progresiva", Thursday: "larga", PresencialFrom: "08:00", PresencialTo: "11:00"},
+	{Key: "semana_1", Name: "Semilla dashboard · Semana 1", Monday: "velocidad", Tuesday: "volumen", Wednesday: "progresiva", Thursday: "larga", Friday: "velocidad", PresencialFrom: "18:00", PresencialTo: "20:00"},
+	{Key: "semana_2", Name: "Semilla dashboard · Semana 2", Monday: "progresiva", Tuesday: "larga", Wednesday: "velocidad", Thursday: "volumen", Friday: "progresiva", PresencialFrom: "08:00", PresencialTo: "11:00"},
 }
 
 // sessionKeyForSeq devuelve la plantilla de sesión del día de la semana, o ""
 // si ese día es descanso.
 func (p planTemplate) sessionKeyForSeq(seq int) string {
 	switch seq {
+	case planDayMonday:
+		return p.Monday
 	case planDayTuesday:
 		return p.Tuesday
+	case planDayWednesday:
+		return p.Wednesday
 	case planDayThursday:
 		return p.Thursday
+	case planDayFriday:
+		return p.Friday
 	}
 	return ""
 }
@@ -216,10 +226,12 @@ func (p planTemplate) planDayRequest(sessionIDs map[string]int64) []trainingplan
 		if key := p.sessionKeyForSeq(seq); key != "" {
 			day.Kind = string(constants.PlanDayKindTraining)
 			day.SessionID = int64Ptr(sessionIDs[key])
-			day.DefaultPresencial = boolPtr(true)
-			day.DefaultTimeFrom = strPtr(p.PresencialFrom)
-			day.DefaultTimeTo = strPtr(p.PresencialTo)
-			day.DefaultLocation = &location
+			if seq == planDayTuesday || seq == planDayThursday {
+				day.DefaultPresencial = boolPtr(true)
+				day.DefaultTimeFrom = strPtr(p.PresencialFrom)
+				day.DefaultTimeTo = strPtr(p.PresencialTo)
+				day.DefaultLocation = &location
+			}
 		}
 		days = append(days, day)
 	}

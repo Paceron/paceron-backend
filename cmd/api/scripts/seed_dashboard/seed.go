@@ -368,6 +368,18 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 		return nil, err
 	}
 
+	if s.opts.target == "testing" && !s.opts.force {
+		planIDSet := make(map[int64]bool, len(planIDs))
+		for _, id := range planIDs {
+			planIDSet[id] = true
+		}
+		for date, day := range existingDays {
+			if day.SourcePlanID != nil && planIDSet[*day.SourcePlanID] {
+				return nil, fmt.Errorf("idempotencia estricta: la fecha %s ya tiene un día del seed (plan %d). Pasá --force para sobrescribir, o elegí otra ventana", date, *day.SourcePlanID)
+			}
+		}
+	}
+
 	stamped := 0
 	for weekIndex, template := range plans {
 		planID := planIDs[template.Key]
@@ -428,10 +440,11 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 // weekTargets son las dos fechas de una semana que se estamparan.
 func (s *seeder) weekTargets(weekIndex int) []time.Time {
 	start := s.window.weekStart(weekIndex)
-	return []time.Time{
-		start.AddDate(0, 0, planDayTuesday-1),
-		start.AddDate(0, 0, planDayThursday-1),
+	dates := make([]time.Time, 0, 5)
+	for seq := planDayMonday; seq <= planDayFriday; seq++ {
+		dates = append(dates, start.AddDate(0, 0, seq-1))
 	}
+	return dates
 }
 
 func (s *seeder) existingCalendarDays() (map[string]dbs.GroupCalendarDay, error) {
