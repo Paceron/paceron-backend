@@ -244,6 +244,7 @@ func mapUrls(r *gin.Engine, app *Application) {
 
 	// Team Subscription (suscripcion-teams-split D3)
 	r.GET("/api/v1/users/:id/teams/:team_id/subscription", app.teamSubscriptionController.GetTeamSubscription)
+	r.GET("/api/v1/teams/:id/subscriptions", app.teamSubscriptionController.GetTeamSubscriptions)
 
 	// Attendance (asistencia por QR + gestion de asistencia del entrenador)
 	r.GET("/api/v1/attendance/qr", app.attendanceController.GenerateQR)

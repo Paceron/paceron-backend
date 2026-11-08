@@ -671,6 +671,16 @@ Cruza lo que planificó el entrenador con lo que registró el corredor. Contrato
 - **Rango:** obligatorio, de 366 días como máximo y sin pasar de hoy en hora argentina.
 
 
+### 8.17 Estado de cuota batch por equipo (Gap 41 — change `gap-41-team-subscriptions-batch`)
+
+`GET /api/v1/teams/{id}/subscriptions` — owner del equipo o `team_user` activo con `role_in_team='entrenador'` (403 el resto; 404 equipo inexistente). Devuelve `team_id`, `membership_fee` y `members` con los corredores activos; cada ítem trae `user_id`, `status`, `subscription_status`, `has_debt`, `init_amount` y `paid_installments`.
+
+- `status`: `active` (al día o equipo gratis), `overdue` (deuda) o `first_payment_pending` (primer pago pendiente sin deuda).
+- `subscription_status`: valor crudo de la membresía (`active`/`first_payment_pending`; vacío legado → `active`).
+- `has_debt`: cuota pendiente vencida o ciclo de membresía vencido; `false` en equipos gratis.
+- Solo corredores activos, sin owner/entrenadores; `members` vacío es `[]`. Las cuotas pendientes se leen en una sola consulta batch (`FindPendingByTeam`), sin N+1.
+
+
 ## 9. Detalles de implementación relevantes
 
 - **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.

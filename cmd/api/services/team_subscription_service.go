@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,14 +10,19 @@ import (
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
+	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/teambio"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
+
+// ErrTeamSubscriptionForbidden indica que el caller no administra el equipo.
+var ErrTeamSubscriptionForbidden = errors.New("no autorizado")
 
 // TeamSubscriptionServiceInterface maneja la suscripción del corredor a un
 // equipo: estado de cuenta (D3) y reglas de membresía/cuotas (D2/D4/D5).
 type TeamSubscriptionServiceInterface interface {
 	GetTeamSubscription(ctx *gin.Context, userID, teamID int64) (*teambio.TeamSubscriptionResponse, error)
+	GetTeamSubscriptions(ctx *gin.Context, callerID, teamID int64) (*teambio.TeamSubscriptionsResponse, error)
 }
 
 type teamSubscriptionService struct {
@@ -35,6 +41,100 @@ func NewTeamSubscriptionService(
 		teamUserDao: teamUserDao,
 		installDao:  installDao,
 	}
+}
+
+// GetTeamSubscriptions devuelve el estado de cuota de todos los corredores
+// activos de un equipo en una sola consulta batch. Solo el owner o un
+// entrenador del equipo pueden consultarlo.
+func (s *teamSubscriptionService) GetTeamSubscriptions(ctx *gin.Context, callerID, teamID int64) (*teambio.TeamSubscriptionsResponse, error) {
+	teamDB, err := s.teamDao.FindByID(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team for subscriptions", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("GetTeamSubscriptions"))
+		return nil, fmt.Errorf("error al obtener el estado de cuenta")
+	}
+	if teamDB == nil {
+		return nil, fmt.Errorf("equipo no encontrado")
+	}
+
+	if callerID != teamDB.OwnerID {
+		caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding caller membership for subscriptions", err,
+				customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+				customlogger.Tag("user_id", fmt.Sprintf("%d", callerID)),
+				customlogger.TagMethod("GetTeamSubscriptions"))
+			return nil, fmt.Errorf("error al obtener el estado de cuenta")
+		}
+		if caller == nil || caller.RoleInTeam != string(constants.TeamUserRoleEntrenador) || caller.Status != "active" {
+			return nil, ErrTeamSubscriptionForbidden
+		}
+	}
+
+	teamUsers, err := s.teamUserDao.FindByTeamID(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding team users for subscriptions", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("GetTeamSubscriptions"))
+		return nil, fmt.Errorf("error al obtener el estado de cuenta")
+	}
+
+	pending, err := s.installDao.FindPendingByTeam(ctx, teamID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding pending installments for subscriptions", err,
+			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
+			customlogger.TagMethod("GetTeamSubscriptions"))
+		return nil, fmt.Errorf("error al obtener el estado de cuenta")
+	}
+	pendingByUser := make(map[int64][]dbs.Installment)
+	for _, installment := range pending {
+		pendingByUser[installment.UserID] = append(pendingByUser[installment.UserID], installment)
+	}
+
+	now := time.Now()
+	members := make([]teambio.TeamMemberSubscriptionInfo, 0, len(teamUsers))
+	for i := range teamUsers {
+		member := &teamUsers[i]
+		if member.RoleInTeam != string(constants.TeamUserRoleCorredor) || member.Status != "active" {
+			continue
+		}
+
+		rawStatus := member.SubscriptionStatus
+		if rawStatus == "" {
+			rawStatus = string(constants.SubscriptionStatusActive)
+		}
+		freeMembership := teamDB.MembershipFee == 0 && member.InitAmount <= 0
+		hasDebt := false
+		if !freeMembership {
+			hasDebt = HasPendingDebt(pendingByUser[member.UserID]) || membershipOverdue(member, now) > 0
+		} else {
+			rawStatus = string(constants.SubscriptionStatusActive)
+		}
+
+		status := string(constants.SubscriptionStatusActive)
+		switch {
+		case hasDebt:
+			status = "overdue"
+		case rawStatus == string(constants.SubscriptionStatusFirstPaymentPending):
+			status = string(constants.SubscriptionStatusFirstPaymentPending)
+		}
+
+		members = append(members, teambio.TeamMemberSubscriptionInfo{
+			UserID:             member.UserID,
+			Status:             status,
+			SubscriptionStatus: rawStatus,
+			HasDebt:            hasDebt,
+			InitAmount:         member.InitAmount,
+			PaidInstallments:   member.PaidInstallments,
+		})
+	}
+
+	return &teambio.TeamSubscriptionsResponse{
+		TeamID:        teamDB.ID,
+		MembershipFee: teamDB.MembershipFee,
+		Members:       members,
+	}, nil
 }
 
 // GetTeamSubscription devuelve el estado de cuenta de un corredor para un equipo

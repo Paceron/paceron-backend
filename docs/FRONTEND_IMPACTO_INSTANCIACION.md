@@ -879,3 +879,47 @@ Close route: primero se reduce al mejor intento de cada atleta (un atleta **nunc
 - **Cancel/reject**: solo sobre `pending_approval`; limpian ÚNICAMENTE la instancia compartida (para entonces nunca hubo intentos — intentos solo existen en `active`). No se crean instancias a limpiar post-close.
 - **Epílogo UI**: los intentos (limitados o no) no borran/reabren la instancia compartida; los intentos 2+ son instancias nuevas sin día de calendario (no aparecen en banner ni calendar — solo vía feedback/WS/attempts).
 - **Unseen/stamps/pushes del close**: byte-idénticos a §16.5 (winners nuevo cálculo, efectos iguales).
+
+
+## 20. NUEVO — estado de cuota batch por equipo (Gap 41, change `gap-41-team-subscriptions-batch`)
+
+`GET /api/v1/teams/{id}/subscriptions` devuelve, en una sola consulta, el estado de cuota de todos los corredores activos del equipo. Solo lo puede llamar el owner del equipo o un `team_user` activo con `role_in_team='entrenador'`; cualquier otro usuario recibe `403`. Equipo inexistente → `404`.
+
+```json
+{
+  "team_id": 3,
+  "membership_fee": 1500,
+  "members": [
+    {
+      "user_id": 12,
+      "status": "active",
+      "subscription_status": "active",
+      "has_debt": false,
+      "init_amount": 1500,
+      "paid_installments": 2
+    },
+    {
+      "user_id": 15,
+      "status": "overdue",
+      "subscription_status": "active",
+      "has_debt": true,
+      "init_amount": 1500,
+      "paid_installments": 1
+    },
+    {
+      "user_id": 18,
+      "status": "first_payment_pending",
+      "subscription_status": "first_payment_pending",
+      "has_debt": false,
+      "init_amount": 1500,
+      "paid_installments": 0
+    }
+  ]
+}
+```
+
+- `status` es el valor listo para el badge: `active`, `overdue` o `first_payment_pending`. Mapeo frontend: `active` → activo, `overdue` → vencido, `first_payment_pending` → en prueba.
+- `subscription_status` es el valor crudo de la membresía (`active`/`first_payment_pending`; legado vacío se normaliza a `active`).
+- `has_debt` es `true` si hay una cuota pendiente vencida o el ciclo de membresía ya venció. Un equipo gratis devuelve `status='active'` y `has_debt=false`.
+- `members` incluye **solo corredores activos** (no owner ni entrenadores) y puede venir vacío (`[]`). No trae nombres: el frontend ya los tiene en el roster.
+- El endpoint self-only `GET /api/v1/users/{id}/teams/{team_id}/subscription` no cambia.
