@@ -36,6 +36,7 @@ func (s *seeder) run() error {
 			var existing dbs.Installment
 			err := s.db.Where("team_id = ? AND user_id = ? AND installment_number = ?", s.opts.teamID, uid, n).First(&existing).Error
 			if err == nil {
+				s.db.Model(&existing).Update("status", string(constants.InstallmentStatusPaid))
 				continue
 			}
 			status := constants.InstallmentStatusPaid
