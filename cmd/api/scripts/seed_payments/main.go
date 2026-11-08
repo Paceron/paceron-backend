@@ -25,6 +25,7 @@ type options struct {
 	teamID  int64
 	groupID int64
 	count   int
+	months  int
 }
 
 func parseOptions() options {
@@ -45,6 +46,7 @@ func parseOptionsArgs(fs *flag.FlagSet, args []string) (options, error) {
 	fs.Int64Var(&opts.teamID, "team-id", seedTeamID, "equipo")
 	fs.Int64Var(&opts.groupID, "group-id", seedGroupID, "grupo")
 	fs.IntVar(&opts.count, "count", 3, "cuotas por corredor")
+	fs.IntVar(&opts.months, "months", 5, "meses hacia atrás a cubrir (junio..octubre = 5)")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
