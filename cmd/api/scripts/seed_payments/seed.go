@@ -36,6 +36,9 @@ func (s *seeder) run() error {
 	}
 	ownerID := team.OwnerID
 
+	// Migrar payments viejos con concept incorrecto.
+	s.db.Model(&dbs.Payment{}).Where("concept = ?", "team_fee").Update("concept", string(constants.PaymentConceptTeamSubscription))
+
 	created := 0
 	for _, uid := range userIDs {
 		for n := 1; n <= s.opts.count; n++ {
@@ -50,7 +53,7 @@ func (s *seeder) run() error {
 					p := dbs.Payment{
 						UserID:        &uid,
 						PaymentID:     fmt.Sprintf("seed-pay-%d", existing.ID),
-						Concept:       "team_fee",
+						Concept:       string(constants.PaymentConceptTeamSubscription),
 						Description:   "Cuota del equipo (seed)",
 						Amount:        5000.0,
 						CurrencyID:    "ARS",
@@ -81,7 +84,7 @@ func (s *seeder) run() error {
 			p := dbs.Payment{
 				UserID:        &uid,
 				PaymentID:     fmt.Sprintf("seed-pay-%d", inst.ID),
-				Concept:       "team_fee",
+				Concept:       string(constants.PaymentConceptTeamSubscription),
 				Description:   "Cuota del equipo (seed)",
 				Amount:        5000.0,
 				CurrencyID:    "ARS",
