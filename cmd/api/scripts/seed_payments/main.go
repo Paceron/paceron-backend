@@ -103,15 +103,4 @@ type seeder struct {
 	opts options
 }
 
-func (s *seeder) run() error {
-	fmt.Printf("Seed payments: team=%d group=%d count=%d\n", s.opts.teamID, s.opts.groupID, s.opts.count)
-	if s.opts.dryRun || !s.opts.seed {
-		fmt.Println("[dry-run] no se escribió nada. Pasá --seed para sembrar.")
-		return nil
-	}
-	// TODO: implementar creación de cuotas
-	fmt.Println("Implementación pendiente.")
-	return nil
-}
-
 func (s *seeder) report() {}
