@@ -16,14 +16,39 @@ const seedingEnabledFlag = "SEEDING_ENABLED"
 // tests puedan prenderla sin depender del orden de carga de la config.
 var Seeding bool
 
+// SeedingAllowRemote es el valor de SEEDING_ALLOW_REMOTE. Habilita escribir con
+// el seeder fuera de --stage=local (solo testing cloud, nunca producción).
+var SeedingAllowRemote bool
+
 func loadSeedingConfig() {
 	Seeding = envBoolDefaultFalse(seedingEnabledFlag)
+	SeedingAllowRemote = envBoolDefaultFalse("SEEDING_ALLOW_REMOTE")
 }
 
 // SeedingEnabled indica si el stamping de histórico está habilitado. Nunca se
 // lee del body de la request: es una decisión del servidor, no del cliente.
 func SeedingEnabled() bool {
 	return Seeding
+}
+
+// SeedingAllowRemoteEnabled indica si está habilitada la escritura remota del
+// seeder (fuera de --stage=local). Solo testing cloud, nunca producción.
+func SeedingAllowRemoteEnabled() bool {
+	return SeedingAllowRemote
+}
+
+// AssertSeedingRemoteAllowed aborta si se intenta escribir remotamente sin el
+// opt-in explícito o contra producción.
+func AssertSeedingRemoteAllowed() {
+	if IsProductionStage() {
+		panic("SEEDING_ALLOW_REMOTE no puede activarse en producción")
+	}
+	if !SeedingEnabled() {
+		panic("SEEDING_ENABLED debe estar activo para escribir remotamente")
+	}
+	if !SeedingAllowRemoteEnabled() {
+		panic("SEEDING_ALLOW_REMOTE debe estar en true para escribir remotamente")
+	}
 }
 
 // AssertSeedingStage aborta el arranque cuando SEEDING_ENABLED está activo sin

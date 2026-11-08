@@ -181,26 +181,30 @@ var sessions = []sessionTemplate{
 type planTemplate struct {
 	Key            string
 	Name           string
-	Tuesday        string // sessionTemplate.Key
-	Thursday       string // sessionTemplate.Key
+	Monday         string // sessionTemplate.Key
+	Wednesday      string // sessionTemplate.Key
+	Friday         string // sessionTemplate.Key
 	PresencialFrom string
 	PresencialTo   string
 }
 
-// plans son las dos semanas del seed: 4 días de calendario en total.
+// plans son las dos semanas del seed: 6 días de calendario en total
+// (lunes, miércoles y viernes de cada semana).
 var plans = []planTemplate{
-	{Key: "semana_1", Name: "Semilla dashboard · Semana 1", Tuesday: "velocidad", Thursday: "volumen", PresencialFrom: "18:00", PresencialTo: "20:00"},
-	{Key: "semana_2", Name: "Semilla dashboard · Semana 2", Tuesday: "progresiva", Thursday: "larga", PresencialFrom: "08:00", PresencialTo: "11:00"},
+	{Key: "semana_1", Name: "Semilla dashboard · Semana 1", Monday: "velocidad", Wednesday: "volumen", Friday: "progresiva", PresencialFrom: "18:00", PresencialTo: "20:00"},
+	{Key: "semana_2", Name: "Semilla dashboard · Semana 2", Monday: "progresiva", Wednesday: "larga", Friday: "velocidad", PresencialFrom: "08:00", PresencialTo: "11:00"},
 }
 
 // sessionKeyForSeq devuelve la plantilla de sesión del día de la semana, o ""
 // si ese día es descanso.
 func (p planTemplate) sessionKeyForSeq(seq int) string {
 	switch seq {
-	case planDayTuesday:
-		return p.Tuesday
-	case planDayThursday:
-		return p.Thursday
+	case planDayMonday:
+		return p.Monday
+	case planDayWednesday:
+		return p.Wednesday
+	case planDayFriday:
+		return p.Friday
 	}
 	return ""
 }

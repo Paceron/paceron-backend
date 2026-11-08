@@ -53,12 +53,12 @@ func TestWindow_EstampaMartesYJueves(t *testing.T) {
 
 	dates := window.stampTargetDates()
 	require.Len(t, dates, seedSessionsCount)
-	assert.Equal(t, []string{"2026-09-29", "2026-10-01", "2026-10-06", "2026-10-08"},
+	assert.Equal(t, []string{"2026-09-28", "2026-09-30", "2026-10-02", "2026-10-05", "2026-10-07", "2026-10-09"},
 		formatDates(dates))
 	for _, date := range dates {
 		weekday := date.Weekday()
-		assert.True(t, weekday == time.Tuesday || weekday == time.Thursday,
-			"%s cae en %s y el seed solo estampa martes y jueves", date.Format(dateLayout), weekday)
+		assert.True(t, weekday == time.Monday || weekday == time.Wednesday || weekday == time.Friday,
+			"%s cae en %s y el seed solo estampa lunes, miércoles y viernes", date.Format(dateLayout), weekday)
 	}
 }
 
@@ -66,16 +66,17 @@ func TestWindow_ExcludeDatesSonLosDiasDeDescanso(t *testing.T) {
 	window := seedWindow{Start: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)}
 
 	excluded := window.excludeDatesForWeek(0)
-	require.Len(t, excluded, planDaysPerWeek-2)
-	assert.Equal(t, []string{"2026-09-28", "2026-09-30", "2026-10-02", "2026-10-03", "2026-10-04"}, excluded)
+	require.Len(t, excluded, planDaysPerWeek-3)
+	assert.Equal(t, []string{"2026-09-29", "2026-10-01", "2026-10-03", "2026-10-04"}, excluded)
 
 	second := window.excludeDatesForWeek(1)
-	require.Len(t, second, planDaysPerWeek-2)
-	assert.Equal(t, "2026-10-05", second[0])
-	// Ninguna fecha excluida puede ser un martes o jueves de esa semana.
+	require.Len(t, second, planDaysPerWeek-3)
+	assert.Equal(t, "2026-10-06", second[0])
+	// Ninguna fecha excluida puede ser un lunes, miércoles o viernes de esa semana.
 	for _, date := range second {
-		assert.NotEqual(t, "2026-10-06", date)
-		assert.NotEqual(t, "2026-10-08", date)
+		assert.NotEqual(t, "2026-10-05", date)
+		assert.NotEqual(t, "2026-10-07", date)
+		assert.NotEqual(t, "2026-10-09", date)
 	}
 }
 
@@ -126,7 +127,7 @@ func TestPlanTemplates_TrainingSoloMartesYJueves(t *testing.T) {
 			require.NotNil(t, day.DefaultTimeTo)
 			require.NotNil(t, day.DefaultLocation)
 		}
-		assert.Equal(t, 2, training, "el plan %q tiene que tener 2 días de entrenamiento", template.Name)
+		assert.Equal(t, 3, training, "el plan %q tiene que tener 3 días de entrenamiento", template.Name)
 	}
 }
 

@@ -368,6 +368,18 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 		return nil, err
 	}
 
+	if s.opts.target == "testing" {
+		planIDSet := make(map[int64]bool, len(planIDs))
+		for _, id := range planIDs {
+			planIDSet[id] = true
+		}
+		for date, day := range existingDays {
+			if day.SourcePlanID != nil && planIDSet[*day.SourcePlanID] {
+				return nil, fmt.Errorf("idempotencia estricta: la fecha %s ya tiene un día del seed (plan %d). Abortando en modo remoto", date, *day.SourcePlanID)
+			}
+		}
+	}
+
 	stamped := 0
 	for weekIndex, template := range plans {
 		planID := planIDs[template.Key]
@@ -429,8 +441,9 @@ func (s *seeder) stamp(planIDs map[string]int64) ([]seededDay, error) {
 func (s *seeder) weekTargets(weekIndex int) []time.Time {
 	start := s.window.weekStart(weekIndex)
 	return []time.Time{
-		start.AddDate(0, 0, planDayTuesday-1),
-		start.AddDate(0, 0, planDayThursday-1),
+		start.AddDate(0, 0, planDayMonday-1),
+		start.AddDate(0, 0, planDayWednesday-1),
+		start.AddDate(0, 0, planDayFriday-1),
 	}
 }
 
