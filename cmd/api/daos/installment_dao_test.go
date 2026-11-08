@@ -187,6 +187,68 @@ func TestInstallmentDao_FindPendingByUserTeam(t *testing.T) {
 	assert.Equal(t, inst.ID, list[0].ID)
 }
 
+func TestInstallmentDao_FindPendingByTeam(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewInstallmentDao(db)
+	owner := persistUser(db, "inst-team-batch-owner@test.com", "32000008")
+	member1 := persistUser(db, "inst-team-batch-1@test.com", "32000009")
+	member2 := persistUser(db, "inst-team-batch-2@test.com", "32000010")
+	team := testTeam(db, "equipo_inst_team_batch", owner.ID)
+	otherTeam := testTeam(db, "equipo_inst_team_batch_other", owner.ID)
+
+	other := &dbs.Installment{
+		TeamID:            &otherTeam.ID,
+		UserID:            member1.ID,
+		InstallmentNumber: 1,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            5000,
+	}
+	require.NoError(t, dao.Create(nil, other))
+
+	inst1 := &dbs.Installment{
+		TeamID:            &team.ID,
+		UserID:            member1.ID,
+		InstallmentNumber: 1,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            5000,
+	}
+	require.NoError(t, dao.Create(nil, inst1))
+
+	inst2b := &dbs.Installment{
+		TeamID:            &team.ID,
+		UserID:            member2.ID,
+		InstallmentNumber: 2,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            5000,
+	}
+	require.NoError(t, dao.Create(nil, inst2b))
+	inst2a := &dbs.Installment{
+		TeamID:            &team.ID,
+		UserID:            member2.ID,
+		InstallmentNumber: 1,
+		Status:            string(constants.InstallmentStatusPending),
+		Amount:            5000,
+	}
+	require.NoError(t, dao.Create(nil, inst2a))
+
+	paid := &dbs.Installment{
+		TeamID:            &team.ID,
+		UserID:            member1.ID,
+		InstallmentNumber: 2,
+		Status:            string(constants.InstallmentStatusPaid),
+		Amount:            5000,
+	}
+	require.NoError(t, dao.Create(nil, paid))
+
+	list, err := dao.FindPendingByTeam(nil, team.ID)
+
+	require.NoError(t, err)
+	require.Len(t, list, 3)
+	assert.Equal(t, inst1.ID, list[0].ID)
+	assert.Equal(t, inst2a.ID, list[1].ID)
+	assert.Equal(t, inst2b.ID, list[2].ID)
+}
+
 // TestInstallmentDao_ExclusiveArc cubre el CHECK de arco exclusivo: una cuota
 // debe referenciar exactamente uno de subscription_id o team_id.
 func TestInstallmentDao_CancelPendingBySubscription(t *testing.T) {

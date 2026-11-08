@@ -28,8 +28,8 @@ type NextInstallmentInfo struct {
 
 // MercadoPagoCheckout trae los datos para armar el checkout Bricks marketplace.
 type MercadoPagoCheckout struct {
-	PublicKey  string `json:"public_key"`
-	Concept    string `json:"concept"`
+	PublicKey   string `json:"public_key"`
+	Concept     string `json:"concept"`
 	Marketplace bool   `json:"marketplace"`
 }
 
@@ -37,9 +37,9 @@ type MercadoPagoCheckout struct {
 // (shape D3 del design). Si el equipo es gratis devuelve subscription_status active
 // sin cuota pendiente ni datos de checkout.
 type TeamSubscriptionResponse struct {
-	Team         TeamInfo              `json:"team"`
-	Membership   MembershipInfo        `json:"membership"`
+	Team            TeamInfo             `json:"team"`
+	Membership      MembershipInfo       `json:"membership"`
 	NextInstallment *NextInstallmentInfo `json:"next_installment,omitempty"`
-	HasDebt      bool                  `json:"has_debt"`
-	MercadoPago  *MercadoPagoCheckout  `json:"mercadopago,omitempty"`
+	HasDebt         bool                 `json:"has_debt"`
+	MercadoPago     *MercadoPagoCheckout `json:"mercadopago,omitempty"`
 }

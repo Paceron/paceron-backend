@@ -6776,6 +6776,68 @@
                 }
             }
         },
+        "/api/v1/teams/{id}/subscriptions": {
+            "get": {
+                "description": "Returns the subscription status for all active runners of a team. Only the team owner or an active team trainer can access it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "team-subscriptions"
+                ],
+                "summary": "Get team subscriptions batch",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Team ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/teams/{id}/users": {
             "get": {
                 "description": "Devuelve todos los miembros activos de un equipo. Solo otro miembro del equipo puede consultarlo",
@@ -14566,6 +14628,29 @@
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_teambio.TeamMemberSubscriptionInfo": {
+            "type": "object",
+            "properties": {
+                "has_debt": {
+                    "type": "boolean"
+                },
+                "init_amount": {
+                    "type": "number"
+                },
+                "paid_installments": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subscription_status": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionResponse": {
             "type": "object",
             "properties": {
@@ -14583,6 +14668,23 @@
                 },
                 "team": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo"
+                }
+            }
+        },
+        "simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionsResponse": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamMemberSubscriptionInfo"
+                    }
+                },
+                "membership_fee": {
+                    "type": "number"
+                },
+                "team_id": {
+                    "type": "integer"
                 }
             }
         },

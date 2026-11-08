@@ -21,6 +21,7 @@ type InstallmentDaoInterface interface {
 	CancelPendingBySubscription(ctx *gin.Context, subscriptionID int64) error
 	FindPendingByUserTeam(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
 	FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
+	FindPendingByTeam(ctx *gin.Context, teamID int64) ([]dbs.Installment, error)
 }
 
 type installmentDao struct {
@@ -57,9 +58,9 @@ func (d *installmentDao) MarkPaidConditional(ctx *gin.Context, id int64, interna
 	result := d.DB.Model(&dbs.Installment{}).
 		Where("id = ? AND status = ?", id, string(constants.InstallmentStatusPending)).
 		Updates(map[string]interface{}{
-			"status":               string(constants.InstallmentStatusPaid),
-			"internal_payment_id":  internalPaymentID,
-			"external_payment_id":  externalPaymentID,
+			"status":              string(constants.InstallmentStatusPaid),
+			"internal_payment_id": internalPaymentID,
+			"external_payment_id": externalPaymentID,
 		})
 	if result.Error != nil {
 		return false, fmt.Errorf("error marking installment paid: %w", result.Error)
@@ -138,4 +139,18 @@ func (d *installmentDao) FindNextByUserTeam(ctx *gin.Context, teamID, userID int
 		return nil, fmt.Errorf("error finding next installment by user team: %w", err)
 	}
 	return &installment, nil
+}
+
+// FindPendingByTeam devuelve todas las cuotas pendientes de un equipo en una
+// sola consulta, ordenadas para agrupar por usuario sin N+1.
+func (d *installmentDao) FindPendingByTeam(ctx *gin.Context, teamID int64) ([]dbs.Installment, error) {
+	var installments []dbs.Installment
+	err := d.DB.
+		Where("team_id = ? AND status = ?", teamID, string(constants.InstallmentStatusPending)).
+		Order("user_id ASC, installment_number ASC").
+		Find(&installments).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding pending installments by team: %w", err)
+	}
+	return installments, nil
 }

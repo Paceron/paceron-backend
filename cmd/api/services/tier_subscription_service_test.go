@@ -15,16 +15,16 @@ import (
 )
 
 type mockTierSubscriptionDao struct {
-	createFn            func(ctx *gin.Context, sub *dbs.UserRoleTierSubscription) error
-	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.UserRoleTierSubscription, error)
-	findActiveFn        func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
-	findLatestFn        func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
-	findPendingByURTFn  func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
-	findByURTFn         func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
-	setEndedFn          func(ctx *gin.Context, id int64) error
-	setCanceledFn       func(ctx *gin.Context, id int64) error
-	activateFn          func(ctx *gin.Context, id int64) error
-	incrementPaidFn     func(ctx *gin.Context, id int64) error
+	createFn           func(ctx *gin.Context, sub *dbs.UserRoleTierSubscription) error
+	findByIDFn         func(ctx *gin.Context, id int64) (*dbs.UserRoleTierSubscription, error)
+	findActiveFn       func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
+	findLatestFn       func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
+	findPendingByURTFn func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
+	findByURTFn        func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
+	setEndedFn         func(ctx *gin.Context, id int64) error
+	setCanceledFn      func(ctx *gin.Context, id int64) error
+	activateFn         func(ctx *gin.Context, id int64) error
+	incrementPaidFn    func(ctx *gin.Context, id int64) error
 }
 
 func (m *mockTierSubscriptionDao) Create(ctx *gin.Context, sub *dbs.UserRoleTierSubscription) error {
@@ -108,14 +108,15 @@ func (m *mockTierSubscriptionDao) IncrementPaidInstallments(ctx *gin.Context, id
 }
 
 type mockInstallmentDao struct {
-	createFn               func(ctx *gin.Context, ins *dbs.Installment) error
-	findByIDFn             func(ctx *gin.Context, id int64) (*dbs.Installment, error)
-	markPaidFn             func(ctx *gin.Context, id int64, internalID *int64, externalID *string) (bool, error)
-	findPendingBySubFn     func(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
-	findNextFn             func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
-	cancelPendingBySubFn   func(ctx *gin.Context, subscriptionID int64) error
-	findPendingByTeamFn    func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
-	findNextByTeamFn       func(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
+	createFn                 func(ctx *gin.Context, ins *dbs.Installment) error
+	findByIDFn               func(ctx *gin.Context, id int64) (*dbs.Installment, error)
+	markPaidFn               func(ctx *gin.Context, id int64, internalID *int64, externalID *string) (bool, error)
+	findPendingBySubFn       func(ctx *gin.Context, subscriptionID int64) ([]dbs.Installment, error)
+	findNextFn               func(ctx *gin.Context, subscriptionID int64) (*dbs.Installment, error)
+	cancelPendingBySubFn     func(ctx *gin.Context, subscriptionID int64) error
+	findPendingByTeamFn      func(ctx *gin.Context, teamID, userID int64) ([]dbs.Installment, error)
+	findNextByTeamFn         func(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error)
+	findPendingByTeamBatchFn func(ctx *gin.Context, teamID int64) ([]dbs.Installment, error)
 }
 
 func (m *mockInstallmentDao) Create(ctx *gin.Context, ins *dbs.Installment) error {
@@ -171,6 +172,13 @@ func (m *mockInstallmentDao) FindPendingByUserTeam(ctx *gin.Context, teamID, use
 func (m *mockInstallmentDao) FindNextByUserTeam(ctx *gin.Context, teamID, userID int64) (*dbs.Installment, error) {
 	if m.findNextByTeamFn != nil {
 		return m.findNextByTeamFn(ctx, teamID, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockInstallmentDao) FindPendingByTeam(ctx *gin.Context, teamID int64) ([]dbs.Installment, error) {
+	if m.findPendingByTeamBatchFn != nil {
+		return m.findPendingByTeamBatchFn(ctx, teamID)
 	}
 	return nil, nil
 }

@@ -341,6 +341,7 @@ All routes require `Authorization: Bearer <access_token>` **except** the ones ma
 | GET | `/api/v1/users/:id/next-session` | Next session scheduled for the user (self only; returns 204 if no session scheduled) |
 | GET | `/api/v1/users/:id/calendar-summary` | Summary of groups the user belongs to with calendar data (self only) |
 | GET | `/api/v1/users/:id/teams/:team_id/subscription` | Team subscription status (membership, next installment, debt, MP Bricks checkout data; see plan) |
+| GET | `/api/v1/teams/:id/subscriptions` | Batch subscription status for all active runners of a team (owner or team trainer only; status, debt, init amount, paid installments) |
 | GET | `/api/v1/mercadopago/connect` | Mercado Pago OAuth authorization URL (entrenador connects to receive split payments) |
 | GET | `/api/v1/mercadopago/connect/callback` | Mercado Pago OAuth callback (code exchange, stores `seller_connection`) |
 | GET | `/api/v1/mercadopago/connect/status` | Mercado Pago connection status of the authenticated user |

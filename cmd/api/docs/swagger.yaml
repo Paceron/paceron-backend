@@ -3278,6 +3278,21 @@ definitions:
       name:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_teambio.TeamMemberSubscriptionInfo:
+    properties:
+      has_debt:
+        type: boolean
+      init_amount:
+        type: number
+      paid_installments:
+        type: integer
+      status:
+        type: string
+      subscription_status:
+        type: string
+      user_id:
+        type: integer
+    type: object
   simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionResponse:
     properties:
       has_debt:
@@ -3290,6 +3305,17 @@ definitions:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.NextInstallmentInfo'
       team:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamInfo'
+    type: object
+  simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionsResponse:
+    properties:
+      members:
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamMemberSubscriptionInfo'
+        type: array
+      membership_fee:
+        type: number
+      team_id:
+        type: integer
     type: object
   simple-arq-golang_cmd_api_domains_teamconfiguration.TeamConfiguration:
     properties:
@@ -8808,6 +8834,48 @@ paths:
       summary: Leaderboard del equipo
       tags:
       - gamification
+  /api/v1/teams/{id}/subscriptions:
+    get:
+      consumes:
+      - application/json
+      description: Returns the subscription status for all active runners of a team.
+        Only the team owner or an active team trainer can access it.
+      parameters:
+      - description: Team ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_teambio.TeamSubscriptionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError'
+      summary: Get team subscriptions batch
+      tags:
+      - team-subscriptions
   /api/v1/teams/{id}/users:
     get:
       description: Devuelve todos los miembros activos de un equipo. Solo otro miembro
