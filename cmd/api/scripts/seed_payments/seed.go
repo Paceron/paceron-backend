@@ -29,6 +29,13 @@ func (s *seeder) run() error {
 		return nil
 	}
 
+	// Owner del equipo (vendedor de las cuotas).
+	team, err := daos.NewTeamDao(s.db).FindByID(nil, s.opts.teamID)
+	if err != nil || team == nil {
+		return fmt.Errorf("no se pudo leer el equipo %d: %v", s.opts.teamID, err)
+	}
+	ownerID := team.OwnerID
+
 	created := 0
 	for _, uid := range userIDs {
 		for n := 1; n <= s.opts.count; n++ {
@@ -37,6 +44,22 @@ func (s *seeder) run() error {
 			err := s.db.Where("team_id = ? AND user_id = ? AND installment_number = ?", s.opts.teamID, uid, n).First(&existing).Error
 			if err == nil {
 				s.db.Model(&existing).Update("status", string(constants.InstallmentStatusPaid))
+				// Asegurar Payment (pago recibido por el entrenador).
+				var pay dbs.Payment
+				if s.db.Where("installment_id = ?", existing.ID).First(&pay).Error != nil {
+					p := dbs.Payment{
+						UserID:        &uid,
+						PaymentID:     fmt.Sprintf("seed-pay-%d", existing.ID),
+						Concept:       "team_fee",
+						Description:   "Cuota del equipo (seed)",
+						Amount:        5000.0,
+						CurrencyID:    "ARS",
+						Status:        "approved",
+						SellerUserID:  &ownerID,
+						InstallmentID: &existing.ID,
+					}
+					s.db.Create(&p)
+				}
 				continue
 			}
 			status := constants.InstallmentStatusPaid
@@ -54,6 +77,19 @@ func (s *seeder) run() error {
 			if err := s.db.Create(&inst).Error; err != nil {
 				return fmt.Errorf("error creando cuota %d para user %d: %w", n, uid, err)
 			}
+			// Payment recibido por el entrenador (para que aparezca en /profile/payments).
+			p := dbs.Payment{
+				UserID:        &uid,
+				PaymentID:     fmt.Sprintf("seed-pay-%d", inst.ID),
+				Concept:       "team_fee",
+				Description:   "Cuota del equipo (seed)",
+				Amount:        5000.0,
+				CurrencyID:    "ARS",
+				Status:        "approved",
+				SellerUserID:  &ownerID,
+				InstallmentID: &inst.ID,
+			}
+			s.db.Create(&p)
 			created++
 		}
 	}
