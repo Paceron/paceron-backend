@@ -1,6 +1,11 @@
 package realtime
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+
+	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+)
 
 // Notifier es el emisor genérico de eventos server→client: quien decide el
 // nombre del canal es el caller (el paquete no conoce ningún patrón de canal).
@@ -30,7 +35,15 @@ func (n *HubNotifier) Emit(channel string, payload []byte) {
 	}
 	// Asíncrono: el fan-out corre fuera del request que emite (best-effort;
 	// el Hub descarta si el buffer del receptor está lleno).
-	go n.hub.Broadcast(channel, payload, nil)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				customlogger.Error(nil, "panic en entrega realtime", fmt.Errorf("%v", r),
+					customlogger.Tag("channel", channel))
+			}
+		}()
+		n.hub.Broadcast(channel, payload, nil)
+	}()
 }
 
 // MarshalUpdateSetEvent arma el frame `update:set_event` (D4): data es el

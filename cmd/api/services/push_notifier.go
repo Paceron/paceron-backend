@@ -1,7 +1,9 @@
 package services
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -9,6 +11,8 @@ import (
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 )
+
+const pushSendTimeout = 10 * time.Second
 
 // sendPushToUser dispara una notificación push a todos los dispositivos registrados
 // de un usuario. Es una función de paquete (no un service) a propósito: varios
@@ -46,7 +50,16 @@ func sendPushToUser(
 		return
 	}
 
-	if err := pushClient.SendBatch(ctx, tokenStrings, title, body, data); err != nil {
+	sendCtx := context.Background()
+	var cancel context.CancelFunc
+	if ctx != nil {
+		sendCtx = ctx
+	} else {
+		sendCtx, cancel = context.WithTimeout(sendCtx, pushSendTimeout)
+		defer cancel()
+	}
+
+	if err := pushClient.SendBatch(sendCtx, tokenStrings, title, body, data); err != nil {
 		customlogger.Error(ctx, "error sending push notification", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 			customlogger.Tag("notif_type", notifType))

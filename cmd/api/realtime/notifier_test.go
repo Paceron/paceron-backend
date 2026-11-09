@@ -70,6 +70,37 @@ func TestNotifierEmitIsNonBlocking(t *testing.T) {
 	require.LessOrEqual(t, len(frames), sendBufferSize)
 }
 
+// TestHubNotifierEmitRecoversPanicInDelivery: un panic en la goroutine de
+// entrega (acá simulado con el drop de un cliente) no debe tumbar el proceso.
+func TestHubNotifierEmitRecoversPanicInDelivery(t *testing.T) {
+	hub := NewHub()
+	panicked := make(chan struct{}, 1)
+	c := newClient(7, func() {
+		select {
+		case panicked <- struct{}{}:
+		default:
+		}
+		panic("panic simulado en entrega WS")
+	})
+	hub.Subscribe("session:panic", c)
+
+	frame := []byte(`{"n":1}`)
+	for i := 0; i < sendBufferSize; i++ {
+		require.False(t, c.enqueue(frame))
+	}
+
+	notifier := NewHubNotifier(hub)
+	for i := 0; i < overflowLimit; i++ {
+		notifier.Emit("session:panic", frame)
+	}
+
+	select {
+	case <-panicked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no se disparó la entrega que simula el panic")
+	}
+}
+
 // TestUpdateSessionStatePayloadShape: el frame update:session_state (Gap 26
 // D10) viaja con data = objeto de estado presencial post-write.
 func TestUpdateSessionStatePayloadShape(t *testing.T) {
