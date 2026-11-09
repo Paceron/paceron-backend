@@ -31,7 +31,7 @@
 - `ProcessPayment`: si `validatedInstallment != nil`, comparar `req.TransactionAmount` con `validatedInstallment.Amount` con tolerancia de 0.01; si difiere, devolver error de validación antes de crear el pago o llamar a MP.
 - `CreatePreference`: si `req.InstallmentID != nil`, la suma de `req.Items` debe coincidir con el monto de la cuota; si no, 400. Si no hay cuota, conservar el comportamiento actual.
 - `POST /payments` con `PreferenceID`: antes de leer/mutar, exigir `paymentOwnedBy(ctx, existing, authUserID)`; si no, 404 genérico sin mutar.
-- Webhook: si el pago tiene `InstallmentID` y el resultado está `approved`, cargar la cuota y comparar `result.TransactionAmount` con `installment.Amount`; si el monto es menor, no aplicar la cuota y devolver error para que MP reintente/alerte. No marcar `paid`.
+- Webhook: si el pago tiene `InstallmentID` y el resultado está `approved`, cargar la cuota y comparar `result.TransactionAmount` con `installment.Amount` con tolerancia de 0.01 (cualquier diferencia, under u overpayment, es inválida) antes de actualizar el status del pago local. Si difiere, no marcar el pago como `approved`, no aplicar la cuota y devolver error para que MP reintente/alerte. No marcar `paid`.
 - No cambiar el flujo `concept=order` sin cuota.
 
 ## D5. Lecturas N+1

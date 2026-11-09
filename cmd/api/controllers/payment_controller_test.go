@@ -456,6 +456,37 @@ func TestProcessPayment_AmountMismatch_Returns400(t *testing.T) {
 	service.AssertExpectations(t)
 }
 
+func TestProcessPayment_PreferenceOfAnotherUser_Returns404(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments", controller.ProcessPayment)
+
+	reqBody := payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		PreferenceID:      "pref-ajena",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("ProcessPayment", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, errors.New("payment not found"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var apiErr apierror.APIError
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &apiErr))
+	assert.Equal(t, "Not found", apiErr.Code)
+	service.AssertExpectations(t)
+}
+
 func TestCreatePreference_AmountMismatch_Returns400(t *testing.T) {
 	service := new(mockPaymentService)
 	controller := NewPaymentController(service)
