@@ -1,17 +1,21 @@
 -- Purga manual de tiers pagos y suscripciones del rol `corredor` (Gap 42).
 --
 -- NO es una migración automática: `AutoMigrate` no ejecuta este archivo. Es una
--- limpieza de una sola vez, transaccional e idempotente, para bases de desarrollo
--- y testing. No correrla contra local/demo/producción sin revisar antes.
+-- limpieza de una sola vez, transaccional e idempotente. Solo bases descartables
+-- de test. Nunca local/demo/producción.
 --
--- Conserva el tier base interno del corredor (menor `hierarchy`, normalmente
--- `base`), porque `user_roles.tier_id` es NOT NULL y `GET /auth/permissions`
--- sigue resolviéndolo. Reasigna cualquier asignación de corredor al base antes
--- de borrar los tiers pagos, y no toca entrenador, roles globales ni el base.
+-- Conserva el tier base interno del corredor (menor `hierarchy` activa con
+-- `payment_required=false`). `user_roles.tier_id` es NOT NULL porque toda
+-- asignación de rol exige un tier. `GET /auth/permissions` NO usa ese caché:
+-- resuelve el tier efectivo por la suscripción `active` del ledger o, si no hay,
+-- por `FindLowestByRole` del rol. Con el base presente, los permisos del
+-- corredor siguen resolviendo base. Reasigna las asignaciones al base antes de
+-- borrar los tiers pagos; no toca entrenador, roles globales ni el base.
 --
--- Efecto colateral esperado: `payments.installment_id` tiene FK `ON DELETE SET
--- NULL`, así que los pagos ya conciliados conservan su fila pero pierden el
--- vínculo a la cuota purgada.
+-- Efecto colateral esperado: en bases migradas por la app existe la FK
+-- `payments.installment_id ON DELETE SET NULL`, así que los pagos ya conciliados
+-- conservan su fila pero pierden el vínculo a la cuota purgada. En bases sin esa
+-- FK, `installment_id` conserva el valor viejo.
 --
 -- Uso:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/purge_runner_tiers.sql
@@ -22,6 +26,8 @@ DO $$
 DECLARE
   v_role_id bigint;
   v_base_tier_id bigint;
+  v_tier_count int;
+  v_tier_is_free boolean;
 BEGIN
   SELECT id INTO v_role_id
   FROM roles
@@ -34,12 +40,14 @@ BEGIN
 
   SELECT id INTO v_base_tier_id
   FROM tiers
-  WHERE role_id = v_role_id AND deleted_at IS NULL
+  WHERE role_id = v_role_id
+    AND deleted_at IS NULL
+    AND payment_required = FALSE
   ORDER BY hierarchy ASC, id ASC
   LIMIT 1;
 
   IF v_base_tier_id IS NULL THEN
-    RAISE EXCEPTION 'el rol corredor no tiene tier base activo; purga abortada';
+    RAISE EXCEPTION 'el rol corredor no tiene un tier base gratuito activo; purga abortada (no se conservará un tier pago como base)';
   END IF;
 
   UPDATE user_roles
@@ -62,14 +70,45 @@ BEGIN
   DELETE FROM tiers
   WHERE role_id = v_role_id AND id <> v_base_tier_id;
 
+  SELECT count(*), bool_and(NOT payment_required)
+  INTO v_tier_count, v_tier_is_free
+  FROM tiers
+  WHERE role_id = v_role_id AND deleted_at IS NULL;
+
+  IF v_tier_count <> 1 THEN
+    RAISE EXCEPTION 'verificación de purga falló: el corredor tiene % tiers activos (se esperaba exactamente 1)', v_tier_count;
+  END IF;
+  IF v_tier_is_free IS DISTINCT FROM TRUE THEN
+    RAISE EXCEPTION 'verificación de purga falló: el tier restante del corredor no es gratuito';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM user_roles ur
+    WHERE ur.role_id = v_role_id
+      AND NOT EXISTS (
+        SELECT 1
+        FROM tiers t
+        WHERE t.id = ur.tier_id
+          AND t.role_id = v_role_id
+          AND t.deleted_at IS NULL
+          AND t.payment_required = FALSE
+      )
+  ) THEN
+    RAISE EXCEPTION 'verificación de purga falló: hay asignaciones de corredor fuera del tier base gratuito';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM user_role_tier_subscriptions WHERE role_id = v_role_id
+  ) THEN
+    RAISE EXCEPTION 'verificación de purga falló: quedan suscripciones de tier del corredor';
+  END IF;
+
   RAISE NOTICE 'purga del corredor completada (role_id=%, base_tier_id=%)',
     v_role_id, v_base_tier_id;
 END $$;
 
 COMMIT;
 
--- Verificación posterior: el base sigue existiendo, no quedan tiers pagos ni
--- suscripciones del corredor y ninguna asignación apunta fuera del base.
+-- Resumen informativo (la verificación que aborta/revierte ya corrió en el DO).
 SELECT
   (SELECT count(*) FROM tiers t
      JOIN roles r ON r.id = t.role_id
@@ -81,4 +120,4 @@ SELECT
      JOIN roles r ON r.id = ur.role_id
      JOIN tiers t ON t.id = ur.tier_id
     WHERE r.name = 'corredor'
-      AND (t.role_id <> ur.role_id OR t.deleted_at IS NOT NULL)) AS asignaciones_fuera_del_base;
+      AND (t.role_id <> ur.role_id OR t.deleted_at IS NOT NULL OR t.payment_required)) AS asignaciones_fuera_del_base;

@@ -24,13 +24,14 @@
 
 Nuevo `scripts/purge_runner_tiers.sql`, transaccional e idempotente:
 
-1. Resolver `role_id` de `corredor` y el `base_tier_id` de menor jerarquía.
+1. Resolver `role_id` de `corredor` y el `base_tier_id` de menor jerarquía **con `payment_required = false`**; si no hay tier base gratuito, abortar sin conservar un tier pago como base.
 2. Reasignar a `base_tier_id` cualquier `user_roles` de corredor que apunte a otro tier.
 3. Borrar `tier_permissions` de los tiers de corredor distintos del base.
-4. Borrar `installments` de suscripciones de tier cuyo `tier_id` sea de corredor y distinto del base.
-5. Borrar esas `user_role_tier_subscriptions`.
+4. Borrar `installments` de **todas** las suscripciones de tier del rol corredor (el base es gratuito y no debe tener suscripciones).
+5. Borrar **todas** las `user_role_tier_subscriptions` del rol corredor.
 6. Borrar físicamente los tiers de corredor distintos del base.
-7. No tocar el tier base, los roles, ni los pagos ya conciliados.
+7. Verificar que quede exactamente un tier de corredor, que sea gratuito, y que no queden asignaciones fuera del base ni suscripciones del rol; si falla, revertir la transacción.
+8. No tocar el tier base, los roles, ni los pagos ya conciliados. En bases migradas por la app, la FK `payments.installment_id ON DELETE SET NULL` deja los pagos sin vínculo a la cuota purgada (no borra ni cambia su monto/estado); sin esa FK, el campo conserva el valor viejo.
 
 El script no se ejecuta automáticamente ni desde migraciones. Se documenta en `docs/STATE_MACHINES.md` y en el RUNBOOK local.
 
@@ -40,7 +41,7 @@ El script no se ejecuta automáticamente ni desde migraciones. Se documenta en `
 - `user_role_service_test`: asignar corredor sin tier usa el base; con tier explícito devuelve error; entrenador con tier pago sigue funcionando.
 - `tier_subscription_service_test`: `ChangeTier` de corredor devuelve error; entrenador no cambia.
 - `permissions_query_service_test`: un corredor con base interno sigue devolviendo permisos y tier base.
-- `scripts/purge_runner_tiers.sql`: revisión manual y prueba en una base de test descartable con fixtures; no se ejecuta en local/demo.
+- `scripts/purge_runner_tiers.sql`: revisión manual y prueba en una base de test descartable con fixtures; solo bases descartables de test, nunca local/demo/producción.
 
 ## D6. Verificación
 

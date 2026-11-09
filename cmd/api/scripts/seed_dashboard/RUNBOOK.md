@@ -384,20 +384,25 @@ coincide, sale con error en lugar de dejar un dataset incoherente.
 El perfil full todavía siembra tiers `medium`/`premium` de corredor y sus
 suscripciones como fixtures de compatibilidad (ver la tabla de usuarios). En el
 producto el corredor ya no tiene catálogo ni cambio de tier: `GET /tiers?role_id=<corredor>`
-devuelve `[]` y el rol conserva solo un **tier base interno** para que
-`user_roles.tier_id` y `GET /auth/permissions` sigan funcionando.
+devuelve `[]` y el rol conserva solo un **tier base interno** (`payment_required=false`).
+`user_roles.tier_id` es NOT NULL porque toda asignación exige un tier; `GET /auth/permissions`
+no usa ese caché: resuelve por suscripción `active` o, sin ella, por `FindLowestByRole`,
+así que los permisos del corredor siguen resolviendo el base.
 
-Para bases de desarrollo/testing donde se quieran purgar esos tiers pagos y sus
-suscripciones hay un script **manual**, transaccional e idempotente:
+Para purgar esos tiers pagos y sus suscripciones hay un script **manual**, transaccional e
+idempotente. **Solo bases descartables de test; nunca local/demo/producción.**
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/purge_runner_tiers.sql
 ```
 
 No es una migración automática (`AutoMigrate` no lo ejecuta). Reasigna las
-asignaciones de corredor al tier base y borra `tier_permissions`, `installments`,
-`user_role_tier_subscriptions` y los tiers de corredor distintos del base, sin
-tocar entrenador ni el base. Detalle del contrato en `docs/STATE_MACHINES.md` §10.
+asignaciones de corredor al tier base gratuito y borra `tier_permissions`,
+**todas** las `installments` y `user_role_tier_subscriptions` del rol corredor y
+los tiers de corredor distintos del base, sin tocar entrenador ni el base. En bases
+migradas por la app, la FK `payments.installment_id ON DELETE SET NULL` deja los
+pagos conciliados sin vínculo a la cuota purgada; sin esa FK, el campo conserva el
+valor viejo. Detalle del contrato en `docs/STATE_MACHINES.md` §10.
 
 Ojo con el orden en una base con perfil full: después de purgar, `make fullseed-verify`
 puede fallar porque los usuarios R1/R2/R3 ya no tienen sus tiers/suscripciones de

@@ -259,14 +259,20 @@ deauthorized ──reconexión mp-connect──► authorized
 ### Invariantes
 
 - Solo `authorized` habilita cobrar con split.
+- Sin `authorized`, las suscripciones de contenido pago del rol quedan sin cobrador hasta reconectar.
 
 ---
 
 ## 10. Tiers del rol corredor — modelo interno (Gap 42)
 
 El corredor **no tiene catálogo de tiers ni cambio de tier**. `user_roles.tier_id` sigue siendo
-NOT NULL, así que el rol conserva un único **tier base interno** (`hierarchy` mínima,
-`payment_required=false`) como soporte de `AssignRole` y `GET /api/v1/auth/permissions`.
+NOT NULL porque toda asignación de rol exige un tier, así que el rol conserva un único
+**tier base interno** (`hierarchy` mínima, `payment_required=false`). Ese tier base es el que
+`AssignRole` resuelve con `FindLowestByRole` cuando no se envía `tier_id`.
+
+`GET /api/v1/auth/permissions` **no usa `user_roles.tier_id`**: resuelve el tier efectivo por la
+suscripción `active` del ledger y, si no hay ninguna, por `FindLowestByRole` del rol. Por eso,
+aunque se purguen los tiers pagos del corredor, sus permisos siguen resolviendo el base interno.
 
 ### Contrato API
 
@@ -279,23 +285,24 @@ NOT NULL, así que el rol conserva un único **tier base interno** (`hierarchy` 
 ### Purga manual — `scripts/purge_runner_tiers.sql`
 
 Script **manual, transaccional e idempotente**, no una migración: `AutoMigrate` no lo
-ejecuta y no corre solo en ningún arranque. Se usa una vez por base de desarrollo/testing,
-nunca contra local/demo/producción sin revisar antes.
+ejecuta y no corre solo en ningún arranque. **Solo bases descartables de test; nunca
+local/demo/producción.**
 
 Pasos (dentro de una transacción):
 
 1. Resuelve `roles.id` de `corredor`; si no existe, no hace nada.
-2. Resuelve el tier base como el de menor `hierarchy` activa del rol; si no existe, aborta.
+2. Resuelve el tier base como el de menor `hierarchy` activa con `payment_required=false` del rol; si no existe un tier base gratuito, aborta.
 3. Reasigna al base todo `user_roles` de corredor que apunte a otro tier (incluye filas soft-deleted).
-4. Borra `installments` de suscripciones de tier del corredor y luego esas `user_role_tier_subscriptions`.
+4. Borra `installments` de **todas** las suscripciones de tier del rol corredor y luego todas esas `user_role_tier_subscriptions` (el base es gratuito y no debe tener suscripciones).
 5. Borra `tier_permissions` de los tiers de corredor distintos del base.
 6. Borra físicamente los tiers de corredor distintos del base.
+7. Verifica que quede exactamente un tier de corredor, que sea gratuito, y que no queden asignaciones fuera del base ni suscripciones del rol; si falla, revierte la transacción.
 
 No toca el tier base, el rol `entrenador`, los roles globales ni la tabla `roles`.
-Los pagos ya conciliados conservan su fila; por la FK `payments.installment_id ON DELETE SET NULL`
-pierden el vínculo a la cuota purgada.
+Los pagos ya conciliados conservan su fila. En bases migradas por la app, donde existe la FK
+`payments.installment_id ON DELETE SET NULL`, pierden el vínculo a la cuota purgada; en bases
+sin esa FK el campo conserva el valor viejo.
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/purge_runner_tiers.sql
 ```
-- Sin `authorized`, las suscripciones de contenido pago del rol quedan sin cobrador hasta reconectar.
