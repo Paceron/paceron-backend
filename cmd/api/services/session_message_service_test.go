@@ -23,6 +23,8 @@ type mockSessionInstanceDao struct {
 	hasFeedbackFn            func(ctx *gin.Context, id int64) (bool, error)
 	hasInstanceAccessFn      func(ctx *gin.Context, instanceID, callerID int64) (bool, error)
 	hasInstanceAccessBatchFn func(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
+	teamIDForSessionFn       func(ctx *gin.Context, instanceID int64) (*int64, error)
+	exerciseBelongsFn        func(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, error)
 }
 
 func (m *mockSessionInstanceDao) Create(ctx *gin.Context, s *dbs.SessionInstance) error {
@@ -82,6 +84,20 @@ func (m *mockSessionInstanceDao) HasInstanceAccessBatch(ctx *gin.Context, instan
 		return m.hasInstanceAccessBatchFn(ctx, instanceID, userIDs)
 	}
 	return map[int64]bool{}, nil
+}
+
+func (m *mockSessionInstanceDao) TeamIDForSessionInstance(ctx *gin.Context, instanceID int64) (*int64, error) {
+	if m.teamIDForSessionFn != nil {
+		return m.teamIDForSessionFn(ctx, instanceID)
+	}
+	return nil, nil
+}
+
+func (m *mockSessionInstanceDao) ExerciseBelongsToSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, error) {
+	if m.exerciseBelongsFn != nil {
+		return m.exerciseBelongsFn(ctx, instanceID, exerciseInstanceID)
+	}
+	return false, nil
 }
 
 // mockSessionMessageDao simula la persistencia de mensajes y recipients.

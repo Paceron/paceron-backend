@@ -309,13 +309,13 @@ func NewApplication() *Application {
 	attendanceDao := daos.NewAttendanceDao(db)
 	attendanceService := services.NewAttendanceService(attendanceDao, groupDao, groupUserDao, userDao, config.AttendanceBaseURL)
 
-	// Workout Feedback flow (feedback de entrenamiento)
-	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
-	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao)
-
 	// Realtime WS gateway (ws-gateway-sesiones D8): hub en memoria + authorizer
 	// session:{id} (delega HasInstanceAccess) + mismos orígenes que el middleware CORS.
 	sessionInstanceDao := daos.NewSessionInstanceDao(db)
+
+	// Workout Feedback flow (feedback de entrenamiento)
+	workoutFeedbackDao := daos.NewWorkoutFeedbackDao(db)
+	workoutFeedbackService := services.NewWorkoutFeedbackService(workoutFeedbackDao, sessionInstanceDao)
 
 	// Comparación planificado vs realizado (comparacion-planificado-realizado):
 	// DAO de solo lectura propio + HasInstanceAccess para el acceso.

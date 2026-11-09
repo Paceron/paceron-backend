@@ -65,12 +65,14 @@ type WorkoutFeedbackServiceInterface interface {
 
 type workoutFeedbackService struct {
 	workoutFeedbackDao daos.WorkoutFeedbackDAOInterface
+	sessionInstanceDao daos.SessionInstanceDaoInterface
 }
 
 // NewWorkoutFeedbackService crea una nueva instancia de WorkoutFeedbackService.
-func NewWorkoutFeedbackService(workoutFeedbackDao daos.WorkoutFeedbackDAOInterface) WorkoutFeedbackServiceInterface {
+func NewWorkoutFeedbackService(workoutFeedbackDao daos.WorkoutFeedbackDAOInterface, sessionInstanceDao daos.SessionInstanceDaoInterface) WorkoutFeedbackServiceInterface {
 	return &workoutFeedbackService{
 		workoutFeedbackDao: workoutFeedbackDao,
+		sessionInstanceDao: sessionInstanceDao,
 	}
 }
 
@@ -129,6 +131,43 @@ func (s *workoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req 
 			}
 		}
 		athleteUserID = *req.AthleteUserID
+	}
+
+	hasAccess, err := s.sessionInstanceDao.HasInstanceAccess(ctx, req.AssignedSessionID, authUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAccess {
+		return nil, ErrWorkoutFeedbackForbidden
+	}
+	if athleteUserID != authUserID {
+		hasAccess, err = s.sessionInstanceDao.HasInstanceAccess(ctx, req.AssignedSessionID, athleteUserID)
+		if err != nil {
+			return nil, err
+		}
+		if !hasAccess {
+			return nil, ErrWorkoutFeedbackForbidden
+		}
+	}
+
+	belongs, err := s.sessionInstanceDao.ExerciseBelongsToSessionInstance(ctx, req.AssignedSessionID, req.AssignedExerciseID)
+	if err != nil {
+		return nil, err
+	}
+	if !belongs {
+		return nil, fmt.Errorf("%w: assigned_exercise_id no pertenece a la sesión asignada", ErrWorkoutFeedbackInvalid)
+	}
+
+	derivedTeamID, err := s.sessionInstanceDao.TeamIDForSessionInstance(ctx, req.AssignedSessionID)
+	if err != nil {
+		return nil, err
+	}
+	if ateamID != nil {
+		if derivedTeamID == nil || *derivedTeamID != *ateamID {
+			return nil, fmt.Errorf("%w: team_id no coincide con el equipo de la sesión asignada", ErrWorkoutFeedbackInvalid)
+		}
+	} else {
+		ateamID = derivedTeamID
 	}
 
 	feedback := &dbs.WorkoutFeedback{
@@ -374,6 +413,14 @@ func (s *workoutFeedbackService) GetSessionFeedback(ctx *gin.Context, authUserID
 			return nil, ErrWorkoutFeedbackForbidden
 		}
 		target = *athleteUserID
+	}
+
+	hasAccess, err := s.sessionInstanceDao.HasInstanceAccess(ctx, sessionInstanceID, authUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAccess {
+		return nil, ErrWorkoutFeedbackForbidden
 	}
 
 	feedbacks, err := s.workoutFeedbackDao.GetBySession(ctx, sessionInstanceID, &target)

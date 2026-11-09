@@ -167,6 +167,15 @@ func (m *mockWorkoutFeedbackDao) GroupsByIDs(ctx *gin.Context, groupIDs []int64)
 	return nil, nil
 }
 
+// fbAccessDao devuelve un DAO de instancias que autoriza todo y considera
+// todo ejercicio linkeado: el default de los tests que no ejercitan los guards.
+func fbAccessDao() *mockSessionInstanceDao {
+	return &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+	}
+}
+
 func validCreateRequest() workoutfeedback.CreateFeedbackRequest {
 	return workoutfeedback.CreateFeedbackRequest{
 		AssignedSessionID:  1,
@@ -186,7 +195,7 @@ func TestWorkoutFeedbackService_Create_Self(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	feedback, err := svc.Create(nil, 7, validCreateRequest())
 
@@ -209,7 +218,7 @@ func TestWorkoutFeedbackService_Create_TrainerForAthlete_Owned(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	req := validCreateRequest()
 	athlete := int64(5)
@@ -228,7 +237,7 @@ func TestWorkoutFeedbackService_Create_TrainerForAthlete_NotOwned(t *testing.T) 
 			return false, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	req := validCreateRequest()
 	athlete := int64(5)
@@ -245,7 +254,7 @@ func TestWorkoutFeedbackService_Create_Duplicate(t *testing.T) {
 			return daos.ErrWorkoutFeedbackDuplicate
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Create(nil, 7, validCreateRequest())
 
@@ -313,7 +322,7 @@ func TestWorkoutFeedbackService_Create_Validation(t *testing.T) {
 		},
 	}
 
-	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{})
+	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{}, fbAccessDao())
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := validCreateRequest()
@@ -325,7 +334,7 @@ func TestWorkoutFeedbackService_Create_Validation(t *testing.T) {
 }
 
 func TestWorkoutFeedbackService_Create_EndedBeforeStarted(t *testing.T) {
-	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{})
+	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{}, fbAccessDao())
 	req := validCreateRequest()
 	req.StartedAt = fbTimePtr(past)
 	req.EndedAt = fbTimePtr(earlier)
@@ -343,7 +352,7 @@ func TestWorkoutFeedbackService_GetByID_AsAthlete(t *testing.T) {
 			return fb, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	got, err := svc.GetByID(nil, 7, 1)
 
@@ -354,7 +363,7 @@ func TestWorkoutFeedbackService_GetByID_AsAthlete(t *testing.T) {
 func TestWorkoutFeedbackService_GetByID_AsReporter(t *testing.T) {
 	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 8, FeedbackOwnerUserID: 7}
 	mock := &mockWorkoutFeedbackDao{getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil }}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetByID(nil, 7, 1)
 
@@ -372,7 +381,7 @@ func TestWorkoutFeedbackService_GetByID_AsTeamOwner(t *testing.T) {
 			return true, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetByID(nil, 7, 1)
 
@@ -382,7 +391,7 @@ func TestWorkoutFeedbackService_GetByID_AsTeamOwner(t *testing.T) {
 func TestWorkoutFeedbackService_GetByID_Forbidden(t *testing.T) {
 	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 8, FeedbackOwnerUserID: 9}
 	mock := &mockWorkoutFeedbackDao{getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil }}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetByID(nil, 7, 1)
 
@@ -395,7 +404,7 @@ func TestWorkoutFeedbackService_GetByID_NotFound(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackNotFound
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetByID(nil, 7, 1)
 
@@ -410,7 +419,7 @@ func TestWorkoutFeedbackService_Search_SelfScope(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{})
 
@@ -430,7 +439,7 @@ func TestWorkoutFeedbackService_Search_ScopeSelfWithExtraFilters(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{
 		AssignedSessionID:   &sessionID,
@@ -456,7 +465,7 @@ func TestWorkoutFeedbackService_Search_TeamScope(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{TeamID: &teamID})
 
@@ -471,7 +480,7 @@ func TestWorkoutFeedbackService_Search_TeamNotFound(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		teamExistsFn: func(ctx *gin.Context, id int64) (bool, error) { return false, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{TeamID: &teamID})
 
@@ -484,7 +493,7 @@ func TestWorkoutFeedbackService_Search_TeamNotOwner(t *testing.T) {
 		teamExistsFn:  func(ctx *gin.Context, id int64) (bool, error) { return true, nil },
 		isTeamOwnerFn: func(ctx *gin.Context, id, user int64) (bool, error) { return false, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{TeamID: &teamID})
 
@@ -501,7 +510,7 @@ func TestWorkoutFeedbackService_Search_AthleteScope(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{AthleteUserID: &athleteID})
 
@@ -515,7 +524,7 @@ func TestWorkoutFeedbackService_Search_AthleteNotOwned(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		userInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) { return false, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{AthleteUserID: &athleteID})
 
@@ -531,7 +540,7 @@ func TestWorkoutFeedbackService_Search_AthleteIsSelf(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{AthleteUserID: &athleteID})
 
@@ -541,7 +550,7 @@ func TestWorkoutFeedbackService_Search_AthleteIsSelf(t *testing.T) {
 }
 
 func TestWorkoutFeedbackService_Search_InvalidDates(t *testing.T) {
-	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{})
+	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{}, fbAccessDao())
 	badFrom := "not-a-date"
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{SessionDateFrom: &badFrom})
@@ -559,7 +568,7 @@ func TestWorkoutFeedbackService_Search_DateRangePassed(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Search(nil, 7, workoutfeedback.SearchFilters{SessionDateFrom: &from, SessionDateTo: &to})
 
@@ -581,7 +590,7 @@ func TestWorkoutFeedbackService_Update_Partial(t *testing.T) {
 			return &updated, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	rpe := int16(8)
 	req := workoutfeedback.UpdateFeedbackRequest{RPE: &rpe}
@@ -599,7 +608,7 @@ func TestWorkoutFeedbackService_Update_NotFound(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackNotFound
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{})
 
@@ -611,7 +620,7 @@ func TestWorkoutFeedbackService_Update_Forbidden(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{})
 
@@ -626,7 +635,7 @@ func TestWorkoutFeedbackService_Update_Duplicate(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackDuplicate
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{SetNumber: fbIntPtr(5)})
 
@@ -643,7 +652,7 @@ func TestWorkoutFeedbackService_SoftDelete_Reporter(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	err := svc.SoftDelete(nil, 7, 1)
 
@@ -656,7 +665,7 @@ func TestWorkoutFeedbackService_SoftDelete_Forbidden(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	err := svc.SoftDelete(nil, 7, 1)
 
@@ -669,7 +678,7 @@ func TestWorkoutFeedbackService_SoftDelete_NotFound(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackNotFound
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	err := svc.SoftDelete(nil, 7, 1)
 
@@ -698,7 +707,7 @@ func TestWorkoutFeedbackService_CreatePoints_Success(t *testing.T) {
 			return 2, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	result, err := svc.CreatePoints(nil, 7, 1, validPointsRequest())
 
@@ -716,7 +725,7 @@ func TestWorkoutFeedbackService_CreatePoints_RetryComputesSkipped(t *testing.T) 
 			return 0, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	result, err := svc.CreatePoints(nil, 7, 1, validPointsRequest())
 
@@ -731,7 +740,7 @@ func TestWorkoutFeedbackService_CreatePoints_NotFound(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackNotFound
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.CreatePoints(nil, 7, 1, validPointsRequest())
 
@@ -743,7 +752,7 @@ func TestWorkoutFeedbackService_CreatePoints_Forbidden(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.CreatePoints(nil, 7, 1, validPointsRequest())
 
@@ -812,7 +821,7 @@ func TestWorkoutFeedbackService_CreatePoints_Validation(t *testing.T) {
 			mock := &mockWorkoutFeedbackDao{
 				getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
 			}
-			svc := NewWorkoutFeedbackService(mock)
+			svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 			req := validPointsRequest()
 			tc.mutate(&req)
@@ -840,7 +849,7 @@ func TestWorkoutFeedbackService_GetPoints_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	points, err := svc.GetPoints(nil, 7, 1)
 
@@ -857,7 +866,7 @@ func TestWorkoutFeedbackService_GetPoints_EmptyIsArrayNotNil(t *testing.T) {
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	points, err := svc.GetPoints(nil, 7, 1)
 
@@ -871,7 +880,7 @@ func TestWorkoutFeedbackService_GetPoints_Forbidden(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{
 		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetPoints(nil, 7, 1)
 
@@ -884,7 +893,7 @@ func TestWorkoutFeedbackService_GetPoints_NotFound(t *testing.T) {
 			return nil, daos.ErrWorkoutFeedbackNotFound
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetPoints(nil, 7, 1)
 
@@ -899,7 +908,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_Self(t *testing.T) {
 			return []dbs.WorkoutFeedback{{ID: 1, AssignedSessionID: 10}}, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, nil)
 
@@ -917,7 +926,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_SelfPassedExplicitly(t *testi
 			return []dbs.WorkoutFeedback{}, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	// athlete_user_id = authUserID: no hace falta trainer-check.
 	self := int64(7)
@@ -941,7 +950,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_TrainerForAthleteInOwnedTeam(
 			return []dbs.WorkoutFeedback{{ID: 1, AthleteUserID: 8}}, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	athlete := int64(8)
 	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
@@ -958,7 +967,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_TrainerForOutsider_Forbidden(
 			return false, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	athlete := int64(8)
 	_, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
@@ -968,7 +977,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_TrainerForOutsider_Forbidden(
 
 func TestWorkoutFeedbackService_GetSessionFeedback_InvalidAthleteID(t *testing.T) {
 	mock := &mockWorkoutFeedbackDao{}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	athlete := int64(0)
 	_, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
@@ -982,7 +991,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_NilIsEmptySlice(t *testing.T)
 			return nil, nil
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	feedbacks, err := svc.GetSessionFeedback(nil, 7, 10, nil)
 
@@ -997,7 +1006,7 @@ func TestWorkoutFeedbackService_GetSessionFeedback_DAOErrorPropagates(t *testing
 			return nil, assert.AnError
 		},
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.GetSessionFeedback(nil, 7, 10, nil)
 
@@ -1016,3 +1025,239 @@ var (
 )
 
 func fbTimePtr(v time.Time) *time.Time { return &v }
+
+// Guards de acceso y coherencia de la instancia (optimizaciones D2).
+
+func TestWorkoutFeedbackService_Create_CrossTenant_Forbidden(t *testing.T) {
+	created := false
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	_, err := svc.Create(nil, 7, validCreateRequest())
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, created)
+}
+
+func TestWorkoutFeedbackService_Create_AthleteCrossTenant_Forbidden(t *testing.T) {
+	created := false
+	mock := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, callerID int64) (bool, error) {
+			return callerID == 7, nil
+		},
+		exerciseBelongsFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	req := validCreateRequest()
+	athlete := int64(5)
+	req.AthleteUserID = &athlete
+
+	_, err := svc.Create(nil, 7, req)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, created)
+}
+
+func TestWorkoutFeedbackService_Create_ExerciseNotInSession_Invalid(t *testing.T) {
+	created := false
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	_, err := svc.Create(nil, 7, validCreateRequest())
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+	assert.Contains(t, err.Error(), "assigned_exercise_id")
+	assert.False(t, created)
+}
+
+func TestWorkoutFeedbackService_Create_TeamMismatch_Invalid(t *testing.T) {
+	created := false
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	derived := int64(3)
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return &derived, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	req := validCreateRequest()
+	wrong := int64(4)
+	req.TeamID = &wrong
+
+	_, err := svc.Create(nil, 7, req)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+	assert.Contains(t, err.Error(), "team_id")
+	assert.False(t, created)
+}
+
+func TestWorkoutFeedbackService_Create_TeamDerivedWhenAbsent(t *testing.T) {
+	var captured *dbs.WorkoutFeedback
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			captured = feedback
+			return nil
+		},
+	}
+	derived := int64(3)
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return &derived, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	_, err := svc.Create(nil, 7, validCreateRequest())
+
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.NotNil(t, captured.TeamID)
+	assert.Equal(t, int64(3), *captured.TeamID)
+}
+
+func TestWorkoutFeedbackService_Create_TeamMatchesDerived(t *testing.T) {
+	var captured *dbs.WorkoutFeedback
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			captured = feedback
+			return nil
+		},
+	}
+	derived := int64(3)
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return &derived, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	req := validCreateRequest()
+	team := int64(3)
+	req.TeamID = &team
+
+	_, err := svc.Create(nil, 7, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.NotNil(t, captured.TeamID)
+	assert.Equal(t, int64(3), *captured.TeamID)
+}
+
+func TestWorkoutFeedbackService_Create_SyntheticInstanceWithoutTeam(t *testing.T) {
+	var captured *dbs.WorkoutFeedback
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			captured = feedback
+			return nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return nil, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	_, err := svc.Create(nil, 7, validCreateRequest())
+
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	assert.Nil(t, captured.TeamID)
+}
+
+func TestWorkoutFeedbackService_Create_TeamForSyntheticRejected(t *testing.T) {
+	created := false
+	mock := &mockWorkoutFeedbackDao{
+		createFn: func(ctx *gin.Context, feedback *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return nil, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	req := validCreateRequest()
+	team := int64(3)
+	req.TeamID = &team
+
+	_, err := svc.Create(nil, 7, req)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+	assert.False(t, created)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_NoInstanceAccess_Forbidden(t *testing.T) {
+	read := false
+	mock := &mockWorkoutFeedbackDao{
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			read = true
+			return []dbs.WorkoutFeedback{}, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	_, err := svc.GetSessionFeedback(nil, 7, 10, nil)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, read)
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_TrainerOwnedAthleteNoInstanceAccess(t *testing.T) {
+	read := false
+	mock := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		getBySessionFn: func(ctx *gin.Context, sessionInstanceID int64, athleteUserID *int64) ([]dbs.WorkoutFeedback, error) {
+			read = true
+			return []dbs.WorkoutFeedback{}, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	athlete := int64(8)
+	_, err := svc.GetSessionFeedback(nil, 7, 10, &athlete)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, read)
+}

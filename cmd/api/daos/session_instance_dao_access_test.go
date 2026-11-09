@@ -214,3 +214,106 @@ func TestSessionInstanceDao_HasInstanceAccessBatch(t *testing.T) {
 		assert.Empty(t, access)
 	})
 }
+
+// TeamIDForSessionInstance: el team sale del día de calendario que referencia
+// la instancia (grupo y equipo no borrados). Sin día (sintética/huérfana) o con
+// grupo/equipo dado de baja devuelve nil.
+func TestSessionInstanceDao_TeamIDForSessionInstance(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := accessFixtureSetup(t, db)
+	dao := NewSessionInstanceDao(db)
+
+	t.Run("dia_con_equipo", func(t *testing.T) {
+		teamID, err := dao.TeamIDForSessionInstance(nil, f.instDay.ID)
+		require.NoError(t, err)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("huerfana_sin_dia", func(t *testing.T) {
+		orphan := &dbs.SessionInstance{Name: "Huérfana"}
+		require.NoError(t, db.Create(orphan).Error)
+		teamID, err := dao.TeamIDForSessionInstance(nil, orphan.ID)
+		require.NoError(t, err)
+		assert.Nil(t, teamID)
+	})
+
+	t.Run("sintetica_route_sin_dia", func(t *testing.T) {
+		routeInst := &dbs.SessionInstance{Name: "Sintética route"}
+		require.NoError(t, db.Create(routeInst).Error)
+		teamID, err := dao.TeamIDForSessionInstance(nil, routeInst.ID)
+		require.NoError(t, err)
+		assert.Nil(t, teamID)
+	})
+
+	t.Run("dia_con_grupo_borrado", func(t *testing.T) {
+		team := testTeam(db, "equipo_access_group_deleted", f.owner.ID)
+		group := testGroup(db, "grupo_access_deleted", team.ID)
+		inst := &dbs.SessionInstance{Name: "Grupo borrado"}
+		require.NoError(t, db.Create(inst).Error)
+		require.NoError(t, db.Create(&dbs.GroupCalendarDay{
+			GroupID: group.ID, Date: time.Now(), Kind: "training", SessionInstanceID: &inst.ID,
+		}).Error)
+		now := time.Now()
+		require.NoError(t, db.Model(&dbs.Group{}).Where("id = ?", group.ID).Update("deleted_at", now).Error)
+
+		teamID, err := dao.TeamIDForSessionInstance(nil, inst.ID)
+		require.NoError(t, err)
+		assert.Nil(t, teamID)
+	})
+
+	t.Run("dia_con_equipo_borrado", func(t *testing.T) {
+		team := testTeam(db, "equipo_access_team_deleted", f.owner.ID)
+		group := testGroup(db, "grupo_access_team_deleted", team.ID)
+		inst := &dbs.SessionInstance{Name: "Equipo borrado"}
+		require.NoError(t, db.Create(inst).Error)
+		require.NoError(t, db.Create(&dbs.GroupCalendarDay{
+			GroupID: group.ID, Date: time.Now(), Kind: "training", SessionInstanceID: &inst.ID,
+		}).Error)
+		now := time.Now()
+		require.NoError(t, db.Model(&dbs.Team{}).Where("id = ?", team.ID).Update("deleted_at", now).Error)
+
+		teamID, err := dao.TeamIDForSessionInstance(nil, inst.ID)
+		require.NoError(t, err)
+		assert.Nil(t, teamID)
+	})
+}
+
+func TestSessionInstanceDao_ExerciseBelongsToSessionInstance(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := accessFixtureSetup(t, db)
+	dao := NewSessionInstanceDao(db)
+
+	linked := &dbs.ExerciseInstance{Name: "Serie linkeada", Kind: "running"}
+	require.NoError(t, db.Create(linked).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: f.instDay.ID, ExerciseInstanceID: linked.ID, Role: "main", RepeatCount: 1,
+	}).Error)
+
+	other := &dbs.ExerciseInstance{Name: "Serie ajena", Kind: "running"}
+	require.NoError(t, db.Create(other).Error)
+
+	t.Run("ejercicio_de_la_instancia", func(t *testing.T) {
+		ok, err := dao.ExerciseBelongsToSessionInstance(nil, f.instDay.ID, linked.ID)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("ejercicio_ajeno", func(t *testing.T) {
+		ok, err := dao.ExerciseBelongsToSessionInstance(nil, f.instDay.ID, other.ID)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("ejercicio_de_otra_instancia", func(t *testing.T) {
+		otherInst := &dbs.SessionInstance{Name: "Otra instancia"}
+		require.NoError(t, db.Create(otherInst).Error)
+		require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+			SessionInstanceID: otherInst.ID, ExerciseInstanceID: other.ID, Role: "main", RepeatCount: 1,
+		}).Error)
+
+		ok, err := dao.ExerciseBelongsToSessionInstance(nil, f.instDay.ID, other.ID)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+}
