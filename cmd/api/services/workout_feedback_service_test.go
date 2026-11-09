@@ -1261,3 +1261,205 @@ func TestWorkoutFeedbackService_GetSessionFeedback_TrainerOwnedAthleteNoInstance
 	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
 	assert.False(t, read)
 }
+
+// Guards de Update: mover instancia/ejercicio/team repite las validaciones de
+// Create sin agregar queries cuando solo se editan métricas/annotations.
+
+func TestWorkoutFeedbackService_Update_ContentUnchanged_NoInstanceQueries(t *testing.T) {
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, AssignedSessionID: 10, AssignedExerciseID: 2}
+	var applied map[string]interface{}
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			applied = updates
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { t.Fatal("no debe consultar acceso"); return false, nil },
+		exerciseBelongsFn: func(_ *gin.Context, _, _ int64) (bool, error) {
+			t.Fatal("no debe validar ejercicio")
+			return false, nil
+		},
+		teamIDForSessionFn: func(_ *gin.Context, _ int64) (*int64, error) { t.Fatal("no debe derivar team"); return nil, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	rpe := int16(8)
+	notes := "buena serie"
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{RPE: &rpe, Annotations: &notes})
+
+	require.NoError(t, err)
+	assert.Equal(t, int16(8), applied["rpe"])
+	assert.Equal(t, "buena serie", applied["annotations"])
+}
+
+func TestWorkoutFeedbackService_Update_MoveToForeignTeam_Invalid(t *testing.T) {
+	team := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, TeamID: &team, AssignedSessionID: 10, AssignedExerciseID: 2}
+	updated := false
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			updated = true
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		teamIDForSessionFn: func(_ *gin.Context, _ int64) (*int64, error) { return &team, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	foreign := int64(4)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{TeamID: &foreign})
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+	assert.Contains(t, err.Error(), "team_id")
+	assert.False(t, updated)
+}
+
+func TestWorkoutFeedbackService_Update_MoveToForeignInstance_Forbidden(t *testing.T) {
+	team := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, TeamID: &team, AssignedSessionID: 10, AssignedExerciseID: 2}
+	updated := false
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			updated = true
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	foreign := int64(99)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{AssignedSessionID: &foreign})
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, updated)
+}
+
+func TestWorkoutFeedbackService_Update_MoveToInstanceAthleteWithoutAccess_Forbidden(t *testing.T) {
+	team := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 8, FeedbackOwnerUserID: 7, TeamID: &team, AssignedSessionID: 10, AssignedExerciseID: 2}
+	updated := false
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			updated = true
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, callerID int64) (bool, error) { return callerID == 7, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	other := int64(99)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{AssignedSessionID: &other})
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, updated)
+}
+
+func TestWorkoutFeedbackService_Update_MoveToForeignExercise_Invalid(t *testing.T) {
+	team := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, TeamID: &team, AssignedSessionID: 10, AssignedExerciseID: 2}
+	updated := false
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			updated = true
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		exerciseBelongsFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	foreign := int64(50)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{AssignedExerciseID: &foreign})
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+	assert.Contains(t, err.Error(), "assigned_exercise_id")
+	assert.False(t, updated)
+}
+
+func TestWorkoutFeedbackService_Update_MoveInstanceDerivesTeam(t *testing.T) {
+	oldTeam := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, TeamID: &oldTeam, AssignedSessionID: 10, AssignedExerciseID: 2}
+	var applied map[string]interface{}
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			applied = updates
+			return fb, nil
+		},
+	}
+	newTeam := int64(5)
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return &newTeam, nil },
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	other := int64(20)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{AssignedSessionID: &other})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), applied["team_id"])
+}
+
+// Propagación de errores de los helpers de instancia (sin tragarlos ni
+// convertirlos a sentinels de negocio).
+
+func TestWorkoutFeedbackService_Create_InstanceGuardErrorsPropagate(t *testing.T) {
+	cases := []struct {
+		name       string
+		instanceFn *mockSessionInstanceDao
+	}{
+		{
+			name: "has_instance_access",
+			instanceFn: &mockSessionInstanceDao{
+				hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, assert.AnError },
+			},
+		},
+		{
+			name: "exercise_belongs",
+			instanceFn: &mockSessionInstanceDao{
+				hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+				exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return false, assert.AnError },
+			},
+		},
+		{
+			name: "team_id_for_session",
+			instanceFn: &mockSessionInstanceDao{
+				hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+				exerciseBelongsFn:   func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+				teamIDForSessionFn:  func(_ *gin.Context, _ int64) (*int64, error) { return nil, assert.AnError },
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{}, tc.instanceFn)
+			_, err := svc.Create(nil, 7, validCreateRequest())
+			require.ErrorIs(t, err, assert.AnError)
+		})
+	}
+}
+
+func TestWorkoutFeedbackService_GetSessionFeedback_InstanceGuardErrorPropagates(t *testing.T) {
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) { return false, assert.AnError },
+	}
+	svc := NewWorkoutFeedbackService(&mockWorkoutFeedbackDao{}, instanceDao)
+
+	_, err := svc.GetSessionFeedback(nil, 7, 10, nil)
+
+	require.ErrorIs(t, err, assert.AnError)
+}
