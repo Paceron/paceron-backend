@@ -46,7 +46,7 @@
 
 ### Task 3: Verificación final
 
-- [ ] 3.1 `openspec validate gap-42-tiers-corredor --strict` válido.
-- [ ] 3.2 `gofmt`, `go build ./...`, `go vet ./...`, suite completa `TEST_DB_* go test -count=1 ./...` en verde.
-- [ ] 3.3 `go clean -cache`, `make coverage-with-db` y analyzer con gate 85.
-- [ ] 3.4 Tildar checkboxes y commit final si quedó documentación pendiente.
+- [x] 3.1 `openspec validate gap-42-tiers-corredor --strict` válido.
+- [x] 3.2 `gofmt`, `go build ./...`, `go vet ./...`, suite completa `TEST_DB_* go test -count=1 ./...` en verde.
+- [x] 3.3 `go clean -cache`, `make coverage-with-db` y analyzer con gate 85.
+- [x] 3.4 Tildar checkboxes y commit final si quedó documentación pendiente.
