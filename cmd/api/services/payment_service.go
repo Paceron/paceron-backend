@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -92,6 +93,7 @@ var (
 	ErrPaymentInstallmentNotFound = errors.New("cuota no encontrada")
 	ErrPaymentTeamNotFound        = errors.New("equipo no encontrado")
 	ErrPaymentSellerNotConnected  = errors.New("el entrenador debe conectar su cuenta de Mercado Pago")
+	ErrPaymentAmountMismatch      = errors.New("el monto del pago no coincide con el de la cuota")
 )
 
 // paymentTypedError envuelve un sentinel preservando el mensaje de dominio
@@ -134,6 +136,26 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 		amount += item.UnitPrice * float64(item.Quantity)
 	}
 
+	// Con cuota vinculada, el monto cobrado debe ser el de la cuota: si el
+	// cliente manda items adulterados no se crea la preferencia ni el pago.
+	var validatedInstallment *dbs.Installment
+	if req.InstallmentID != nil {
+		ins, err := s.installDao.FindByID(ctx, *req.InstallmentID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding installment for preference", err,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *req.InstallmentID)),
+				customlogger.TagMethod("CreatePreference"))
+			return nil, fmt.Errorf("error consultando cuota")
+		}
+		if ins == nil {
+			return nil, ErrPaymentInstallmentNotFound
+		}
+		if math.Abs(amount-ins.Amount) > 0.01 {
+			return nil, &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
+		validatedInstallment = ins
+	}
+
 	var mpAccessToken string
 	var marketplaceFee float64
 	var sellerUserID int64
@@ -142,7 +164,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	// Si es suscripción de equipo (team_subscription), usar token del dueño y aplicar split
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, nil)
+		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, validatedInstallment)
 		if err != nil {
 			return nil, err
 		}
@@ -226,6 +248,9 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		if err != nil {
 			return nil, err
 		}
+		if math.Abs(req.TransactionAmount-ins.Amount) > 0.01 {
+			return nil, &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
 		validatedInstallment = ins
 	}
 
@@ -255,6 +280,10 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 			return nil, fmt.Errorf("error finding payment: %w", err)
 		}
 		if existing != nil {
+			callerID, ok := utils.GetAuthUserID(ctx)
+			if !ok || !s.paymentOwnedBy(ctx, existing, callerID) {
+				return nil, fmt.Errorf("payment not found")
+			}
 			existing.Status = "in_process"
 			if err := s.paymentDao.UpdateStatus(ctx, existing.ID, "in_process", ""); err != nil {
 				customlogger.Error(ctx, "error updating payment status", err)
@@ -592,6 +621,17 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 		if err != nil {
 			customlogger.Error(ctx, "error finding installment for webhook", err)
 		} else if installment != nil {
+			// Underpayment/amount incoherente: no se aplica la cuota ni se marca
+			// paid. El error tipado hace que el controller responda 5xx para que
+			// Mercado Pago reintente y alerte.
+			if math.Abs(result.TransactionAmount-installment.Amount) > 0.01 {
+				customlogger.Error(ctx, "webhook payment amount does not match installment", nil,
+					customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+					customlogger.Tag("expected_amount", fmt.Sprintf("%.2f", installment.Amount)),
+					customlogger.Tag("received_amount", fmt.Sprintf("%.2f", result.TransactionAmount)),
+					customlogger.TagMethod("HandleWebhook"))
+				return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+			}
 			teamIDStr := "nil"
 			if installment.TeamID != nil {
 				teamIDStr = fmt.Sprintf("%d", *installment.TeamID)

@@ -41,12 +41,12 @@
 - Produce: `SessionInstanceDao.TeamIDForSessionInstance(ctx, instanceID) (*int64, error)` y `ExerciseBelongsToSessionInstance(ctx, instanceID, exerciseInstanceID) (bool, error)`.
 - Consume: `HasInstanceAccess` existente.
 
-- [ ] 2.1 Agregar los métodos DAO e implementarlos con SQL parametrizado; actualizar mocks/interfaces.
-- [ ] 2.2 Inyectar `SessionInstanceDaoInterface` en `WorkoutFeedbackService` y actualizar `app.go` + tests.
-- [ ] 2.3 En `Create`, exigir acceso del caller y del atleta efectivo a la instancia; validar el ejercicio; derivar el team de la instancia y rechazar `team_id` incoherente o persistir el derivado.
-- [ ] 2.4 En `GetSessionFeedback`, exigir acceso del caller a la instancia antes de leer.
-- [ ] 2.5 Tests DAO reales y de service: cross-tenant 403, ejercicio ajeno 400, team incoherente 400, flujo feliz sin cambio de shape, huérfana/sintética sin team.
-- [ ] 2.6 build/vet/suite de `daos`+`services` y commit `fix(security): validar acceso a la instancia en workout feedback`.
+- [x] 2.1 Agregar los métodos DAO e implementarlos con SQL parametrizado; actualizar mocks/interfaces.
+- [x] 2.2 Inyectar `SessionInstanceDaoInterface` en `WorkoutFeedbackService` y actualizar `app.go` + tests.
+- [x] 2.3 En `Create`, exigir acceso del caller y del atleta efectivo a la instancia; validar el ejercicio; derivar el team de la instancia y rechazar `team_id` incoherente o persistir el derivado.
+- [x] 2.4 En `GetSessionFeedback`, exigir acceso del caller a la instancia antes de leer.
+- [x] 2.5 Tests DAO reales y de service: cross-tenant 403, ejercicio ajeno 400, team incoherente 400, flujo feliz sin cambio de shape, huérfana/sintética sin team.
+- [x] 2.6 build/vet/suite de `daos`+`services` y commit `fix(security): validar acceso a la instancia en workout feedback`.
 
 ### Task 3: Acceso a instancia en runner session
 
@@ -57,11 +57,11 @@
 - Test: `cmd/api/services/runner_session_service_test.go`
 - Test: `cmd/api/controllers/runner_session_controller_test.go`
 
-- [ ] 3.1 Inyectar `SessionInstanceDaoInterface` en `runnerSessionService`; mantener constructor compatible con los call sites existentes.
-- [ ] 3.2 En `Create`, `Finish` y `Get`, exigir `HasInstanceAccess` para el atleta efectivo después de `resolveAthlete` y antes de escribir/leer; sentinel `ErrRunnerSessionForbidden`.
-- [ ] 3.3 Mapear el sentinel a 403 en el controller; conservar 404/400 existentes y el orden de guards.
-- [ ] 3.4 Tests: cross-tenant 403 en create/finish/get, owner y miembro siguen OK, offline/idempotencia sin regresión, competencia sigue OK.
-- [ ] 3.5 build/vet/suite y commit `fix(security): validar acceso a instancia en runner sessions`.
+- [x] 3.1 Inyectar `SessionInstanceDaoInterface` en `runnerSessionService`; mantener constructor compatible con los call sites existentes.
+- [x] 3.2 En `Create`, `Finish` y `Get`, exigir `HasInstanceAccess` para el atleta efectivo después de `resolveAthlete` y antes de escribir/leer; sentinel `ErrRunnerSessionForbidden`.
+- [x] 3.3 Mapear el sentinel a 403 en el controller; conservar 404/400 existentes y el orden de guards.
+- [x] 3.4 Tests: cross-tenant 403 en create/finish/get, owner y miembro siguen OK, offline/idempotencia sin regresión, competencia sigue OK.
+- [x] 3.5 build/vet/suite y commit `fix(security): validar acceso a instancia en runner sessions`.
 
 ### Task 4: Ownership y monto en pagos
 
@@ -71,12 +71,12 @@
 - Test: `cmd/api/services/payment_service_test.go`
 - Test: `cmd/api/controllers/payment_controller_test.go`
 
-- [ ] 4.1 En `POST /payments` con `PreferenceID`, aplicar `paymentOwnedBy` antes de leer/mutar; 404 genérico y sin cambios si es ajeno.
-- [ ] 4.2 `ProcessPayment` con cuota: exigir `req.TransactionAmount` igual a `installment.Amount` (tolerancia 0.01) antes de crear pago/llamar MP.
-- [ ] 4.3 `CreatePreference` con `InstallmentID`: exigir que la suma de items coincida con el monto de la cuota; si no, 400.
-- [ ] 4.4 Webhook: si aprueba un pago con `InstallmentID` y el monto es menor al de la cuota, no aplicar la cuota ni marcarla `paid`; devolver error para retry/alerta.
-- [ ] 4.5 Tests: preference ajena 404, cuota con monto menor 400, monto exacto OK, webhook con underpayment no marca paid, flujo sin cuota intacto.
-- [ ] 4.6 build/vet/suite y commit `fix(payments): ownership de preferencia y validacion de montos`.
+- [x] 4.1 En `POST /payments` con `PreferenceID`, aplicar `paymentOwnedBy` antes de leer/mutar; 404 genérico y sin cambios si es ajeno.
+- [x] 4.2 `ProcessPayment` con cuota: exigir `req.TransactionAmount` igual a `installment.Amount` (tolerancia 0.01) antes de crear pago/llamar MP.
+- [x] 4.3 `CreatePreference` con `InstallmentID`: exigir que la suma de items coincida con el monto de la cuota; si no, 400.
+- [x] 4.4 Webhook: si aprueba un pago con `InstallmentID` y el monto es menor al de la cuota, no aplicar la cuota ni marcarla `paid`; devolver error para retry/alerta.
+- [x] 4.5 Tests: preference ajena 404, cuota con monto menor 400, monto exacto OK, webhook con underpayment no marca paid, flujo sin cuota intacto.
+- [x] 4.6 build/vet/suite y commit `fix(payments): ownership de preferencia y validacion de montos`.
 
 ### Task 5: Lecturas N+1
 

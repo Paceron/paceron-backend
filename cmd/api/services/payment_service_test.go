@@ -380,7 +380,7 @@ func TestProcessPayment_InstallmentOfOwnUser_Tier(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	installDao := &mockInstallmentDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
-			return &dbs.Installment{ID: id, UserID: 100}, nil
+			return &dbs.Installment{ID: id, UserID: 100, Amount: 1500}, nil
 		},
 	}
 	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
@@ -421,7 +421,7 @@ func TestProcessPayment_InstallmentOfOwnUser_Team(t *testing.T) {
 	client := new(mockMercadoPagoClient)
 	installDao := &mockInstallmentDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
-			return &dbs.Installment{ID: id, UserID: 100, TeamID: int64Ptr(7)}, nil
+			return &dbs.Installment{ID: id, UserID: 100, TeamID: int64Ptr(7), Amount: 1500}, nil
 		},
 	}
 	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
@@ -618,6 +618,102 @@ func TestProcessPayment_OrderWithoutInstallment_DoesNotValidateOwnership(t *test
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
+	assert.Equal(t, "approved", resp.Status)
+}
+
+func TestProcessPayment_PreferenceOfAnotherUser_ReturnsNotFoundWithoutMutating(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(200))
+
+	existing := &dbs.Payment{ID: 9, PreferenceID: "pref-ajena", Status: "pending", UserID: int64Ptr(100)}
+	dao.On("FindByExternalReference", ctx, "pref-ajena").Return(existing, nil)
+
+	resp, err := svc.ProcessPayment(ctx, payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		PreferenceID:      "pref-ajena",
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "payment not found")
+	dao.AssertNotCalled(t, "UpdateStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	client.AssertNotCalled(t, "CreatePayment", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestProcessPayment_InstallmentAmountMismatch_ReturnsAmountErrorWithoutMP(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			return &dbs.Installment{ID: id, UserID: 100, Amount: 1500}, nil
+		},
+	}
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+	insID := int64(501)
+
+	resp, err := svc.ProcessPayment(ctx, payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1000,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		InstallmentID:     &insID,
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	assert.True(t, errors.Is(err, ErrPaymentAmountMismatch), "esperaba ErrPaymentAmountMismatch, tuve: %v", err)
+	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	client.AssertNotCalled(t, "CreatePayment", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestProcessPayment_InstallmentAmountExact_Succeeds(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			return &dbs.Installment{ID: id, UserID: 100, Amount: 1500}, nil
+		},
+	}
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+	insID := int64(501)
+
+	dao.On("Create", ctx, mock.Anything).Return(nil)
+	client.On("CreatePayment", ctx, "test-access-token", mock.AnythingOfType("mercadopagoclient.CreatePaymentRequest")).Return(&mercadopagoclient.PaymentResult{
+		ID:           12348,
+		Status:       "approved",
+		StatusDetail: "accredited",
+	}, nil)
+	dao.On("UpdatePaymentID", ctx, mock.AnythingOfType("int64"), "12348").Return(nil)
+	dao.On("UpdateStatus", ctx, mock.AnythingOfType("int64"), "approved", "accredited").Return(nil)
+	dao.On("UpdateRawResponse", ctx, mock.AnythingOfType("int64"), mock.AnythingOfType("string")).Return(nil)
+
+	resp, err := svc.ProcessPayment(ctx, payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		InstallmentID:     &insID,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
 	assert.Equal(t, "approved", resp.Status)
 }
 
@@ -1037,6 +1133,45 @@ func TestHandleWebhook_Success(t *testing.T) {
 	dao.AssertExpectations(t)
 }
 
+func TestHandleWebhook_ApprovedInstallmentUnderpayment_DoesNotMarkPaid(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	insID := int64(77)
+	var lookups int
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			lookups++
+			return &dbs.Installment{ID: id, UserID: 100, Amount: 1500}, nil
+		},
+	}
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	notification := payment.WebhookNotification{
+		Type: "payment",
+		Data: struct {
+			ID string `json:"id"`
+		}{ID: "60001"},
+	}
+
+	paymentRecord := &dbs.Payment{ID: 601, PaymentID: "60001", Status: "pending", InstallmentID: &insID}
+	client.On("GetPayment", ctx, "test-access-token", 60001).Return(&mpsdk.Response{
+		ID:                60001,
+		Status:            "approved",
+		StatusDetail:      "accredited",
+		TransactionAmount: 1000,
+	}, nil)
+	dao.On("FindByPaymentID", ctx, "60001").Return(paymentRecord, nil)
+	dao.On("UpdateStatus", ctx, int64(601), "approved", "accredited").Return(nil)
+	dao.On("UpdateRawResponse", ctx, int64(601), mock.AnythingOfType("string")).Return(nil)
+
+	err := svc.HandleWebhook(ctx, notification)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrPaymentAmountMismatch), "esperaba ErrPaymentAmountMismatch, tuve: %v", err)
+	assert.Equal(t, 1, lookups)
+}
+
 func TestHandleWebhook_PaymentNotFoundLocally(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)
@@ -1136,9 +1271,10 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 		InstallmentID: &ins.ID,
 	}
 	client.On("GetPayment", ctx, "test-access-token", 50001).Return(&mpsdk.Response{
-		ID:           50001,
-		Status:       "approved",
-		StatusDetail: "accredited",
+		ID:                50001,
+		Status:            "approved",
+		StatusDetail:      "accredited",
+		TransactionAmount: premium.TierAmount,
 	}, nil)
 	dao.On("FindByPaymentID", ctx, "50001").Return(paymentRecord, nil)
 	dao.On("UpdateStatus", ctx, int64(501), "approved", "accredited").Return(nil)
@@ -1180,9 +1316,10 @@ func TestHandleWebhook_ApprovedInstallment_RequiresPostgres(t *testing.T) {
 	assert.True(t, next.BlockedDate.Equal(expectedDue.AddDate(0, 0, 7)))
 
 	client.On("GetPayment", ctx, "test-access-token", 50001).Return(&mpsdk.Response{
-		ID:           50001,
-		Status:       "approved",
-		StatusDetail: "accredited",
+		ID:                50001,
+		Status:            "approved",
+		StatusDetail:      "accredited",
+		TransactionAmount: premium.TierAmount,
 	}, nil)
 	dao.On("FindByPaymentID", ctx, "50001").Return(paymentRecord, nil)
 	dao.On("UpdateStatus", ctx, int64(501), "approved", "accredited").Return(nil)
@@ -1283,9 +1420,10 @@ func TestHandleWebhook_ApprovedInstallment_EndsPreviousActiveSub(t *testing.T) {
 		InstallmentID: &ins.ID,
 	}
 	client.On("GetPayment", ctx, "test-access-token", 50002).Return(&mpsdk.Response{
-		ID:           50002,
-		Status:       "approved",
-		StatusDetail: "accredited",
+		ID:                50002,
+		Status:            "approved",
+		StatusDetail:      "accredited",
+		TransactionAmount: medium.TierAmount,
 	}, nil)
 	dao.On("FindByPaymentID", ctx, "50002").Return(paymentRecord, nil)
 	dao.On("UpdateStatus", ctx, int64(502), "approved", "accredited").Return(nil)
@@ -1617,6 +1755,36 @@ func TestCreatePreference_TeamSubscription_DaoErrorNotTyped(t *testing.T) {
 	assert.False(t, errors.Is(err, ErrPaymentInstallmentNotFound))
 	assert.False(t, errors.Is(err, ErrPaymentInvalid))
 	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+}
+
+func TestCreatePreference_InstallmentAmountMismatch_ReturnsAmountError(t *testing.T) {
+	dao := new(mockPaymentDao)
+	client := new(mockMercadoPagoClient)
+	installDao := &mockInstallmentDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+			return &dbs.Installment{ID: id, UserID: 100, Amount: 1500}, nil
+		},
+	}
+	svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+	ctx := config.GetTestContext()
+	ctx.Set(utils.AuthUserIDKey, int64(100))
+	insID := int64(5)
+
+	resp, err := svc.CreatePreference(ctx, payment.CreatePreferenceRequest{
+		Concept:       "order",
+		Description:   "Cuota con monto adulterado",
+		InstallmentID: &insID,
+		Items: []payment.PreferenceItem{
+			{Title: "Mensualidad", Quantity: 1, UnitPrice: 1000},
+		},
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.True(t, errors.Is(err, ErrPaymentAmountMismatch), "esperaba ErrPaymentAmountMismatch, tuve: %v", err)
+	dao.AssertNotCalled(t, "Create", mock.Anything, mock.Anything)
+	client.AssertNotCalled(t, "CreatePreference", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestGenerateTestCardToken_Success_IntegratorPublicKey(t *testing.T) {

@@ -374,6 +374,12 @@ func (pc *paymentController) HandleWebhook(c *gin.Context) {
 
 	if err := pc.paymentService.HandleWebhook(c, notification); err != nil {
 		customlogger.Error(c, "error handling webhook", err)
+		// Underpayment de una cuota: 500 para que MP reintente/alerte. El resto
+		// de errores conserva el 200 histórico (MP no reintenta).
+		if errors.Is(err, services.ErrPaymentAmountMismatch) {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "error processing"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"message": "error processing"})
 		return
 	}
@@ -439,7 +445,7 @@ func mapPreferenceError(err error) apierror.APIError {
 			Code:       "Not found",
 			Message:    err.Error(),
 		}
-	case errors.Is(err, services.ErrPaymentInvalid):
+	case errors.Is(err, services.ErrPaymentInvalid), errors.Is(err, services.ErrPaymentAmountMismatch):
 		return apierror.APIError{
 			StatusCode: http.StatusBadRequest,
 			Code:       "Bad request",
@@ -458,6 +464,12 @@ func mapPreferenceError(err error) apierror.APIError {
 // code del DTO apierror.APIError. Los códigos tipificados están en
 // domains/constants/error_code.go.
 func mapPaymentError(err error) (statusCode int, code string) {
+	switch {
+	case errors.Is(err, services.ErrPaymentAmountMismatch):
+		return http.StatusBadRequest, "Bad request"
+	case err.Error() == "payment not found":
+		return http.StatusNotFound, "Not found"
+	}
 	switch err.Error() {
 	case "cuota de suscripcion no encontrada":
 		return http.StatusNotFound, constants.ErrorCodePaymentInstallmentNotFound
