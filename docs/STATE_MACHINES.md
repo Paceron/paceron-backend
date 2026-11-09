@@ -259,4 +259,43 @@ deauthorized ──reconexión mp-connect──► authorized
 ### Invariantes
 
 - Solo `authorized` habilita cobrar con split.
+
+---
+
+## 10. Tiers del rol corredor — modelo interno (Gap 42)
+
+El corredor **no tiene catálogo de tiers ni cambio de tier**. `user_roles.tier_id` sigue siendo
+NOT NULL, así que el rol conserva un único **tier base interno** (`hierarchy` mínima,
+`payment_required=false`) como soporte de `AssignRole` y `GET /api/v1/auth/permissions`.
+
+### Contrato API
+
+- `GET /api/v1/tiers?role_id=<corredor>` devuelve `[]`. Sin `role_id`, el listado excluye los tiers del corredor.
+- `POST`/`PUT`/`DELETE /api/v1/tiers` sobre el corredor devuelven `400 "el rol corredor no admite tiers"` (protege el base interno).
+- `POST /api/v1/users/:id/roles` con `tier_id` explícito para corredor devuelve `400 "el rol corredor no admite tiers"`; sin `tier_id` sigue asignando el base interno.
+- `PUT /api/v1/users/:id/roles/:role_id/tier` para corredor devuelve `400 "el rol corredor no admite cambios de tier"`.
+- El entrenador no cambia: conserva catálogo, asignación y cambio de tier.
+
+### Purga manual — `scripts/purge_runner_tiers.sql`
+
+Script **manual, transaccional e idempotente**, no una migración: `AutoMigrate` no lo
+ejecuta y no corre solo en ningún arranque. Se usa una vez por base de desarrollo/testing,
+nunca contra local/demo/producción sin revisar antes.
+
+Pasos (dentro de una transacción):
+
+1. Resuelve `roles.id` de `corredor`; si no existe, no hace nada.
+2. Resuelve el tier base como el de menor `hierarchy` activa del rol; si no existe, aborta.
+3. Reasigna al base todo `user_roles` de corredor que apunte a otro tier (incluye filas soft-deleted).
+4. Borra `installments` de suscripciones de tier del corredor y luego esas `user_role_tier_subscriptions`.
+5. Borra `tier_permissions` de los tiers de corredor distintos del base.
+6. Borra físicamente los tiers de corredor distintos del base.
+
+No toca el tier base, el rol `entrenador`, los roles globales ni la tabla `roles`.
+Los pagos ya conciliados conservan su fila; por la FK `payments.installment_id ON DELETE SET NULL`
+pierden el vínculo a la cuota purgada.
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/purge_runner_tiers.sql
+```
 - Sin `authorized`, las suscripciones de contenido pago del rol quedan sin cobrador hasta reconectar.

@@ -923,3 +923,17 @@ Close route: primero se reduce al mejor intento de cada atleta (un atleta **nunc
 - `has_debt` es `true` si hay una cuota pendiente vencida o el ciclo de membresía ya venció. Un equipo gratis devuelve `status='active'` y `has_debt=false`.
 - `members` incluye **solo corredores activos** (no owner ni entrenadores) y puede venir vacío (`[]`). No trae nombres: el frontend ya los tiene en el roster.
 - El endpoint self-only `GET /api/v1/users/{id}/teams/{team_id}/subscription` no cambia.
+
+## 21. Tiers del corredor: sin catálogo ni cambio de tier (Gap 42, change `gap-42-tiers-corredor`)
+
+El rol `corredor` deja de tener tiers pagos y suscripciones de tier. Los shapes HTTP no cambian; cambian las respuestas y los errores de los endpoints de tiers.
+
+- `GET /api/v1/tiers?role_id=<corredor>` devuelve `200` con `[]`. El frontend no debe mostrar catálogo, badge de tier ni la acción “Mejorar tier” para el corredor.
+- `GET /api/v1/tiers` sin `role_id` tampoco incluye tiers del corredor (el tier base es soporte interno y no se expone).
+- `POST`/`PUT`/`DELETE /api/v1/tiers` para corredor responden `400` con `"el rol corredor no admite tiers"`.
+- `POST /api/v1/users/:id/roles` con `tier_id` explícito para corredor responde `400` con `"el rol corredor no admite tiers"`. Sin `tier_id` sigue asignando el tier base interno.
+- `PUT /api/v1/users/:id/roles/:role_id/tier` para corredor responde `400` con `"el rol corredor no admite cambios de tier"`.
+- `GET /api/v1/auth/permissions` no cambia: el corredor sigue resolviendo los permisos de su tier base interno.
+- **El entrenador no cambia:** conserva catálogo de tiers, asignación con `tier_id` y cambio de tier sin modificaciones.
+
+Acción frontend: ocultar el catálogo/badge/acción de tier para usuarios con rol corredor y manejar `[]` como estado normal (no como error). El cambio de UI se hace en `paceron-frontend`; este repo solo garantiza el contrato de arriba.
