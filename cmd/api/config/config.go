@@ -16,6 +16,7 @@ import (
 const (
 	warmupBaseURLDefault         = "https://paceron-backend-as9c.onrender.com"
 	warmupIntervalMinutesDefault = 13
+	defaultDBPoolSize            = 5
 )
 
 // WarmupConfig contiene los parámetros del worker que consulta el endpoint de
@@ -348,6 +349,14 @@ func getEnvOrDefault(key, fallback string) string {
 	return fallback
 }
 
+func getPositiveIntOrDefault(key string, fallback int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
 // envBoolDefaultTrue lee una env var booleana con default true: solo un valor
 // explícito false/0/no (case-insensitive) la desactiva; si falta o no es válido,
 // queda true.
@@ -463,8 +472,8 @@ func parseDatabaseURL(dbURL string) DB {
 }
 
 func LoadDBConfigDB(myDB DB) DB {
-	myDB.MaxIdleConnections = 5
-	myDB.MaxOpenConnections = 5
+	myDB.MaxIdleConnections = getPositiveIntOrDefault("DB_MAX_IDLE_CONNS", defaultDBPoolSize)
+	myDB.MaxOpenConnections = getPositiveIntOrDefault("DB_MAX_OPEN_CONNS", defaultDBPoolSize)
 	myDB.ConnMaxLifetime = 3 * time.Minute
 	return myDB
 }

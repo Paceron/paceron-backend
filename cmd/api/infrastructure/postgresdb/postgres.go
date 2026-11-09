@@ -14,6 +14,10 @@ import (
 	gl "gorm.io/gorm/logger"
 )
 
+// defaultDBPoolSize se aplica solo si un caller construye config.DB a mano con
+// valores no positivos; la app siempre llega con los defaults de config.
+const defaultDBPoolSize = 5
+
 // ConnString arma el DSN de la app. Exportado para que el setup de test tome
 // un advisory lock de migración sobre el mismo conn string.
 func ConnString(configDB config.DB) string {
@@ -46,9 +50,18 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	maxIdleConns := configDB.MaxIdleConnections
+	if maxIdleConns <= 0 {
+		maxIdleConns = defaultDBPoolSize
+	}
+	maxOpenConns := configDB.MaxOpenConnections
+	if maxOpenConns <= 0 {
+		maxOpenConns = defaultDBPoolSize
+	}
+
 	sqlDB.SetConnMaxLifetime(configDB.ConnMaxLifetime)
-	sqlDB.SetMaxIdleConns(configDB.MaxIdleConnections)
-	sqlDB.SetMaxOpenConns(configDB.MaxOpenConnections)
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
 
 	err = sqlDB.Ping()
 	if err != nil {
@@ -63,7 +76,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		customlogger.Tag("port", configDB.Port))
 
 	stats := sqlDB.Stats()
-	if stats.OpenConnections >= configDB.MaxOpenConnections {
+	if stats.OpenConnections > maxOpenConns {
 		return nil, fmt.Errorf(
 			"[DBNAME:%s] number of connections exceeded: %v",
 			configDB.Name,

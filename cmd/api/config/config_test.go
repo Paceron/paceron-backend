@@ -45,13 +45,40 @@ func TestParseDatabaseURL_InvalidURL(t *testing.T) {
 	assert.Equal(t, DB{}, db)
 }
 
-func TestLoadDBConfigDB(t *testing.T) {
-	db := DB{}
-	result := LoadDBConfigDB(db)
+func TestLoadDBConfigDB_Defaults(t *testing.T) {
+	t.Setenv("DB_MAX_IDLE_CONNS", "")
+	t.Setenv("DB_MAX_OPEN_CONNS", "")
+
+	result := LoadDBConfigDB(DB{})
 
 	assert.Equal(t, 5, result.MaxIdleConnections)
 	assert.Equal(t, 5, result.MaxOpenConnections)
-	assert.NotZero(t, result.ConnMaxLifetime)
+	assert.Equal(t, 3*time.Minute, result.ConnMaxLifetime)
+}
+
+func TestLoadDBConfigDB_EnvOverrides(t *testing.T) {
+	t.Setenv("DB_MAX_IDLE_CONNS", "3")
+	t.Setenv("DB_MAX_OPEN_CONNS", "12")
+
+	result := LoadDBConfigDB(DB{})
+
+	assert.Equal(t, 3, result.MaxIdleConnections)
+	assert.Equal(t, 12, result.MaxOpenConnections)
+	assert.Equal(t, 3*time.Minute, result.ConnMaxLifetime)
+}
+
+func TestLoadDBConfigDB_InvalidValuesUseDefaults(t *testing.T) {
+	for _, value := range []string{"0", "-1", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DB_MAX_IDLE_CONNS", value)
+			t.Setenv("DB_MAX_OPEN_CONNS", value)
+
+			result := LoadDBConfigDB(DB{})
+
+			assert.Equal(t, 5, result.MaxIdleConnections)
+			assert.Equal(t, 5, result.MaxOpenConnections)
+		})
+	}
 }
 
 func TestLoadValues_WithDatabaseURL(t *testing.T) {

@@ -23,6 +23,7 @@ func TestDaos_HotTablesIndexes(t *testing.T) {
 		"idx_team_users_user_id":                              "team_users",
 		"idx_session_exercise_instances_session_instance_id":  "session_exercise_instances",
 		"idx_session_exercise_instances_exercise_instance_id": "session_exercise_instances",
+		"idx_workout_feedback_feedback_owner_user_id":         "workout_feedback",
 		"idx_workout_feedback_points_feedback_id":             "workout_feedback_points",
 		"idx_workout_feedback_points_session_instance_id":     "workout_feedback_points",
 		"idx_runner_session_athlete_user_id":                  "runner_session",
