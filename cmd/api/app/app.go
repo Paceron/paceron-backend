@@ -386,7 +386,7 @@ func NewApplication() *Application {
 
 	// `runnerSessionDao` ya se creó arriba: el intake de competencias de ruta
 	// (develop) lo comparte con el flujo normal del corredor.
-	runnerSessionService := services.NewRunnerSessionService(runnerSessionDao, presencialSessionService, competitionDao)
+	runnerSessionService := services.NewRunnerSessionServiceWithAccess(runnerSessionDao, sessionInstanceDao, presencialSessionService, competitionDao)
 
 	runnerSessionController := controllers.NewRunnerSessionController(runnerSessionService, presencialSessionService, realtimeNotifier, streakTrigger, achievementsService)
 

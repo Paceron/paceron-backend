@@ -66,6 +66,16 @@ func (m *mockRunnerSessionDao) ExistsUserInTeamOwnedBy(ctx *gin.Context, targetU
 	return false, nil
 }
 
+// allowInstanceAccess es el DAO de instancias por defecto de los tests que no
+// ejercitan el guard: todo caller tiene acceso.
+func allowInstanceAccess() *mockSessionInstanceDao {
+	return &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			return true, nil
+		},
+	}
+}
+
 var sessionDate = time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
 var sessionInstanceDate = time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC)
 var sessionDateRight = time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
@@ -87,7 +97,7 @@ func TestRunnerSessionService_Create_Self_Created(t *testing.T) {
 			return true, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
@@ -104,7 +114,7 @@ func TestRunnerSessionService_Create_SessionMissing_NotFound(t *testing.T) {
 			return false, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
@@ -124,7 +134,7 @@ func TestRunnerSessionService_Create_AlreadyExists_Idempotent(t *testing.T) {
 			return fixtureRunnerSession(), nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate,
@@ -151,7 +161,7 @@ func TestRunnerSessionService_Create_TrainerForAthleteInOwnedTeam(t *testing.T) 
 			return true, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete,
@@ -173,7 +183,7 @@ func TestRunnerSessionService_Create_TrainerForOutsider_Forbidden(t *testing.T) 
 			return false, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete,
@@ -189,7 +199,7 @@ func TestRunnerSessionService_Create_InvalidStartDate(t *testing.T) {
 			return true, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{})
 
@@ -225,7 +235,7 @@ func TestRunnerSessionService_Finish_WipToFinished(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
 
@@ -268,7 +278,7 @@ func TestRunnerSessionService_Finish_WipToInterrupted(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
 
@@ -309,7 +319,7 @@ func TestRunnerSessionService_Finish_InterruptedToFinished_ResetsEndDate(t *test
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
 
@@ -337,7 +347,7 @@ func TestRunnerSessionService_Finish_AlreadyInterrupted_Idempotent(t *testing.T)
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
 
@@ -361,7 +371,7 @@ func TestRunnerSessionService_Finish_AlreadyFinished_Idempotent(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
 
@@ -383,7 +393,7 @@ func TestRunnerSessionService_Finish_FinishedToInterrupted_Invalid(t *testing.T)
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "interrupted"})
 
@@ -400,7 +410,7 @@ func TestRunnerSessionService_Finish_InvalidStatus(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "abandoned"})
 
@@ -415,7 +425,7 @@ func TestRunnerSessionService_Finish_NotFound(t *testing.T) {
 			return nil, daos.ErrRunnerSessionNotFound
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
 
@@ -434,7 +444,7 @@ func TestRunnerSessionService_Finish_TrainerForAthleteInOwnedTeam(t *testing.T) 
 			return fixtureRunnerSession(), nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{
 		AthleteUserID: &athlete,
@@ -452,7 +462,7 @@ func TestRunnerSessionService_Get_Self(t *testing.T) {
 			return fixtureRunnerSession(), nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	rs, err := svc.Get(nil, 7, 10, nil)
 
@@ -501,7 +511,7 @@ func TestRunnerSessionService_Create_GatesAfterResolveAthlete(t *testing.T) {
 	mock := &mockRunnerSessionDao{
 		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
 	}
-	svc := NewRunnerSessionService(mock, gate)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), gate)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		AthleteUserID: &athlete, StartDate: sessionDate,
@@ -525,7 +535,7 @@ func TestRunnerSessionService_Create_GateAfterResolveAthlete_BeforeWrite(t *test
 			return true, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, gate)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), gate)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
@@ -543,7 +553,7 @@ func TestRunnerSessionService_Create_GatePasses(t *testing.T) {
 		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
 		createFn:                func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) { return true, nil },
 	}
-	svc := NewRunnerSessionService(mock, gate)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), gate)
 
 	_, gotDay, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
@@ -558,9 +568,120 @@ func TestRunnerSessionService_Create_NilGate_SinGate(t *testing.T) {
 		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
 		createFn:                func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) { return true, nil },
 	}
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 
 	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 
 	require.NoError(t, err)
+}
+
+func TestRunnerSessionService_Create_NoInstanceAccess_Forbidden(t *testing.T) {
+	writeAttempted := false
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			assert.Equal(t, int64(10), instanceID)
+			assert.Equal(t, int64(7), callerID)
+			return false, nil
+		},
+	}
+	mock := &mockRunnerSessionDao{
+		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
+		createFn: func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
+			writeAttempted = true
+			return true, nil
+		},
+	}
+	svc := NewRunnerSessionServiceWithAccess(mock, instanceDao, nil)
+
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+
+	require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+	assert.False(t, writeAttempted, "sin acceso no se escribe")
+}
+
+func TestRunnerSessionService_Finish_NoInstanceAccess_Forbidden(t *testing.T) {
+	readAttempted := false
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			return false, nil
+		},
+	}
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			readAttempted = true
+			return fixtureRunnerSession(), nil
+		},
+	}
+	svc := NewRunnerSessionServiceWithAccess(mock, instanceDao, nil)
+
+	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+
+	require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+	assert.False(t, readAttempted, "sin acceso no se lee el estado")
+}
+
+func TestRunnerSessionService_Get_NoInstanceAccess_Forbidden(t *testing.T) {
+	readAttempted := false
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			return false, nil
+		},
+	}
+	mock := &mockRunnerSessionDao{
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			readAttempted = true
+			return fixtureRunnerSession(), nil
+		},
+	}
+	svc := NewRunnerSessionServiceWithAccess(mock, instanceDao, nil)
+
+	_, err := svc.Get(nil, 7, 10, nil)
+
+	require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+	assert.False(t, readAttempted, "sin acceso no se lee el estado")
+}
+
+func TestRunnerSessionService_Access_TrainerForAthleteInOwnedTeam(t *testing.T) {
+	athlete := int64(30)
+	var checkedCaller int64
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			checkedCaller = callerID
+			return true, nil
+		},
+	}
+	mock := &mockRunnerSessionDao{
+		existsUserInTeamOwnedByFn: func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) {
+			return true, nil
+		},
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			return fixtureRunnerSession(), nil
+		},
+	}
+	svc := NewRunnerSessionServiceWithAccess(mock, instanceDao, nil)
+
+	_, err := svc.Get(nil, 7, 10, &athlete)
+
+	require.NoError(t, err)
+	assert.Equal(t, athlete, checkedCaller, "el acceso se valida para el atleta efectivo")
+}
+
+func TestRunnerSessionService_NilInstanceDao_FailsClosed(t *testing.T) {
+	mock := &mockRunnerSessionDao{
+		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
+		createFn:                func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) { return true, nil },
+		getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+			return fixtureRunnerSession(), nil
+		},
+	}
+	svc := NewRunnerSessionService(mock, nil)
+
+	_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	require.Error(t, err)
+
+	_, err = svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+	require.Error(t, err)
+
+	_, err = svc.Get(nil, 7, 10, nil)
+	require.Error(t, err)
 }

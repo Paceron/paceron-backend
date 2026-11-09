@@ -43,6 +43,10 @@ type RunnerSessionServiceInterface interface {
 
 type runnerSessionService struct {
 	runnerSessionDao daos.RunnerSessionDAOInterface
+	// sessionInstanceDao valida el acceso del atleta efectivo a la instancia
+	// (misma regla dual que feedback/calendario). Obligatorio en producción:
+	// sin él Create/Finish/Get fallan cerrado.
+	sessionInstanceDao daos.SessionInstanceDaoInterface
 	// presencial es opcional (nil en tests = sin gate ni hooks calendario):
 	// el gate D9 del día presencial corre dentro de Create para respetar el
 	// orden 404 instancia → 403 atleta ajeno → 409 del gate.
@@ -52,18 +56,46 @@ type runnerSessionService struct {
 	competitionDAO daos.CompetitionDAOInterface
 }
 
-// NewRunnerSessionService crea una nueva instancia de RunnerSessionService.
-// competitionDAO es un parámetro variadic opcional (E4.1): los call sites
-// históricos de dos argumentos quedan intactos.
-func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, presencial PresencialSessionServiceInterface, competitionDAO ...daos.CompetitionDAOInterface) RunnerSessionServiceInterface {
+// NewRunnerSessionServiceWithAccess crea el service con el DAO de instancias
+// que aplica el guard de acceso. Es la ruta de producción.
+func NewRunnerSessionServiceWithAccess(runnerSessionDao daos.RunnerSessionDAOInterface, sessionInstanceDao daos.SessionInstanceDaoInterface, presencial PresencialSessionServiceInterface, competitionDAO ...daos.CompetitionDAOInterface) RunnerSessionServiceInterface {
 	svc := &runnerSessionService{
-		runnerSessionDao: runnerSessionDao,
-		presencial:       presencial,
+		runnerSessionDao:   runnerSessionDao,
+		sessionInstanceDao: sessionInstanceDao,
+		presencial:         presencial,
 	}
 	if len(competitionDAO) > 0 && competitionDAO[0] != nil {
 		svc.competitionDAO = competitionDAO[0]
 	}
 	return svc
+}
+
+// NewRunnerSessionService conserva el constructor histórico sin DAO de
+// instancias: Create/Finish/Get fallan cerrado (error explícito) porque el
+// guard de acceso no se puede validar. No usar en producción.
+func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, presencial PresencialSessionServiceInterface, competitionDAO ...daos.CompetitionDAOInterface) RunnerSessionServiceInterface {
+	return NewRunnerSessionServiceWithAccess(runnerSessionDao, nil, presencial, competitionDAO...)
+}
+
+// errInstanceAccessUnavailable señala un service mal cableado: sin DAO no se
+// puede comprobar el acceso y el guard falla cerrado (500 en el controller).
+var errInstanceAccessUnavailable = errors.New("no se puede validar el acceso a la sesión: sessionInstanceDao no configurado")
+
+// requireInstanceAccess exige que el atleta efectivo tenga acceso a la
+// instancia (miembro del grupo/equipo, atleta con feedback o participante de
+// una competencia route). 403 si no.
+func (s *runnerSessionService) requireInstanceAccess(ctx *gin.Context, sessionInstanceID, athleteUserID int64) error {
+	if s.sessionInstanceDao == nil {
+		return errInstanceAccessUnavailable
+	}
+	hasAccess, err := s.sessionInstanceDao.HasInstanceAccess(ctx, sessionInstanceID, athleteUserID)
+	if err != nil {
+		return err
+	}
+	if !hasAccess {
+		return ErrRunnerSessionForbidden
+	}
+	return nil
 }
 
 // validateCompetitionIntent aplica las reglas del intento tagueado (D9): la
@@ -143,6 +175,12 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 		return nil, nil, false, err
 	}
 
+	// Acceso del atleta efectivo a la instancia, después del 403 de
+	// resolveAthlete y antes del gate/WRITE.
+	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
+		return nil, nil, false, err
+	}
+
 	// Gate presencial D9: después de resolveAthlete (403 precede al 409) y
 	// antes del write — un día cerrado/sin abrir no acepta entrada del
 	// corredor. Owner exento (CheckAthleteEntry lo resuelve). El día cargado
@@ -201,6 +239,10 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 		return nil, err
 	}
 
+	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
+		return nil, err
+	}
+
 	current, err := s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)
 	if err != nil {
 		return nil, err
@@ -224,6 +266,9 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 func (s *runnerSessionService) Get(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error) {
 	target, err := s.resolveAthlete(ctx, authUserID, athleteUserID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireInstanceAccess(ctx, sessionInstanceID, target); err != nil {
 		return nil, err
 	}
 	return s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, target)
