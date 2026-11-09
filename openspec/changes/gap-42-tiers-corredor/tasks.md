@@ -39,10 +39,10 @@
 - Modify: `cmd/api/scripts/seed_dashboard/RUNBOOK.md`
 - Modify: `docs/FRONTEND_IMPACTO_INSTANCIACION.md`
 
-- [ ] 2.1 Script SQL transaccional e idempotente: resolver rol `corredor` y su base; reasignar `user_roles.tier_id` al base; borrar `tier_permissions`, `installments`, `user_role_tier_subscriptions` y tiers pagos del corredor; no tocar el base.
-- [ ] 2.2 Documentar que el script es manual, no una migración automática, y que el tier base interno permanece.
-- [ ] 2.3 Documentar el contrato frontend: el corredor no tiene catálogo de tiers ni cambio de tier; el entrenador no cambia.
-- [ ] 2.4 Verificar el script contra una base de test descartable con fixtures; no ejecutarlo en local/demo. Commit `docs(tiers): purga manual y contrato del corredor (Gap 42)`.
+- [x] 2.1 Script SQL transaccional e idempotente: resolver rol `corredor` y su base; reasignar `user_roles.tier_id` al base; borrar `tier_permissions`, `installments`, `user_role_tier_subscriptions` y tiers pagos del corredor; no tocar el base.
+- [x] 2.2 Documentar que el script es manual, no una migración automática, y que el tier base interno permanece.
+- [x] 2.3 Documentar el contrato frontend: el corredor no tiene catálogo de tiers ni cambio de tier; el entrenador no cambia.
+- [x] 2.4 Verificar el script contra una base de test descartable con fixtures; no ejecutarlo en local/demo. Commit `docs(tiers): purga manual y contrato del corredor (Gap 42)`.
 
 ### Task 3: Verificación final
 
