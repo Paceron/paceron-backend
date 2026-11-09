@@ -82,7 +82,8 @@ func (d *tierSubscriptionDao) FindActiveByUserRole(ctx *gin.Context, userID, rol
 
 // FindActiveByUserRoles es la variante batch de FindActiveByUserRole: resuelve
 // en una sola query las suscripciones activas de varios roles. El índice único
-// parcial garantiza máximo una fila vigente por (user_id, role_id).
+// parcial garantiza máximo una fila por (user_id, role_id, status), así que un
+// rol puede traer a la vez una active y una first_payment_pending.
 func (d *tierSubscriptionDao) FindActiveByUserRoles(ctx *gin.Context, userID int64, roleIDs []int64, statuses ...string) ([]dbs.UserRoleTierSubscription, error) {
 	if len(roleIDs) == 0 {
 		return nil, nil

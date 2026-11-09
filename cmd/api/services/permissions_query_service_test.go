@@ -227,6 +227,7 @@ func (m *mockTierDaoForQuery) GetAll(ctx *gin.Context) ([]dbs.Tier, error) {
 
 type mockTierPermissionDaoForQuery struct {
 	findByTierIDFn               func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
+	listPermissionNamesByTierFn  func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error)
 	listPermissionNamesByTiersFn func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error)
 }
 
@@ -246,6 +247,9 @@ func (m *mockTierPermissionDaoForQuery) FindByTierID(ctx *gin.Context, tierID in
 }
 
 func (m *mockTierPermissionDaoForQuery) ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+	if m.listPermissionNamesByTierFn != nil {
+		return m.listPermissionNamesByTierFn(ctx, tierID)
+	}
 	return nil, nil
 }
 
@@ -618,8 +622,8 @@ func TestPermissionsQueryService_GetUserPermissions_EmptyTierPermissions(t *test
 		},
 	}
 	tierPermDao := &mockTierPermissionDaoForQuery{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			return []dbs.TierPermission{}, nil
+		listPermissionNamesByTiersFn: func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error) {
+			return []daos.TierPermissionNameByTier{}, nil
 		},
 	}
 
@@ -663,7 +667,7 @@ func TestPermissionsQueryService_GetUserPermissions_RoleBatchError(t *testing.T)
 		},
 	}
 	roleDao := &mockRoleDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -672,7 +676,8 @@ func TestPermissionsQueryService_GetUserPermissions_RoleBatchError(t *testing.T)
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error al obtener permisos")
+	assert.Contains(t, err.Error(), "datos faltantes")
+	assert.Contains(t, err.Error(), "rol_id=1 no configurado")
 }
 
 func TestPermissionsQueryService_GetUserPermissions_TierBatchError(t *testing.T) {
@@ -694,7 +699,7 @@ func TestPermissionsQueryService_GetUserPermissions_TierBatchError(t *testing.T)
 		},
 	}
 	tierDao := &mockTierDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Tier, error) {
 			return nil, errors.New("db error")
 		},
 		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
@@ -706,10 +711,63 @@ func TestPermissionsQueryService_GetUserPermissions_TierBatchError(t *testing.T)
 	_, err := svc.GetUserPermissions(nil, 1)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error al obtener permisos")
+	assert.Contains(t, err.Error(), "datos faltantes")
+	assert.Contains(t, err.Error(), "tier_id=1 no configurado")
 }
 
-func TestPermissionsQueryService_GetUserPermissions_TierPermissionsBatchError(t *testing.T) {
+// Si la lectura batch de permisos falla, se cae al ListPermissionNamesByTier
+// por rol/tier en vez de omitir todos los roles.
+func TestPermissionsQueryService_GetUserPermissions_TierPermissionsBatchErrorFallsBackToPerTier(t *testing.T) {
+	userDao := &mockUserDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+	userRoleDao := &mockUserRoleDaoForQuery{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{
+				{ID: 1, UserID: 1, RoleID: 1, TierID: 1},
+			}, nil
+		},
+	}
+	roleDao := &mockRoleDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+	tierDao := &mockTierDaoForQuery{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base"}, nil
+		},
+		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base"}, nil
+		},
+	}
+	fallbackCalls := 0
+	tierPermDao := &mockTierPermissionDaoForQuery{
+		listPermissionNamesByTiersFn: func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error) {
+			return nil, errors.New("db error")
+		},
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+			fallbackCalls++
+			assert.Equal(t, int64(1), tierID)
+			return []daos.TierPermissionName{{PermissionID: 1, PermissionName: "crear_venta"}}, nil
+		},
+	}
+
+	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
+	resp, err := svc.GetUserPermissions(nil, 1)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Roles, 1)
+	assert.Equal(t, []string{"crear_venta"}, resp.Roles[0].Permissions)
+	assert.Equal(t, 1, fallbackCalls)
+}
+
+// Si además de fallar el batch falla el fallback por tier, se omite la fila de
+// ese rol sin romper la respuesta (misma semántica que el FindByTierID previo).
+func TestPermissionsQueryService_GetUserPermissions_TierPermissionsFallbackErrorOmitsRole(t *testing.T) {
 	userDao := &mockUserDaoForQuery{
 		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
 			return &dbs.User{ID: 1, Name: "John"}, nil
@@ -737,62 +795,19 @@ func TestPermissionsQueryService_GetUserPermissions_TierPermissionsBatchError(t 
 	}
 	tierPermDao := &mockTierPermissionDaoForQuery{
 		listPermissionNamesByTiersFn: func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error) {
-			return nil, errors.New("db error")
+			return nil, errors.New("batch db error")
+		},
+		listPermissionNamesByTierFn: func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
+			return nil, errors.New("per-tier db error")
 		},
 	}
 
 	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, &mockPermissionDaoForQuery{}, &mockTierSubscriptionDaoForQuery{})
 	resp, err := svc.GetUserPermissions(nil, 1)
 
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	assert.Len(t, resp.Roles, 0)
-}
-
-func TestPermissionsQueryService_GetUserPermissions_PermissionFindByIDError(t *testing.T) {
-	userDao := &mockUserDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
-			return &dbs.User{ID: 1, Name: "John"}, nil
-		},
-	}
-	userRoleDao := &mockUserRoleDaoForQuery{
-		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
-			return []dbs.UserRole{
-				{ID: 1, UserID: 1, RoleID: 1, TierID: 1},
-			}, nil
-		},
-	}
-	roleDao := &mockRoleDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
-		},
-	}
-	tierDao := &mockTierDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base"}, nil
-		},
-		findLowestByRoleFn: func(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base"}, nil
-		},
-	}
-	tierPermDao := &mockTierPermissionDaoForQuery{
-		findByTierIDFn: func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error) {
-			return []dbs.TierPermission{
-				{ID: 1, TierID: 1, PermissionID: 1},
-			}, nil
-		},
-	}
-	permDao := &mockPermissionDaoForQuery{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Permission, error) {
-			return nil, errors.New("db error")
-		},
-	}
-
-	svc := NewPermissionsQueryService(userDao, userRoleDao, roleDao, tierDao, tierPermDao, permDao, &mockTierSubscriptionDaoForQuery{})
-	_, err := svc.GetUserPermissions(nil, 1)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "datos faltantes")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp.Roles)
 }
 
 func TestPermissionsQueryService_GetUserPermissions_ActiveSubBeatsUserRoleTier(t *testing.T) {
@@ -1106,6 +1121,7 @@ func TestPermissionsQueryService_GetUserPermissions_QueryCountConstante(t *testi
 		},
 		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
 			roleFindByIDs++
+			assert.ElementsMatch(t, []int64{1, 2}, ids)
 			return []dbs.Role{{ID: 1, Name: "corredor"}, {ID: 2, Name: "entrenador"}}, nil
 		},
 	}
@@ -1116,6 +1132,7 @@ func TestPermissionsQueryService_GetUserPermissions_QueryCountConstante(t *testi
 		},
 		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Tier, error) {
 			tierFindByIDs++
+			assert.ElementsMatch(t, []int64{1, 2}, ids)
 			return []dbs.Tier{
 				{ID: 1, Name: "base_corredor", RoleID: 1},
 				{ID: 2, Name: "base_entrenador", RoleID: 2},
@@ -1123,6 +1140,7 @@ func TestPermissionsQueryService_GetUserPermissions_QueryCountConstante(t *testi
 		},
 		findLowestByRolesFn: func(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error) {
 			lowestCalls++
+			assert.ElementsMatch(t, []int64{1, 2}, roleIDs)
 			return []dbs.Tier{
 				{ID: 1, Name: "base_corredor", RoleID: 1},
 				{ID: 2, Name: "base_entrenador", RoleID: 2},
@@ -1132,12 +1150,14 @@ func TestPermissionsQueryService_GetUserPermissions_QueryCountConstante(t *testi
 	tierSubDao := &mockTierSubscriptionDaoForQuery{
 		findActiveBatchFn: func(ctx *gin.Context, userID int64, roleIDs []int64, statuses ...string) ([]dbs.UserRoleTierSubscription, error) {
 			subCalls++
+			assert.ElementsMatch(t, []int64{1, 2}, roleIDs)
 			return nil, nil
 		},
 	}
 	tierPermDao := &mockTierPermissionDaoForQuery{
 		listPermissionNamesByTiersFn: func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error) {
 			tierPermCalls++
+			assert.ElementsMatch(t, []int64{1, 2}, tierIDs)
 			out := make([]daos.TierPermissionNameByTier, 0, len(tierIDs)*5)
 			for _, tierID := range tierIDs {
 				for i := 0; i < 5; i++ {

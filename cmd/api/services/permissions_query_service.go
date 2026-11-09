@@ -93,10 +93,17 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 
 	roleRows, err := s.roleDao.FindByIDs(ctx, roleIDs)
 	if err != nil {
+		// La lectura batch no puede atribuir el error a una fila: se reportan
+		// todos los roles como no configurados (mismo orden de user_roles), que
+		// es lo que hacía el FindByID por rol al fallar.
 		customlogger.Error(ctx, "error finding roles for permissions query", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 			customlogger.TagMethod("GetUserPermissions"))
-		return nil, fmt.Errorf("error al obtener permisos")
+		missingData := make([]string, 0, len(userRoles))
+		for _, ur := range userRoles {
+			missingData = append(missingData, fmt.Sprintf("rol_id=%d no configurado", ur.RoleID))
+		}
+		return nil, fmt.Errorf("datos faltantes: %s", strings.Join(missingData, "; "))
 	}
 	rolesByID := make(map[int64]dbs.Role, len(roleRows))
 	for _, role := range roleRows {
@@ -196,32 +203,42 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 	sort.Slice(tierIDs, func(i, j int) bool { return tierIDs[i] < tierIDs[j] })
 
 	tiersByID := make(map[int64]dbs.Tier, len(tierIDs))
+	tierReadFailed := false
 	if len(tierIDs) > 0 {
 		tierRows, err := s.tierDao.FindByIDs(ctx, tierIDs)
 		if err != nil {
+			// Igual que el FindByID por rol: el error se refleja como
+			// "tier_id=... no configurado" por cada rol afectado (ver loop de
+			// plans), no como un 500 genérico.
 			customlogger.Error(ctx, "error finding tiers by ids", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 				customlogger.TagMethod("GetUserPermissions"))
-			return nil, fmt.Errorf("error al obtener permisos")
-		}
-		for _, tier := range tierRows {
-			tiersByID[tier.ID] = tier
+			tierReadFailed = true
+		} else {
+			for _, tier := range tierRows {
+				tiersByID[tier.ID] = tier
+			}
 		}
 	}
 
-	var permissionRows []daos.TierPermissionNameByTier
-	var permissionsErr error
-	if len(tierIDs) > 0 {
-		permissionRows, permissionsErr = s.tierPermissionDao.ListPermissionNamesByTiers(ctx, tierIDs)
-		if permissionsErr != nil {
-			customlogger.Error(ctx, "error finding tier permissions", permissionsErr,
+	// Happy path: una sola lectura batch de permisos. Si falla, se cae al
+	// ListPermissionNamesByTier por rol/tier (misma semántica que antes: un
+	// error de la lectura de un tier omite su fila) para no perder todos los
+	// roles por un fallo puntual del batch.
+	batchPermissionsOK := true
+	permissionsByTier := make(map[int64][]daos.TierPermissionNameByTier)
+	if len(tierIDs) > 0 && !tierReadFailed {
+		permissionRows, err := s.tierPermissionDao.ListPermissionNamesByTiers(ctx, tierIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding tier permissions in batch, falling back to per-tier", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 				customlogger.TagMethod("GetUserPermissions"))
+			batchPermissionsOK = false
+		} else {
+			for _, row := range permissionRows {
+				permissionsByTier[row.TierID] = append(permissionsByTier[row.TierID], row)
+			}
 		}
-	}
-	permissionsByTier := make(map[int64][]daos.TierPermissionNameByTier, len(permissionRows))
-	for _, row := range permissionRows {
-		permissionsByTier[row.TierID] = append(permissionsByTier[row.TierID], row)
 	}
 
 	var missingData []string
@@ -243,13 +260,25 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 			continue
 		}
 
-		// Un error de la lectura batch no se puede atribuir a un rol puntual: se
-		// omite la fila (igual que el continue por rol de la versión anterior).
-		if permissionsErr != nil {
-			continue
-		}
-
 		tierPermissions := permissionsByTier[tier.ID]
+		if !batchPermissionsOK {
+			names, err := s.tierPermissionDao.ListPermissionNamesByTier(ctx, tier.ID)
+			if err != nil {
+				customlogger.Error(ctx, "error finding tier permissions", err,
+					customlogger.Tag("tier_id", fmt.Sprintf("%d", tier.ID)),
+					customlogger.TagMethod("GetUserPermissions"))
+				continue
+			}
+			tierPermissions = make([]daos.TierPermissionNameByTier, 0, len(names))
+			for _, name := range names {
+				permissionName := name.PermissionName
+				tierPermissions = append(tierPermissions, daos.TierPermissionNameByTier{
+					TierID:         tier.ID,
+					PermissionID:   name.PermissionID,
+					PermissionName: &permissionName,
+				})
+			}
+		}
 		if len(tierPermissions) == 0 {
 			missingData = append(missingData, fmt.Sprintf("tier '%s' del rol '%s' no tiene permisos asociados", tier.Name, plan.role.Name))
 			customlogger.Warn(ctx, "tier has no permissions",

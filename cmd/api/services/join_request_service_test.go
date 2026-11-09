@@ -462,6 +462,7 @@ func TestJoinRequestService_ListMine_QueryCountConstante(t *testing.T) {
 		},
 		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
 			teamFindByIDs++
+			assert.ElementsMatch(t, []int64{5, 6}, ids)
 			return []dbs.Team{{ID: 5, Name: "cinco"}, {ID: 6, Name: "seis"}}, nil
 		},
 	}
@@ -472,6 +473,7 @@ func TestJoinRequestService_ListMine_QueryCountConstante(t *testing.T) {
 		},
 		mockFindByIDs: func(ctx *gin.Context, ids []int64) ([]*dbs.User, error) {
 			userFindByIDs++
+			assert.ElementsMatch(t, []int64{7, 8, 9}, ids)
 			return []*dbs.User{
 				{ID: 7, Name: "Ana", Surname: "Gómez"},
 				{ID: 8, Name: "Beto", Surname: "Ruiz"},
@@ -491,4 +493,37 @@ func TestJoinRequestService_ListMine_QueryCountConstante(t *testing.T) {
 	assert.Equal(t, 0, teamFindByID)
 	assert.Equal(t, 1, userFindByIDs)
 	assert.Equal(t, 0, userFindByID)
+}
+
+// 5.2: ListByTeam conserva el orden del DAO, resuelve nombres en un solo batch
+// (IDs deduplicados) y deja vacío el nombre de un corredor inexistente.
+func TestJoinRequestService_ListByTeam_OrdenYRunnerNamesVacios(t *testing.T) {
+	jrDao := &mockJoinRequestDao{findPendingByTeamFn: func(ctx *gin.Context, teamID int64) ([]dbs.JoinRequest, error) {
+		return []dbs.JoinRequest{
+			{ID: 11, TeamID: teamID, RunnerID: 7, Status: string(constants.InvitationStatusPending)},
+			{ID: 12, TeamID: teamID, RunnerID: 8, Status: string(constants.InvitationStatusPending)},
+			{ID: 13, TeamID: teamID, RunnerID: 7, Status: string(constants.InvitationStatusPending)},
+		}, nil
+	}}
+	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+		return &dbs.Team{ID: id, OwnerID: 1, Name: "equipo test"}, nil
+	}}
+	batchIDs := []int64(nil)
+	userDao := mockUserDao{
+		mockFindByIDs: func(ctx *gin.Context, ids []int64) ([]*dbs.User, error) {
+			batchIDs = append(batchIDs, ids...)
+			return []*dbs.User{{ID: 8, Name: "Beto", Surname: "Ruiz"}}, nil
+		},
+	}
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	results, err := svc.ListByTeam(nil, 5, 1)
+
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+	assert.Equal(t, []int64{11, 12, 13}, []int64{results[0].ID, results[1].ID, results[2].ID})
+	assert.Equal(t, "", results[0].RunnerName, "corredor inexistente deja el nombre vacío")
+	assert.Equal(t, "Beto Ruiz", results[1].RunnerName)
+	assert.Equal(t, "", results[2].RunnerName)
+	assert.ElementsMatch(t, []int64{7, 8}, batchIDs)
 }
