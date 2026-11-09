@@ -44,9 +44,9 @@
 
 - `SessionInstanceDetail`: leer la fila una vez y reutilizarla en el builder (`sessionInstanceResponseFromRow` o equivalente); no duplicar `FindByID`.
 - `UpsertDay`: usar `instantiateSessionsBatch` con un slice de 1 y `deleteSupersededInstances` para el borrado, preservando D10 y los mensajes de error.
-- `Shift`: leer las fechas destino con `FindByGroupAndDates` y aplicar un único `UpdateDatesForShift` batch; conservar el orden descendente para evitar colisiones del unique y los guards actuales.
+- `Shift`: leer las fechas destino con `FindByGroupAndDates` y aplicar el movimiento en dos pasadas constantes (estacionamiento temporal y asignación final), conservando el orden descendente para evitar colisiones transitorias del unique y los guards actuales. Un único `UPDATE ... FROM VALUES` no garantiza el orden de evaluación y puede chocar el unique.
 - `computePeakSpeedKPH`: no copiar ni reordenar si el caller ya entrega los puntos ordenados; agregar una variante explícita para puntos ordenados y usarla desde `BulkCreatePointsRecompute`.
-- Regex de validación a variables de paquete; base pública de media URL resuelta una vez y cacheada en el cliente de storage.
+- Regex de validación a variables de paquete; base pública de media URL resuelta una vez por proceso (config inmutable).
 
 ## D7. Gamificación y push
 

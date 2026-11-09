@@ -19,12 +19,12 @@
 - Test: `cmd/api/services/push_notifier_test.go` (crear si no existe)
 - Test: `cmd/api/infrastructure/customlogger/customLogger_test.go`
 
-- [ ] 1.1 `sendPushToUser(nil, ...)`: usar `context.Background()` con timeout 10s para `SendBatch`; nunca pasar un `*gin.Context` nil tipado como `context.Context`.
-- [ ] 1.2 `addRequestIDToTags`: tolerar `ctx.Writer == nil`; leer request-id de `ctx.Get("X-Request-Id")` y `ctx.Request.Header` como fallback.
-- [ ] 1.3 El middleware de request-id debe setear `c.Set("X-Request-Id", id)` además del header de respuesta.
-- [ ] 1.4 `HubNotifier.Emit`: recuperar panics en la goroutine de entrega y loguear sin volver a paniquear.
-- [ ] 1.5 Tests: push nil no paniquea; `ctx.Copy()` + `customlogger.Error` no paniquea; entrega WS con panic simulado no tumba el proceso.
-- [ ] 1.6 build/vet/race en paquetes tocados y commit `fix(stability): evitar panics en push y logs async`.
+- [x] 1.1 `sendPushToUser(nil, ...)`: usar `context.Background()` con timeout 10s para `SendBatch`; nunca pasar un `*gin.Context` nil tipado como `context.Context`.
+- [x] 1.2 `addRequestIDToTags`: tolerar `ctx.Writer == nil`; leer request-id de `ctx.Get("X-Request-Id")` y `ctx.Request.Header` como fallback.
+- [x] 1.3 El middleware de request-id debe setear `c.Set("X-Request-Id", id)` además del header de respuesta.
+- [x] 1.4 `HubNotifier.Emit`: recuperar panics en la goroutine de entrega y loguear sin volver a paniquear.
+- [x] 1.5 Tests: push nil no paniquea; `ctx.Copy()` + `customlogger.Error` no paniquea; entrega WS con panic simulado no tumba el proceso.
+- [x] 1.6 build/vet/race en paquetes tocados y commit `fix(stability): evitar panics en push y logs async`.
 
 ### Task 2: Acceso y coherencia de workout feedback
 
@@ -93,12 +93,12 @@
 - Test: `cmd/api/services/dashboard_service_test.go`
 - Test: `cmd/api/daos/*` para batch methods
 
-- [ ] 5.1 Permisos: reemplazar la cadena por rol/permiso por lecturas batch; preservar orden, `Tier`, `Permissions`, `missingData` y errores.
-- [ ] 5.2 Join requests: resolver teams y runners con `FindByIDs` antes del loop; preservar nombres vacíos y orden de filas.
-- [ ] 5.3 Dashboard: reutilizar `openSessions` de `seriesAndQuality` en `Leaderboard` y `Periods`.
-- [ ] 5.4 Dashboard: resolver equipos del scope con `FindByIDs` y validar atletas con una lectura batch; preservar 403 por atleta fuera de scope.
-- [ ] 5.5 Tests de query-count constantes (2 roles/N permisos, join requests con N, dashboard con 2+ equipos) y regresión funcional.
-- [ ] 5.6 build/vet/suite y commit `perf(reads): eliminar N+1 en permisos, join requests y dashboard`.
+- [x] 5.1 Permisos: reemplazar la cadena por rol/permiso por lecturas batch; preservar orden, `Tier`, `Permissions`, `missingData` y errores.
+- [x] 5.2 Join requests: resolver teams y runners con `FindByIDs` antes del loop; preservar nombres vacíos y orden de filas.
+- [x] 5.3 Dashboard: reutilizar `openSessions` de `seriesAndQuality` en `Leaderboard` y `Periods`.
+- [x] 5.4 Dashboard: resolver equipos del scope con `FindByIDs` y validar atletas con una lectura batch; preservar 403 por atleta fuera de scope.
+- [x] 5.5 Tests de query-count constantes (2 roles/N permisos, join requests con N, dashboard con 2+ equipos) y regresión funcional.
+- [x] 5.6 build/vet/suite y commit `perf(reads): eliminar N+1 en permisos, join requests y dashboard`.
 
 ### Task 6: Calendario y CPU
 
@@ -115,13 +115,13 @@
 - Test: `cmd/api/services/workout_feedback_service_test.go`
 - Test: `cmd/api/daos/workout_feedback_dao_test.go`
 
-- [ ] 6.1 `SessionInstanceDetail`: eliminar el doble `FindByID` reutilizando la fila leída.
-- [ ] 6.2 `UpsertDay`: usar `instantiateSessionsBatch` (slice de 1) y `deleteSupersededInstances`; preservar D10, errores y rollback.
-- [ ] 6.3 `Shift`: lectura batch de destinos y actualización batch, conservando orden descendente, colisiones y atomicidad.
-- [ ] 6.4 `computePeakSpeedKPH`: variante para puntos ya ordenados sin copia/sort; usar en `BulkCreatePointsRecompute`.
-- [ ] 6.5 Mover regex de validación a variables de paquete y cachear la base pública de media URL.
-- [ ] 6.6 Tests de query-count para detalle/UpsertDay/Shift y regresión de valores/errores.
-- [ ] 6.7 build/vet/suite y commit `perf(calendar): reducir round-trips y recomputes`.
+- [x] 6.1 `SessionInstanceDetail`: eliminar el doble `FindByID` reutilizando la fila leída.
+- [x] 6.2 `UpsertDay`: usar `instantiateSessionsBatch` (slice de 1) y `deleteSupersededInstances`; preservar D10, errores y rollback.
+- [x] 6.3 `Shift`: lectura batch de destinos y actualización batch, conservando orden descendente, colisiones y atomicidad.
+- [x] 6.4 `computePeakSpeedKPH`: variante para puntos ya ordenados sin copia/sort; usar en `BulkCreatePointsRecompute`.
+- [x] 6.5 Mover regex de validación a variables de paquete y cachear la base pública de media URL.
+- [x] 6.6 Tests de query-count para detalle/UpsertDay/Shift y regresión de valores/errores.
+- [x] 6.7 build/vet/suite y commit `perf(calendar): reducir round-trips y recomputes`.
 
 ### Task 7: Gamificación y push del cierre
 
