@@ -320,7 +320,7 @@ func TestChangeTier_SuccessToPaid(t *testing.T) {
 	}
 	roleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: id, Name: "corredor"}, nil
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
 		},
 	}
 	tierDao := &mockTierDao{
@@ -380,7 +380,7 @@ func TestChangeTier_SuccessToFree(t *testing.T) {
 	}
 	roleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: id, Name: "corredor"}, nil
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
 		},
 	}
 	tierDao := &mockTierDao{
@@ -468,7 +468,7 @@ func TestChangeTier_DebtBlocks(t *testing.T) {
 	}
 	roleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: id, Name: "corredor"}, nil
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
 		},
 	}
 	subDao := &mockTierSubscriptionDao{
@@ -503,7 +503,7 @@ func TestChangeTier_PendingFirstPaymentBlocks(t *testing.T) {
 	}
 	roleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: id, Name: "corredor"}, nil
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
 		},
 	}
 	subDao := &mockTierSubscriptionDao{
@@ -608,7 +608,7 @@ func TestChangeTier_AllowedAfterPendingCanceled(t *testing.T) {
 	}
 	roleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: id, Name: "corredor"}, nil
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
 		},
 	}
 	tierDao := &mockTierDao{
@@ -626,4 +626,36 @@ func TestChangeTier_AllowedAfterPendingCanceled(t *testing.T) {
 	assert.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, string(constants.SubscriptionStatusFirstPaymentPending), resp.SubscriptionStatus)
+}
+
+func TestChangeTier_RunnerRoleRejected(t *testing.T) {
+	subQueried := false
+	urDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return &dbs.UserRole{UserID: userID, RoleID: roleID, TierID: 1}, nil
+		},
+	}
+	roleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: id, Name: "corredor"}, nil
+		},
+	}
+	tierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, Hierarchy: 1, PaymentRequired: false}, nil
+		},
+	}
+	subDao := &mockTierSubscriptionDao{
+		findActiveFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error) {
+			subQueried = true
+			return nil, nil
+		},
+	}
+
+	svc := newTierSubscriptionService(urDao, roleDao, tierDao, subDao, &mockInstallmentDao{})
+	_, err := svc.ChangeTier(nil, 1, 1, &tiersubscription.ChangeTierRequest{TierID: 1})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol corredor no admite cambios de tier")
+	assert.False(t, subQueried)
 }

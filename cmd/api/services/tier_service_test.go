@@ -145,7 +145,7 @@ func TestTierService_Create_Success(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -159,7 +159,7 @@ func TestTierService_Create_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, "base", resp.Name)
-	assert.Equal(t, "corredor", resp.RoleName)
+	assert.Equal(t, "entrenador", resp.RoleName)
 }
 
 func TestTierService_Create_RoleNotFound(t *testing.T) {
@@ -187,7 +187,7 @@ func TestTierService_Create_DuplicateName(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -204,7 +204,7 @@ func TestTierService_Create_DuplicateName(t *testing.T) {
 func TestTierService_Update_Success(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador"}, nil
 		},
 		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
 			return nil
@@ -307,7 +307,7 @@ func TestTierService_Create_FindByNameAndRoleError(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestTierService_Create_DAOCreateError(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -386,7 +386,7 @@ func TestTierService_Update_FindByNameAndRoleError(t *testing.T) {
 func TestTierService_Update_EmptyName(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador"}, nil
 		},
 	}
 
@@ -403,7 +403,7 @@ func TestTierService_Update_EmptyName(t *testing.T) {
 func TestTierService_Update_DAOUpdateError(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador"}, nil
 		},
 		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
 			return errors.New("db error")
@@ -474,7 +474,7 @@ func TestTierService_Delete_SoftDeleteError(t *testing.T) {
 func TestTierService_GetByID_Success(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador"}, nil
 		},
 	}
 
@@ -562,8 +562,8 @@ func TestTierService_GetAll_Success(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
 			return []dbs.Tier{
-				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"},
-				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor"},
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador"},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "entrenador"},
 			}, nil
 		},
 	}
@@ -645,7 +645,7 @@ func TestTierService_Create_BaseForcesFree(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -680,7 +680,7 @@ func TestTierService_Create_MediumHierarchy(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -711,7 +711,7 @@ func TestTierService_Create_PremiumHierarchy(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDaoForTier{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -765,7 +765,7 @@ func TestTierService_Update_ReconcileByNewName(t *testing.T) {
 	var updated *dbs.Tier
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador", PaymentRequired: false, Hierarchy: 1}, nil
 		},
 		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
 			updated = t
@@ -789,7 +789,7 @@ func TestTierService_Update_KeepsBaseFree(t *testing.T) {
 	var updated *dbs.Tier
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1}, nil
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador", PaymentRequired: false, Hierarchy: 1}, nil
 		},
 		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
 			updated = t
@@ -813,7 +813,7 @@ func TestTierService_Update_NonStandardNameKeepsHierarchy(t *testing.T) {
 	var updated *dbs.Tier
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 1, Name: "pro", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 5}, nil
+			return &dbs.Tier{ID: 1, Name: "pro", RoleID: 1, RoleName: "entrenador", PaymentRequired: true, Hierarchy: 5}, nil
 		},
 		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
 			updated = t
@@ -836,7 +836,7 @@ func TestTierService_Update_NonStandardNameKeepsHierarchy(t *testing.T) {
 func TestTierService_GetByID_ExposesHierarchy(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
-			return &dbs.Tier{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 3}, nil
+			return &dbs.Tier{ID: 2, Name: "premium", RoleID: 1, RoleName: "entrenador", PaymentRequired: true, Hierarchy: 3}, nil
 		},
 	}
 
@@ -851,8 +851,8 @@ func TestTierService_GetAll_ExposesHierarchy(t *testing.T) {
 	mockTierDao := &mockTierDao{
 		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
 			return []dbs.Tier{
-				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor", PaymentRequired: false, Hierarchy: 1},
-				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor", PaymentRequired: true, Hierarchy: 3},
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "entrenador", PaymentRequired: false, Hierarchy: 1},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "entrenador", PaymentRequired: true, Hierarchy: 3},
 			}, nil
 		},
 	}
@@ -922,4 +922,110 @@ func TestTierService_GetAll_NoRoleID_ReturnsAll(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
+}
+
+func TestTierService_GetAll_RunnerRoleReturnsEmpty(t *testing.T) {
+	roleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor"},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, roleDao)
+	roleID := int64(1)
+	resp, err := svc.GetAll(nil, &roleID)
+
+	assert.NoError(t, err)
+	assert.Empty(t, resp)
+}
+
+func TestTierService_GetAll_NoRoleID_HidesRunnerTiers(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"},
+				{ID: 2, Name: "premium", RoleID: 1, RoleName: "corredor"},
+				{ID: 3, Name: "base entrenador", RoleID: 2, RoleName: "entrenador"},
+			}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	resp, err := svc.GetAll(nil, nil)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 1)
+	assert.Equal(t, int64(3), resp[0].ID)
+	assert.Equal(t, "entrenador", resp[0].RoleName)
+}
+
+func TestTierService_Create_RunnerRoleRejected(t *testing.T) {
+	created := false
+	mockTierDao := &mockTierDao{
+		createFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			created = true
+			return nil
+		},
+	}
+	roleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, roleDao)
+	_, err := svc.Create(nil, &tier.CreateTierRequest{Name: "premium", RoleID: 1})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol corredor no admite tiers")
+	assert.False(t, created)
+}
+
+func TestTierService_Update_RunnerTierRejected(t *testing.T) {
+	updated := false
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Tier) error {
+			updated = true
+			return nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	newName := "premium"
+	_, err := svc.Update(nil, 1, &tier.UpdateTierRequest{Name: &newName})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol corredor no admite tiers")
+	assert.False(t, updated)
+}
+
+func TestTierService_Delete_RunnerTierRejected(t *testing.T) {
+	deleted := false
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 1, RoleName: "corredor"}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			deleted = true
+			return nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	_, err := svc.Delete(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol corredor no admite tiers")
+	assert.False(t, deleted)
 }

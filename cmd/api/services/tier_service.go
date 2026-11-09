@@ -68,6 +68,9 @@ func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*ti
 	if role == nil {
 		return nil, fmt.Errorf("rol no encontrado")
 	}
+	if role.Name == protectedRoleName {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
+	}
 
 	existing, err := s.tierDao.FindByNameAndRole(ctx, name, req.RoleID)
 	if err != nil {
@@ -135,6 +138,9 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 	}
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
+	}
+	if t.RoleName == protectedRoleName {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
 	}
 
 	if req.Name != nil {
@@ -216,6 +222,9 @@ func (s *tierService) Delete(ctx *gin.Context, id int64) (*tier.DeleteTierRespon
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
 	}
+	if t.RoleName == protectedRoleName {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
+	}
 
 	if err := s.tierDao.SoftDelete(ctx, id); err != nil {
 		customlogger.Error(ctx, "error deleting tier", err,
@@ -295,6 +304,17 @@ func (s *tierService) GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierRespon
 
 	// Filtrado en memoria: si llega role_id, quedan solo los tiers de ese rol.
 	if roleID != nil {
+		role, err := s.roleDao.FindByID(ctx, *roleID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding role for tier filter", err,
+				customlogger.Tag("role_id", fmt.Sprintf("%d", *roleID)),
+				customlogger.TagMethod("GetAll"))
+			return nil, fmt.Errorf("error al obtener tiers")
+		}
+		if role != nil && role.Name == protectedRoleName {
+			return []tier.TierResponse{}, nil
+		}
+
 		filtered := make([]dbs.Tier, 0, len(tiers))
 		for _, t := range tiers {
 			if t.RoleID == *roleID {
@@ -303,6 +323,15 @@ func (s *tierService) GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierRespon
 		}
 		if len(filtered) == 0 {
 			return nil, fmt.Errorf("rol no encontrado")
+		}
+		tiers = filtered
+	} else {
+		// El tier base del corredor es soporte interno: no se expone en el catálogo.
+		filtered := make([]dbs.Tier, 0, len(tiers))
+		for _, t := range tiers {
+			if t.RoleName != protectedRoleName {
+				filtered = append(filtered, t)
+			}
 		}
 		tiers = filtered
 	}

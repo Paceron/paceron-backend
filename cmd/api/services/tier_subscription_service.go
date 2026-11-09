@@ -94,6 +94,9 @@ func (s *tierSubscriptionService) ChangeTier(ctx *gin.Context, userID, roleID in
 		if role == nil {
 			return nil, fmt.Errorf("rol no encontrado")
 		}
+		if role.Name == protectedRoleName {
+			return nil, fmt.Errorf("el rol corredor no admite cambios de tier")
+		}
 
 		// 409: ya existe una sub con primer pago pendiente para el rol. Con el
 		// modelo nuevo hay dos "vigentes" posibles al mismo tiempo (la sub activa

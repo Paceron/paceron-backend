@@ -23,13 +23,13 @@
 - Produce: rechazos de validación en `TierService.Create/Update/Delete`, catálogo filtrado en `TierService.GetAll`, guard en `UserRoleService.AssignRole` y `TierSubscriptionService.ChangeTier`.
 - Consume: `protectedRoleName` existente en el paquete `services`.
 
-- [ ] 1.1 En `tierService.GetAll`, si `roleID` pertenece a `corredor`, devolver `[]` sin error; sin `roleID`, excluir tiers con `RoleName == corredor`.
-- [ ] 1.2 En `tierService.Create`, rechazar `role.Name == corredor` con `"el rol corredor no admite tiers"`.
-- [ ] 1.3 En `tierService.Update` y `tierService.Delete`, rechazar tiers cuyo `RoleName` sea `corredor` con el mismo error, antes de escribir.
-- [ ] 1.4 En `userRoleService.AssignRole`, si `role.Name == corredor && req.TierID != 0`, devolver `"el rol corredor no admite tiers"` antes de crear filas.
-- [ ] 1.5 En `tierSubscriptionService.ChangeTier`, si `role.Name == corredor`, devolver `"el rol corredor no admite cambios de tier"` antes de consultar suscripciones.
-- [ ] 1.6 Tests: catálogo corredor `[]`, catálogo global oculta corredor, entrenador intacto, create/update/delete rechazados, assign sin tier usa base, assign con tier rechazado, ChangeTier corredor rechazado, permisos de corredor siguen resolviendo base.
-- [ ] 1.7 `go build ./...`, `go vet ./...`, suite de `services` con Postgres real y commit `feat(tiers): ocultar y proteger tiers del rol corredor (Gap 42)`.
+- [x] 1.1 En `tierService.GetAll`, si `roleID` pertenece a `corredor`, devolver `[]` sin error; sin `roleID`, excluir tiers con `RoleName == corredor`.
+- [x] 1.2 En `tierService.Create`, rechazar `role.Name == corredor` con `"el rol corredor no admite tiers"`.
+- [x] 1.3 En `tierService.Update` y `tierService.Delete`, rechazar tiers cuyo `RoleName` sea `corredor` con el mismo error, antes de escribir.
+- [x] 1.4 En `userRoleService.AssignRole`, si `role.Name == corredor && req.TierID != 0`, devolver `"el rol corredor no admite tiers"` antes de crear filas.
+- [x] 1.5 En `tierSubscriptionService.ChangeTier`, si `role.Name == corredor`, devolver `"el rol corredor no admite cambios de tier"` antes de consultar suscripciones.
+- [x] 1.6 Tests: catálogo corredor `[]`, catálogo global oculta corredor, entrenador intacto, create/update/delete rechazados, assign sin tier usa base, assign con tier rechazado, ChangeTier corredor rechazado, permisos de corredor siguen resolviendo base.
+- [x] 1.7 `go build ./...`, `go vet ./...`, suite de `services` con Postgres real y commit `feat(tiers): ocultar y proteger tiers del rol corredor (Gap 42)`.
 
 ### Task 2: Purga manual y documentación
 
