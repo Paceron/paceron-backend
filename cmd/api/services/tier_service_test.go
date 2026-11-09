@@ -14,9 +14,11 @@ import (
 type mockTierDao struct {
 	createFn            func(ctx *gin.Context, t *dbs.Tier) error
 	findByIDFn          func(ctx *gin.Context, id int64) (*dbs.Tier, error)
+	findByIDsFn         func(ctx *gin.Context, ids []int64) ([]dbs.Tier, error)
 	findByNameAndRoleFn func(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error)
 	findByNameFn        func(ctx *gin.Context, name string) (*dbs.Tier, error)
 	findLowestByRoleFn  func(ctx *gin.Context, roleID int64) (*dbs.Tier, error)
+	findLowestByRolesFn func(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error)
 	getAllFn            func(ctx *gin.Context) ([]dbs.Tier, error)
 	updateFn            func(ctx *gin.Context, t *dbs.Tier) error
 	softDeleteFn        func(ctx *gin.Context, id int64) error
@@ -32,6 +34,13 @@ func (m *mockTierDao) Create(ctx *gin.Context, t *dbs.Tier) error {
 func (m *mockTierDao) FindByID(ctx *gin.Context, id int64) (*dbs.Tier, error) {
 	if m.findByIDFn != nil {
 		return m.findByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (m *mockTierDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Tier, error) {
+	if m.findByIDsFn != nil {
+		return m.findByIDsFn(ctx, ids)
 	}
 	return nil, nil
 }
@@ -53,6 +62,13 @@ func (m *mockTierDao) FindByName(ctx *gin.Context, name string) (*dbs.Tier, erro
 func (m *mockTierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 	if m.findLowestByRoleFn != nil {
 		return m.findLowestByRoleFn(ctx, roleID)
+	}
+	return nil, nil
+}
+
+func (m *mockTierDao) FindLowestByRoles(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error) {
+	if m.findLowestByRolesFn != nil {
+		return m.findLowestByRolesFn(ctx, roleIDs)
 	}
 	return nil, nil
 }

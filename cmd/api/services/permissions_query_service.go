@@ -2,12 +2,14 @@ package services
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
+	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 )
 
@@ -28,13 +30,13 @@ type PermissionsQueryServiceInterface interface {
 }
 
 type permissionsQueryService struct {
-	userDao             daos.UserDaoInterface
-	userRoleDao         daos.UserRoleDaoInterface
-	roleDao             daos.RoleDaoInterface
-	tierDao             daos.TierDaoInterface
-	tierPermissionDao   daos.TierPermissionDaoInterface
-	permissionDao       daos.PermissionDaoInterface
-	tierSubDao          daos.TierSubscriptionDaoInterface
+	userDao           daos.UserDaoInterface
+	userRoleDao       daos.UserRoleDaoInterface
+	roleDao           daos.RoleDaoInterface
+	tierDao           daos.TierDaoInterface
+	tierPermissionDao daos.TierPermissionDaoInterface
+	permissionDao     daos.PermissionDaoInterface
+	tierSubDao        daos.TierSubscriptionDaoInterface
 }
 
 func NewPermissionsQueryService(
@@ -84,84 +86,172 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 		}, nil
 	}
 
-	var missingData []string
-	var roles []RolePermission
-
+	roleIDs := make([]int64, 0, len(userRoles))
 	for _, ur := range userRoles {
-		role, err := s.roleDao.FindByID(ctx, ur.RoleID)
-		if err != nil || role == nil {
-			missingData = append(missingData, fmt.Sprintf("rol_id=%d no configurado", ur.RoleID))
-			customlogger.Error(ctx, "role not found for user role assignment", err,
-				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-				customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
-				customlogger.TagMethod("GetUserPermissions"))
+		roleIDs = append(roleIDs, ur.RoleID)
+	}
+
+	roleRows, err := s.roleDao.FindByIDs(ctx, roleIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding roles for permissions query", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("GetUserPermissions"))
+		return nil, fmt.Errorf("error al obtener permisos")
+	}
+	rolesByID := make(map[int64]dbs.Role, len(roleRows))
+	for _, role := range roleRows {
+		rolesByID[role.ID] = role
+	}
+
+	subs, err := s.tierSubDao.FindActiveByUserRoles(ctx, userID, roleIDs, string(constants.SubscriptionStatusActive))
+	if err != nil {
+		customlogger.Error(ctx, "error finding active tier subscriptions", err,
+			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+			customlogger.TagMethod("GetUserPermissions"))
+		return nil, fmt.Errorf("error al obtener permisos")
+	}
+	activeTierByRole := make(map[int64]int64, len(subs))
+	for _, sub := range subs {
+		activeTierByRole[sub.RoleID] = sub.TierID
+	}
+
+	// El tier efectivo se resuelve desde la sub ACTIVA (ya pagada) del ledger,
+	// igual que GetCurrentSubscription(period=current). Sin sub activa, el
+	// usuario está en el tier base de su rol (menor jerarquía en `tiers`),
+	// como en el resto de la resolución de tier inicial (user_role_service,
+	// AssignRole). NO se usa user_roles.tier_id como fallback: es un caché
+	// que puede conservar un tier pago de una activación vieja sin que hoy
+	// exista sub que lo respalde — el estado real sin sub activa es base.
+	// Una sub first_payment_pending tampoco cuenta: la cuota #1 impaga no
+	// habilita el acceso al tier pago (ver docs/STATE_MACHINES.md). Durante
+	// la ventana pending la sub del anterior sigue active (ChangeTier ya no la
+	// cierra al crear el pendiente), así que esta rama sigue reportando el tier
+	// previo; el cierre a ended ocurre en applyApprovedInstallment, cuando la
+	// cuota #1 confirma la nueva.
+	baseRoleIDs := make([]int64, 0, len(userRoles))
+	seenBaseRole := make(map[int64]struct{}, len(userRoles))
+	for _, ur := range userRoles {
+		if _, ok := rolesByID[ur.RoleID]; !ok {
 			continue
 		}
+		if _, hasSub := activeTierByRole[ur.RoleID]; hasSub {
+			continue
+		}
+		if _, seen := seenBaseRole[ur.RoleID]; seen {
+			continue
+		}
+		seenBaseRole[ur.RoleID] = struct{}{}
+		baseRoleIDs = append(baseRoleIDs, ur.RoleID)
+	}
 
-		// El tier efectivo se resuelve desde la sub ACTIVA (ya pagada) del ledger,
-		// igual que GetCurrentSubscription(period=current). Sin sub activa, el
-		// usuario está en el tier base de su rol (menor jerarquía en `tiers`),
-		// como en el resto de la resolución de tier inicial (user_role_service,
-		// AssignRole). NO se usa user_roles.tier_id como fallback: es un caché
-		// que puede conservar un tier pago de una activación vieja sin que hoy
-		// exista sub que lo respalde — el estado real sin sub activa es base.
-		// Una sub first_payment_pending tampoco cuenta: la cuota #1 impaga no
-		// habilita el acceso al tier pago (ver docs/STATE_MACHINES.md). Durante
-		// la ventana pending la sub del tier anterior sigue active (ChangeTier ya
-		// no la cierra al crear el pendiente), así que esta rama sigue reportando
-		// el tier previo; el cierre a ended ocurre en applyApprovedInstallment,
-		// cuando la cuota #1 confirma la nueva.
-		var tierID int64
-		sub, err := s.tierSubDao.FindActiveByUserRole(ctx, userID, ur.RoleID, string(constants.SubscriptionStatusActive))
+	baseTierByRole := make(map[int64]dbs.Tier, len(baseRoleIDs))
+	if len(baseRoleIDs) > 0 {
+		baseTiers, err := s.tierDao.FindLowestByRoles(ctx, baseRoleIDs)
 		if err != nil {
-			customlogger.Error(ctx, "error finding active tier subscription", err,
+			customlogger.Error(ctx, "error finding base tiers by roles", err,
 				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-				customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
 				customlogger.TagMethod("GetUserPermissions"))
 			return nil, fmt.Errorf("error al obtener permisos")
 		}
-		if sub != nil {
-			tierID = sub.TierID
-		} else {
-			baseTier, err := s.tierDao.FindLowestByRole(ctx, ur.RoleID)
-			if err != nil {
-				customlogger.Error(ctx, "error finding base tier by role", err,
-					customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-					customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
-					customlogger.TagMethod("GetUserPermissions"))
-				return nil, fmt.Errorf("error al obtener permisos")
+		for _, tier := range baseTiers {
+			if _, exists := baseTierByRole[tier.RoleID]; !exists {
+				baseTierByRole[tier.RoleID] = tier
 			}
-			if baseTier == nil {
-				missingData = append(missingData, fmt.Sprintf("tier base no configurado para el rol %s", role.Name))
-				customlogger.Error(ctx, "no base tier configured for role", nil,
-					customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-					customlogger.Tag("role_id", fmt.Sprintf("%d", ur.RoleID)),
-					customlogger.TagMethod("GetUserPermissions"))
+		}
+	}
+
+	type rolePlan struct {
+		role    *dbs.Role
+		tierID  int64
+		missing string
+	}
+	plans := make([]rolePlan, len(userRoles))
+	tierIDSet := map[int64]struct{}{}
+	for i, ur := range userRoles {
+		role, ok := rolesByID[ur.RoleID]
+		if !ok {
+			plans[i].missing = fmt.Sprintf("rol_id=%d no configurado", ur.RoleID)
+			continue
+		}
+		roleCopy := role
+		plans[i].role = &roleCopy
+
+		if tierID, hasSub := activeTierByRole[ur.RoleID]; hasSub {
+			plans[i].tierID = tierID
+		} else {
+			baseTier, ok := baseTierByRole[ur.RoleID]
+			if !ok {
+				plans[i].missing = fmt.Sprintf("tier base no configurado para el rol %s", role.Name)
 				continue
 			}
-			tierID = baseTier.ID
+			plans[i].tierID = baseTier.ID
 		}
+		tierIDSet[plans[i].tierID] = struct{}{}
+	}
 
-		tier, err := s.tierDao.FindByID(ctx, tierID)
-		if err != nil || tier == nil {
-			missingData = append(missingData, fmt.Sprintf("tier_id=%d no configurado para el rol %s", tierID, role.Name))
-			customlogger.Error(ctx, "tier not found for user role assignment", err,
-				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-				customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
-				customlogger.TagMethod("GetUserPermissions"))
-			continue
-		}
+	tierIDs := make([]int64, 0, len(tierIDSet))
+	for id := range tierIDSet {
+		tierIDs = append(tierIDs, id)
+	}
+	sort.Slice(tierIDs, func(i, j int) bool { return tierIDs[i] < tierIDs[j] })
 
-		tierPermissions, err := s.tierPermissionDao.FindByTierID(ctx, tier.ID)
+	tiersByID := make(map[int64]dbs.Tier, len(tierIDs))
+	if len(tierIDs) > 0 {
+		tierRows, err := s.tierDao.FindByIDs(ctx, tierIDs)
 		if err != nil {
-			customlogger.Error(ctx, "error finding tier permissions", err,
-				customlogger.Tag("tier_id", fmt.Sprintf("%d", tier.ID)),
+			customlogger.Error(ctx, "error finding tiers by ids", err,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.TagMethod("GetUserPermissions"))
+			return nil, fmt.Errorf("error al obtener permisos")
+		}
+		for _, tier := range tierRows {
+			tiersByID[tier.ID] = tier
+		}
+	}
+
+	var permissionRows []daos.TierPermissionNameByTier
+	var permissionsErr error
+	if len(tierIDs) > 0 {
+		permissionRows, permissionsErr = s.tierPermissionDao.ListPermissionNamesByTiers(ctx, tierIDs)
+		if permissionsErr != nil {
+			customlogger.Error(ctx, "error finding tier permissions", permissionsErr,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.TagMethod("GetUserPermissions"))
+		}
+	}
+	permissionsByTier := make(map[int64][]daos.TierPermissionNameByTier, len(permissionRows))
+	for _, row := range permissionRows {
+		permissionsByTier[row.TierID] = append(permissionsByTier[row.TierID], row)
+	}
+
+	var missingData []string
+	var roles []RolePermission
+	for i := range plans {
+		plan := plans[i]
+		if plan.missing != "" {
+			missingData = append(missingData, plan.missing)
+			continue
+		}
+
+		tier, ok := tiersByID[plan.tierID]
+		if !ok {
+			missingData = append(missingData, fmt.Sprintf("tier_id=%d no configurado para el rol %s", plan.tierID, plan.role.Name))
+			customlogger.Error(ctx, "tier not found for user role assignment", nil,
+				customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+				customlogger.Tag("tier_id", fmt.Sprintf("%d", plan.tierID)),
 				customlogger.TagMethod("GetUserPermissions"))
 			continue
 		}
 
+		// Un error de la lectura batch no se puede atribuir a un rol puntual: se
+		// omite la fila (igual que el continue por rol de la versión anterior).
+		if permissionsErr != nil {
+			continue
+		}
+
+		tierPermissions := permissionsByTier[tier.ID]
 		if len(tierPermissions) == 0 {
-			missingData = append(missingData, fmt.Sprintf("tier '%s' del rol '%s' no tiene permisos asociados", tier.Name, role.Name))
+			missingData = append(missingData, fmt.Sprintf("tier '%s' del rol '%s' no tiene permisos asociados", tier.Name, plan.role.Name))
 			customlogger.Warn(ctx, "tier has no permissions",
 				customlogger.Tag("tier_id", fmt.Sprintf("%d", tier.ID)),
 				customlogger.Tag("tier_name", tier.Name),
@@ -170,17 +260,16 @@ func (s *permissionsQueryService) GetUserPermissions(ctx *gin.Context, userID in
 
 		var permissionNames []string
 		for _, tp := range tierPermissions {
-			perm, err := s.permissionDao.FindByID(ctx, tp.PermissionID)
-			if err != nil || perm == nil {
+			if tp.PermissionName == nil {
 				missingData = append(missingData, fmt.Sprintf("permiso_id=%d no configurado", tp.PermissionID))
 				continue
 			}
-			permissionNames = append(permissionNames, perm.Name)
+			permissionNames = append(permissionNames, *tp.PermissionName)
 		}
 
 		roles = append(roles, RolePermission{
-			ID:          role.ID,
-			Name:        role.Name,
+			ID:          plan.role.ID,
+			Name:        plan.role.Name,
 			Tier:        tier.Name,
 			Permissions: permissionNames,
 		})

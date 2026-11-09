@@ -16,6 +16,7 @@ type mockGroupUserDao struct {
 	createFn             func(ctx *gin.Context, gu *dbs.GroupUser) error
 	findByGroupAndUserFn func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error)
 	findByGroupIDFn      func(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
+	findByGroupIDsFn     func(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error)
 	findByUserIDFn       func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
 	softDeleteFn         func(ctx *gin.Context, id int64) error
 	softDeleteByTeamIDFn func(ctx *gin.Context, teamID int64) error
@@ -38,6 +39,13 @@ func (m *mockGroupUserDao) FindByGroupAndUser(ctx *gin.Context, groupID, userID 
 func (m *mockGroupUserDao) FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error) {
 	if m.findByGroupIDFn != nil {
 		return m.findByGroupIDFn(ctx, groupID)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error) {
+	if m.findByGroupIDsFn != nil {
+		return m.findByGroupIDsFn(ctx, groupIDs)
 	}
 	return nil, nil
 }

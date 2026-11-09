@@ -136,7 +136,7 @@ func (s *joinRequestService) Create(ctx *gin.Context, teamID, runnerID int64) (*
 		return nil, fmt.Errorf("error al crear solicitud")
 	}
 
-	return s.toResponse(ctx, jr, teamDB.Name), nil
+	return s.toResponse(jr, teamDB.Name, s.runnerName(ctx, runnerID)), nil
 }
 
 // Cancel borra la solicitud (hard delete, no hay estado "cancelled" — D1) si
@@ -276,13 +276,34 @@ func (s *joinRequestService) ListMine(ctx *gin.Context, runnerID int64) ([]joinr
 		return nil, fmt.Errorf("error al listar solicitudes")
 	}
 
+	teamIDs := make([]int64, 0, len(requests))
+	seenTeam := make(map[int64]struct{}, len(requests))
+	runnerIDs := make([]int64, 0, len(requests))
+	seenRunner := make(map[int64]struct{}, len(requests))
+	for _, jr := range requests {
+		if _, seen := seenTeam[jr.TeamID]; !seen {
+			seenTeam[jr.TeamID] = struct{}{}
+			teamIDs = append(teamIDs, jr.TeamID)
+		}
+		if _, seen := seenRunner[jr.RunnerID]; !seen {
+			seenRunner[jr.RunnerID] = struct{}{}
+			runnerIDs = append(runnerIDs, jr.RunnerID)
+		}
+	}
+
+	teamNames := make(map[int64]string, len(teamIDs))
+	if len(teamIDs) > 0 {
+		if teams, err := s.teamDao.FindByIDs(ctx, teamIDs); err == nil {
+			for _, team := range teams {
+				teamNames[team.ID] = team.Name
+			}
+		}
+	}
+	runnerNames := s.runnerNames(ctx, runnerIDs)
+
 	responses := make([]joinrequest.JoinRequestResponse, len(requests))
 	for i, jr := range requests {
-		teamName := ""
-		if teamDB, err := s.teamDao.FindByID(ctx, jr.TeamID); err == nil && teamDB != nil {
-			teamName = teamDB.Name
-		}
-		responses[i] = *s.toResponse(ctx, &jr, teamName)
+		responses[i] = *s.toResponse(&jr, teamNames[jr.TeamID], runnerNames[jr.RunnerID])
 	}
 	return responses, nil
 }
@@ -310,9 +331,20 @@ func (s *joinRequestService) ListByTeam(ctx *gin.Context, teamID, callerID int64
 		return nil, fmt.Errorf("error al listar solicitudes")
 	}
 
+	runnerIDs := make([]int64, 0, len(requests))
+	seenRunner := make(map[int64]struct{}, len(requests))
+	for _, jr := range requests {
+		if _, seen := seenRunner[jr.RunnerID]; seen {
+			continue
+		}
+		seenRunner[jr.RunnerID] = struct{}{}
+		runnerIDs = append(runnerIDs, jr.RunnerID)
+	}
+	runnerNames := s.runnerNames(ctx, runnerIDs)
+
 	responses := make([]joinrequest.JoinRequestResponse, len(requests))
 	for i, jr := range requests {
-		responses[i] = *s.toResponse(ctx, &jr, teamDB.Name)
+		responses[i] = *s.toResponse(&jr, teamDB.Name, runnerNames[jr.RunnerID])
 	}
 	return responses, nil
 }
@@ -329,13 +361,38 @@ func (s *joinRequestService) PendingCount(ctx *gin.Context, ownerID int64) (int6
 	return count, nil
 }
 
-// toResponse convierte un dbs.JoinRequest a su DTO de respuesta, resolviendo
-// el nombre del corredor.
-func (s *joinRequestService) toResponse(ctx *gin.Context, jr *dbs.JoinRequest, teamName string) *joinrequest.JoinRequestResponse {
-	runnerName := ""
-	if runner, err := s.userDao.FindByID(ctx, jr.RunnerID); err == nil && runner != nil {
-		runnerName = runner.Name + " " + runner.Surname
+// runnerName resuelve el nombre de un único corredor (Create).
+func (s *joinRequestService) runnerName(ctx *gin.Context, runnerID int64) string {
+	if runner, err := s.userDao.FindByID(ctx, runnerID); err == nil && runner != nil {
+		return runner.Name + " " + runner.Surname
 	}
+	return ""
+}
+
+// runnerNames resuelve los nombres de varios corredores en una sola query. Las
+// referencias inexistentes quedan fuera del map y el caller usa "" igual que
+// antes.
+func (s *joinRequestService) runnerNames(ctx *gin.Context, runnerIDs []int64) map[int64]string {
+	names := make(map[int64]string, len(runnerIDs))
+	if len(runnerIDs) == 0 {
+		return names
+	}
+	users, err := s.userDao.FindByIDs(ctx, runnerIDs)
+	if err != nil {
+		return names
+	}
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		names[user.ID] = user.Name + " " + user.Surname
+	}
+	return names
+}
+
+// toResponse convierte un dbs.JoinRequest a su DTO de respuesta con los nombres
+// ya resueltos por el caller.
+func (s *joinRequestService) toResponse(jr *dbs.JoinRequest, teamName, runnerName string) *joinrequest.JoinRequestResponse {
 	return &joinrequest.JoinRequestResponse{
 		ID:         jr.ID,
 		TeamID:     jr.TeamID,

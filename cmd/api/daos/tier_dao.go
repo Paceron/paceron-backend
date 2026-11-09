@@ -14,7 +14,9 @@ type TierDaoInterface interface {
 	FindByID(ctx *gin.Context, id int64) (*dbs.Tier, error)
 	FindByNameAndRole(ctx *gin.Context, name string, roleID int64) (*dbs.Tier, error)
 	FindByName(ctx *gin.Context, name string) (*dbs.Tier, error)
+	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Tier, error)
 	FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error)
+	FindLowestByRoles(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error)
 	GetAll(ctx *gin.Context) ([]dbs.Tier, error)
 	Update(ctx *gin.Context, tier *dbs.Tier) error
 	SoftDelete(ctx *gin.Context, id int64) error
@@ -70,6 +72,19 @@ func (d *tierDao) FindByName(ctx *gin.Context, name string) (*dbs.Tier, error) {
 	return &tier, nil
 }
 
+// FindByIDs resuelve varios tiers activos en una sola consulta.
+func (d *tierDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Tier, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var tiers []dbs.Tier
+	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&tiers).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding tiers by ids: %w", err)
+	}
+	return tiers, nil
+}
+
 // FindLowestByRole devuelve el tier de menor jerarquía (base) de un rol — sirve
 // como tier de acceso inicial cuando se asigna un rol con tier pago (D2).
 func (d *tierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
@@ -85,6 +100,24 @@ func (d *tierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, e
 		return nil, fmt.Errorf("error finding lowest tier by role: %w", err)
 	}
 	return &tier, nil
+}
+
+// FindLowestByRoles es la variante batch de FindLowestByRole: devuelve el tier de
+// menor jerarquía de cada rol en una sola query (DISTINCT ON de Postgres).
+func (d *tierDao) FindLowestByRoles(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	var tiers []dbs.Tier
+	err := d.DB.Raw(`
+SELECT DISTINCT ON (role_id) *
+FROM tiers
+WHERE role_id IN ? AND deleted_at IS NULL
+ORDER BY role_id ASC, hierarchy ASC, id ASC`, roleIDs).Scan(&tiers).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding lowest tiers by roles: %w", err)
+	}
+	return tiers, nil
 }
 
 func (d *tierDao) GetAll(ctx *gin.Context) ([]dbs.Tier, error) {

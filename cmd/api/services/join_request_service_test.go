@@ -381,10 +381,17 @@ func TestJoinRequestService_ListMine(t *testing.T) {
 	jrDao := &mockJoinRequestDao{findByUserFn: func(ctx *gin.Context, runnerID int64) ([]dbs.JoinRequest, error) {
 		return []dbs.JoinRequest{{ID: 1, TeamID: 5, RunnerID: runnerID, Status: string(constants.InvitationStatusPending)}}, nil
 	}}
-	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-		return &dbs.Team{ID: id, Name: "equipo test"}, nil
+	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+		out := make([]dbs.Team, 0, len(ids))
+		for _, id := range ids {
+			out = append(out, dbs.Team{ID: id, Name: "equipo test"})
+		}
+		return out, nil
 	}}
-	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, mockUserDao{
+		mockFindByID:  func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil },
+		mockFindByIDs: func(ctx *gin.Context, ids []int64) ([]*dbs.User, error) { return nil, nil },
+	}, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
 
 	results, err := svc.ListMine(nil, 7)
 
@@ -400,7 +407,10 @@ func TestJoinRequestService_ListByTeam_Success(t *testing.T) {
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 1, Name: "equipo test"}, nil
 	}}
-	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, mockUserDao{mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil }}, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, mockUserDao{
+		mockFindByID:  func(ctx *gin.Context, id int64) (*dbs.User, error) { return nil, nil },
+		mockFindByIDs: func(ctx *gin.Context, ids []int64) ([]*dbs.User, error) { return nil, nil },
+	}, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
 
 	results, err := svc.ListByTeam(nil, 5, 1)
 
@@ -429,4 +439,56 @@ func TestJoinRequestService_PendingCount(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), count)
+}
+
+// 5.2: ListMine resuelve todos los equipos y corredores con un FindByIDs cada
+// uno, sin importar cuántas solicitudes haya.
+func TestJoinRequestService_ListMine_QueryCountConstante(t *testing.T) {
+	teamFindByID, teamFindByIDs := 0, 0
+	userFindByID, userFindByIDs := 0, 0
+	requests := []dbs.JoinRequest{
+		{ID: 1, TeamID: 5, RunnerID: 7, Status: string(constants.InvitationStatusPending)},
+		{ID: 2, TeamID: 5, RunnerID: 8, Status: string(constants.InvitationStatusPending)},
+		{ID: 3, TeamID: 6, RunnerID: 7, Status: string(constants.InvitationStatusPending)},
+		{ID: 4, TeamID: 6, RunnerID: 9, Status: string(constants.InvitationStatusPending)},
+	}
+	jrDao := &mockJoinRequestDao{findByUserFn: func(ctx *gin.Context, runnerID int64) ([]dbs.JoinRequest, error) {
+		return requests, nil
+	}}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			teamFindByID++
+			return nil, nil
+		},
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+			teamFindByIDs++
+			return []dbs.Team{{ID: 5, Name: "cinco"}, {ID: 6, Name: "seis"}}, nil
+		},
+	}
+	userDao := mockUserDao{
+		mockFindByID: func(ctx *gin.Context, id int64) (*dbs.User, error) {
+			userFindByID++
+			return nil, nil
+		},
+		mockFindByIDs: func(ctx *gin.Context, ids []int64) ([]*dbs.User, error) {
+			userFindByIDs++
+			return []*dbs.User{
+				{ID: 7, Name: "Ana", Surname: "Gómez"},
+				{ID: 8, Name: "Beto", Surname: "Ruiz"},
+				{ID: 9, Name: "Caro", Surname: "Sosa"},
+			}, nil
+		},
+	}
+	svc := NewJoinRequestService(jrDao, teamDao, &mockTeamUserDao{}, userDao, &mockGroupDao{}, &mockGroupUserDao{}, nil, nil)
+
+	results, err := svc.ListMine(nil, 7)
+
+	require.NoError(t, err)
+	require.Len(t, results, 4)
+	assert.Equal(t, "cinco", results[0].TeamName)
+	assert.Equal(t, "Ana Gómez", results[0].RunnerName)
+	assert.Equal(t, 1, teamFindByIDs)
+	assert.Equal(t, 0, teamFindByID)
+	assert.Equal(t, 1, userFindByIDs)
+	assert.Equal(t, 0, userFindByID)
 }

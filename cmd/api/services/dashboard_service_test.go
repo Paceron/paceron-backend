@@ -919,3 +919,59 @@ func rangedQuery() MetricsQuery {
 	query.TimeFromMin, query.TimeToMin = int64Ptr(4), int64Ptr(90)
 	return query
 }
+
+// 5.3: Leaderboard y Periods reutilizan las open sessions que ya devuelve
+// seriesAndQuality; no hacen una segunda query al contador.
+func TestDashboardService_LeaderboardYPeriodsReutilizanOpenSessions(t *testing.T) {
+	t.Run("leaderboard", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		openCalls := 0
+		dao.countOpenFn = func(ctx *gin.Context, filter daos.DashboardScopeFilter) (daos.DashboardOpenSessions, error) {
+			openCalls++
+			return daos.DashboardOpenSessions{Sessions: 2}, nil
+		}
+
+		_, err := service.Leaderboard(nil, dashboardOwnerID, dashboardQuery())
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, openCalls)
+	})
+
+	t.Run("periods", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		openCalls := 0
+		dao.countOpenFn = func(ctx *gin.Context, filter daos.DashboardScopeFilter) (daos.DashboardOpenSessions, error) {
+			openCalls++
+			return daos.DashboardOpenSessions{Sessions: 2}, nil
+		}
+
+		_, err := service.Periods(nil, dashboardOwnerID, dashboard.PeriodsRequest{
+			TeamID:  29,
+			Current: dashboard.PeriodRange{From: "2026-09-01", To: "2026-09-30"},
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, openCalls)
+	})
+}
+
+// 5.4: validateAthletes resuelve todas las membresías con un único batch y
+// conserva el 403 identificando el corredor fuera de scope.
+func TestDashboardService_ValidateAthletes_UnaSolaLecturaBatch(t *testing.T) {
+	groupUserDao := &mockDashboardGroupUserDao{members: []dbs.GroupUser{
+		{GroupID: 39, UserID: 1}, {GroupID: 40, UserID: 2},
+	}}
+	service := &dashboardService{groupUserDao: groupUserDao}
+	scope := &DashboardScope{CallerID: dashboardOwnerID}
+
+	require.NoError(t, service.validateAthletes(nil, scope, []int64{39, 40}, []int64{1, 2}))
+	assert.Equal(t, 1, groupUserDao.findByGroupIDsCalls)
+	assert.Equal(t, 0, groupUserDao.findByGroupIDCalls)
+
+	err := service.validateAthletes(nil, scope, []int64{39, 40}, []int64{1, 3})
+	require.Error(t, err)
+	var athleteErr *DashboardAthleteOutOfScope
+	require.ErrorAs(t, err, &athleteErr)
+	assert.Equal(t, int64(3), athleteErr.AthleteUserID)
+	assert.ErrorIs(t, err, ErrDashboardForbidden)
+}

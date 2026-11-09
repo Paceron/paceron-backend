@@ -18,6 +18,7 @@ type mockTierSubscriptionDao struct {
 	createFn           func(ctx *gin.Context, sub *dbs.UserRoleTierSubscription) error
 	findByIDFn         func(ctx *gin.Context, id int64) (*dbs.UserRoleTierSubscription, error)
 	findActiveFn       func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
+	findActiveBatchFn  func(ctx *gin.Context, userID int64, roleIDs []int64) ([]dbs.UserRoleTierSubscription, error)
 	findLatestFn       func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRoleTierSubscription, error)
 	findPendingByURTFn func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
 	findByURTFn        func(ctx *gin.Context, userID, roleID, tierID int64) (*dbs.UserRoleTierSubscription, error)
@@ -54,6 +55,13 @@ func (m *mockTierSubscriptionDao) FindActiveByUserRole(ctx *gin.Context, userID,
 			}
 		}
 		return nil, nil
+	}
+	return nil, nil
+}
+
+func (m *mockTierSubscriptionDao) FindActiveByUserRoles(ctx *gin.Context, userID int64, roleIDs []int64, statuses ...string) ([]dbs.UserRoleTierSubscription, error) {
+	if m.findActiveBatchFn != nil {
+		return m.findActiveBatchFn(ctx, userID, roleIDs)
 	}
 	return nil, nil
 }
