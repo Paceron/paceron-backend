@@ -1204,6 +1204,64 @@ func TestHandleWebhook_ApprovedInstallmentUnderpayment_DoesNotMarkPaid(t *testin
 	// sobre tx, así que acá se cubre con el test Postgres de abajo).
 }
 
+func TestHandleWebhook_ApprovedInstallmentLoadFailure_FailsClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		findFn  func(ctx *gin.Context, id int64) (*dbs.Installment, error)
+		wantErr string
+	}{
+		{
+			name: "dao error",
+			findFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+				return nil, errors.New("db unavailable")
+			},
+			wantErr: "error consultando cuota",
+		},
+		{
+			name: "dao returns nil",
+			findFn: func(ctx *gin.Context, id int64) (*dbs.Installment, error) {
+				return nil, nil
+			},
+			wantErr: "cuota no encontrada",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dao := new(mockPaymentDao)
+			client := new(mockMercadoPagoClient)
+			insID := int64(88)
+			installDao := &mockInstallmentDao{findByIDFn: tc.findFn}
+			svc := NewPaymentService(dao, client, nil, nil, nil, nil, nil, installDao, nil)
+
+			ctx := config.GetTestContext()
+			notification := payment.WebhookNotification{
+				Type: "payment",
+				Data: struct {
+					ID string `json:"id"`
+				}{ID: "70001"},
+			}
+
+			paymentRecord := &dbs.Payment{ID: 701, PaymentID: "70001", Status: "pending", InstallmentID: &insID}
+			client.On("GetPayment", ctx, "test-access-token", 70001).Return(&mpsdk.Response{
+				ID:                70001,
+				Status:            "approved",
+				StatusDetail:      "accredited",
+				TransactionAmount: 1500,
+			}, nil)
+			dao.On("FindByPaymentID", ctx, "70001").Return(paymentRecord, nil)
+
+			err := svc.HandleWebhook(ctx, notification)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+			// Fail-closed: si no se puede cargar la cuota no se muta el pago local.
+			dao.AssertNotCalled(t, "UpdateStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			dao.AssertNotCalled(t, "UpdateRawResponse", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
 func TestHandleWebhook_PaymentNotFoundLocally(t *testing.T) {
 	dao := new(mockPaymentDao)
 	client := new(mockMercadoPagoClient)

@@ -612,18 +612,29 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
 		installment, err := s.installDao.FindByID(ctx, *paymentRecord.InstallmentID)
 		if err != nil {
-			customlogger.Error(ctx, "error finding installment for webhook", err)
-		} else if installment != nil {
-			if math.Abs(result.TransactionAmount-installment.Amount) > 0.01 {
-				customlogger.Error(ctx, "webhook payment amount does not match installment", nil,
-					customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
-					customlogger.Tag("expected_amount", fmt.Sprintf("%.2f", installment.Amount)),
-					customlogger.Tag("received_amount", fmt.Sprintf("%.2f", result.TransactionAmount)),
-					customlogger.TagMethod("HandleWebhook"))
-				return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
-			}
-			approvedInstallment = installment
+			customlogger.Error(ctx, "error finding installment for webhook", err,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("HandleWebhook"))
+			// Fail-closed: sin cuota no se puede conciliar el pago aprobado. Se
+			// usa el mismo tratamiento que el mismatch de monto para que el
+			// controller responda 5xx y MP reintente/alerte.
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: "error consultando cuota"}
 		}
+		if installment == nil {
+			customlogger.Error(ctx, "installment not found for webhook", nil,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("HandleWebhook"))
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: "cuota no encontrada"}
+		}
+		if math.Abs(result.TransactionAmount-installment.Amount) > 0.01 {
+			customlogger.Error(ctx, "webhook payment amount does not match installment", nil,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+				customlogger.Tag("expected_amount", fmt.Sprintf("%.2f", installment.Amount)),
+				customlogger.Tag("received_amount", fmt.Sprintf("%.2f", result.TransactionAmount)),
+				customlogger.TagMethod("HandleWebhook"))
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
+		approvedInstallment = installment
 	}
 
 	if err := s.paymentDao.UpdateStatus(ctx, paymentRecord.ID, result.Status, result.StatusDetail); err != nil {
