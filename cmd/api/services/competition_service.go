@@ -1149,7 +1149,7 @@ func (s *competitionService) notifyFinish(participants []int64, competitionID in
 	data := map[string]string{"type": "competition_finished", "route": route}
 	sendCtx, cancel := context.WithTimeout(context.Background(), pushSendTimeout)
 	defer cancel()
-	sendPushTokenChunks(sendCtx, s.pushClient, tokenStrings,
+	sendPushTokenChunks(sendCtx, nil, s.pushClient, tokenStrings,
 		"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", data,
 		customlogger.Tag("competition_id", fmt.Sprintf("%d", competitionID)))
 }

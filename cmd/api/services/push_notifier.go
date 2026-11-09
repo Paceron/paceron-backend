@@ -63,21 +63,22 @@ func sendPushToUser(
 		defer cancel()
 	}
 
-	sendPushTokenChunks(sendCtx, pushClient, tokenStrings, title, body, data,
+	sendPushTokenChunks(sendCtx, ctx, pushClient, tokenStrings, title, body, data,
 		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 		customlogger.Tag("notif_type", notifType))
 }
 
 // sendPushTokenChunks parte los tokens en lotes de hasta 100 (límite de Expo)
-// y los envía best-effort: un lote fallido no frena a los siguientes.
-func sendPushTokenChunks(ctx context.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, tags ...string) {
+// y los envía best-effort: un lote fallido no frena a los siguientes. logCtx
+// conserva el contexto original para los logs (nil cuando no hay request).
+func sendPushTokenChunks(sendCtx context.Context, logCtx *gin.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, tags ...string) {
 	for start := 0; start < len(tokens); start += expoPushBatchLimit {
 		end := start + expoPushBatchLimit
 		if end > len(tokens) {
 			end = len(tokens)
 		}
-		if err := pushClient.SendBatch(ctx, tokens[start:end], title, body, data); err != nil {
-			customlogger.Error(nil, "error sending push notification", err, tags...)
+		if err := pushClient.SendBatch(sendCtx, tokens[start:end], title, body, data); err != nil {
+			customlogger.Error(logCtx, "error sending push notification", err, tags...)
 		}
 	}
 }

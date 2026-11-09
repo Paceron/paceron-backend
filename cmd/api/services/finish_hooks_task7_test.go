@@ -88,6 +88,7 @@ func TestFinishHooks_UnifiedSnapshot_Idempotente(t *testing.T) {
 	var unseenAfterFirst, unlocksAfterFirst int64
 	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ?", runner.ID).Count(&unseenAfterFirst).Error)
 	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", runner.ID).Count(&unlocksAfterFirst).Error)
+	assert.NotZero(t, unseenAfterFirst, "el primer finish sí genera unseen (si no, 0 == 0 no probaría nada)")
 
 	run()
 	var unseenAfterSecond, unlocksAfterSecond int64

@@ -72,13 +72,20 @@ func (s *streakTriggerService) EvaluateRunnerCompletion(ctx *gin.Context, userID
 	if err != nil {
 		return fmt.Errorf("%w: recálculo fresco", ErrStreakTrigger)
 	}
-	return s.EvaluateRunnerCompletionWithSnapshot(ctx, userID, snapshot)
+	if snapshot == nil {
+		return fmt.Errorf("%w: snapshot vacío", ErrStreakTrigger)
+	}
+	return s.evaluateRunnerCompletionWithSnapshot(ctx, userID, snapshot)
 }
 
 func (s *streakTriggerService) EvaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *StreakSnapshot) error {
 	if snapshot == nil {
 		return s.EvaluateRunnerCompletion(ctx, userID)
 	}
+	return s.evaluateRunnerCompletionWithSnapshot(ctx, userID, snapshot)
+}
+
+func (s *streakTriggerService) evaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *StreakSnapshot) error {
 	prev, err := s.dao.GetStreakState(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("%w: estado previo", ErrStreakTrigger)

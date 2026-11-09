@@ -63,6 +63,22 @@ func (panicCalculator) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*S
 	panic("boom del cálculo de rachas")
 }
 
+// nilSnapshotCalculator devuelve (nil, nil) en éxito: cubre el guard defensivo
+// contra la recursión EvaluateRunnerCompletionWithSnapshot(nil).
+type nilSnapshotCalculator struct{}
+
+func (nilSnapshotCalculator) GetStreaks(ctx *gin.Context, targetUserID int64, days int) (*gamification.StreaksResponse, error) {
+	return nil, nil
+}
+
+func (nilSnapshotCalculator) ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (int, int, error) {
+	return 0, 0, nil
+}
+
+func (nilSnapshotCalculator) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*StreakSnapshot, error) {
+	return nil, nil
+}
+
 // prevStreakState arma el mock del estado persistido "antes" del write.
 func prevStreakState(userID int64, strict, flexible int) func(*gin.Context, int64) (*dbs.GamificationStreakState, error) {
 	return func(ctx *gin.Context, id int64) (*dbs.GamificationStreakState, error) {
@@ -101,6 +117,19 @@ func TestStreakTrigger_AmbasRachasUnaFilaPorRacha(t *testing.T) {
 		assert.Equal(t, constants.GamificationSectionStreaks, row.Section)
 	}
 	assert.Equal(t, [][]int{{0, 0}}, dao.upsertdAt)
+}
+
+func TestStreakTrigger_SnapshotVacioNoRecursa(t *testing.T) {
+	dao := &mockGamificationDao{}
+	tr := NewStreakTriggerService(dao, nilSnapshotCalculator{})
+
+	err := tr.EvaluateRunnerCompletion(nil, 7)
+	require.ErrorIs(t, err, ErrStreakTrigger)
+	assert.Empty(t, dao.upsertdAt, "sin snapshot no hay upsert")
+
+	err = tr.EvaluateRunnerCompletionWithSnapshot(nil, 7, nil)
+	require.ErrorIs(t, err, ErrStreakTrigger, "nil vuelve al recálculo una vez, sin recursión infinita")
+	assert.Empty(t, dao.upsertdAt)
 }
 
 func TestStreakTrigger_ConSnapshotNoRecalcula(t *testing.T) {
