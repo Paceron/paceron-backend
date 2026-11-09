@@ -937,3 +937,33 @@ El rol `corredor` deja de tener tiers pagos y suscripciones de tier. Los shapes 
 - **El entrenador no cambia:** conserva catálogo de tiers, asignación con `tier_id` y cambio de tier sin modificaciones.
 
 Acción frontend: ocultar el catálogo/badge/acción de tier para usuarios con rol corredor y manejar `[]` como estado normal (no como error). El cambio de UI se hace en `paceron-frontend`; este repo solo garantiza el contrato de arriba.
+
+## 22. Performance y estabilidad: autorización y montos (change `optimizaciones-performance-estabilidad`)
+
+Cambios de comportamiento **confirmados en el código final** de la rama `feature/gap-42-y-performance` (base `e01166b`). Spec: `openspec/changes/optimizaciones-performance-estabilidad/`. **Ningún shape HTTP/DTO cambió**: las respuestas exitosas y los bodies de error mantienen su estructura (`apierror.APIError` donde ya se usaba). Lo observable son **códigos nuevos** en escrituras que antes no validaban acceso/monto, y el mismo push de cierre con menor latencia.
+
+### 22.1 Feedback: acceso a la instancia en create/update/lectura
+
+- `POST /workout-feedback`: ahora exige que el caller **y** el atleta efectivo tengan acceso a `assigned_session_id` → `403` (`"no tenés permisos para operar sobre este feedback"`). Además:
+  - `assigned_exercise_id` debe pertenecer a la instancia → `400` (`"datos inválidos: assigned_exercise_id no pertenece a la sesión asignada"`).
+  - Si viene `team_id`, debe coincidir con el equipo derivado del día de calendario; si no coincide (o la instancia no tiene equipo) → `400` (`"datos inválidos: team_id no coincide con el equipo de la sesión asignada"`). Si no viene, el backend persiste el derivado.
+- `PUT /workout-feedback/:id`: si el payload cambia `assigned_session_id`, `assigned_exercise_id` o `team_id`, aplica los **mismos guards** (`403`/`400`). Cierra el bypass que permitía mover un feedback a una instancia ajena. Si no cambia ninguno, no hay validación extra ni cambio de comportamiento.
+- `GET /session-instances/:id/feedback`: ahora exige que el caller tenga acceso a la instancia → `403` (antes no validaba el acceso del caller). El shape y los filtros (`athlete_user_id`) no cambian.
+
+### 22.2 Runner sessions: acceso del atleta efectivo
+
+`POST`, `PATCH` y `GET /session-instances/:id/runner` exigen que el atleta efectivo (self o el que indica un entrenador) tenga acceso a la instancia → `403` con `"no tenés permisos para operar sobre este estado de sesión"`. Orden de guards en `POST`: `404` instancia inexistente → `403` atleta ajeno (regla previa) → `403` sin acceso a la instancia → `409` del gate presencial (`session_closed`/`session_not_opened`, §12.2). En `PATCH`/`GET`, el `403` nuevo va después de resolver el atleta y antes de leer/escribir. Los intentos de competencia siguen funcionando (la regla de acceso incluye las instancias de ruta). Shapes y transiciones sin cambios (§12.1/§16.6).
+
+### 22.3 Pagos: ownership de preferencia y montos de cuota
+
+- **`POST /payments` con `preference_id` ajeno:** ahora `404` genérico (`{"status_code":404,"code":"Not found","message":"Error al procesar el pago"}`) sin mutar el pago. Antes podía marcarlo `in_process`. El polling legítimo del pagador no cambia (el ownership viaja por la cuota).
+- **`POST /payments` con cuota:** si `transaction_amount` no coincide con el monto de la cuota (tolerancia ±0.01), `400` **antes** de crear el pago o llamar a MP. Body: `"Error al procesar el pago"`.
+- **`POST /payments/preference` con `installment_id`:** la suma de `items` debe coincidir con el monto de la cuota (tolerancia ±0.01); si no, `400` (`"el monto del pago no coincide con el de la cuota"`) y no se crea preferencia ni fila de pago.
+- **Webhook de MP:** si un pago **aprobado** con `installment_id` trae un monto distinto al de la cuota (under u over), el backend **no marca el pago como `approved`**, no aplica la cuota y responde `500 {"message":"error processing"}` para que MP reintente/alerte. El resto de errores del webhook conserva el `200` histórico. Consecuencia frontend: un pago puede quedar en su estado previo hasta conciliación; no asumir que "MP aprobó" implica "cuota pagada" sin releer el estado local.
+- Flujos sin cuota (`concept=order`) y Checkout Brick con montos correctos quedan iguales.
+
+### 22.4 Lo que NO cambia
+
+- Shapes de éxito y bodies de error `apierror.APIError` existentes; ningún campo se renombró ni se quitó.
+- Push del cierre de competencia: mismo contenido, solo se envía en lotes (límite Expo de 100) y fuera del request.
+- Endpoints de calendario, permisos, dashboard y gamificación: mismos contratos; las optimizaciones (lecturas batch, menos round-trips) son internas y no alteran valores ni códigos.

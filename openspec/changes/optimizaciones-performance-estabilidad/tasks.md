@@ -135,11 +135,11 @@
 - Modify: `cmd/api/daos/push_token_dao.go`
 - Test: `cmd/api/services/*` correspondientes
 
-- [ ] 7.1 Calcular la historia de rachas una vez por finish y pasarla al trigger de rachas y al evaluador de logros; conservar D3/D14, hitos, upsert e idempotencia.
-- [ ] 7.2 Agregar lectura batch de push tokens (`FindByUserIDs`) y envío en lotes de hasta 100 tokens por request.
-- [ ] 7.3 En `Close`, recolectar tokens de todos los participantes y enviar el fan-out fuera del camino de respuesta, best-effort y con recover; contenido del push sin cambios.
-- [ ] 7.4 Tests de idempotencia de rachas/logros, conteo de queries del finish (sin doble cálculo) y push batch (1 query + ceil(tokens/100) requests), sin bloquear la respuesta.
-- [ ] 7.5 build/vet/race y commit `perf(gamification): unificar fin de sesion y batchear push de cierre`.
+- [x] 7.1 Calcular la historia de rachas una vez por finish y pasarla al trigger de rachas y al evaluador de logros; conservar D3/D14, hitos, upsert e idempotencia.
+- [x] 7.2 Agregar lectura batch de push tokens (`FindByUserIDs`) y envío en lotes de hasta 100 tokens por request.
+- [x] 7.3 En `Close`, recolectar tokens de todos los participantes y enviar el fan-out fuera del camino de respuesta, best-effort y con recover; contenido del push sin cambios.
+- [x] 7.4 Tests de idempotencia de rachas/logros, conteo de queries del finish (sin doble cálculo) y push batch (1 query + ceil(tokens/100) requests), sin bloquear la respuesta.
+- [x] 7.5 build/vet/race y commit `perf(gamification): unificar fin de sesion y batchear push de cierre`.
 
 ### Task 8: DB y configuración
 
@@ -150,10 +150,10 @@
 - Test: `cmd/api/daos/daos_indexes_test.go`
 - Test: `cmd/api/config/config_test.go`
 
-- [ ] 8.1 Agregar tag `index` a `FeedbackOwnerUserID` y el índice al test `daos_indexes_test.go`; sin backfill.
-- [ ] 8.2 Leer `DB_MAX_OPEN_CONNS` y `DB_MAX_IDLE_CONNS` con defaults 5; aplicar en `postgresdb.ConfigDB`; tests de defaults y override.
-- [ ] 8.3 Verificar `pg_indexes` y que el pool configurado no cambie otros parámetros.
-- [ ] 8.4 build/vet/suite y commit `perf(db): indexar feedback owner y configurar pool`.
+- [x] 8.1 Agregar tag `index` a `FeedbackOwnerUserID` y el índice al test `daos_indexes_test.go`; sin backfill.
+- [x] 8.2 Leer `DB_MAX_OPEN_CONNS` y `DB_MAX_IDLE_CONNS` con defaults 5; aplicar en `postgresdb.ConfigDB`; tests de defaults y override.
+- [x] 8.3 Verificar `pg_indexes` y que el pool configurado no cambie otros parámetros.
+- [x] 8.4 build/vet/suite y commit `perf(db): indexar feedback owner y configurar pool`.
 
 ### Task 9: Documentación y verificación final
 
@@ -163,7 +163,7 @@
 - Modify: `docs/FRONTEND_IMPACTO_INSTANCIACION.md` si hay cambios observables
 - Modify: `openspec/changes/optimizaciones-performance-estabilidad/tasks.md`
 
-- [ ] 9.1 Registrar en deuda lo que queda fuera: búsquedas sin tope, gzip/PureJSON, `WithContext` masivo, email async, lock de `CreateAttemptSession`, visibilidad de equipos/PII.
-- [ ] 9.2 Documentar cambios observables de autorización/monto y los nuevos errores 403/400/404.
-- [ ] 9.3 `openspec validate optimizaciones-performance-estabilidad --strict`, `gofmt`, `go build ./...`, `go vet ./...`, suite completa con Postgres real y coverage gate 85.
-- [ ] 9.4 Tildar tasks y reportar; sin push/merge.
+- [x] 9.1 Registrar en deuda lo que queda fuera: búsquedas sin tope, gzip/PureJSON, `WithContext` masivo, email async, lock de `CreateAttemptSession`, visibilidad de equipos/PII.
+- [x] 9.2 Documentar cambios observables de autorización/monto y los nuevos errores 403/400/404.
+- [x] 9.3 `openspec validate optimizaciones-performance-estabilidad --strict`, `gofmt`, `go build ./...`, `go vet ./...`, suite completa con Postgres real y coverage gate 85.
+- [x] 9.4 Tildar tasks y reportar; sin push/merge.

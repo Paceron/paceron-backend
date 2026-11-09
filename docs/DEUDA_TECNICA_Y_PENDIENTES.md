@@ -124,6 +124,28 @@ Sobrevive en `develop` trackeado en git (entró con commits de Task 3 del change
 
 El guard pre-escritura de stamp/bulk quedó en lecturas constantes (Task 8), pero la detección de colisiones presencial sigue corriendo **1 query por fecha con día presencial** (`findPresencialCollisions` reutilizado per-date). Para lotes asincrónicos no agrega queries. Resolución futura: reutilizar la clasificación in-memory de `AdministeredCalendar` (T5) alimentada por 1 lectura de todas las fechas del owner, preservando el 409/same_team_warnings byte-idéntico.
 
+## Performance y estabilidad — diferidos (change `optimizaciones-performance-estabilidad`, 2026-11-09)
+
+Cierre de la ronda `feature/gap-42-y-performance` (commits `c40b965..e01166b`, Tasks 1-8). Los ítems de abajo quedaron fuera **a propósito** (no-goals del proposal) o como minor de implementación; no reabrirlos como bugs de esa ronda.
+
+### Fuera de alcance (no-goals)
+
+- **Búsquedas sin tope:** `GET /attendance/search` y `GET /workout-feedback/search` siguen devolviendo todas las filas que matchean, sin paginación ni límite server-side (`attendanceDao.Search`/`workoutFeedbackDao.Search` no aplican `LIMIT`). `GET /users/search` ya tiene tope interno (`searchResultsLimit`) y `GET /teams/search` ya pagina, así que no entran en esta deuda. Agregar un tope es cambio de contrato: propio change (definir paginación o `limit` explícito).
+- **gzip/PureJSON:** no se agregó compresión de respuestas ni se cambió el render JSON de Gin. `PureJSON` (no escapa `<`, `>`, `&`) es un cambio de bytes de respuesta que el front podría notar; hacerlo junto a una medición de tamaño, no suelto.
+- **`WithContext` masivo:** los DAOs siguen recibiendo `*gin.Context`; no se propagó `context.Context` por todas las capas. Esta ronda solo redujo round-trips con lecturas batch en los caminos calientes.
+- **Email async:** los mails (`authService.Register`, invitaciones, reset de password, equipo, despedida) siguen enviándose **sincrónicamente** dentro del request. No se movieron a goroutine/cola por el riesgo de perder el `*gin.Context` (mismo tipo de bug que Task 1 arregló en push); si se aborda, usar contexto independiente con timeout y recover, best-effort.
+- **Lock de `CreateAttemptSession`:** el `SELECT ... FOR UPDATE` sobre la fila de competencia se mantiene tal cual. Serializa todos los intentos concurrentes de la misma competencia (correcto para el límite de intentos, pero contención gruesa si muchos atletas arrancan a la vez). No es la race del doble intento (esa quedó cubierta, ver "Microventana race del pre-check anti-doble"): optimizarlo exige otro diseño de lock y su propia validación.
+- **Visibilidad de equipos/PII:** no se tocó `Team.Visible`/`Team.IsPublic` ni el contenido de `GET /auth/user` (la decisión de producto sobre qué PII exponer sigue pendiente). La feature de búsqueda de equipos + join requests que los usaría sigue deferida (ver "Búsqueda de equipos + solicitudes de ingreso (join requests)").
+
+### Minors diferidos de las Tasks 6-8
+
+- **Cache de media URL global (T6):** `mediaPublicBaseURL()` cachea la base pública de storage en un `sync.Once` de proceso. Es correcto con la config inmutable de hoy, pero el cache es global y no se resetea: un test que cambie `config.MyStorage` en el mismo proceso (o un futuro hot-reload de storage) seguiría viendo la base vieja.
+- **`UpdateDatesForShift` sin callers (T6):** el método fila-por-fila del DAO quedó vivo en la interfaz, la implementación y su test, pero `Shift` usa `UpdateDatesForShiftBatch`. Candidato a borrar en una limpieza (toca interfaz y mocks), no en caliente.
+- **Guard de conexiones inalcanzable (T8):** `ConfigDB` compara `sqlDB.Stats().OpenConnections > maxOpenConns` después de `SetMaxOpenConns`, que ya impide superar el máximo; el chequeo no puede dispararse (se dejó en `>` para no romper un pool de tamaño 1). Es defensa redundante: se puede eliminar cuando se toque el archivo.
+- **Índice sin `CONCURRENTLY` (T8):** `idx_workout_feedback_feedback_owner_user_id` lo crea GORM `AutoMigrate` con un `CREATE INDEX` normal (bloquea escrituras de la tabla mientras se construye), a diferencia de los índices de dashboard que usan `CONCURRENTLY`. En una tabla grande, el deploy puede bloquear `workout_feedback` unos segundos; mitigación: crear el índice a mano con `CONCURRENTLY` antes del deploy (AutoMigrate lo ve existente y no lo recrea).
+- **Test de aplicación del pool (T8):** `config_test.go` cubre parsing/defaults/overrides de `DB_MAX_*_CONNS`, pero no hay test de integración en `postgresdb` que abra una DB real y verifique que `ConfigDB` aplica esos valores a `sql.DB.Stats()`. La aplicación del pool ya existía; quedó sin pin.
+- **Env vars sin documentar (T8):** `DB_MAX_OPEN_CONNS` y `DB_MAX_IDLE_CONNS` (default 5; valores `<= 0` o no numéricos caen al default) no están en `docs/ENVIRONMENTS.md`, `.env.example` ni `render.yaml`. Agregarlas cuando se documente el ambiente; hoy se leen solo por código (`config.LoadDBConfigDB`).
+
 ## Gamificación (change `gamificacion-core`, 2026-10-13)
 
 Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16 y §17 (ruta, `competencias-ruta-intake`).
