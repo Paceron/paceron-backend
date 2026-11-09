@@ -19,6 +19,8 @@ type PingController interface {
 
 type pingController struct{}
 
+var codeParamRegex = regexp.MustCompile(`(code=)[^&]*`)
+
 func NewPingController() PingController {
 	return &pingController{}
 }
@@ -65,5 +67,5 @@ func maskCodeParam(rawQuery string) string {
 	if rawQuery == "" {
 		return ""
 	}
-	return regexp.MustCompile(`(code=)[^&]*`).ReplaceAllString(rawQuery, "${1}****")
+	return codeParamRegex.ReplaceAllString(rawQuery, "${1}****")
 }

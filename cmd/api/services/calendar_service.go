@@ -751,17 +751,25 @@ func (s *calendarService) sessionInstanceResponse(ctx *gin.Context, database *go
 		// rows whose instance detail is supplied only by the integration path.
 		return nil, nil
 	}
-	sessionDao := daos.NewSessionInstanceDao(database)
-	linkDao := daos.NewSessionExerciseInstanceDao(database)
-	exerciseDao := daos.NewExerciseInstanceDao(database)
-	sessionInstance, err := sessionDao.FindByID(ctx, *id)
+	sessionInstance, err := daos.NewSessionInstanceDao(database).FindByID(ctx, *id)
 	if err != nil {
 		return nil, err
 	}
 	if sessionInstance == nil {
 		return nil, fmt.Errorf("sesión instancia %d no encontrada", *id)
 	}
-	links, err := linkDao.FindBySessionInstance(ctx, *id)
+	return s.sessionInstanceResponseFromRow(ctx, database, sessionInstance)
+}
+
+// sessionInstanceResponseFromRow arma el detalle reutilizando una fila de
+// instancia ya leída, para no duplicar el FindByID en SessionInstanceDetail.
+func (s *calendarService) sessionInstanceResponseFromRow(ctx *gin.Context, database *gorm.DB, sessionInstance *dbs.SessionInstance) (*instance.SessionInstanceResponse, error) {
+	if sessionInstance == nil {
+		return nil, nil
+	}
+	linkDao := daos.NewSessionExerciseInstanceDao(database)
+	exerciseDao := daos.NewExerciseInstanceDao(database)
+	links, err := linkDao.FindBySessionInstance(ctx, sessionInstance.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -805,7 +813,7 @@ func (s *calendarService) SessionInstanceDetail(ctx *gin.Context, id, callerID i
 	if !access {
 		return nil, ErrCalendarForbidden
 	}
-	response, err := s.sessionInstanceResponse(ctx, s.db, &id)
+	response, err := s.sessionInstanceResponseFromRow(ctx, s.db, sessionInstance)
 	if err != nil {
 		return nil, err
 	}
@@ -1056,27 +1064,33 @@ func (s *calendarService) UpsertDay(ctx *gin.Context, groupID, callerID int64, d
 			sameWarnings = same
 		}
 		preservada := false
+		sessionIDs := make([]*int64, 1)
 		if req.Kind == string(constants.GroupCalendarDayKindTraining) {
 			if req.SessionID == nil {
 				row.SessionInstanceID = txExisting.SessionInstanceID
 				preservada = true
 			} else {
-				newInstance, err := s.instantiateSession(ctx, tx, *req.SessionID)
-				if err != nil {
-					return err
-				}
-				row.SessionInstanceID = &newInstance.ID
+				sessionIDs[0] = req.SessionID
 			}
 		} else if req.Kind == string(constants.GroupCalendarDayKindCancelled) && txExisting != nil {
 			row.SessionInstanceID = txExisting.SessionInstanceID
 		}
+		newInstanceIDs, err := s.instantiateSessionsBatch(ctx, tx, sessionIDs)
+		if err != nil {
+			return err
+		}
+		if newInstanceIDs[0] != nil {
+			row.SessionInstanceID = newInstanceIDs[0]
+		}
 		if err := txCalendarDao.Upsert(ctx, row); err != nil {
 			return err
 		}
+		superseded := make([]int64, 0, 1)
 		if txExisting != nil && txExisting.SessionInstanceID != nil && !preservada && req.Kind != string(constants.GroupCalendarDayKindCancelled) {
-			if err := s.deleteSupersededInstance(ctx, tx, *txExisting.SessionInstanceID); err != nil {
-				return err
-			}
+			superseded = append(superseded, *txExisting.SessionInstanceID)
+		}
+		if err := s.deleteSupersededInstances(ctx, tx, superseded); err != nil {
+			return err
 		}
 		saved = *row
 		return nil
@@ -1878,32 +1892,42 @@ func (s *calendarService) Shift(ctx *gin.Context, groupID, callerID int64, req c
 		// Collision guard: re-chequear dentro de la tx que ninguna fecha destino
 		// esté ocupada por una fila que NO va a moverse en este shift (p. ej.
 		// escritura concurrente). Si lo está, rollback con 409 en vez de
-		// explotar contra idx_group_calendar_day_group_date como 500.
+		// explotar contra idx_group_calendar_day_group_date como 500. Una única
+		// lectura batch de los destinos reemplaza el FindByGroupAndDate por fila.
 		movedDates := make(map[string]bool, len(ordered))
+		destinations := make([]time.Time, 0, len(ordered))
 		for _, a := range ordered {
 			movedDates[a.Date.Format("2006-01-02")] = true
+			destinations = append(destinations, a.Date.AddDate(0, 0, req.Days))
+		}
+		occupants, err := txCalendarDao.FindByGroupAndDates(ctx, groupID, destinations)
+		if err != nil {
+			return err
+		}
+		occupantByDate := make(map[string]*dbs.GroupCalendarDay, len(occupants))
+		for i := range occupants {
+			occupantByDate[occupants[i].Date.Format("2006-01-02")] = &occupants[i]
 		}
 		for _, a := range ordered {
 			newDate := a.Date.AddDate(0, 0, req.Days)
-			occupant, ferr := txCalendarDao.FindByGroupAndDate(ctx, groupID, newDate)
-			if ferr != nil {
-				return ferr
-			}
-			if occupant != nil && !movedDates[occupant.Date.Format("2006-01-02")] {
+			if occupant := occupantByDate[newDate.Format("2006-01-02")]; occupant != nil && !movedDates[occupant.Date.Format("2006-01-02")] {
 				return ErrCalendarShiftCollision
 			}
 		}
-		for _, a := range ordered {
-			newDate := a.Date.AddDate(0, 0, req.Days)
-			if err := txCalendarDao.UpdateDatesForShift(ctx, groupID, a.Date, newDate); err != nil {
-				// Defensivo: una escritura concurrente puede chocar el unique
-				// index a pesar del guard de arriba (ventana entre el SELECT del
-				// guard y el UPDATE). Mapear a colisión, no a 500.
-				if strings.Contains(err.Error(), "duplicate key") {
-					return ErrCalendarShiftCollision
-				}
-				return err
+		// Update batch: el DAO estaciona las filas y las lleva a destino en dos
+		// pasadas, así no importa el orden que elija Postgres para el unique.
+		shifts := make([]daos.GroupCalendarDayShift, len(ordered))
+		for i, a := range ordered {
+			shifts[i] = daos.GroupCalendarDayShift{OldDate: a.Date, NewDate: a.Date.AddDate(0, 0, req.Days)}
+		}
+		if err := txCalendarDao.UpdateDatesForShiftBatch(ctx, groupID, shifts); err != nil {
+			// Defensivo: una escritura concurrente puede chocar el unique
+			// index a pesar del guard de arriba (ventana entre el SELECT del
+			// guard y el UPDATE). Mapear a colisión, no a 500.
+			if strings.Contains(err.Error(), "duplicate key") {
+				return ErrCalendarShiftCollision
 			}
+			return err
 		}
 		return nil
 	})

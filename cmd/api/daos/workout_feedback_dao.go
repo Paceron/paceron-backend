@@ -321,7 +321,7 @@ func (d *workoutFeedbackDao) BulkCreatePointsRecompute(ctx *gin.Context, feedbac
 			Where("id = ?", feedbackID).
 			Updates(map[string]interface{}{
 				"pace_sec_per_km": computePaceSecPerKM(feedback.DurationMs, feedback.DistanceMeters),
-				"peak_speed_kph":  computePeakSpeedKPH(all),
+				"peak_speed_kph":  computePeakSpeedKPHOrdered(all),
 			}).Error; err != nil {
 			return fmt.Errorf("error recomputing leaderboard columns: %w", err)
 		}

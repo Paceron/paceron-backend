@@ -20,6 +20,19 @@ import (
 	"simple-arq-golang/cmd/api/utils"
 )
 
+// Regex de validación compartidos por auth y user: se compilan una sola vez a
+// nivel de paquete en vez de en cada request.
+var (
+	emailFormatRegex       = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	digitsOnlyRegex        = regexp.MustCompile(`^[0-9]+$`)
+	countryFormatRegex     = regexp.MustCompile(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ\-,'. ]+$`)
+	addressFormatRegex     = regexp.MustCompile(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`)
+	passwordUpperRegex     = regexp.MustCompile(`[A-Z]`)
+	passwordLowerRegex     = regexp.MustCompile(`[a-z]`)
+	passwordDigitRegex     = regexp.MustCompile(`[0-9]`)
+	passwordSensitiveRegex = regexp.MustCompile(`[<>"'&;%]`)
+)
+
 type AuthServiceInterface interface {
 	Register(ctx *gin.Context, req *auth.RegisterRequest, password string) (*auth.UserResponse, error)
 	Login(ctx *gin.Context, email, password string) (*auth.LoginResponse, error)
@@ -468,42 +481,41 @@ func ValidateRegisterRequest(req *auth.RegisterRequest) string {
 	if req.Surname == "" {
 		return "surname es requerido"
 	}
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(req.Email) {
+	if !emailFormatRegex.MatchString(req.Email) {
 		return "email no tiene un formato válido"
 	}
 	if req.Phone != "" {
-		match, _ := regexp.MatchString(`^[0-9]+$`, req.Phone)
+		match := digitsOnlyRegex.MatchString(req.Phone)
 		if !match {
 			return "phone solo acepta números"
 		}
 	}
 	if req.PhoneContact != "" {
-		match, _ := regexp.MatchString(`^[0-9]+$`, req.PhoneContact)
+		match := digitsOnlyRegex.MatchString(req.PhoneContact)
 		if !match {
 			return "phone_contact solo acepta números"
 		}
 	}
 	if req.Country != "" {
-		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Country)
+		match := countryFormatRegex.MatchString(req.Country)
 		if !match {
 			return "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.City != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.City)
+		match := addressFormatRegex.MatchString(req.City)
 		if !match {
 			return "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Street != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Street)
+		match := addressFormatRegex.MatchString(req.Street)
 		if !match {
 			return "street solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Number != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, req.Number)
+		match := addressFormatRegex.MatchString(req.Number)
 		if !match {
 			return "number solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
@@ -517,7 +529,7 @@ func ValidateRegisterRequest(req *auth.RegisterRequest) string {
 	if req.Dni == "" {
 		return "dni es requerido"
 	}
-	match, _ := regexp.MatchString(`^[0-9]+$`, req.Dni)
+	match := digitsOnlyRegex.MatchString(req.Dni)
 	if !match {
 		return "dni solo acepta números"
 	}
@@ -538,20 +550,19 @@ func ValidatePassword(password string) string {
 	if len(password) < 8 {
 		return "la contraseña debe tener al menos 8 caracteres"
 	}
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
+	hasUpper := passwordUpperRegex.MatchString(password)
 	if !hasUpper {
 		return "la contraseña debe contener al menos una letra mayúscula"
 	}
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
+	hasLower := passwordLowerRegex.MatchString(password)
 	if !hasLower {
 		return "la contraseña debe contener al menos una letra minúscula"
 	}
-	hasDigit := regexp.MustCompile(`[0-9]`).MatchString(password)
+	hasDigit := passwordDigitRegex.MatchString(password)
 	if !hasDigit {
 		return "la contraseña debe contener al menos un número"
 	}
-	sensitiveRegex := regexp.MustCompile(`[<>"'&;%]`)
-	if sensitiveRegex.MatchString(password) {
+	if passwordSensitiveRegex.MatchString(password) {
 		return "la contraseña contiene caracteres no permitidos"
 	}
 	return ""

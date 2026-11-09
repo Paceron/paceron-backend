@@ -475,49 +475,48 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 		return "surname no puede estar vacío"
 	}
 	if req.Email != nil && *req.Email != "" {
-		emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-		if !emailRegex.MatchString(*req.Email) {
+		if !emailFormatRegex.MatchString(*req.Email) {
 			return "email no tiene un formato válido"
 		}
 	}
 	if req.Phone != nil && *req.Phone != "" {
-		match, _ := regexp.MatchString(`^[0-9]+$`, *req.Phone)
+		match := digitsOnlyRegex.MatchString(*req.Phone)
 		if !match {
 			return "phone solo acepta números"
 		}
 	}
 	if req.PhoneContact != nil && *req.PhoneContact != "" {
-		match, _ := regexp.MatchString(`^[0-9]+$`, *req.PhoneContact)
+		match := digitsOnlyRegex.MatchString(*req.PhoneContact)
 		if !match {
 			return "phone_contact solo acepta números"
 		}
 	}
 	if req.Country != nil && *req.Country != "" {
-		match, _ := regexp.MatchString(`^[a-zA-ZáéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Country)
+		match := countryFormatRegex.MatchString(*req.Country)
 		if !match {
 			return "country solo acepta letras, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.City != nil && *req.City != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.City)
+		match := addressFormatRegex.MatchString(*req.City)
 		if !match {
 			return "city solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Province != nil && *req.Province != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Province)
+		match := addressFormatRegex.MatchString(*req.Province)
 		if !match {
 			return "province solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Street != nil && *req.Street != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Street)
+		match := addressFormatRegex.MatchString(*req.Street)
 		if !match {
 			return "street solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
 	}
 	if req.Number != nil && *req.Number != "" {
-		match, _ := regexp.MatchString(`^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-,'. ]+$`, *req.Number)
+		match := addressFormatRegex.MatchString(*req.Number)
 		if !match {
 			return "number solo acepta letras, números, espacios, guiones, puntos, apóstrofes y comas"
 		}
@@ -529,7 +528,7 @@ func ValidateUserUpdateRequest(req *user.UserUpdateRequest) string {
 		return "lng fuera de rango"
 	}
 	if req.Dni != nil && *req.Dni != "" {
-		match, _ := regexp.MatchString(`^[0-9]+$`, *req.Dni)
+		match := digitsOnlyRegex.MatchString(*req.Dni)
 		if !match {
 			return "dni solo acepta números"
 		}
