@@ -36,6 +36,9 @@ type AchievementsServiceInterface interface {
 	GetUserAchievements(ctx *gin.Context, targetUserID int64) (*gamification.UserAchievementsResponse, error)
 	GetUserStamps(ctx *gin.Context, targetUserID int64) (*gamification.StampsResponse, error)
 	EvaluateEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger) error
+	// EvaluateEventWithSnapshot re-evalúa con el snapshot de rachas ya
+	// calculado por el finish (D7); nil cae al cálculo propio.
+	EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error
 	// OnEvent encola la evaluación async: mismo hook que ejerce
 	// AchievementsTriggerInterface (la instancia se comparte).
 	OnEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger)
@@ -45,6 +48,7 @@ type AchievementsServiceInterface interface {
 // controllers (mismo patrón que StreakTriggerServiceInterface en E1).
 type AchievementsTriggerInterface interface {
 	OnEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger)
+	EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error
 }
 
 type achievementsService struct {
@@ -179,20 +183,28 @@ func countEarlyStarts(starts []time.Time) int {
 	return n
 }
 
-func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger AchievementTrigger) (map[string]float64, error) {
+func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) (map[string]float64, error) {
 	switch trigger {
 	case AchievementTriggerRunnerSession:
 		finished, err := s.achievementDao.CountFinishedSessions(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
-		streaks, err := s.streaks.GetStreaks(ctx, userID, 1)
-		if err != nil {
-			return nil, err
-		}
-		bestStrict := streaks.Strict.Current
-		if streaks.Strict.Best > bestStrict {
-			bestStrict = streaks.Strict.Best
+		var bestStrict int
+		if snapshot != nil {
+			bestStrict = snapshot.StrictCurrent
+			if snapshot.StrictBest > bestStrict {
+				bestStrict = snapshot.StrictBest
+			}
+		} else {
+			streaks, err := s.streaks.GetStreaks(ctx, userID, 1)
+			if err != nil {
+				return nil, err
+			}
+			bestStrict = streaks.Strict.Current
+			if streaks.Strict.Best > bestStrict {
+				bestStrict = streaks.Strict.Best
+			}
 		}
 		starts, err := s.achievementDao.ListFinishedSessionStarts(ctx, userID)
 		if err != nil {
@@ -246,11 +258,21 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 // (idempotente por PK compuesta), emite unseen por logro nuevo y push
 // best-effort por cada desbloqueo. Stamps NO participan en E2 (solo E4).
 func (s *achievementsService) EvaluateEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger) error {
+	return s.evaluateEvent(ctx, userID, trigger, nil)
+}
+
+// EvaluateEventWithSnapshot evita releer el histórico de rachas cuando el
+// finish ya lo calculó una vez para ambos hooks (D7).
+func (s *achievementsService) EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error {
+	return s.evaluateEvent(ctx, userID, trigger, snapshot)
+}
+
+func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error {
 	ids, ok := triggerAchievements[trigger]
 	if !ok {
 		return nil
 	}
-	values, err := s.valuesFor(ctx, userID, trigger)
+	values, err := s.valuesFor(ctx, userID, trigger, snapshot)
 	if err != nil {
 		return fmt.Errorf("agregados de logros: %w", err)
 	}

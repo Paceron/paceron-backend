@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/apierror"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
+	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/realtime"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
@@ -40,6 +42,9 @@ type runnerSessionController struct {
 	// (gamificacion-core D5) en la misma transición post-write. Async
 	// best-effort; el fallo se loguea y no toca la respuesta.
 	achievementsTrigger services.AchievementsTriggerInterface
+	// asyncHook despacha los hooks del finish fuera del camino de respuesta;
+	// los tests lo reemplazan por una ejecución síncrona.
+	asyncHook func(func())
 }
 
 // NewRunnerSessionController crea una nueva instancia de RunnerSessionController.
@@ -215,6 +220,59 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 	})
 }
 
+// runFinishHooks calcula el historial de rachas una sola vez y lo pasa al
+// trigger de rachas y al evaluador de logros (D7), fuera de la respuesta y
+// con recover (D14). Si el cálculo falla, cada hook cae a su recálculo.
+func (rc *runnerSessionController) runFinishHooks(ctx *gin.Context, userID int64) {
+	if rc.streakTrigger == nil && rc.achievementsTrigger == nil {
+		return
+	}
+	hookCtx := ctx
+	if ctx != nil {
+		hookCtx = ctx.Copy()
+	}
+	dispatch := rc.asyncHook
+	if dispatch == nil {
+		dispatch = func(fn func()) { go fn() }
+	}
+	dispatch(func() {
+		var snapshot *services.StreakSnapshot
+		if rc.streakTrigger != nil {
+			safeFinishHook(hookCtx, "RunnerSessionFinishSnapshot", func() {
+				computed, err := rc.streakTrigger.ComputeSnapshot(hookCtx, userID)
+				if err != nil {
+					customlogger.Error(hookCtx, "cálculo de rachas del finish falló", err, customlogger.TagMethod("RunnerSessionFinishHooks"))
+					return
+				}
+				snapshot = computed
+			})
+			safeFinishHook(hookCtx, "StreakTrigger", func() {
+				if err := rc.streakTrigger.EvaluateRunnerCompletionWithSnapshot(hookCtx, userID, snapshot); err != nil {
+					customlogger.Error(hookCtx, "trigger de racha falló", err, customlogger.TagMethod("RunnerSessionFinishHooks"))
+				}
+			})
+		}
+		if rc.achievementsTrigger != nil {
+			safeFinishHook(hookCtx, "AchievementsTrigger", func() {
+				if err := rc.achievementsTrigger.EvaluateEventWithSnapshot(hookCtx, userID, services.AchievementTriggerRunnerSession, snapshot); err != nil {
+					customlogger.Error(hookCtx, "trigger de logros falló", err, customlogger.TagMethod("RunnerSessionFinishHooks"))
+				}
+			})
+		}
+	})
+}
+
+// safeFinishHook aísla el panic de cada hook: uno roto no debe impedir al otro
+// (D14 best-effort).
+func safeFinishHook(hookCtx *gin.Context, method string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			customlogger.Error(hookCtx, "panic en hook de fin de sesión", fmt.Errorf("%v", r), customlogger.TagMethod(method))
+		}
+	}()
+	fn()
+}
+
 // Finish godoc
 // @Summary      Marcar la sesión del corredor como completada o interrumpida
 // @Description  Aplica la transición de status sobre el estado de la sesión, con end_date seteada por el servidor. Status admite "finished" (completar) o "interrupted" (terminar temprano). Transiciones válidas: wip→finished, wip→interrupted e interrupted→finished (re-setea end_date). Idempotente: ya finished con {"status":"finished"} o ya interrupted con {"status":"interrupted"} responde 200 sin cambios. finished→interrupted responde 400.
@@ -266,17 +324,10 @@ func (rc *runnerSessionController) Finish(c *gin.Context) {
 		return
 	}
 
-	// Hook de gamificación (D3): finished/interrupted post-write corre el
-	// chequeo de rachas (async best-effort; el fallo se loguea y no toca la
-	// respuesta del PATCH). El Create (wip) no dispara.
-	if rc.streakTrigger != nil {
-		rc.streakTrigger.OnRunnerSessionCompletion(c, rs.AthleteUserID)
-	}
-	// Hook de logros (D5): misma transición, evaluate idempotente async
-	// (sessions/early por finished; streak reusa el cálculo de D2).
-	if rc.achievementsTrigger != nil {
-		rc.achievementsTrigger.OnEvent(c, rs.AthleteUserID, services.AchievementTriggerRunnerSession)
-	}
+	// Hooks de gamificación (D3/D5/D7): un solo snapshot de rachas alimenta
+	// el trigger y los logros, off-path y best-effort. El Create (wip) no
+	// dispara.
+	rc.runFinishHooks(c, rs.AthleteUserID)
 
 	// Hook de cierre D7: solo finished del owner cierra la sesión presencial;
 	// interrupted NO cierra. Idempotente vía guard SQL.

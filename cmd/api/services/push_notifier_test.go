@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -43,6 +44,28 @@ func TestSendPushToUser_NilContextUsesBackgroundWithTimeout(t *testing.T) {
 	assert.Greater(t, remaining, 9*time.Second)
 	assert.LessOrEqual(t, remaining, 10*time.Second)
 	assert.NoError(t, errAtCall)
+}
+
+// TestSendPushToUser_ChunksAt100: reutiliza el chunking común y nunca manda
+// más de 100 tokens por request (límite de Expo).
+func TestSendPushToUser_ChunksAt100(t *testing.T) {
+	tokens := make([]dbs.PushToken, 250)
+	for i := range tokens {
+		tokens[i] = dbs.PushToken{Token: "ExponentPushToken[" + fmt.Sprintf("%d", i) + "]"}
+	}
+	pushTokenDao := &mockPushTokenDao{mockFindByUserID: func(_ *gin.Context, _ int64) ([]dbs.PushToken, error) {
+		return tokens, nil
+	}}
+
+	var chunkSizes []int
+	pushClient := &mockExpoPushClient{mockSendBatch: func(_ context.Context, got []string, _, _ string, _ map[string]string) error {
+		chunkSizes = append(chunkSizes, len(got))
+		return nil
+	}}
+
+	sendPushToUser(nil, pushTokenDao, pushClient, 1, "Título", "Cuerpo", "invitation_received", "/invitations")
+
+	assert.Equal(t, []int{100, 100, 50}, chunkSizes)
 }
 
 // TestSendPushToUser_KeepsRequestContext: con un contexto real se conserva el

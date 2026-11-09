@@ -22,6 +22,18 @@ type StreakServiceInterface interface {
 	// el mismo path batch del GET (3 queries fijas; no consulta ni unseen ni
 	// gamification_streak_state).
 	ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (strict, flexible int, err error)
+	// ComputeSnapshot carga el histórico una sola vez y deriva current+best de
+	// ambas rachas: el post-finish lo comparte el trigger y los logros (D7).
+	ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*StreakSnapshot, error)
+}
+
+// StreakSnapshot es el resumen fresco de rachas calculado una vez por finish.
+// StrictBest/FlexibleBest cubren el histórico completo y no dependen del GET.
+type StreakSnapshot struct {
+	StrictCurrent   int
+	FlexibleCurrent int
+	StrictBest      int
+	FlexibleBest    int
 }
 
 type streakService struct {
@@ -91,7 +103,6 @@ type streakHistory struct {
 func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days int) (*gamification.StreaksResponse, error) {
 	today := gametime.Today()
 	windowStart := today.AddDate(0, 0, -(days - 1))
-	yesterday := today.AddDate(0, 0, -1)
 
 	resp := &gamification.StreaksResponse{
 		Days: []gamification.StreakDay{},
@@ -108,11 +119,12 @@ func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days in
 	if err != nil {
 		return nil, err
 	}
+	snapshot := streakSnapshotFromHistory(history)
 
-	resp.Strict.Current = backwardStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
-	resp.Flexible.Current = backwardStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
-	resp.Strict.Best = bestStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
-	resp.Flexible.Best = bestStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
+	resp.Strict.Current = snapshot.StrictCurrent
+	resp.Flexible.Current = snapshot.FlexibleCurrent
+	resp.Strict.Best = snapshot.StrictBest
+	resp.Flexible.Best = snapshot.FlexibleBest
 
 	resp.Days = windowDays(history.data, windowStart, today)
 	return resp, nil
@@ -121,14 +133,31 @@ func (s *streakService) GetStreaks(ctx *gin.Context, targetUserID int64, days in
 // ComputeCurrentStreaks solo los currents (trigger de racha D3): recalcula
 // fresco contra la DB del histórico, misma lógica batch del GET.
 func (s *streakService) ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (int, int, error) {
-	history, err := s.loadStreakHistory(ctx, targetUserID)
+	snapshot, err := s.ComputeSnapshot(ctx, targetUserID)
 	if err != nil {
 		return 0, 0, err
 	}
+	return snapshot.StrictCurrent, snapshot.FlexibleCurrent, nil
+}
+
+// ComputeSnapshot carga el histórico una sola vez y deriva el resumen que
+// comparten el trigger de racha y los logros tras un finish (D7).
+func (s *streakService) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*StreakSnapshot, error) {
+	history, err := s.loadStreakHistory(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	return streakSnapshotFromHistory(history), nil
+}
+
+func streakSnapshotFromHistory(history *streakHistory) *StreakSnapshot {
 	yesterday := gametime.Yesterday()
-	strict := backwardStreak(history.data, history.earliest, yesterday, history.data.strictStatus)
-	flexible := backwardStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus)
-	return strict, flexible, nil
+	return &StreakSnapshot{
+		StrictCurrent:   backwardStreak(history.data, history.earliest, yesterday, history.data.strictStatus),
+		FlexibleCurrent: backwardStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus),
+		StrictBest:      bestStreak(history.data, history.earliest, yesterday, history.data.strictStatus),
+		FlexibleBest:    bestStreak(history.data, history.earliest, yesterday, history.data.flexibleStatus),
+	}
 }
 
 // loadStreakHistory corre las 3 queries batch de D2 (memberships activos +

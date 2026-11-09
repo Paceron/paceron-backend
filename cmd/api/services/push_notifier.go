@@ -12,7 +12,11 @@ import (
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
 )
 
-const pushSendTimeout = 10 * time.Second
+const (
+	pushSendTimeout = 10 * time.Second
+	// expoPushBatchLimit es el máximo de tokens por request que acepta Expo.
+	expoPushBatchLimit = 100
+)
 
 // sendPushToUser dispara una notificación push a todos los dispositivos registrados
 // de un usuario. Es una función de paquete (no un service) a propósito: varios
@@ -59,9 +63,21 @@ func sendPushToUser(
 		defer cancel()
 	}
 
-	if err := pushClient.SendBatch(sendCtx, tokenStrings, title, body, data); err != nil {
-		customlogger.Error(ctx, "error sending push notification", err,
-			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
-			customlogger.Tag("notif_type", notifType))
+	sendPushTokenChunks(sendCtx, pushClient, tokenStrings, title, body, data,
+		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
+		customlogger.Tag("notif_type", notifType))
+}
+
+// sendPushTokenChunks parte los tokens en lotes de hasta 100 (límite de Expo)
+// y los envía best-effort: un lote fallido no frena a los siguientes.
+func sendPushTokenChunks(ctx context.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, tags ...string) {
+	for start := 0; start < len(tokens); start += expoPushBatchLimit {
+		end := start + expoPushBatchLimit
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		if err := pushClient.SendBatch(ctx, tokens[start:end], title, body, data); err != nil {
+			customlogger.Error(nil, "error sending push notification", err, tags...)
+		}
 	}
 }

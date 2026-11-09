@@ -56,6 +56,10 @@ func (m *mockAchievementsService) EvaluateEvent(ctx *gin.Context, userID int64, 
 	return nil
 }
 
+func (m *mockAchievementsService) EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger services.AchievementTrigger, snapshot *services.StreakSnapshot) error {
+	return nil
+}
+
 func (m *mockAchievementsService) OnEvent(ctx *gin.Context, userID int64, trigger services.AchievementTrigger) {
 }
 

@@ -37,6 +37,11 @@ func (s *stubAchievementsTrigger) OnEvent(ctx *gin.Context, userID int64, trigge
 	s.events = append(s.events, achEvent{userID: userID, trigger: trigger})
 }
 
+func (s *stubAchievementsTrigger) EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger services.AchievementTrigger, snapshot *services.StreakSnapshot) error {
+	s.events = append(s.events, achEvent{userID: userID, trigger: trigger})
+	return nil
+}
+
 func achievementEventsOf(s *stubAchievementsTrigger) []achEvent {
 	return s.events
 }
@@ -58,6 +63,7 @@ func TestRunnerSessionController_Finish_DisparaLogros(t *testing.T) {
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, nil, &trigger)
+	controller.(*runnerSessionController).asyncHook = func(fn func()) { fn() }
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

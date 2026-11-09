@@ -33,6 +33,10 @@ func (m *mockStreakService) ComputeCurrentStreaks(ctx *gin.Context, targetUserID
 	return 0, 0, nil
 }
 
+func (m *mockStreakService) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*services.StreakSnapshot, error) {
+	return &services.StreakSnapshot{}, nil
+}
+
 func streakFixture() *gamification.StreaksResponse {
 	return &gamification.StreaksResponse{
 		Strict:   gamification.StreakSummary{Current: 3, Best: 9},
