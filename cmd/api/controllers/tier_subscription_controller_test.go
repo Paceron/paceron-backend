@@ -520,3 +520,28 @@ func TestTierSubscriptionController_CancelPendingSubscription_GenericError(t *te
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
+func TestTierSubscriptionController_ChangeTier_RunnerRoleRejected(t *testing.T) {
+	mockSvc := &mockTierSubscriptionService{
+		changeTierFn: func(ctx *gin.Context, userID, roleID int64, req *tiersubscription.ChangeTierRequest) (*tiersubscription.ChangeTierResponse, error) {
+			return nil, errors.New("el rol corredor no admite cambios de tier")
+		},
+	}
+
+	controller := NewTierSubscriptionController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"tier_id":2}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/users/1/roles/1/tier", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "role_id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.ChangeTier(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite cambios de tier", result.Message)
+}

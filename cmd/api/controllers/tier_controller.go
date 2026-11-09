@@ -63,7 +63,7 @@ func (tc *tierController) Create(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		code := "Internal Server Error"
 
-		if errMsg == "el nombre es requerido" {
+		if errMsg == "el nombre es requerido" || errMsg == "el rol corredor no admite tiers" {
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
 		} else if errMsg == "rol no encontrado" {
@@ -130,7 +130,7 @@ func (tc *tierController) Update(c *gin.Context) {
 		if errMsg == "tier no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
-		} else if errMsg == "el nombre no puede estar vacío" {
+		} else if errMsg == "el nombre no puede estar vacío" || errMsg == "el rol corredor no admite tiers" {
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
 		} else if errMsg == "ya existe un tier con ese nombre para este rol" {
@@ -314,6 +314,9 @@ func (tc *tierController) Delete(c *gin.Context) {
 		if errMsg == "tier no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el rol corredor no admite tiers" {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

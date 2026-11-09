@@ -271,6 +271,8 @@ func mapTierSubscriptionError(err error) (statusCode int, code string) {
 		return http.StatusNotFound, constants.ErrorCodeTierNotFound
 	case errMsg == "el tier no pertenece al rol especificado":
 		return http.StatusBadRequest, constants.ErrorCodeTierRoleMismatch
+	case errMsg == "el rol corredor no admite cambios de tier":
+		return http.StatusBadRequest, "Bad request"
 	case errMsg == "no podés cambiar de tier con deuda pendiente":
 		return http.StatusConflict, constants.ErrorCodeDebtBlocksOperation
 	case errMsg == "no podés cambiar de tier con el primer pago pendiente":
