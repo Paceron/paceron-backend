@@ -19,7 +19,7 @@ type ExerciseInstance struct {
 	// SourceExerciseID es una referencia informativa (opaca, app-managed, sin
 	// FK de DB) al Exercise del catálogo del que se instanció; NULL en
 	// instancias anteriores al change instancia-referencia-catalogo.
-	SourceExerciseID *int64    `gorm:"column:source_exercise_id"`
+	SourceExerciseID *int64    `gorm:"column:source_exercise_id;index"`
 	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime"`
 }
 

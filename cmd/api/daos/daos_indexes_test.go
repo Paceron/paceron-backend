@@ -19,8 +19,12 @@ func TestDaos_HotTablesIndexes(t *testing.T) {
 	expected := map[string]string{
 		"idx_group_users_group_id":                            "group_users",
 		"idx_group_users_user_id":                             "group_users",
+		"idx_group_users_group_id_user_id":                    "group_users",
 		"idx_team_users_team_id":                              "team_users",
 		"idx_team_users_user_id":                              "team_users",
+		"idx_team_users_team_id_user_id":                      "team_users",
+		"idx_groups_team_id":                                  "groups",
+		"idx_exercise_instances_source_exercise_id":           "exercise_instances",
 		"idx_session_exercise_instances_session_instance_id":  "session_exercise_instances",
 		"idx_session_exercise_instances_exercise_instance_id": "session_exercise_instances",
 		"idx_workout_feedback_feedback_owner_user_id":         "workout_feedback",
