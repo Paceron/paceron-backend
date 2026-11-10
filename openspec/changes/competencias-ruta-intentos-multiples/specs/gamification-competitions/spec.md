@@ -139,31 +139,56 @@ El sistema DEBE cumplir lo siguiente (MUST):
 
 > Reemplaza la versión del requirement trasladado en `competencias-ruta-intake`
 > (3ª rama autoriza SOLO la instancia compartida vía
-> `route_session_instance_id`): se extiende con un OR para instancias de
-> intentos 2+.
+> `route_session_instance_id`): se extiende con una vía para instancias de
+> intentos 2+, acotada al atleta dueño del intento. La vía de la instancia
+> compartida sigue autorizando a cualquier participante.
 
 - `HasInstanceAccess` (y su espejo batch `HasInstanceAccessBatch`) autoriza a
-  `caller` sobre una instancia si, además de las ramas correspondientes
-  vigentes (día/grupo, feedback activo, instancia compartida), es participante
-  de una competencia `type='route'` que tiene un `runner_session` tagueado con
-  esa instancia (EXISTS sobre `runner_session × competition ×
-  competition_participant`), SIN filtro de status del intento.
+  `caller` sobre una instancia por la 3ª rama (además de las ramas vigentes
+  día/grupo y feedback activo) con dos vías distintas:
+  - **Instancia compartida**, anclada por `competition.route_session_instance_id`:
+    autoriza a cualquier participante de esa competencia
+    (`competition × competition_participant`).
+  - **Intento 2+**, instancia tagueada por un `runner_session`: autoriza SOLO
+    al atleta dueño de ese intento (`runner_session.athlete_user_id = caller`),
+    que además debe ser participante de la competencia route del intento. Los
+    demás participantes de la misma competencia NO acceden a la instancia de
+    un intento ajeno.
+- Ninguna de las dos vías filtra por status del intento (wip y finished
+  autorizan igual).
 - El criterio del intento es la marca `runner_session.competition_id` (FK
   opaca); NO se agrega columna de competencia por intento.
 - Las 2 ramas duales pre-existentes (día/grupo y feedback) quedan intactas.
 
 #### Scenario: WS autoriza la instancia del intento 2
 
-- **WHEN** un participante suscribe el canal `session:{id}` de la instancia
-  nueva de SU intento 2 (runner_session wip ya tagueada, sin feedback aún)
+- **WHEN** el atleta dueño del intento suscribe el canal `session:{id}` de la
+  instancia nueva de SU intento 2 (runner_session wip ya tagueada, sin feedback
+  aún)
 - **THEN** `HasInstanceAccess` responde `true` (se le entregan tanto los
   broadcasts del intento como los frames de competencia que salgan por ese
   canal).
 
+#### Scenario: Otro participante no accede a la instancia de un intento ajeno
+
+- **WHEN** un participante de la competencia route suscribe el canal
+  `session:{id}` de la instancia del intento 2+ de OTRO atleta
+- **THEN** `HasInstanceAccess` responde `false`: la vía de intento 2+ exige ser
+  el atleta dueño del `runner_session`; solo la instancia compartida autoriza
+  a todos los participantes.
+
+#### Scenario: La instancia compartida autoriza a los participantes
+
+- **WHEN** cualquier participante de la competencia route pide acceso a la
+  instancia compartida (la anclada por `route_session_instance_id`)
+- **THEN** `HasInstanceAccess` responde `true`, sin importar quién registró el
+  intento 1.
+
 #### Scenario: Sin filtro de status del intento
 
 - **WHEN** el runner_session del atleta sobre la instancia pedida está
-  finished (o wip) y el caller es participante de dicha competencia route
+  finished (o wip) y el caller es ese mismo atleta, participante de la
+  competencia route
 - **THEN** la autorización da `true` en ambos casos (se puede recibir
   `control:competition_finished`).
 

@@ -87,6 +87,10 @@ BEGIN
 
   -- El base conservado debe seguir teniendo permisos activos: sin ellos el
   -- corredor perdería el acceso que antes resolvía por el tier que se purga.
+  -- NOTA: esta verificación solo exige >= 1 permiso activo. El base conservado
+  -- debe tener el set COMPLETO de permisos que el corredor necesita; el script
+  -- NO comprueba que sea superset del set original. Revisar manualmente antes
+  -- de confirmar en una base real.
   SELECT count(*)
   INTO v_base_permissions
   FROM tier_permissions

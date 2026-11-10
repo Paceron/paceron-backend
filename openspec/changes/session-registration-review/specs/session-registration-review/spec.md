@@ -25,7 +25,11 @@ obligatorio, RFC3339). El endpoint SHALL crear la fila en `wip` o, si ya existe,
 con el estado **actual** sin pisar `start_date` ni bajar de `finished` a `wip` (INSERT
 `ON CONFLICT DO NOTHING`). SHALL rechazar (400) `start_date` no parseable o `id` de sesión inválido.
 SHALL responder `404` si la sesión no existe. SHALL responder `403` si `athlete_user_id` viene y es
-ajeno y el auth no es owner de un equipo al que pertenezca ese atleta.
+ajeno y el auth no es owner de un equipo al que pertenezca ese atleta. Además SHALL exigir el acceso
+del atleta efectivo a la instancia y, cuando el caller actúa sobre otro atleta, también el acceso
+propio del caller: un coach sin acceso propio a la instancia no puede operar sobre el atleta → `403`.
+Orden de guards: `404` instancia inexistente → `403` atleta ajeno → `403` de acceso (caller y atleta
+efectivo) → `409` del gate presencial.
 
 ### Scenario: Alta del estado en el primer Play
 
@@ -54,14 +58,26 @@ ajeno y el auth no es owner de un equipo al que pertenezca ese atleta.
 - **WHEN** `athlete_user_id` es ajeno y el auth no es owner de un equipo del atleta
 - **THEN** se responde 403
 
+### Scenario: Coach sin acceso propio a la instancia
+
+- **WHEN** el auth es owner de un equipo del atleta e indica su `athlete_user_id`, pero el caller no
+  tiene acceso propio a la instancia (no es owner/miembro del día, no tiene feedback activo sobre
+  ella y no participa de la competencia route asociada)
+- **THEN** se responde 403 aunque el atleta efectivo sí tenga acceso: el coach solo opera sobre un
+  atleta en una instancia a la que él mismo accede
+
 ## Requirement: El sistema SHALL marcar la sesión como finalizada
 
 El sistema SHALL exponer `PATCH /api/v1/session-instances/:id/runner` con body
 `{ "status": "finished" }` (validando que sea exactamente `finished`; 400 en otro valor). El
 endpoint SHALL pasar la fila a `finished` y setear `end_date` con el `now()` del servidor **solo si**
 estaba en `wip`; si ya estaba `finished` SHALL responder `200` con el estado actual sin cambios
-(idempotente, no reescribe `end_date`). SHALL responder `404` si no existe la fila para
-(sesión, atleta). Misma autorización (atleta dueño o owner de un equipo del atleta).
+(idempotente, no reescribe `end_date`). SHALL responder `404` si la instancia no existe (antes de
+cualquier `403` de acceso) o si no existe la fila para (sesión, atleta). Misma autorización (atleta
+dueño o owner de un equipo del atleta), más el acceso del atleta efectivo a la instancia y el acceso
+propio del caller cuando actúa sobre otro atleta → `403`. Orden de guards: `404` instancia
+inexistente → `403` atleta ajeno → `403` de acceso (caller y atleta efectivo) → `404` fila de
+`runner_session` inexistente.
 
 ### Scenario: Finalización desde `wip`
 
@@ -78,12 +94,27 @@ estaba en `wip`; si ya estaba `finished` SHALL responder `200` con el estado act
 - **WHEN** se hace PATCH sobre una sesión/atleta sin `runner_session`
 - **THEN** se responde 404
 
+### Scenario: Instancia inexistente en PATCH
+
+- **WHEN** se hace PATCH sobre una instancia que no existe, incluso con un `athlete_user_id` ajeno
+  o sin acceso
+- **THEN** se responde 404 (la instancia inexistente precede al `403` de acceso)
+
+### Scenario: Coach sin acceso propio en PATCH
+
+- **WHEN** el auth actúa sobre otro atleta con `athlete_user_id` de su equipo, pero el caller no
+  tiene acceso propio a la instancia
+- **THEN** se responde 403, aunque el atleta efectivo sí tenga acceso
+
 ## Requirement: El sistema SHALL exponer el estado de la sesión
 
 El sistema SHALL exponer `GET /api/v1/session-instances/:id/runner` con query opcional
 `athlete_user_id` (default = usuario autenticado) que devuelve `200 { data: { id,
-session_instance_id, athlete_user_id, status, start_date, end_date } }`, o `404` si no existe la
-fila. Misma autorización (atleta dueño o owner de un equipo del atleta).
+session_instance_id, athlete_user_id, status, start_date, end_date } }`, o `404` si la instancia no
+existe (antes de cualquier `403` de acceso) o si no existe la fila. Misma autorización (atleta dueño
+o owner de un equipo del atleta), más el acceso del atleta efectivo a la instancia y el acceso propio
+del caller cuando actúa sobre otro atleta → `403`. Orden de guards: `404` instancia inexistente →
+`403` atleta ajeno → `403` de acceso (caller y atleta efectivo) → `404` fila inexistente.
 
 ### Scenario: Consulta del propio corredor
 
@@ -99,6 +130,18 @@ fila. Misma autorización (atleta dueño o owner de un equipo del atleta).
 
 - **WHEN** no existe `runner_session` para esa sesión/atleta
 - **THEN** se responde 404
+
+### Scenario: Instancia inexistente en GET
+
+- **WHEN** se hace GET sobre una instancia que no existe, incluso con un `athlete_user_id` ajeno o
+  sin acceso
+- **THEN** se responde 404 (la instancia inexistente precede al `403` de acceso)
+
+### Scenario: Coach sin acceso propio en GET
+
+- **WHEN** el auth consulta con `athlete_user_id` de un atleta de su equipo, pero el caller no tiene
+  acceso propio a la instancia
+- **THEN** se responde 403, aunque el atleta efectivo sí tenga acceso
 
 ## Requirement: El sistema SHALL listar el feedback de una sesión
 
