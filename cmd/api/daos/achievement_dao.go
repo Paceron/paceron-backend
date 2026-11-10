@@ -10,6 +10,7 @@ import (
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
+	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
 // AchievementDAOInterface reúne el acceso a datos de logros (gamificacion-core
@@ -27,6 +28,9 @@ type AchievementDAOInterface interface {
 
 	// CountFinishedSessions: histórico de runner sessions finished.
 	CountFinishedSessions(ctx *gin.Context, userID int64) (int64, error)
+	// CountEarlyFinishedSessions: sesiones finished con start_date local
+	// (Córdoba) antes de las 08:00, agregadas en SQL.
+	CountEarlyFinishedSessions(ctx *gin.Context, userID int64) (int64, error)
 	// SumDistanceMeters: suma de distance_meters de feedbacks activos.
 	SumDistanceMeters(ctx *gin.Context, userID int64) (float64, error)
 	// MaxDistanceSingleSession: MAX del SUM por sesión asignada.
@@ -86,6 +90,26 @@ func (d *achievementDao) CountFinishedSessions(ctx *gin.Context, userID int64) (
 		Count(&n).Error
 	if err != nil {
 		return 0, fmt.Errorf("error counting finished runner sessions: %w", err)
+	}
+	return n, nil
+}
+
+// earlySessionStartHour es la frontera de early_N: start_date local antes de
+// las 08:00 America/Argentina/Cordoba.
+const earlySessionStartHour = 8
+
+func (d *achievementDao) CountEarlyFinishedSessions(ctx *gin.Context, userID int64) (int64, error) {
+	var n int64
+	err := d.DB.Raw(`
+		SELECT COUNT(*)
+		FROM runner_session
+		WHERE athlete_user_id = ?
+			AND status = ?
+			AND EXTRACT(HOUR FROM start_date AT TIME ZONE ?) < ?
+		`, userID, runnersession.RunnerSessionStatusFinished,
+		gametime.Location.String(), earlySessionStartHour).Scan(&n).Error
+	if err != nil {
+		return 0, fmt.Errorf("error counting early finished runner sessions: %w", err)
 	}
 	return n, nil
 }

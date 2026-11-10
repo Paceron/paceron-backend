@@ -3,6 +3,8 @@ package daos
 // --- DAO de logros (gamificacion-core D5, task 3.2/3.6): Postgres real ---
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	gl "gorm.io/gorm/logger"
 
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
@@ -127,6 +130,84 @@ func TestAchievementDAO_CountFinishedSessions(t *testing.T) {
 	n, err = dao.CountFinishedSessions(nil, runner.ID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), n)
+}
+
+func TestAchievementDAO_CountEarlyFinishedSessions_Paridad(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runner := setupAchievementsRunner(t, db, "10")
+
+	n, err := dao.CountEarlyFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	// TZ Córdoba (UTC-3): 10:59 UTC = 07:59 → cuenta; 11:00 UTC = 08:00 → no.
+	early := time.Date(2026, 10, 4, 10, 59, 0, 0, time.UTC)
+	exact := time.Date(2026, 10, 4, 11, 0, 0, 0, time.UTC)
+	late := time.Date(2026, 10, 4, 11, 1, 0, 0, time.UTC)
+	midnight := time.Date(2026, 10, 4, 3, 30, 0, 0, time.UTC) // 00:30 Córdoba
+	// Instante con otro offset: 18:30 en JST = 06:30 en Córdoba.
+	tokyoEarly := time.Date(2026, 10, 5, 18, 30, 0, 0, time.FixedZone("JST", 9*3600))
+
+	mkSession := func(instanceID int64, athleteID int64, status string, start time.Time) {
+		t.Helper()
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: instanceID, AthleteUserID: athleteID, Status: status, StartDate: start,
+		}).Error)
+	}
+	mkSession(600, runner.ID, "finished", early)
+	mkSession(601, runner.ID, "finished", exact)
+	mkSession(602, runner.ID, "finished", late)
+	mkSession(603, runner.ID, "finished", midnight)
+	mkSession(604, runner.ID, "finished", tokyoEarly)
+	mkSession(605, runner.ID, "wip", early)
+	mkSession(606, runner.ID, "interrupted", early)
+	mkSession(607, runner.ID+1, "finished", early)
+
+	n, err = dao.CountEarlyFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), n, "07:59, 00:30 y el instante de otra TZ; 08:00 exacto no")
+}
+
+type sqlRecorderLogger struct {
+	gl.Interface
+	statements []string
+}
+
+func (r *sqlRecorderLogger) LogMode(gl.LogLevel) gl.Interface              { return r }
+func (r *sqlRecorderLogger) Info(context.Context, string, ...interface{})  {}
+func (r *sqlRecorderLogger) Warn(context.Context, string, ...interface{})  {}
+func (r *sqlRecorderLogger) Error(context.Context, string, ...interface{}) {}
+func (r *sqlRecorderLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
+	sql, _ := fc()
+	r.statements = append(r.statements, sql)
+}
+
+func TestAchievementDAO_CountEarlyFinishedSessions_UnaSolaQueryAgregada(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	runner := setupAchievementsRunner(t, db, "11")
+
+	for i := int64(0); i < 20; i++ {
+		start := time.Date(2026, 10, 4, 10, 0, 0, 0, time.UTC)
+		if i%2 == 0 {
+			start = time.Date(2026, 10, 4, 14, 0, 0, 0, time.UTC)
+		}
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: 700 + i, AthleteUserID: runner.ID, Status: "finished", StartDate: start,
+		}).Error)
+	}
+
+	rec := &sqlRecorderLogger{}
+	dao := NewAchievementDao(db.Session(&gorm.Session{Logger: rec}))
+
+	n, err := dao.CountEarlyFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), n)
+	require.Len(t, rec.statements, 1, "agrega en una sola query, sin traer el histórico")
+	sql := strings.ToUpper(rec.statements[0])
+	assert.Contains(t, sql, "COUNT(*)")
+	assert.Contains(t, sql, "AT TIME ZONE")
+	assert.NotContains(t, sql, "SELECT START_DATE")
 }
 
 func seedFeedbackDistance(t *testing.T, db *gorm.DB, runnerID int64, sessionID, exerciseID int64, setNumber int, meters *float64, deletedAt *time.Time) {
