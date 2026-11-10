@@ -125,3 +125,63 @@ func TestSessionExerciseInstanceDao_FindBySessionInstances(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 }
+
+func TestSessionExerciseInstanceDao_FindWithExercisesBySessionInstances(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	linkDao := NewSessionExerciseInstanceDao(db)
+	sessionDao := NewSessionInstanceDao(db)
+	exerciseDao := NewExerciseInstanceDao(db)
+
+	sessA := &dbs.SessionInstance{Name: "Sesion join A"}
+	sessB := &dbs.SessionInstance{Name: "Sesion join B"}
+	require.NoError(t, sessionDao.Create(nil, sessA))
+	require.NoError(t, sessionDao.Create(nil, sessB))
+	exA := &dbs.ExerciseInstance{Name: "Ejercicio join A", Kind: "running"}
+	exB := &dbs.ExerciseInstance{Name: "Ejercicio join B", Kind: "strength"}
+	require.NoError(t, exerciseDao.Create(nil, exA))
+	require.NoError(t, exerciseDao.Create(nil, exB))
+
+	// Insertados fuera de orden por sesión: el DAO ordena por instancia y link.
+	linkB := &dbs.SessionExerciseInstance{SessionInstanceID: sessB.ID, ExerciseInstanceID: exB.ID, Role: "main", RepeatCount: 2, RestMinutes: 1}
+	linkA2 := &dbs.SessionExerciseInstance{SessionInstanceID: sessA.ID, ExerciseInstanceID: exB.ID, Role: "main", RepeatCount: 3}
+	linkA1 := &dbs.SessionExerciseInstance{SessionInstanceID: sessA.ID, ExerciseInstanceID: exA.ID, Role: "warmup"}
+	require.NoError(t, linkDao.Create(nil, linkA1))
+	require.NoError(t, linkDao.Create(nil, linkA2))
+	require.NoError(t, linkDao.Create(nil, linkB))
+
+	rows, err := linkDao.FindWithExercisesBySessionInstances(nil, []int64{sessB.ID, sessA.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	require.NotNil(t, rows[0].Exercise)
+	require.NotNil(t, rows[1].Exercise)
+	require.NotNil(t, rows[2].Exercise)
+	assert.Equal(t, []int64{linkA1.ID, linkA2.ID, linkB.ID}, []int64{rows[0].Link.ID, rows[1].Link.ID, rows[2].Link.ID})
+	assert.Equal(t, []int64{sessA.ID, sessA.ID, sessB.ID}, []int64{rows[0].Link.SessionInstanceID, rows[1].Link.SessionInstanceID, rows[2].Link.SessionInstanceID})
+	assert.Equal(t, "Ejercicio join A", rows[0].Exercise.Name)
+	assert.Equal(t, exB.ID, rows[1].Exercise.ID)
+	assert.Equal(t, "strength", rows[2].Exercise.Kind)
+
+	rows, err = linkDao.FindWithExercisesBySessionInstances(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}
+
+func TestSessionExerciseInstanceDao_FindWithExercisesBySessionInstances_OrphanKeepsLink(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	linkDao := NewSessionExerciseInstanceDao(db)
+	sessionDao := NewSessionInstanceDao(db)
+
+	sess := &dbs.SessionInstance{Name: "Sesion orphan join"}
+	require.NoError(t, sessionDao.Create(nil, sess))
+	link := &dbs.SessionExerciseInstance{SessionInstanceID: sess.ID, ExerciseInstanceID: 987654321, Role: "main"}
+	require.NoError(t, linkDao.Create(nil, link))
+
+	rows, err := linkDao.FindWithExercisesBySessionInstances(nil, []int64{sess.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, link.ID, rows[0].Link.ID)
+	assert.Equal(t, int64(987654321), rows[0].Link.ExerciseInstanceID)
+	assert.Nil(t, rows[0].Exercise, "el link huérfano se conserva para que el mapper falle explícito")
+}

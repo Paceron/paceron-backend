@@ -38,6 +38,10 @@ type GroupCalendarDaoInterface interface {
 	// del guard de escritura (Gap 39: el async de hoy es escribible).
 	// nowHHMM es la hora actual en "HH:MM"; today es la medianoche local.
 	FindNextForGroupsByKind(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
+	// FindNextForGroupsByKinds resuelve el próximo día de cada kind indicado
+	// en una sola consulta (DISTINCT ON), con desempate determinista
+	// (date, presencial_time_from, id) y el mismo filtro "hoy cuenta".
+	FindNextForGroupsByKinds(ctx *gin.Context, groupIDs []int64, kinds []string, today time.Time, nowHHMM string) ([]dbs.GroupCalendarDay, error)
 	// FindNextPresencialForGroups devuelve el próximo día training+presencial
 	// entre los grupos dados con el mismo filtro "hoy cuenta" del banner
 	// (design.md D7): date > hoy, o date == hoy solo si el horario presencial
@@ -337,6 +341,27 @@ func (d *groupCalendarDayDao) FindNextForGroupsByKind(ctx *gin.Context, groupIDs
 		return nil, fmt.Errorf("error finding next day by kind: %w", err)
 	}
 	return &day, nil
+}
+
+// FindNextForGroupsByKinds es el batch de FindNextForGroupsByKind: una sola
+// consulta devuelve como máximo una fila por kind, elegida con el mismo orden
+// determinista que usa el banner (date, presencial_time_from, id).
+func (d *groupCalendarDayDao) FindNextForGroupsByKinds(ctx *gin.Context, groupIDs []int64, kinds []string, today time.Time, nowHHMM string) ([]dbs.GroupCalendarDay, error) {
+	if len(groupIDs) == 0 || len(kinds) == 0 {
+		return nil, nil
+	}
+	var days []dbs.GroupCalendarDay
+	err := d.DB.Table("group_calendar_days").
+		Select("DISTINCT ON (kind) *").
+		Where("group_id IN ? AND kind IN ?", groupIDs, kinds).
+		Where("date > ? OR (date = ? AND (is_presencial = ? OR presencial_time_from IS NULL OR TO_CHAR(presencial_time_from AT TIME ZONE 'UTC', 'HH24:MI') > ?))",
+			today, today, false, nowHHMM).
+		Order("kind ASC, date ASC, presencial_time_from ASC NULLS LAST, id ASC").
+		Find(&days).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding next days by kinds: %w", err)
+	}
+	return days, nil
 }
 
 // FindNextPresencialForGroups es la variante training+presencial del filtro

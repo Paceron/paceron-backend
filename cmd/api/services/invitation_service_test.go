@@ -643,27 +643,6 @@ func TestInvitationService_ListPendingInvitations_NotEntrenador(t *testing.T) {
 	assert.Contains(t, err.Error(), "solo el entrenador puede ver las invitaciones del equipo")
 }
 
-func TestInvitationService_ListPendingInvitations_FiltersExpired(t *testing.T) {
-	mockTeamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: 1}, nil
-		},
-	}
-	invDao := &mockInvitationDao{
-		findPendingByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error) {
-			return []dbs.Invitation{
-				{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(-time.Hour)},
-			}, nil
-		},
-	}
-
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, mockTeamDao, invDao, &mockTeamUserDao{findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(nil)}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil, &mockSellerConnectionDao{})
-	resp, err := svc.ListPendingInvitations(nil, 1, testEntrenadorCallerID)
-
-	assert.NoError(t, err)
-	assert.Len(t, resp, 0)
-}
-
 func TestInvitationService_ListPendingInvitations_DaoError(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
@@ -709,22 +688,6 @@ func TestInvitationService_ListPendingInvitationsForUser_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, resp, 1)
 	assert.Equal(t, "Alpha", resp[0].TeamName)
-}
-
-func TestInvitationService_ListPendingInvitationsForUser_FiltersExpired(t *testing.T) {
-	invDao := &mockInvitationDao{
-		findPendingByInviteeIDFn: func(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
-			return []dbs.Invitation{
-				{ID: 1, TeamID: 1, InviteeID: 2, Status: "pending", ExpiresAt: time.Now().Add(-time.Hour)},
-			}, nil
-		},
-	}
-
-	svc := NewInvitationService(&mockUserDaoForInvitation{}, freeMockTeamDao(), invDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil, &mockSellerConnectionDao{})
-	resp, err := svc.ListPendingInvitationsForUser(nil, 2)
-
-	assert.NoError(t, err)
-	assert.Len(t, resp, 0)
 }
 
 func TestInvitationService_ListPendingInvitationsForUser_DaoError(t *testing.T) {

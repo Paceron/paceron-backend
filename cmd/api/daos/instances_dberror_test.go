@@ -104,6 +104,12 @@ func TestSessionExerciseInstanceDao_DBFail_Operaciones(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error listing session exercise instances")
 
+	// FindWithExercisesBySessionInstances con select fallida.
+	dao = NewSessionExerciseInstanceDao(testutils.FailingDB(t, db, instanceNthFail("select", 1)))
+	_, err = dao.FindWithExercisesBySessionInstances(nil, []int64{sess.ID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding session exercise instances with exercises")
+
 	// Delete individual.
 	failing = testutils.FailingDB(t, db, instanceNthFail("delete", 1))
 	dao = NewSessionExerciseInstanceDao(failing)

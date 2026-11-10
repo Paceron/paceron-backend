@@ -65,10 +65,11 @@ func (d *invitationDao) FindPendingByTeamAndInvitee(ctx *gin.Context, teamID, in
 	return &invitation, nil
 }
 
-// FindPendingByTeamID devuelve todas las invitaciones pendientes de un equipo.
+// FindPendingByTeamID devuelve las invitaciones pendientes y vigentes de un equipo.
 func (d *invitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]dbs.Invitation, error) {
 	var invitations []dbs.Invitation
-	err := d.DB.Where("team_id = ? AND status = ? AND deleted_at IS NULL", teamID, string(constants.InvitationStatusPending)).
+	err := d.DB.Where("team_id = ? AND status = ? AND expires_at > NOW() AND deleted_at IS NULL", teamID, string(constants.InvitationStatusPending)).
+		Order("id ASC").
 		Find(&invitations).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding pending invitations: %w", err)
@@ -76,11 +77,12 @@ func (d *invitationDao) FindPendingByTeamID(ctx *gin.Context, teamID int64) ([]d
 	return invitations, nil
 }
 
-// FindPendingByInviteeID devuelve todas las invitaciones pendientes de un usuario, sin
-// importar el equipo.
+// FindPendingByInviteeID devuelve las invitaciones pendientes y vigentes de un
+// usuario, sin importar el equipo.
 func (d *invitationDao) FindPendingByInviteeID(ctx *gin.Context, inviteeID int64) ([]dbs.Invitation, error) {
 	var invitations []dbs.Invitation
-	err := d.DB.Where("invitee_id = ? AND status = ? AND deleted_at IS NULL", inviteeID, string(constants.InvitationStatusPending)).
+	err := d.DB.Where("invitee_id = ? AND status = ? AND expires_at > NOW() AND deleted_at IS NULL", inviteeID, string(constants.InvitationStatusPending)).
+		Order("id ASC").
 		Find(&invitations).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding pending invitations for invitee: %w", err)

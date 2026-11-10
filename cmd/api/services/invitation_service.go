@@ -205,8 +205,8 @@ func (s *invitationService) InviteRunner(ctx *gin.Context, teamID int64, callerI
 	}, nil
 }
 
-// ListPendingInvitations devuelve las invitaciones pendientes de un equipo, excluyendo
-// las que ya vencieron (chequeo perezoso, sin job de limpieza). Solo el entrenador del
+// ListPendingInvitations devuelve las invitaciones pendientes y vigentes de un
+// equipo (el vencimiento se filtra en SQL). Solo el entrenador del
 // equipo puede verlas.
 func (s *invitationService) ListPendingInvitations(ctx *gin.Context, teamID int64, callerID int64) ([]invitation.InvitationResponse, error) {
 	teamDB, err := s.teamDao.FindByID(ctx, teamID)
@@ -239,19 +239,11 @@ func (s *invitationService) ListPendingInvitations(ctx *gin.Context, teamID int6
 		return nil, fmt.Errorf("error al listar invitaciones")
 	}
 
-	now := time.Now()
-	pending := make([]dbs.Invitation, 0, len(invitations))
-	for _, inv := range invitations {
-		if now.After(inv.ExpiresAt) {
-			continue
-		}
-		pending = append(pending, inv)
-	}
-	return s.batchInvitationResponses(ctx, "ListPendingInvitations", pending, map[int64]*dbs.Team{teamID: teamDB}), nil
+	return s.batchInvitationResponses(ctx, "ListPendingInvitations", invitations, map[int64]*dbs.Team{teamID: teamDB}), nil
 }
 
-// ListPendingInvitationsForUser devuelve las invitaciones pendientes de un usuario,
-// sin importar el equipo. Mismo chequeo perezoso de expiración que ListPendingInvitations.
+// ListPendingInvitationsForUser devuelve las invitaciones pendientes y vigentes
+// de un usuario, sin importar el equipo (el vencimiento se filtra en SQL).
 func (s *invitationService) ListPendingInvitationsForUser(ctx *gin.Context, userID int64) ([]invitation.InvitationResponse, error) {
 	invitations, err := s.invitationDao.FindPendingByInviteeID(ctx, userID)
 	if err != nil {
@@ -261,20 +253,12 @@ func (s *invitationService) ListPendingInvitationsForUser(ctx *gin.Context, user
 		return nil, fmt.Errorf("error al listar invitaciones")
 	}
 
-	now := time.Now()
-	pending := make([]dbs.Invitation, 0, len(invitations))
-	for _, inv := range invitations {
-		if now.After(inv.ExpiresAt) {
-			continue
-		}
-		pending = append(pending, inv)
-	}
 	// Teams en lote (D9): 1 query de todos los equipos de las invitaciones
 	// vigentes en vez de un FindByID por invitación. Los faltantes degradan
 	// igual que el FindByID puntual: team_name vacío, fee 0, can_receive false.
-	teamIDs := make([]int64, 0, len(pending))
-	seenTeam := make(map[int64]struct{}, len(pending))
-	for _, inv := range pending {
+	teamIDs := make([]int64, 0, len(invitations))
+	seenTeam := make(map[int64]struct{}, len(invitations))
+	for _, inv := range invitations {
 		if _, dup := seenTeam[inv.TeamID]; !dup {
 			seenTeam[inv.TeamID] = struct{}{}
 			teamIDs = append(teamIDs, inv.TeamID)
@@ -292,7 +276,7 @@ func (s *invitationService) ListPendingInvitationsForUser(ctx *gin.Context, user
 			}
 		}
 	}
-	return s.batchInvitationResponses(ctx, "ListPendingInvitationsForUser", pending, teamByID), nil
+	return s.batchInvitationResponses(ctx, "ListPendingInvitationsForUser", invitations, teamByID), nil
 }
 
 // batchInvitationResponses arma las respuestas de un listado de invitaciones

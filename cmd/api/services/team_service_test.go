@@ -137,8 +137,8 @@ func TestTeamService_Create_Success(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}
 
@@ -170,6 +170,47 @@ func TestTeamService_Create_Success(t *testing.T) {
 	assert.True(t, teamUserCreateCalled)
 }
 
+func TestTeamService_Create_ResolvesRolesInBatch(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		createFn: func(ctx *gin.Context, t *dbs.Team) error {
+			t.ID = 1
+			return nil
+		},
+	}
+	findByIDCalls := 0
+	findByIDsCalls := 0
+	var requestedIDs []int64
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			findByIDCalls++
+			return nil, nil
+		},
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			findByIDsCalls++
+			requestedIDs = ids
+			return []dbs.Role{{ID: 1, Name: "corredor"}, {ID: 2, Name: "entrenador"}}, nil
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: userID, Name: "Coach"}, nil
+		},
+	}, &mockUserRoleDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.UserRole, error) {
+			return []dbs.UserRole{{RoleID: 1}, {RoleID: 2}}, nil
+		},
+	}, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+
+	resp, err := svc.Create(nil, 1, &team.CreateTeamRequest{Name: "Equipo Alpha", MaxMembers: 20})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, []int64{1, 2}, requestedIDs)
+	assert.Equal(t, 1, findByIDsCalls)
+	assert.Zero(t, findByIDCalls)
+}
+
 func TestTeamService_Create_ShowGroupsToRunners_True(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		createFn: func(ctx *gin.Context, t *dbs.Team) error {
@@ -188,8 +229,8 @@ func TestTeamService_Create_ShowGroupsToRunners_True(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}
 
@@ -223,8 +264,8 @@ func TestTeamService_Create_TeamUserDaoCreateError_StillSucceeds(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}
 	mockTeamUserDao := &mockTeamUserDao{
@@ -272,8 +313,8 @@ func TestTeamService_Create_OwnerNoEntrenadorRole(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "corredor"}}, nil
 		},
 	}
 
@@ -321,8 +362,8 @@ func TestTeamService_Create_DAOError(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}
 
@@ -887,18 +928,22 @@ func TestTeamService_GetAll_ByMemberID(t *testing.T) {
 	assert.Equal(t, "Beta", resp[0].Name)
 }
 
-func TestTeamService_GetAll_ByOwnerIDAndMemberID_FiltersInMemory(t *testing.T) {
+func TestTeamService_GetAll_ByOwnerIDAndMemberID_ResolvesMembershipsOnceAndFiltersInMemory(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
-			return []dbs.Team{{ID: 1, Name: "Alpha"}, {ID: 2, Name: "Beta"}}, nil
+			return []dbs.Team{{ID: 1, Name: "Alpha"}, {ID: 2, Name: "Beta"}, {ID: 3, Name: "Gamma"}}, nil
 		},
 	}
+	findByTeamAndUserCalls := 0
+	findByUserIDCalls := 0
 	mockTU := &mockTeamUserDao{
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
-			if teamID == 1 {
-				return &dbs.TeamUser{TeamID: 1, UserID: userID}, nil
-			}
+			findByTeamAndUserCalls++
 			return nil, nil
+		},
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+			findByUserIDCalls++
+			return []dbs.TeamUser{{TeamID: 1, UserID: userID}, {TeamID: 3, UserID: userID}}, nil
 		},
 	}
 
@@ -908,8 +953,32 @@ func TestTeamService_GetAll_ByOwnerIDAndMemberID_FiltersInMemory(t *testing.T) {
 	resp, err := svc.GetAll(nil, &ownerID, &memberID)
 
 	assert.NoError(t, err)
-	assert.Len(t, resp, 1)
+	require.Len(t, resp, 2)
 	assert.Equal(t, "Alpha", resp[0].Name)
+	assert.Equal(t, "Gamma", resp[1].Name)
+	assert.Equal(t, 1, findByUserIDCalls)
+	assert.Zero(t, findByTeamAndUserCalls)
+}
+
+func TestTeamService_GetAll_ByOwnerIDAndMemberID_MembershipLookupError(t *testing.T) {
+	mockTeamDao := &mockTeamDao{
+		getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
+			return []dbs.Team{{ID: 1, Name: "Alpha"}}, nil
+		},
+	}
+	mockTU := &mockTeamUserDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+	ownerID := int64(5)
+	memberID := int64(7)
+	_, err := svc.GetAll(nil, &ownerID, &memberID)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al obtener equipos")
 }
 
 func TestTeamService_GetAll_ByMemberID_DaoError(t *testing.T) {
@@ -960,7 +1029,7 @@ func TestTeamService_UpdateAddress_DAOUpdateError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al actualizar dirección")
 }
 
-func TestTeamService_Create_RoleFindByIDError(t *testing.T) {
+func TestTeamService_Create_RoleFindByIDsError(t *testing.T) {
 	mockUserDao := &mockUserDaoForUserRole{
 		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
 			return &dbs.User{ID: 1, Name: "Coach"}, nil
@@ -972,7 +1041,7 @@ func TestTeamService_Create_RoleFindByIDError(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
 			return nil, errors.New("db error")
 		},
 	}
@@ -999,7 +1068,7 @@ func TestTeamService_Create_RoleNil(t *testing.T) {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
 			return nil, nil
 		},
 	}
@@ -1220,8 +1289,8 @@ func newMembershipFeeCreateService() TeamServiceInterface {
 		},
 	}
 	mockRoleDao := &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}
 	return NewTeamService(mockTeamDao, mockUserDao, mockUserRoleDao, mockRoleDao, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
@@ -1549,8 +1618,8 @@ func TestTeamService_Create_Update_UpdateAddress_CanReceivePaymentsDerived(t *te
 			},
 		},
 		&mockRoleDao{
-			findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-				return &dbs.Role{ID: id, Name: "entrenador"}, nil
+			findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+				return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 			},
 		},
 		entrenadorMockTeamUserDao(), &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, sellerDao)
@@ -1637,8 +1706,8 @@ func newTeamCreateServiceCapture(savedTeam **dbs.Team) TeamServiceInterface {
 			return []dbs.UserRole{{RoleID: 1}}, nil
 		},
 	}, &mockRoleDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Role, error) {
+			return []dbs.Role{{ID: 1, Name: "entrenador"}}, nil
 		},
 	}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 }

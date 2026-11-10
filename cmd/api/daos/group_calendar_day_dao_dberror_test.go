@@ -126,6 +126,26 @@ func TestGroupCalendarDayDao_DBFail_FindNextForGroupsByKind(t *testing.T) {
 	assert.Contains(t, err.Error(), "error finding next day by kind")
 }
 
+func TestGroupCalendarDayDao_DBFail_FindNextForGroupsByKinds(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	d1 := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+
+	days, err := dao.FindNextForGroupsByKinds(nil, nil, []string{"training"}, d1, "10:00")
+	require.NoError(t, err)
+	assert.Empty(t, days)
+
+	days, err = dao.FindNextForGroupsByKinds(nil, []int64{1}, nil, d1, "10:00")
+	require.NoError(t, err)
+	assert.Empty(t, days)
+
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao = NewGroupCalendarDayDao(failing)
+	_, err = dao.FindNextForGroupsByKinds(nil, []int64{1}, []string{"training", "cancelled"}, d1, "10:00")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding next days by kinds")
+}
+
 func TestGroupCalendarDayDao_DBFail_FindNextPresencialForGroups(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupCalendarDayDao(db)

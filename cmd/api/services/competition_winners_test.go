@@ -123,6 +123,37 @@ func TestCompetitionService_Close_PushBatchUnaQuery(t *testing.T) {
 	assert.Equal(t, []int{100, 100, 50}, chunkSizes, "ceil(250/100) requests")
 }
 
+func TestCompetitionService_Close_PushPerChunkTimeout(t *testing.T) {
+	fixGamNow(t)
+	dao := closeMetricDao("distance", []dbs.CompetitionMetricAgg{
+		{UserID: 11, SumDistance: fptr(7000)},
+	})
+	tokens := make([]dbs.PushToken, 250)
+	for i := range tokens {
+		tokens[i] = dbs.PushToken{Token: fmt.Sprintf("ExponentPushToken[%d]", i)}
+	}
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+		return tokens, nil
+	}}
+	var deadlines []time.Time
+	client := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, got []string, title, body string, data map[string]string) error {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		deadlines = append(deadlines, deadline)
+		return nil
+	}}
+	svc := newSyncCompetitionService(dao, &pushDAO, client)
+
+	_, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	require.Len(t, deadlines, 3)
+	for _, deadline := range deadlines {
+		remaining := time.Until(deadline)
+		assert.Greater(t, remaining, 9*time.Second, "cada lote usa el timeout por chunk")
+		assert.LessOrEqual(t, remaining, 10*time.Second)
+	}
+}
+
 func TestCompetitionService_ClosePushNoBloqueaRespuesta(t *testing.T) {
 	fixGamNow(t)
 	dao := closeMetricDao("distance", []dbs.CompetitionMetricAgg{

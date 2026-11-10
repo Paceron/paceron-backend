@@ -141,10 +141,10 @@ func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 	// guard de todas las fechas es una única SELECT IN dentro de la tx,
 	// evaluada en memoria con el mismo orden/mensajes que el loop por fecha.
 	//
-	// 16 fijo: 2 (owner/plan) + 1 planDays + 1 savepoint + 1 lecturas de
+	// 15 fijo: 2 (owner/plan) + 1 planDays + 1 savepoint + 1 lecturas de
 	// guard batch + 3 catálogo + 3 inserts instancias + 1 UpsertMany +
-	// 3 detalle post-commit + 1 commit.
-	assert.Equal(t, 16, dayQueries, "stamp 4 días: sin lectura guard +1/día")
+	// 2 detalle post-commit + 1 commit.
+	assert.Equal(t, 15, dayQueries, "stamp 4 días: sin lectura guard +1/día")
 	assert.Equal(t, dayQueries, counter, "stamp de 30 días = exactamente el mismo write path (sin término lineal)")
 
 	// Contenido batch correcto: cada día tiene su propia instancia con links.
