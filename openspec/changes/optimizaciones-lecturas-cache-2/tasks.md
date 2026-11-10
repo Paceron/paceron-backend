@@ -76,7 +76,7 @@
 **Files:** tests de `cmd/api/scripts/seed_dashboard`, `cmd/api/services`, `cmd/api/controllers` y `cmd/api/infrastructure` con ramas internas no cubiertas; `docs/DEUDA_TECNICA_Y_PENDIENTES.md`.
 **Commit:** `test(coverage): cubrir ramas internas de tooling y servicios`
 
-- [ ] 7.1 Agregar tests de errores/fallbacks en `seed_dashboard` (cleanup/verify/seed/main) sin ejecutar seed real ni tocar local/demo.
-- [ ] 7.2 Agregar tests de ramas internas de bajo costo en servicios/controladores (dashboard, calendario, competencias, helpers) sin cambiar comportamiento.
-- [ ] 7.3 Medir coverage antes/después con `go clean -cache` + analyzer; objetivo mínimo 87.5%, ideal 88%; documentar lo que falta para 90%.
-- [ ] 7.4 Verificación final: build, vet, suite completa con DB, validate strict, gofmt, diff-check y commit.
+- [x] 7.1 Agregar tests de errores/fallbacks en `seed_dashboard` (cleanup/verify/seed/main) sin ejecutar seed real ni tocar local/demo.
+- [x] 7.2 Agregar tests de ramas internas de bajo costo en servicios/controladores (dashboard, calendario, competencias, helpers) sin cambiar comportamiento.
+- [x] 7.3 Medir coverage antes/después con `go clean -cache` + analyzer; objetivo mínimo 87.5%, ideal 88%; documentar lo que falta para 90%.
+- [x] 7.4 Verificación final: build, vet, suite completa con DB, validate strict, gofmt, diff-check y commit.

@@ -217,7 +217,7 @@ No se agregó caché en `optimizaciones-lecturas-cache` (design D6). La ronda se
 
 ## Performance — cierre optimizaciones de lecturas y cache 2 (2026-11-10)
 
-Cierre de `feature/optimizaciones-lecturas-cache-2` (`37941fe..9e1bf12`, Tasks 1-6). Sin cambios de endpoints, DTOs, shapes ni autorización.
+Cierre de `feature/optimizaciones-lecturas-cache-2` (`37941fe..0f8384b`, Tasks 1-6). Sin cambios de endpoints, DTOs, shapes ni autorización.
 
 ### Resuelto en esta rama
 
@@ -310,6 +310,14 @@ Mismo caso, otro motivo: `TestAttendanceMigration_ScriptDeclaresSessionInstanceF
 - Sumado: errores de DAO de `CountEarlyFinishedSessions`, `UnlinkedExerciseInstances`, lecturas de scope del dashboard y batches de nombres; fallbacks/errores de `buildHistoryResponse` (total de página vacía, pools, equipos/grupos); total con filtros de segundo nivel en historial; borde inclusivo `from/to` de instancias legacy; `CalendarSummary` sin grupos/error ya cubierto y verificado; `buildUpdates` completo/validaciones; `ApplyAthleteNames` y `leaderboardComparableValue`; y `EXPLAIN` con `enable_seqscan=off` para los parciales nuevos.
 - **Para 88%:** faltan ~273 statements cubiertos. **Para 90%:** ~688. Los bloques más grandes restantes son `scripts/seed_dashboard/*` (~500 statements), `payment_service`, `competition_service`/`competition_dao`, `dashboard_service` (ramas de paginación/agrupación), controllers y `infrastructure`. Es trabajo de una ronda dedicada de coverage (Etapa 2), no de esta rama: forzarlo acá implicaría tests de áreas ajenas a las lecturas optimizadas.
 - No se bajó `.testcoverage.yml` ni se cubrió código muerto/defensivo a la fuerza (`calendar_service.instantiateSession` 0% y sin call sites, ramas parked de la sección siguiente).
+
+### Ronda `optimizaciones-lecturas-cache-2` (2026-11-10, Task 7)
+
+- **Antes:** 18056/20889 statements (**86.44%**).
+- **Después:** 18392/20889 statements (**88.05%**). Delta **+1.61 pp / +336 statements**.
+- Sumado: ramas de error/validación de `seed_dashboard` (`main`, `cleanup`, `seed`, `full_cleanup`, `full_verify`, `full_competitions`, `profile_full`) con `FailingDB` y fixtures de test; wrappers y adapter de `customlogger`; `httpclient` completo (`Get/Post/Put/Delete`, reintentos, 4xx/5xx, breaker, telemetría, errores de armado/lectura); `CircuitBreaker`; `platform_setting_dao` (get/set/upsert y errores); `ConnString`/`ConfigDB` con conexión inválida; y asserts de valores en `buildUpdates`.
+- **Para 88.5%:** faltan ~95 statements. **Para 90%:** ~409. Lo que queda está concentrado en ramas de error profundas de `seed_dashboard/full_*` (requieren escenarios full sembrados y mutados), `payment_service` (excluido a propósito de esta ronda), `dashboard_service`/`calendar_service`/`competition_service` y controllers. No se tocó `/auth/user` ni pagos.
+- No se bajó `.testcoverage.yml`; la cobertura se midió con `make coverage-with-db` + analyzer.
 
 ### Etapa 2 de coverage: legacy → 90% (trabajo futuro / repuesto)
 

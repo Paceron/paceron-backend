@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1525,6 +1526,33 @@ func TestWorkoutFeedbackService_BuildUpdates_CompletoYValidaciones(t *testing.T)
 	} {
 		assert.Contains(t, updates, key)
 	}
+
+	assert.Equal(t, int64(4), updates["team_id"])
+	assert.Equal(t, int64(5), updates["assigned_session_id"])
+	assert.Equal(t, int64(6), updates["assigned_exercise_id"])
+	assert.Equal(t, reportSource, updates["report_source"])
+	assert.Equal(t, time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), updates["session_date"])
+	assert.Equal(t, 1, updates["set_number"])
+	assert.Equal(t, startedAt, updates["started_at"])
+	assert.Equal(t, endedAt, updates["ended_at"])
+	assert.Equal(t, int64(60000), updates["duration_ms"])
+	assert.Equal(t, int64(50000), updates["active_duration_ms"])
+	assert.Equal(t, 2.5, updates["weight_kg"])
+	assert.Equal(t, 10, updates["reps"])
+	assert.Equal(t, 3.2, updates["distance_meters"])
+	assert.Equal(t, int16(8), updates["rpe"])
+	assert.Equal(t, int16(145), updates["avg_heart_rate"])
+	assert.Equal(t, int16(170), updates["max_heart_rate"])
+	assert.Equal(t, completion, updates["completion_status"])
+	assert.Equal(t, 12.0, updates["elevation_gain_meters"])
+	assert.Equal(t, int16(88), updates["cadence"])
+	assert.Equal(t, annotations, updates["annotations"])
+
+	media, ok := updates["media_urls"].(pgtype.TextArray)
+	require.True(t, ok)
+	var mediaURLs []string
+	require.NoError(t, media.AssignTo(&mediaURLs))
+	assert.Equal(t, []string{"https://media.foo/a.jpg"}, mediaURLs)
 
 	badDate := "10/03/2026"
 	emptySource := ""
