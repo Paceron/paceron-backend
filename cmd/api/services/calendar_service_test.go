@@ -858,17 +858,17 @@ func TestCalendarService_NextPresencialSession_TodayCounts(t *testing.T) {
 }
 
 // MemberCalendar con mocks (D8): memberships de 2 grupos → 1 query de días
-// con AMBOS group_ids; los nombres salen en batch (1 groups + 1 teams);
+// con AMBOS group_ids; los nombres salen de una sola query con JOIN a teams;
 // sin días el resultado es un slice vacío no-nil.
 func TestCalendarService_MemberCalendar_MergesBothGroups(t *testing.T) {
 	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 		return []dbs.GroupUser{{GroupID: 1, UserID: userID}, {GroupID: 2, UserID: userID}}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "Grupo 1", TeamID: 10}, {ID: 2, Name: "Grupo 2", TeamID: 11}}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return []dbs.Team{{ID: 10, Name: "Equipo 10"}, {ID: 11, Name: "Equipo 11"}}, nil
+	groupDao := &mockGroupDao{findWithTeamNameByIDsFn: func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
+		return []daos.GroupWithTeamName{
+			{ID: 1, Name: "Grupo 1", TeamID: 10, TeamName: "Equipo 10"},
+			{ID: 2, Name: "Grupo 2", TeamID: 11, TeamName: "Equipo 11"},
+		}, nil
 	}}
 	var capturedGroupIDs []int64
 	from, _ := time.Parse("2006-01-02", "2099-10-01")
@@ -882,7 +882,7 @@ func TestCalendarService_MemberCalendar_MergesBothGroups(t *testing.T) {
 			{GroupID: 2, Date: d2, Kind: "rest"},
 		}, nil
 	}}
-	svc := NewCalendarService(calDao, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+	svc := NewCalendarService(calDao, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 
 	resp, err := svc.MemberCalendar(nil, 42, from, to)
 
@@ -1008,17 +1008,13 @@ func TestCalendarService_MemberCalendar_EmptyRangePostgres(t *testing.T) {
 }
 
 func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
-	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
-		return []dbs.GroupUser{{GroupID: 1, UserID: userID}, {GroupID: 2, UserID: userID}}, nil
+	groupUserDao := &mockGroupUserDao{findActiveWithGroupByUserIDFn: func(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error) {
+		return []daos.GroupMembershipGroup{
+			{GroupID: 1, GroupName: "Grupo 1"},
+			{GroupID: 2, GroupName: "Grupo 2"},
+		}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
-		groups := make([]dbs.Group, 0, len(ids))
-		for _, id := range ids {
-			groups = append(groups, dbs.Group{ID: id, Name: fmt.Sprintf("Grupo %d", id)})
-		}
-		return groups, nil
-	}}
-	svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
+	svc := NewCalendarService(&mockGroupCalendarDao{}, &mockGroupDao{}, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 
 	resp, err := svc.CalendarSummary(nil, 42)
 

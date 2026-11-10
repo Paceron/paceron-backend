@@ -73,12 +73,12 @@ func TestCalendarService_Task1_MemberAndAdministeredCalendarDetailBatch(t *testi
 
 	memberResp, err := countingSvc.MemberCalendar(nil, owner.ID, base, base.AddDate(0, 0, 2))
 	require.NoError(t, err)
-	assert.Equal(t, 6, counter, "memberships + rango + grupos + equipos + instancias + links/ejercicios")
+	assert.Equal(t, 5, counter, "memberships + rango + grupos+equipos (JOIN) + instancias + links/ejercicios")
 
 	counter = 0
 	adminResp, err := countingSvc.AdministeredCalendar(nil, owner.ID, base, base.AddDate(0, 0, 2))
 	require.NoError(t, err)
-	assert.Equal(t, 5, counter, "grupos + equipos + rango + instancias + links/ejercicios")
+	assert.Equal(t, 4, counter, "grupos+equipos (JOIN) + rango + instancias + links/ejercicios")
 
 	rangeResp, err := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db).
 		GetRange(nil, group.ID, owner.ID, base, base.AddDate(0, 0, 2))

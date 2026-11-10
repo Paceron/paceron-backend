@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/group"
 )
@@ -66,16 +67,18 @@ func entrenadorMockTU() *mockTeamUserDaoGroup {
 }
 
 type mockGroupDao struct {
-	createFn             func(ctx *gin.Context, g *dbs.Group) error
-	findByIDFn           func(ctx *gin.Context, id int64) (*dbs.Group, error)
-	findByIDAndTeamIDFn  func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
-	getAllFn             func(ctx *gin.Context) ([]dbs.Group, error)
-	getByTeamIDFn        func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
-	findByOwnerIDFn      func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
-	findByIDsFn          func(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
-	updateFn             func(ctx *gin.Context, g *dbs.Group) error
-	softDeleteFn         func(ctx *gin.Context, id int64) error
-	softDeleteByTeamIDFn func(ctx *gin.Context, teamID int64) error
+	createFn                    func(ctx *gin.Context, g *dbs.Group) error
+	findByIDFn                  func(ctx *gin.Context, id int64) (*dbs.Group, error)
+	findByIDAndTeamIDFn         func(ctx *gin.Context, groupID, teamID int64) (*dbs.Group, error)
+	getAllFn                    func(ctx *gin.Context) ([]dbs.Group, error)
+	getByTeamIDFn               func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
+	findByOwnerIDFn             func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
+	findByOwnerIDWithTeamNameFn func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error)
+	findByIDsFn                 func(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
+	findWithTeamNameByIDsFn     func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error)
+	updateFn                    func(ctx *gin.Context, g *dbs.Group) error
+	softDeleteFn                func(ctx *gin.Context, id int64) error
+	softDeleteByTeamIDFn        func(ctx *gin.Context, teamID int64) error
 }
 
 func (m *mockGroupDao) Create(ctx *gin.Context, g *dbs.Group) error {
@@ -120,9 +123,23 @@ func (m *mockGroupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Gro
 	return nil, nil
 }
 
+func (m *mockGroupDao) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
+	if m.findByOwnerIDWithTeamNameFn != nil {
+		return m.findByOwnerIDWithTeamNameFn(ctx, ownerID)
+	}
+	return nil, nil
+}
+
 func (m *mockGroupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
 	if m.findByIDsFn != nil {
 		return m.findByIDsFn(ctx, ids)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupDao) FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
+	if m.findWithTeamNameByIDsFn != nil {
+		return m.findWithTeamNameByIDsFn(ctx, ids)
 	}
 	return nil, nil
 }

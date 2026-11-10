@@ -2193,8 +2193,8 @@ func (s *calendarService) trainingBannerItem(day dbs.GroupCalendarDay, groupName
 // MemberCalendar resuelve el calendario agregado del corredor (design.md D8,
 // spec "Calendario agregado del corredor"): los días de calendario de TODOS
 // los grupos con membresía activa del usuario en el rango, ordenados por
-// fecha, con group_name/team_name resueltos server-side en batch (1 query de
-// groups + 1 de teams, sin N+1).
+// fecha, con group_name/team_name resueltos server-side en una sola consulta
+// con JOIN groups→teams (sin N+1).
 func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
 	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
 	if err != nil {
@@ -2218,29 +2218,14 @@ func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, t
 		return []calendar.AggregateCalendarDayResponse{}, nil
 	}
 
-	// Nombres batch: groups primero; team_name vía 1 query de teams para los
-	// teams de esos grupos.
-	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	groups, err := s.groupDao.FindWithTeamNameByIDs(ctx, groupIDs)
 	if err != nil {
 		customlogger.Error(ctx, "error finding groups for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
 		return nil, fmt.Errorf("error al buscar grupos del usuario")
 	}
-	groupByID := make(map[int64]dbs.Group, len(groups))
-	var teamIDs []int64
+	groupByID := make(map[int64]daos.GroupWithTeamName, len(groups))
 	for _, g := range groups {
 		groupByID[g.ID] = g
-		teamIDs = append(teamIDs, g.TeamID)
-	}
-	teamNameByID := make(map[int64]string)
-	if len(teamIDs) > 0 {
-		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
-		if err != nil {
-			customlogger.Error(ctx, "error finding teams for member-calendar", err, customlogger.TagMethod("MemberCalendar"))
-			return nil, fmt.Errorf("error al buscar equipos del usuario")
-		}
-		for _, t := range teams {
-			teamNameByID[t.ID] = t.Name
-		}
 	}
 
 	// La DAO ordena por fecha; el merge multi-grupo conserva ese orden (los
@@ -2261,7 +2246,7 @@ func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, t
 			GroupID:             group.ID,
 			GroupName:           group.Name,
 			TeamID:              group.TeamID,
-			TeamName:            teamNameByID[group.TeamID],
+			TeamName:            group.TeamName,
 		}
 	}
 	return responses, nil
@@ -2277,7 +2262,7 @@ func (s *calendarService) MemberCalendar(ctx *gin.Context, userID int64, from, t
 // de LECTURA sobre datos actuales: también marca colisiones viejas guardadas
 // antes del guard de escritura.
 func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, from, to time.Time) ([]calendar.AggregateCalendarDayResponse, error) {
-	groups, err := s.groupDao.FindByOwnerID(ctx, userID)
+	groups, err := s.groupDao.FindByOwnerIDWithTeamName(ctx, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding administered groups", err, customlogger.TagMethod("AdministeredCalendar"))
 		return nil, fmt.Errorf("error al buscar grupos administrados")
@@ -2287,22 +2272,11 @@ func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, f
 	}
 	groupIDs := make([]int64, len(groups))
 	groupByID := make(map[int64]dbs.Group, len(groups))
+	teamNameByID := make(map[int64]string, len(groups))
 	for i, g := range groups {
 		groupIDs[i] = g.ID
-		groupByID[g.ID] = g
-	}
-	teamIDs := make([]int64, 0, len(groups))
-	for _, g := range groups {
-		teamIDs = append(teamIDs, g.TeamID)
-	}
-	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
-	if err != nil {
-		customlogger.Error(ctx, "error finding teams for administered-calendar", err, customlogger.TagMethod("AdministeredCalendar"))
-		return nil, fmt.Errorf("error al buscar equipos del entrenador")
-	}
-	teamNameByID := make(map[int64]string, len(teams))
-	for _, t := range teams {
-		teamNameByID[t.ID] = t.Name
+		groupByID[g.ID] = dbs.Group{ID: g.ID, Name: g.Name, TeamID: g.TeamID}
+		teamNameByID[g.TeamID] = g.TeamName
 	}
 
 	days, err := s.calendarDao.FindForGroupsInRange(ctx, groupIDs, from, to)
@@ -2412,27 +2386,13 @@ func (s *calendarService) AdministeredCalendar(ctx *gin.Context, userID int64, f
 }
 
 func (s *calendarService) CalendarSummary(ctx *gin.Context, userID int64) ([]calendar.CalendarSummaryItem, error) {
-	memberships, err := s.groupUserDao.FindByUserID(ctx, userID)
+	rows, err := s.groupUserDao.FindActiveWithGroupByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error al buscar grupos del usuario")
 	}
-	groupIDs := make([]int64, 0, len(memberships))
-	for _, m := range memberships {
-		groupIDs = append(groupIDs, m.GroupID)
-	}
-	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
-	if err != nil {
-		groups = nil
-	}
-	groupByID := make(map[int64]dbs.Group, len(groups))
-	for _, g := range groups {
-		groupByID[g.ID] = g
-	}
-	items := make([]calendar.CalendarSummaryItem, 0, len(memberships))
-	for _, m := range memberships {
-		if group, ok := groupByID[m.GroupID]; ok {
-			items = append(items, calendar.CalendarSummaryItem{GroupID: group.ID, GroupName: group.Name})
-		}
+	items := make([]calendar.CalendarSummaryItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, calendar.CalendarSummaryItem{GroupID: row.GroupID, GroupName: row.GroupName})
 	}
 	return items, nil
 }

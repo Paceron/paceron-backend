@@ -818,6 +818,12 @@ func (m *groupStub) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group,
 func (m *groupStub) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
 	return nil, errors.New("no usado en asistencia")
 }
+func (m *groupStub) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
+	return nil, errors.New("no usado en asistencia")
+}
+func (m *groupStub) FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
+	return nil, errors.New("no usado en asistencia")
+}
 func (m *groupStub) Update(ctx *gin.Context, group *dbs.Group) error { return nil }
 func (m *groupStub) SoftDelete(ctx *gin.Context, id int64) error     { return nil }
 func (m *groupStub) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {

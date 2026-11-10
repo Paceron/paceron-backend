@@ -9,6 +9,16 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
+// GroupWithTeamName resuelve en una sola consulta el grupo y el nombre de su
+// equipo (calendarios agregados). TeamName queda vacío si el equipo no existe
+// o está soft-deleted, igual que el batch separado anterior.
+type GroupWithTeamName struct {
+	ID       int64  `gorm:"column:id"`
+	Name     string `gorm:"column:name"`
+	TeamID   int64  `gorm:"column:team_id"`
+	TeamName string `gorm:"column:team_name"`
+}
+
 // GroupDaoInterface define las operaciones de acceso a datos para grupos.
 type GroupDaoInterface interface {
 	Create(ctx *gin.Context, group *dbs.Group) error
@@ -19,9 +29,15 @@ type GroupDaoInterface interface {
 	// FindByOwnerID devuelve todos los grupos activos de todos los equipos
 	// administrados por ownerID (join a teams; grupos soft-deleted fuera).
 	FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
+	// FindByOwnerIDWithTeamName es la variante de FindByOwnerID que resuelve
+	// también el nombre del equipo en la misma consulta.
+	FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]GroupWithTeamName, error)
 	// FindByIDs devuelve varios grupos activos en una sola query — batch de
 	// nombres para los banners del home (design.md D6/D8, evita N+1).
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
+	// FindWithTeamNameByIDs devuelve varios grupos activos con el nombre de su
+	// equipo en una sola query.
+	FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]GroupWithTeamName, error)
 	Update(ctx *gin.Context, group *dbs.Group) error
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
@@ -116,6 +132,43 @@ func (d *groupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 		return nil, fmt.Errorf("error finding groups by ids: %w", err)
 	}
 	return groups, nil
+}
+
+// FindByOwnerIDWithTeamName resuelve en una consulta los grupos activos de los
+// equipos activos del owner y el nombre de cada equipo.
+func (d *groupDao) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]GroupWithTeamName, error) {
+	var rows []GroupWithTeamName
+	err := d.DB.Model(&dbs.Group{}).
+		Select("groups.id, groups.name, groups.team_id, teams.name AS team_name").
+		Joins("JOIN teams ON teams.id = groups.team_id AND teams.deleted_at IS NULL").
+		Where("teams.owner_id = ? AND groups.deleted_at IS NULL", ownerID).
+		Order("groups.id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding groups by owner with team: %w", err)
+	}
+	return rows, nil
+}
+
+// FindWithTeamNameByIDs resuelve en una consulta varios grupos activos con el
+// nombre de su equipo. Usa LEFT JOIN para conservar los grupos cuyo equipo ya
+// no está activo (mismo resultado que el batch de teams separado, que los
+// dejaba sin nombre).
+func (d *groupDao) FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]GroupWithTeamName, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []GroupWithTeamName
+	err := d.DB.Model(&dbs.Group{}).
+		Select("groups.id, groups.name, groups.team_id, teams.name AS team_name").
+		Joins("LEFT JOIN teams ON teams.id = groups.team_id AND teams.deleted_at IS NULL").
+		Where("groups.id IN ? AND groups.deleted_at IS NULL", ids).
+		Order("groups.id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding groups with team by ids: %w", err)
+	}
+	return rows, nil
 }
 
 // Update actualiza los campos de un grupo existente.

@@ -179,3 +179,55 @@ func TestGroupDao_SoftDeleteByTeamID_Success(t *testing.T) {
 	require.NoError(t, findErr)
 	assert.Empty(t, found)
 }
+
+func TestGroupDao_FindWithTeamNameByIDs_KeepsGroupWithDeletedTeam(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-withteam-owner@test.com", "40000910")
+	teamActive := testTeam(db, "equipo_group_withteam_active", owner.ID)
+	teamDeleted := testTeam(db, "equipo_group_withteam_deleted", owner.ID)
+	groupActive := testGroup(db, "grupo_group_withteam_active", teamActive.ID)
+	groupDeletedTeam := testGroup(db, "grupo_group_withteam_deleted_team", teamDeleted.ID)
+	groupDeleted := testGroup(db, "grupo_group_withteam_deleted", teamActive.ID)
+	require.NoError(t, db.Model(&dbs.Team{}).Where("id = ?", teamDeleted.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+	require.NoError(t, db.Model(&dbs.Group{}).Where("id = ?", groupDeleted.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+
+	rows, err := dao.FindWithTeamNameByIDs(nil, []int64{groupActive.ID, groupDeletedTeam.ID, groupDeleted.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	byID := make(map[int64]GroupWithTeamName, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	assert.Equal(t, teamActive.Name, byID[groupActive.ID].TeamName)
+	assert.Equal(t, groupDeletedTeam.ID, byID[groupDeletedTeam.ID].ID, "el grupo sobrevive aunque su equipo esté borrado")
+	assert.Empty(t, byID[groupDeletedTeam.ID].TeamName, "el equipo borrado no aporta nombre")
+
+	empty, err := dao.FindWithTeamNameByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+func TestGroupDao_FindByOwnerIDWithTeamName(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-ownerteam-owner@test.com", "40000911")
+	other := persistUser(db, "group-ownerteam-other@test.com", "40000912")
+	teamA := testTeam(db, "equipo_group_ownerteam_a", owner.ID)
+	teamB := testTeam(db, "equipo_group_ownerteam_b", owner.ID)
+	teamOther := testTeam(db, "equipo_group_ownerteam_other", other.ID)
+	groupA := testGroup(db, "grupo_group_ownerteam_a", teamA.ID)
+	groupB := testGroup(db, "grupo_group_ownerteam_b", teamB.ID)
+	testGroup(db, "grupo_group_ownerteam_other", teamOther.ID)
+	require.NoError(t, db.Model(&dbs.Group{}).Where("id = ?", groupB.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+
+	rows, err := dao.FindByOwnerIDWithTeamName(nil, owner.ID)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, groupA.ID, rows[0].ID)
+	assert.Equal(t, groupA.Name, rows[0].Name)
+	assert.Equal(t, teamA.ID, rows[0].TeamID)
+	assert.Equal(t, teamA.Name, rows[0].TeamName)
+}

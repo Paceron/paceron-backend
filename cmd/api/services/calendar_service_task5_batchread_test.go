@@ -34,8 +34,9 @@ func setupAdministeredCalendarCounting(t *testing.T) (*dbs.User, *dbs.Group, *db
 
 // D8 batch: 3 fechas con colisión (cross y same mezcladas) resuelven la
 // detección 100% en memoria sobre las filas de FindForGroupsInRange —
-// exactamente 3 queries (grupos + equipos + rango), ninguna de colisiones.
-// Antes de la migración eran 3 queries adicionales por fecha colisionante (9).
+// exactamente 2 queries (grupos+equipos en un JOIN + rango), ninguna de
+// colisiones. Antes de la migración eran 3 queries adicionales por fecha
+// colisionante (9).
 func TestCalendarService_AdministeredCalendar_BatchCollisionQueries(t *testing.T) {
 	owner, gA, gB, gC, db := setupAdministeredCalendarCounting(t)
 	calDao := daos.NewGroupCalendarDayDao(db)
@@ -63,7 +64,7 @@ func TestCalendarService_AdministeredCalendar_BatchCollisionQueries(t *testing.T
 
 	require.NoError(t, err)
 	require.Len(t, resp, 7)
-	assert.Equal(t, 3, counter, "grupos + equipos + rango; 0 queries de colisiones para las 3 fechas colisionantes")
+	assert.Equal(t, 2, counter, "grupos+equipos en un JOIN + rango; 0 queries de colisiones para las 3 fechas colisionantes")
 
 	collisions := make(map[int64]bool)
 	for _, item := range resp {

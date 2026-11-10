@@ -10,6 +10,13 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 )
 
+// GroupMembershipGroup es una membresía activa con el nombre del grupo
+// resuelto en la misma consulta (resumen de calendario).
+type GroupMembershipGroup struct {
+	GroupID   int64  `gorm:"column:group_id"`
+	GroupName string `gorm:"column:group_name"`
+}
+
 // GroupUserDaoInterface define las operaciones de acceso a datos para la asociación usuario-grupo.
 type GroupUserDaoInterface interface {
 	Create(ctx *gin.Context, groupUser *dbs.GroupUser) error
@@ -17,6 +24,10 @@ type GroupUserDaoInterface interface {
 	FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
 	FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
+	// FindActiveWithGroupByUserID resuelve en una sola consulta las membresías
+	// activas del usuario y el nombre de cada grupo activo (JOIN), en orden de
+	// membresía. Los grupos soft-deleted se omiten.
+	FindActiveWithGroupByUserID(ctx *gin.Context, userID int64) ([]GroupMembershipGroup, error)
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
 	IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, sessionDate time.Time) (bool, error)
@@ -86,6 +97,23 @@ func (d *groupUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.Group
 		return nil, fmt.Errorf("error finding user groups: %w", err)
 	}
 	return groupUsers, nil
+}
+
+// FindActiveWithGroupByUserID devuelve las membresías activas del usuario con el
+// nombre de su grupo en una sola consulta, preservando el orden de inserción de
+// la membresía. Grupos soft-deleted quedan fuera.
+func (d *groupUserDao) FindActiveWithGroupByUserID(ctx *gin.Context, userID int64) ([]GroupMembershipGroup, error) {
+	var rows []GroupMembershipGroup
+	err := d.DB.Model(&dbs.GroupUser{}).
+		Select("groups.id AS group_id, groups.name AS group_name").
+		Joins("JOIN groups ON groups.id = group_users.group_id AND groups.deleted_at IS NULL").
+		Where("group_users.user_id = ? AND group_users.deleted_at IS NULL AND (group_users.date_end IS NULL OR group_users.date_end > NOW())", userID).
+		Order("group_users.id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding user groups with group: %w", err)
+	}
+	return rows, nil
 }
 
 // SoftDelete marca una asociación usuario-grupo como eliminada lógicamente.

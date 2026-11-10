@@ -240,6 +240,9 @@ func (m *mockDashboardGroupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []
 func (m *mockDashboardGroupUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 	return nil, nil
 }
+func (m *mockDashboardGroupUserDao) FindActiveWithGroupByUserID(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error) {
+	return nil, nil
+}
 func (m *mockDashboardGroupUserDao) SoftDelete(ctx *gin.Context, id int64) error { return nil }
 func (m *mockDashboardGroupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
 	return nil

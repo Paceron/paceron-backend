@@ -201,16 +201,13 @@ func TestDBError_MemberCalendar_ConInstanciaHuerfanaRompe(t *testing.T) {
 }
 
 func TestDBError_AdministeredCalendar_SinDias(t *testing.T) {
-	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "G1", TeamID: 10}}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return []dbs.Team{{ID: 10, Name: "T10"}}, nil
+	groupDao := &mockGroupDao{findByOwnerIDWithTeamNameFn: func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
+		return []daos.GroupWithTeamName{{ID: 1, Name: "G1", TeamID: 10, TeamName: "T10"}}, nil
 	}}
 	calDao := &mockGroupCalendarDao{findForGroupsInRangeFn: func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return nil, nil
 	}}
-	svc := NewCalendarService(calDao, groupDao, teamDao, nil, nil, nil, nil, nil, nil)
+	svc := NewCalendarService(calDao, groupDao, nil, nil, nil, nil, nil, nil, nil)
 
 	resp, err := svc.AdministeredCalendar(nil, 1, time.Now(), time.Now().AddDate(0, 0, 7))
 

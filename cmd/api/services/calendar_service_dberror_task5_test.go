@@ -519,71 +519,48 @@ func TestDBError_MemberCalendar_DaoErrors(t *testing.T) {
 	calDao = &mockGroupCalendarDao{findForGroupsInRangeFn: func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return []dbs.GroupCalendarDay{{GroupID: 1, Date: d1, Kind: "rest"}}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	groupDao := &mockGroupDao{findWithTeamNameByIDsFn: func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
 		return nil, errors.New("boom groups")
 	}}
 	svc = NewCalendarService(calDao, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)
 	_, err = svc.MemberCalendar(nil, 1, from, to)
 	require.EqualError(t, err, "error al buscar grupos del usuario")
-
-	groupDao = &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "G1", TeamID: 10}}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return nil, errors.New("boom teams")
-	}}
-	svc = NewCalendarService(calDao, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
-	_, err = svc.MemberCalendar(nil, 1, from, to)
-	require.EqualError(t, err, "error al buscar equipos del usuario")
 }
 
 func TestDBError_AdministeredCalendar_DaoErrors(t *testing.T) {
 	from, to := time.Now(), time.Now().AddDate(0, 0, 7)
 
-	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+	groupDao := &mockGroupDao{findByOwnerIDWithTeamNameFn: func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
 		return nil, errors.New("boom owner groups")
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.AdministeredCalendar(nil, 1, from, to)
 	require.EqualError(t, err, "error al buscar grupos administrados")
 
-	groupDao = &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "G1", TeamID: 10}}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return nil, errors.New("boom teams")
-	}}
-	svc = NewCalendarService(nil, groupDao, teamDao, nil, nil, nil, nil, nil, nil)
-	_, err = svc.AdministeredCalendar(nil, 1, from, to)
-	require.EqualError(t, err, "error al buscar equipos del entrenador")
-
-	teamDao = &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return []dbs.Team{{ID: 10, Name: "T10"}}, nil
+	groupDao = &mockGroupDao{findByOwnerIDWithTeamNameFn: func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
+		return []daos.GroupWithTeamName{{ID: 1, Name: "G1", TeamID: 10, TeamName: "T10"}}, nil
 	}}
 	calDao := &mockGroupCalendarDao{findForGroupsInRangeFn: func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return nil, errors.New("boom days")
 	}}
-	svc = NewCalendarService(calDao, groupDao, teamDao, nil, nil, nil, nil, nil, nil)
+	svc = NewCalendarService(calDao, groupDao, nil, nil, nil, nil, nil, nil, nil)
 	_, err = svc.AdministeredCalendar(nil, 1, from, to)
 	require.EqualError(t, err, "error al listar calendario")
 }
 
 func TestDBError_CalendarSummary_DaoErrors(t *testing.T) {
-	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
+	groupUserDao := &mockGroupUserDao{findActiveWithGroupByUserIDFn: func(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error) {
 		return nil, errors.New("boom memberships")
 	}}
 	svc := NewCalendarService(nil, nil, nil, groupUserDao, nil, nil, nil, nil, nil)
 	_, err := svc.CalendarSummary(nil, 1)
 	require.EqualError(t, err, "error al buscar grupos del usuario")
 
-	// grupo ausente en el batch (deleted) → item skipped sin error.
-	groupUserDao = &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
-		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
-	}}
-	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	// grupo ausente en el JOIN (deleted) → no aparece en el resultado.
+	groupUserDao = &mockGroupUserDao{findActiveWithGroupByUserIDFn: func(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error) {
 		return nil, nil
 	}}
-	svc = NewCalendarService(nil, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)
+	svc = NewCalendarService(nil, nil, nil, groupUserDao, nil, nil, nil, nil, nil)
 	items, err := svc.CalendarSummary(nil, 1)
 	require.NoError(t, err)
 	assert.Empty(t, items)
