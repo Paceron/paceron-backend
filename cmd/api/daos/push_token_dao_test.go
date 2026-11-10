@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
 )
 
@@ -139,10 +140,15 @@ func TestPushTokenDao_FindByUserIDs_BatchesAt500(t *testing.T) {
 	for i := range ids {
 		ids[i] = int64(i + 1)
 	}
+	require.NoError(t, db.Create(&dbs.PushToken{UserID: 1, Token: "ExponentPushToken[batch-first]", Platform: "android"}).Error)
+	require.NoError(t, db.Create(&dbs.PushToken{UserID: 1001, Token: "ExponentPushToken[batch-third]", Platform: "web"}).Error)
 
-	_, err := dao.FindByUserIDs(nil, ids)
+	tokens, err := dao.FindByUserIDs(nil, ids)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), *counter, "1201 IDs = lotes de 500/500/201")
+	require.Len(t, tokens, 2)
+	assert.Equal(t, []string{"ExponentPushToken[batch-first]", "ExponentPushToken[batch-third]"},
+		[]string{tokens[0].Token, tokens[1].Token}, "concatena tokens del primer y tercer lote")
 
 	*counter = 0
 	_, err = dao.FindByUserIDs(nil, ids[:500])

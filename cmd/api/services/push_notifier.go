@@ -104,6 +104,10 @@ func sendPushTokenChunksWithTimeout(sendCtx context.Context, logCtx *gin.Context
 	}
 	tokens = unique
 	for start := 0; start < len(tokens); start += expoPushBatchLimit {
+		if err := sendCtx.Err(); err != nil {
+			customlogger.Error(logCtx, "push fan-out budget exhausted", err, tags...)
+			return
+		}
 		end := start + expoPushBatchLimit
 		if end > len(tokens) {
 			end = len(tokens)

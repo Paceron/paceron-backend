@@ -149,24 +149,35 @@ func TestSendPushTokenChunksWithTimeout_PerChunkTimeout(t *testing.T) {
 }
 
 // TestSendPushTokenChunksWithTimeout_BoundedByParent: el presupuesto total
-// corta el fan-out aunque el timeout por lote sea mayor.
+// corta el fan-out en el primer lote, sin pagar retries de los restantes.
 func TestSendPushTokenChunksWithTimeout_BoundedByParent(t *testing.T) {
 	tokens := make([]string, 250)
 	for i := range tokens {
 		tokens[i] = fmt.Sprintf("ExponentPushToken[%d]", i)
 	}
+	var firstDeadline time.Time
 	calls := 0
 	pushClient := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, _ []string, _, _ string, _ map[string]string) error {
 		calls++
+		if calls == 1 {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			firstDeadline = deadline
+		}
 		<-ctx.Done()
 		return ctx.Err()
 	}}
 
 	parent, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
+	parentDeadline, ok := parent.Deadline()
+	require.True(t, ok)
 	start := time.Now()
 	sendPushTokenChunksWithTimeout(parent, nil, pushClient, tokens, "T", "B", nil, time.Second)
 
 	assert.Less(t, time.Since(start), 500*time.Millisecond)
-	assert.Equal(t, 3, calls)
+	assert.Equal(t, 1, calls, "el fan-out corta al agotarse el presupuesto")
+	assert.False(t, firstDeadline.IsZero())
+	assert.False(t, firstDeadline.After(parentDeadline), "el deadline del lote respeta el presupuesto total")
+	assert.False(t, firstDeadline.After(start.Add(time.Second)), "el deadline del lote no supera el timeout por chunk")
 }
