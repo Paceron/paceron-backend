@@ -15,6 +15,7 @@ type GroupUserDaoInterface interface {
 	Create(ctx *gin.Context, groupUser *dbs.GroupUser) error
 	FindByGroupAndUser(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error)
 	FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
+	FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error)
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
@@ -57,6 +58,20 @@ func (d *groupUserDao) FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.Gro
 	err := d.DB.Where("group_id = ? AND deleted_at IS NULL", groupID).Find(&groupUsers).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding group users: %w", err)
+	}
+	return groupUsers, nil
+}
+
+// FindByGroupIDs es la variante batch de FindByGroupID: resuelve en una sola
+// query las membresías activas de varios grupos.
+func (d *groupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	var groupUsers []dbs.GroupUser
+	err := d.DB.Where("group_id IN ? AND deleted_at IS NULL", groupIDs).Find(&groupUsers).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding group users by group ids: %w", err)
 	}
 	return groupUsers, nil
 }

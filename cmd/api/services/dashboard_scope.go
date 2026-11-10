@@ -93,6 +93,20 @@ func (s *dashboardScopeService) Resolve(ctx *gin.Context, callerID int64) (*Dash
 		OwnedGroupIDs: map[int64]struct{}{},
 	}
 
+	var teamIDs []int64
+	seenTeams := map[int64]struct{}{}
+	ownedTeamByGroup := map[int64]struct{}{}
+	addTeamID := func(teamID int64, owned bool) {
+		if owned {
+			ownedTeamByGroup[teamID] = struct{}{}
+		}
+		if _, seen := seenTeams[teamID]; seen {
+			return
+		}
+		seenTeams[teamID] = struct{}{}
+		teamIDs = append(teamIDs, teamID)
+	}
+
 	ownedGroups, err := s.groupDao.FindByOwnerID(ctx, callerID)
 	if err != nil {
 		customlogger.Error(ctx, "error resolving dashboard scope by owner", err,
@@ -102,9 +116,7 @@ func (s *dashboardScopeService) Resolve(ctx *gin.Context, callerID int64) (*Dash
 	for _, group := range ownedGroups {
 		scope.Groups[group.ID] = group
 		scope.OwnedGroupIDs[group.ID] = struct{}{}
-		if err := s.addTeam(ctx, scope, group.TeamID, true); err != nil {
-			return nil, err
-		}
+		addTeamID(group.TeamID, true)
 	}
 
 	memberships, err := s.groupUserDao.FindByUserID(ctx, callerID)
@@ -134,34 +146,27 @@ func (s *dashboardScopeService) Resolve(ctx *gin.Context, callerID int64) (*Dash
 				continue
 			}
 			scope.Groups[group.ID] = group
-			if err := s.addTeam(ctx, scope, group.TeamID, false); err != nil {
-				return nil, err
+			addTeamID(group.TeamID, false)
+		}
+	}
+
+	if len(teamIDs) > 0 {
+		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+		if err != nil {
+			customlogger.Error(ctx, "error finding teams for dashboard scope", err,
+				customlogger.TagMethod("DashboardScope.Resolve"))
+			return nil, fmt.Errorf("error al resolver el scope del dashboard")
+		}
+		for _, team := range teams {
+			scope.Teams[team.ID] = team
+			_, ownedByGroup := ownedTeamByGroup[team.ID]
+			if ownedByGroup || team.OwnerID == scope.CallerID {
+				scope.OwnedTeamIDs[team.ID] = struct{}{}
 			}
 		}
 	}
 
 	return scope, nil
-}
-
-func (s *dashboardScopeService) addTeam(ctx *gin.Context, scope *DashboardScope, teamID int64, owned bool) error {
-	if _, loaded := scope.Teams[teamID]; loaded {
-		return nil
-	}
-	team, err := s.teamDao.FindByID(ctx, teamID)
-	if err != nil {
-		customlogger.Error(ctx, "error finding team for dashboard scope", err,
-			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-			customlogger.TagMethod("DashboardScope.Resolve"))
-		return fmt.Errorf("error al resolver el scope del dashboard")
-	}
-	if team == nil {
-		return nil
-	}
-	scope.Teams[teamID] = *team
-	if owned || team.OwnerID == scope.CallerID {
-		scope.OwnedTeamIDs[teamID] = struct{}{}
-	}
-	return nil
 }
 
 // OwnsTeam decide el 403 de /leaderboard, /comparisons y /comparisons/periods.

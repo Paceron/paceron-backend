@@ -16,10 +16,10 @@ import (
 )
 
 type mockTierService struct {
-	createFn func(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error)
-	updateFn func(ctx *gin.Context, id int64, req *tier.UpdateTierRequest) (*tier.TierResponse, error)
-	deleteFn func(ctx *gin.Context, id int64) (*tier.DeleteTierResponse, error)
-	getByIDFn  func(ctx *gin.Context, id int64) (*tier.TierResponse, error)
+	createFn    func(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error)
+	updateFn    func(ctx *gin.Context, id int64, req *tier.UpdateTierRequest) (*tier.TierResponse, error)
+	deleteFn    func(ctx *gin.Context, id int64) (*tier.DeleteTierResponse, error)
+	getByIDFn   func(ctx *gin.Context, id int64) (*tier.TierResponse, error)
 	getByNameFn func(ctx *gin.Context, name string) (*tier.TierResponse, error)
 	getAllFn    func(ctx *gin.Context, roleID *int64) ([]tier.TierResponse, error)
 }
@@ -693,4 +693,76 @@ func TestTierController_GetAll_InvalidRoleID(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 	assert.False(t, called, "no debe llamar al service con role_id inválido")
+}
+
+func TestTierController_Create_RunnerRoleRejected(t *testing.T) {
+	mockSvc := &mockTierService{
+		createFn: func(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"premium","role_id":1}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/tiers", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	controller.Create(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}
+
+func TestTierController_Update_RunnerTierRejected(t *testing.T) {
+	mockSvc := &mockTierService{
+		updateFn: func(ctx *gin.Context, id int64, req *tier.UpdateTierRequest) (*tier.TierResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"name":"premium"}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPut, "/api/v1/tiers/1", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Update(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}
+
+func TestTierController_Delete_RunnerTierRejected(t *testing.T) {
+	mockSvc := &mockTierService{
+		deleteFn: func(ctx *gin.Context, id int64) (*tier.DeleteTierResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/tiers/1", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Delete(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
 }

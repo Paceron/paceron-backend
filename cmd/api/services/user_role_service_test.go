@@ -136,7 +136,7 @@ func TestUserRoleService_AssignRole_Success(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -266,7 +266,7 @@ func TestUserRoleService_AssignRole_TierNotFound(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -298,7 +298,7 @@ func TestUserRoleService_AssignRole_TierNotBelongToRole(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -407,7 +407,7 @@ func TestUserRoleService_AssignRole_CreateError(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -481,7 +481,7 @@ func TestUserRoleService_AssignRole_FindByUserAndRoleError(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 
@@ -628,7 +628,7 @@ func TestUserRoleService_AssignRole_TierFindByIDError(t *testing.T) {
 	}
 	mockRoleDao := &mockRoleDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
-			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			return &dbs.Role{ID: 1, Name: "entrenador"}, nil
 		},
 	}
 	mockTierDao := &mockTierDao{
@@ -1143,4 +1143,39 @@ func TestUserRoleService_AssignRole_PaidTier_RequiresPostgres(t *testing.T) {
 	assert.Equal(t, premium.TierAmount, ins.Amount)
 	assert.Nil(t, ins.DueDate)
 	assert.Nil(t, ins.BlockedDate)
+}
+
+func TestUserRoleService_AssignRole_RunnerWithExplicitTierRejected(t *testing.T) {
+	created := false
+	mockUserRoleDao := &mockUserRoleDao{
+		findByUserAndRoleFn: func(ctx *gin.Context, userID, roleID int64) (*dbs.UserRole, error) {
+			return nil, nil
+		},
+		createFn: func(ctx *gin.Context, ur *dbs.UserRole) error {
+			created = true
+			return nil
+		},
+	}
+	mockRoleDao := &mockRoleDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 2, Name: "premium", RoleID: 1}, nil
+		},
+	}
+	mockUserDao := &mockUserDaoForUserRole{
+		findByIDFn: func(ctx *gin.Context, userID int64) (*dbs.User, error) {
+			return &dbs.User{ID: 1, Name: "John"}, nil
+		},
+	}
+
+	svc := NewUserRoleService(mockUserRoleDao, mockRoleDao, mockTierDao, mockUserDao, &mockTeamUserDao{}, nil)
+	_, err := svc.AssignRole(nil, 1, &userrole.AssignRoleRequest{RoleID: 1, TierID: 2})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "el rol corredor no admite tiers")
+	assert.False(t, created)
 }

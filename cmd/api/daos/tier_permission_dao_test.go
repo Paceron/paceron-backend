@@ -186,3 +186,40 @@ func TestTierPermissionDao_SoftDelete_Success(t *testing.T) {
 	require.NoError(t, findErr)
 	assert.Nil(t, found)
 }
+
+func TestTierPermissionDao_ListPermissionNamesByTiers_OrderAndMissingPermissions(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierPermissionDao(db)
+	role := testRole(db, "role_for_tp_batch")
+
+	tier1 := testTier(db, "tier_tp_batch_1", role.ID)
+	tier2 := testTier(db, "tier_tp_batch_2", role.ID)
+	permA := testPermission(db, "perm_tp_batch_a")
+	permB := testPermission(db, "perm_tp_batch_b")
+	permMissing := testPermission(db, "perm_tp_batch_missing")
+
+	// Se insertan en orden invertido a propósito: la salida debe ordenar por p.id.
+	require.NoError(t, dao.Create(nil, &dbs.TierPermission{TierID: tier1.ID, PermissionID: permB.ID, AsignationDate: time.Now()}))
+	require.NoError(t, dao.Create(nil, &dbs.TierPermission{TierID: tier1.ID, PermissionID: permA.ID, AsignationDate: time.Now()}))
+	require.NoError(t, dao.Create(nil, &dbs.TierPermission{TierID: tier2.ID, PermissionID: permMissing.ID, AsignationDate: time.Now()}))
+
+	require.NoError(t, db.Model(&dbs.Permission{}).Where("id = ?", permMissing.ID).Update("deleted_at", time.Now()).Error)
+
+	rows, err := dao.ListPermissionNamesByTiers(nil, []int64{tier1.ID, tier2.ID})
+
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	assert.Equal(t, tier1.ID, rows[0].TierID)
+	assert.Equal(t, permA.ID, rows[0].PermissionID)
+	require.NotNil(t, rows[0].PermissionName)
+	assert.Equal(t, permA.Name, *rows[0].PermissionName)
+	assert.Equal(t, permB.ID, rows[1].PermissionID)
+	require.NotNil(t, rows[1].PermissionName)
+	assert.Equal(t, permB.Name, *rows[1].PermissionName)
+	assert.Equal(t, tier2.ID, rows[2].TierID)
+	assert.Nil(t, rows[2].PermissionName, "el permiso borrado se conserva para reportar missingData")
+
+	empty, err := dao.ListPermissionNamesByTiers(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

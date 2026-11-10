@@ -4,6 +4,7 @@ package services
 // metric por ventana, route con matching + tie-breaks, stamps, unseen y push.
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -12,9 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/competition"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
+	"simple-arq-golang/cmd/api/restclients/expopushclient"
 	"simple-arq-golang/cmd/api/utils/gametime"
 	"simple-arq-golang/cmd/api/utils/routematch"
 )
@@ -33,6 +36,14 @@ func fixGamNow(t *testing.T) {
 // closeMetricDao arma la competencia metric active del escenario: creador
 // corredor 77, participantes 11/12, ventana 10/1 a 10/10 con end_at pasado
 // para el guard del cierre.
+// newSyncCompetitionService fuerza el fan-out de push sincrónico para que los
+// tests puedan contar requests sin depender del scheduling del goroutine.
+func newSyncCompetitionService(dao *mockCompetitionDAO, pushDAO daos.PushTokenDaoInterface, client expopushclient.ExpoPushClientInterface) CompetitionServiceInterface {
+	svc := NewCompetitionService(dao, pushDAO, client).(*competitionService)
+	svc.asyncHook = func(fn func()) { fn() }
+	return svc
+}
+
 func closeMetricDao(metric string, aggRows []dbs.CompetitionMetricAgg) *mockCompetitionDAO {
 	end := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	return &mockCompetitionDAO{
@@ -63,11 +74,11 @@ func TestCompetitionService_CloseMetric_WinnerUnico(t *testing.T) {
 		{UserID: 11, SumDistance: fptr(7000)},
 		{UserID: 12, SumDistance: fptr(3000)},
 	})
-	pushDAO := mockPushTokenDao{mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
-		return []dbs.PushToken{{Token: "ExponentPushToken[test]"}}, nil
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+		return []dbs.PushToken{{Token: "ExponentPushToken[a]"}, {Token: "ExponentPushToken[b]"}}, nil
 	}}
 	client := &mockExpoPushClient{}
-	svc := NewCompetitionService(dao, &pushDAO, client)
+	svc := newSyncCompetitionService(dao, &pushDAO, client)
 
 	resp, instances, err := svc.Close(nil, 77, 5)
 	require.NoError(t, err)
@@ -78,10 +89,81 @@ func TestCompetitionService_CloseMetric_WinnerUnico(t *testing.T) {
 	// Stamp solo al ganador; unseen para los dos participantes.
 	assert.Equal(t, 1, dao.lastFinishStampsCount)
 	assert.Equal(t, 2, dao.lastFinishUnseenCount)
-	// Push best-effort a TODOS los participantes.
-	assert.Equal(t, 2, client.sendCallCount)
+	// Push best-effort: una query batch y un request para los 2 tokens.
+	assert.Equal(t, 1, client.sendCallCount)
+	assert.Equal(t, []string{"ExponentPushToken[a]", "ExponentPushToken[b]"}, client.lastTokens)
 	assert.Equal(t, "competition_finished", client.lastData["type"])
 	assert.Equal(t, "/competencias/5", client.lastData["route"])
+}
+
+func TestCompetitionService_Close_PushBatchUnaQuery(t *testing.T) {
+	fixGamNow(t)
+	dao := closeMetricDao("distance", []dbs.CompetitionMetricAgg{
+		{UserID: 11, SumDistance: fptr(7000)},
+	})
+	tokens := make([]dbs.PushToken, 250)
+	for i := range tokens {
+		tokens[i] = dbs.PushToken{Token: fmt.Sprintf("ExponentPushToken[%d]", i)}
+	}
+	findCalls := 0
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+		findCalls++
+		return tokens, nil
+	}}
+	var chunkSizes []int
+	client := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, got []string, title, body string, data map[string]string) error {
+		chunkSizes = append(chunkSizes, len(got))
+		return nil
+	}}
+	svc := newSyncCompetitionService(dao, &pushDAO, client)
+
+	_, _, err := svc.Close(nil, 77, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 1, findCalls, "una sola query IN para todos los participantes")
+	assert.Equal(t, []int{100, 100, 50}, chunkSizes, "ceil(250/100) requests")
+}
+
+func TestCompetitionService_ClosePushNoBloqueaRespuesta(t *testing.T) {
+	fixGamNow(t)
+	dao := closeMetricDao("distance", []dbs.CompetitionMetricAgg{
+		{UserID: 11, SumDistance: fptr(7000)},
+	})
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+		return []dbs.PushToken{{Token: "ExponentPushToken[a]"}}, nil
+	}}
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	done := make(chan struct{}, 1)
+	client := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, tokens []string, title, body string, data map[string]string) error {
+		started <- struct{}{}
+		<-release
+		done <- struct{}{}
+		return nil
+	}}
+	svc := NewCompetitionService(dao, &pushDAO, client) // dispatch async real
+
+	closeReturned := make(chan struct{})
+	go func() {
+		_, _, _ = svc.Close(nil, 77, 5)
+		close(closeReturned)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("el push del cierre no arrancó")
+	}
+	select {
+	case <-closeReturned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close quedó bloqueado esperando el push")
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("el fan-out no terminó")
+	}
 }
 
 func TestCompetitionService_CloseMetric_EmpateExacto(t *testing.T) {
@@ -102,11 +184,11 @@ func TestCompetitionService_CloseMetric_SinIntentos(t *testing.T) {
 	// Sin filas de feedback: sin winner, sin stamps, sin push; unseen sí
 	// (todos los participantes). peak_speed también deja winner vacía sin usos.
 	dao := closeMetricDao("peak_speed", nil)
-	pushDAO := mockPushTokenDao{mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
 		t.Fatal("no debe haber push sin ganadores")
 		return nil, nil
 	}}
-	svc := NewCompetitionService(dao, &pushDAO, &mockExpoPushClient{})
+	svc := newSyncCompetitionService(dao, &pushDAO, &mockExpoPushClient{})
 	resp, _, err := svc.Close(nil, 77, 5)
 	require.NoError(t, err)
 	assert.Empty(t, resp.WinnerUserIDs)
@@ -268,11 +350,11 @@ func TestCompetitionService_CloseRoute_SinIntentos(t *testing.T) {
 	dao.attemptSessionsFn = func(competitionID int64) ([]dbs.RunnerSession, error) {
 		return nil, nil
 	}
-	pushDAO := mockPushTokenDao{mockFindByUserID: func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+	pushDAO := mockPushTokenDao{mockFindByUserIDs: func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
 		t.Fatal("sin intentos no hay pushes de ganador")
 		return nil, nil
 	}}
-	svc := NewCompetitionService(dao, &pushDAO, &mockExpoPushClient{})
+	svc := newSyncCompetitionService(dao, &pushDAO, &mockExpoPushClient{})
 	resp, instances, err := svc.Close(nil, 77, 5)
 	require.NoError(t, err)
 	assert.Empty(t, resp.WinnerUserIDs)

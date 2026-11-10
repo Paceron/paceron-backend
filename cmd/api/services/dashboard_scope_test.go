@@ -42,11 +42,14 @@ func dashboardScopeFixture(t *testing.T) DashboardScopeServiceInterface {
 		},
 	}
 	teamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			if id == 29 {
-				return &dbs.Team{ID: 29, Name: "Paceron", OwnerID: 10}, nil
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+			out := make([]dbs.Team, 0, len(ids))
+			for _, id := range ids {
+				if id == 29 {
+					out = append(out, dbs.Team{ID: 29, Name: "Paceron", OwnerID: 10})
+				}
 			}
-			return nil, nil
+			return out, nil
 		},
 	}
 	return NewDashboardScopeService(groupDao, groupUserDao, teamDao)
@@ -123,11 +126,50 @@ func TestDashboardScope_ErrorDeLecturaSePropaga(t *testing.T) {
 		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) { return nil, boom },
 	}
 	teamDao := &mockTeamDao{
-		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return nil, boom },
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) { return nil, boom },
 	}
 
 	scope, err := NewDashboardScopeService(groupDao, groupUserDao, teamDao).Resolve(nil, 10)
 
 	require.Error(t, err)
 	assert.Nil(t, scope)
+}
+
+// 5.4: los equipos del scope se resuelven con un único FindByIDs, sin importar
+// cuántos grupos/equipos haya.
+func TestDashboardScope_ResuelveEquiposConUnSoloFindByIDs(t *testing.T) {
+	teamFindByID, teamFindByIDs := 0, 0
+	groupDao := &mockGroupDao{
+		findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+			return []dbs.Group{
+				{ID: 39, TeamID: 29, Name: "Grupo A"},
+				{ID: 40, TeamID: 30, Name: "Grupo B"},
+			}, nil
+		},
+	}
+	groupUserDao := &mockGroupUserDao{
+		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) { return nil, nil },
+	}
+	teamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			teamFindByID++
+			return nil, nil
+		},
+		findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
+			teamFindByIDs++
+			return []dbs.Team{
+				{ID: 29, Name: "Paceron", OwnerID: 10},
+				{ID: 30, Name: "Otra", OwnerID: 11},
+			}, nil
+		},
+	}
+
+	scope, err := NewDashboardScopeService(groupDao, groupUserDao, teamDao).Resolve(nil, 10)
+
+	require.NoError(t, err)
+	assert.Equal(t, []int64{29, 30}, scope.TeamIDs())
+	assert.True(t, scope.OwnsTeam(29))
+	assert.True(t, scope.OwnsTeam(30), "ambos equipos cuelgan de grupos administrados")
+	assert.Equal(t, 1, teamFindByIDs)
+	assert.Equal(t, 0, teamFindByID)
 }

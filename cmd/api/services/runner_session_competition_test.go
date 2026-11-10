@@ -29,7 +29,7 @@ func TestRunnerSessionService_Create_SinCompetitionId_FlujoIntacto(t *testing.T)
 		},
 	}
 	// Sin competitionDAO inyectado: el flujo clásico ni consulta el módulo.
-	svc := NewRunnerSessionService(mock, nil)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
 	_, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 	require.NoError(t, err)
 	assert.True(t, created)
@@ -65,7 +65,7 @@ func TestRunnerSessionService_Create_CompetitionTageada(t *testing.T) {
 			return true, nil
 		},
 	}
-	svc := NewRunnerSessionService(mock, nil, compDAO)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, compDAO)
 	compID := int64(9)
 
 	// Partida dentro del rango por un participante: taguea.
@@ -128,7 +128,7 @@ func TestRunnerSessionService_Create_CompetitionRechazos(t *testing.T) {
 		mock := &mockRunnerSessionDao{
 			sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return true, nil },
 		}
-		svc := NewRunnerSessionService(mock, nil, compDAO)
+		svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, compDAO)
 		compID := int64(9)
 		_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 			StartDate: sessionDate, CompetitionID: &compID,
@@ -206,7 +206,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// A: instancia sintética de comp A tagueada con comp B (otra route,
 	// atleta participante de ambas): 400 y sin fila creada.
 	dao, mock, _, createCalls := newSvc()
-	svc := NewRunnerSessionService(mock, nil, dao)
+	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
 	_, _, _, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp11,
 	})
@@ -216,7 +216,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// B: tagueo type-inconsistente: comp metric sobre la instancia
 	// sintética de una route, misma comparación inversa: 400.
 	dao, mock, _, createCalls = newSvc()
-	svc = NewRunnerSessionService(mock, nil, dao)
+	svc = NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
 	_, _, _, err = svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp5,
 	})
@@ -226,7 +226,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// C (happy de regresión): la competencia dueña sobre su propia
 	// instancia sintética sigue creando el intento.
 	dao, mock, captured, _ := newSvc()
-	svc = NewRunnerSessionService(mock, nil, dao)
+	svc = NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
 	_, _, created, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp9,
 	})

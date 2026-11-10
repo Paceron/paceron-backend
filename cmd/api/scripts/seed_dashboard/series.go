@@ -116,7 +116,7 @@ func dayStart(day seededDay) time.Time {
 // corredor se reporta a sí mismo (auth = atleta), que es el camino que no exige
 // que el entrenador sea dueño del equipo del atleta.
 func (s *seeder) writeFeedback(days []seededDay, planned []plannedSeries) error {
-	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(s.db))
+	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(s.db), daos.NewSessionInstanceDao(s.db))
 	created, duplicates := 0, 0
 	for _, item := range planned {
 		req := s.feedbackRequest(item)

@@ -301,11 +301,7 @@ func (s *dashboardService) Leaderboard(ctx *gin.Context, callerID int64, query M
 	if err != nil {
 		return nil, err
 	}
-	rows, _, err := s.seriesAndQuality(ctx, prepared)
-	if err != nil {
-		return nil, err
-	}
-	openSessions, err := s.countOpenSessions(ctx, prepared)
+	rows, openSessions, err := s.seriesAndQuality(ctx, prepared)
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +455,7 @@ func (s *dashboardService) Periods(ctx *gin.Context, callerID int64, request das
 
 	currentQuery := *base
 	currentQuery.From, currentQuery.To = currentFrom, currentTo
-	currentRows, _, err := s.seriesAndQuality(ctx, &currentQuery)
+	currentRows, openSessions, err := s.seriesAndQuality(ctx, &currentQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -472,10 +468,6 @@ func (s *dashboardService) Periods(ctx *gin.Context, callerID int64, request das
 
 	// El data_quality de la respuesta es el del período actual: es el que la
 	// pantalla muestra junto a los KPIs que está mirando.
-	openSessions, err := s.countOpenSessions(ctx, &currentQuery)
-	if err != nil {
-		return nil, err
-	}
 	quality := dashboard.BuildSummary(currentRows, base.Tolerance, openSessions).DataQuality
 	response := dashboard.BuildPeriods(currentFrom, currentTo, previousFrom, previousTo,
 		currentRows, previousRows, base.Tolerance, quality)
@@ -1251,17 +1243,15 @@ func (s *dashboardService) validateAthletes(ctx *gin.Context, scope *DashboardSc
 	if len(athleteUserIDs) == 0 {
 		return nil
 	}
+	members, err := s.groupUserDao.FindByGroupIDs(ctx, groupIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error validating dashboard athletes", err,
+			customlogger.TagMethod("Dashboard.validateAthletes"))
+		return fmt.Errorf("error al validar los corredores del dashboard")
+	}
 	allowed := map[int64]struct{}{}
-	for _, groupID := range groupIDs {
-		members, err := s.groupUserDao.FindByGroupID(ctx, groupID)
-		if err != nil {
-			customlogger.Error(ctx, "error validating dashboard athletes", err,
-				customlogger.TagMethod("Dashboard.validateAthletes"))
-			return fmt.Errorf("error al validar los corredores del dashboard")
-		}
-		for _, member := range members {
-			allowed[member.UserID] = struct{}{}
-		}
+	for _, member := range members {
+		allowed[member.UserID] = struct{}{}
 	}
 	for _, athleteID := range athleteUserIDs {
 		if _, ok := allowed[athleteID]; !ok {

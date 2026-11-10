@@ -114,7 +114,7 @@ func TestFullSeederSeedActivity_SeedsHistoryAndAPIContractsIdempotently(t *testi
 		assert.Positive(t, *feedback.PeakSpeedKPH)
 	}
 
-	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(db))
+	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(db), daos.NewSessionInstanceDao(db))
 	teamID, groupMainID := s.ids.teams["team_a"], s.ids.groups["group_a_main"]
 	minus14Date := minus14.Format("2006-01-02")
 	history, err := feedbackService.AdministeredHistory(nil, s.ids.users["trainer_1"], s.ids.users["trainer_1"], workoutfeedback.HistoryQuery{

@@ -28,13 +28,23 @@ type achEvent struct {
 	trigger services.AchievementTrigger
 }
 
-// stubAchievementsTrigger graba las invocaciones del hook de logros.
+// stubAchievementsTrigger graba las invocaciones del hook de logros y el
+// snapshot recibido en el path del finish.
 type stubAchievementsTrigger struct {
-	events []achEvent
+	events           []achEvent
+	receivedSnapshot *services.StreakSnapshot
+	receivedUserID   int64
 }
 
 func (s *stubAchievementsTrigger) OnEvent(ctx *gin.Context, userID int64, trigger services.AchievementTrigger) {
 	s.events = append(s.events, achEvent{userID: userID, trigger: trigger})
+}
+
+func (s *stubAchievementsTrigger) EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger services.AchievementTrigger, snapshot *services.StreakSnapshot) error {
+	s.events = append(s.events, achEvent{userID: userID, trigger: trigger})
+	s.receivedSnapshot = snapshot
+	s.receivedUserID = userID
+	return nil
 }
 
 func achievementEventsOf(s *stubAchievementsTrigger) []achEvent {
@@ -58,6 +68,7 @@ func TestRunnerSessionController_Finish_DisparaLogros(t *testing.T) {
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, nil, &trigger)
+	controller.(*runnerSessionController).asyncHook = func(fn func()) { fn() }
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

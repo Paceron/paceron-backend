@@ -30,6 +30,12 @@ type StreakTriggerServiceInterface interface {
 	// inserta unseen section streaks ante reset o cruce de hito y persiste el
 	// estado nuevo.
 	EvaluateRunnerCompletion(ctx *gin.Context, userID int64) error
+	// ComputeSnapshot carga el histórico de rachas una vez para compartirlo
+	// con el evaluador de logros en el mismo finish (D7).
+	ComputeSnapshot(ctx *gin.Context, userID int64) (*StreakSnapshot, error)
+	// EvaluateRunnerCompletionWithSnapshot es el core con el snapshot ya
+	// calculado; nil cae al recálculo fresco por compatibilidad.
+	EvaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *StreakSnapshot) error
 }
 
 type streakTriggerService struct {
@@ -57,7 +63,29 @@ func streakTriggered(prev, next int) bool {
 	return false
 }
 
+func (s *streakTriggerService) ComputeSnapshot(ctx *gin.Context, userID int64) (*StreakSnapshot, error) {
+	return s.streaks.ComputeSnapshot(ctx, userID)
+}
+
 func (s *streakTriggerService) EvaluateRunnerCompletion(ctx *gin.Context, userID int64) error {
+	snapshot, err := s.ComputeSnapshot(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: recálculo fresco", ErrStreakTrigger)
+	}
+	if snapshot == nil {
+		return fmt.Errorf("%w: snapshot vacío", ErrStreakTrigger)
+	}
+	return s.evaluateRunnerCompletionWithSnapshot(ctx, userID, snapshot)
+}
+
+func (s *streakTriggerService) EvaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *StreakSnapshot) error {
+	if snapshot == nil {
+		return s.EvaluateRunnerCompletion(ctx, userID)
+	}
+	return s.evaluateRunnerCompletionWithSnapshot(ctx, userID, snapshot)
+}
+
+func (s *streakTriggerService) evaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *StreakSnapshot) error {
 	prev, err := s.dao.GetStreakState(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("%w: estado previo", ErrStreakTrigger)
@@ -67,10 +95,7 @@ func (s *streakTriggerService) EvaluateRunnerCompletion(ctx *gin.Context, userID
 		prevStrict, prevFlexible = prev.StrictCurrent, prev.FlexibleCurrent
 	}
 
-	newStrict, newFlexible, err := s.streaks.ComputeCurrentStreaks(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("%w: recálculo fresco", ErrStreakTrigger)
-	}
+	newStrict, newFlexible := snapshot.StrictCurrent, snapshot.FlexibleCurrent
 
 	// Una fila por racha afectada. Todas las filas comparten section streaks
 	// (unseen no modela la razón, D3): la cantidad solo materializa el hecho.

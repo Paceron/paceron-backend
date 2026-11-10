@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -92,6 +93,7 @@ var (
 	ErrPaymentInstallmentNotFound = errors.New("cuota no encontrada")
 	ErrPaymentTeamNotFound        = errors.New("equipo no encontrado")
 	ErrPaymentSellerNotConnected  = errors.New("el entrenador debe conectar su cuenta de Mercado Pago")
+	ErrPaymentAmountMismatch      = errors.New("el monto del pago no coincide con el de la cuota")
 )
 
 // paymentTypedError envuelve un sentinel preservando el mensaje de dominio
@@ -134,6 +136,26 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 		amount += item.UnitPrice * float64(item.Quantity)
 	}
 
+	// Con cuota vinculada, el monto cobrado debe ser el de la cuota: si el
+	// cliente manda items adulterados no se crea la preferencia ni el pago.
+	var validatedInstallment *dbs.Installment
+	if req.InstallmentID != nil {
+		ins, err := s.installDao.FindByID(ctx, *req.InstallmentID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding installment for preference", err,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *req.InstallmentID)),
+				customlogger.TagMethod("CreatePreference"))
+			return nil, fmt.Errorf("error consultando cuota")
+		}
+		if ins == nil {
+			return nil, ErrPaymentInstallmentNotFound
+		}
+		if math.Abs(amount-ins.Amount) > 0.01 {
+			return nil, &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
+		validatedInstallment = ins
+	}
+
 	var mpAccessToken string
 	var marketplaceFee float64
 	var sellerUserID int64
@@ -142,7 +164,7 @@ func (s *paymentService) CreatePreference(ctx *gin.Context, req payment.CreatePr
 	// Si es suscripción de equipo (team_subscription), usar token del dueño y aplicar split
 	if req.Concept == string(constants.PaymentConceptTeamSubscription) {
 		var err error
-		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, nil)
+		mpAccessToken, marketplaceFee, sellerUserID, sellerPublicKey, err = s.resolveTeamSplitConfig(ctx, req.InstallmentID, validatedInstallment)
 		if err != nil {
 			return nil, err
 		}
@@ -226,6 +248,9 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 		if err != nil {
 			return nil, err
 		}
+		if math.Abs(req.TransactionAmount-ins.Amount) > 0.01 {
+			return nil, &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
 		validatedInstallment = ins
 	}
 
@@ -255,6 +280,10 @@ func (s *paymentService) ProcessPayment(ctx *gin.Context, req payment.ProcessPay
 			return nil, fmt.Errorf("error finding payment: %w", err)
 		}
 		if existing != nil {
+			callerID, ok := utils.GetAuthUserID(ctx)
+			if !ok || !s.paymentOwnedBy(ctx, existing, callerID) {
+				return nil, fmt.Errorf("payment not found")
+			}
 			existing.Status = "in_process"
 			if err := s.paymentDao.UpdateStatus(ctx, existing.ID, "in_process", ""); err != nil {
 				customlogger.Error(ctx, "error updating payment status", err)
@@ -576,6 +605,38 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 		customlogger.Tag("status", result.Status),
 		customlogger.TagMethod("HandleWebhook"))
 
+	// Guard de monto ANTES de mutar el pago local: un mismatch no debe dejar el
+	// payment como approved si la cuota no se aplica. Solo aplica a pagos de
+	// cuota aprobados; el resto del flujo conserva su comportamiento.
+	var approvedInstallment *dbs.Installment
+	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
+		installment, err := s.installDao.FindByID(ctx, *paymentRecord.InstallmentID)
+		if err != nil {
+			customlogger.Error(ctx, "error finding installment for webhook", err,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("HandleWebhook"))
+			// Fail-closed: sin cuota no se puede conciliar el pago aprobado. Se
+			// usa el mismo tratamiento que el mismatch de monto para que el
+			// controller responda 5xx y MP reintente/alerte.
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: "error consultando cuota"}
+		}
+		if installment == nil {
+			customlogger.Error(ctx, "installment not found for webhook", nil,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", *paymentRecord.InstallmentID)),
+				customlogger.TagMethod("HandleWebhook"))
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: "cuota no encontrada"}
+		}
+		if math.Abs(result.TransactionAmount-installment.Amount) > 0.01 {
+			customlogger.Error(ctx, "webhook payment amount does not match installment", nil,
+				customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+				customlogger.Tag("expected_amount", fmt.Sprintf("%.2f", installment.Amount)),
+				customlogger.Tag("received_amount", fmt.Sprintf("%.2f", result.TransactionAmount)),
+				customlogger.TagMethod("HandleWebhook"))
+			return &paymentTypedError{kind: ErrPaymentAmountMismatch, msg: ErrPaymentAmountMismatch.Error()}
+		}
+		approvedInstallment = installment
+	}
+
 	if err := s.paymentDao.UpdateStatus(ctx, paymentRecord.ID, result.Status, result.StatusDetail); err != nil {
 		customlogger.Error(ctx, "error updating payment status from webhook", err)
 		return fmt.Errorf("error updating payment status: %w", err)
@@ -587,37 +648,33 @@ func (s *paymentService) HandleWebhook(ctx *gin.Context, notification payment.We
 	}
 
 	// Pago de cuota aprobado: confirmar la cuota y avanzar el ciclo mensual (D6/D7).
-	if result.Status == "approved" && paymentRecord.InstallmentID != nil {
-		installment, err := s.installDao.FindByID(ctx, *paymentRecord.InstallmentID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding installment for webhook", err)
-		} else if installment != nil {
-			teamIDStr := "nil"
-			if installment.TeamID != nil {
-				teamIDStr = fmt.Sprintf("%d", *installment.TeamID)
-			}
-			subIDStr := "nil"
-			if installment.SubscriptionID != nil {
-				subIDStr = fmt.Sprintf("%d", *installment.SubscriptionID)
-			}
-			customlogger.Info(ctx, "webhook resolving installment",
-				customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
-				customlogger.Tag("installment_number", fmt.Sprintf("%d", installment.InstallmentNumber)),
-				customlogger.Tag("subscription_id", subIDStr),
-				customlogger.Tag("team_id", teamIDStr),
-				customlogger.Tag("status", installment.Status),
-				customlogger.TagMethod("HandleWebhook"))
+	if result.Status == "approved" && paymentRecord.InstallmentID != nil && approvedInstallment != nil {
+		installment := approvedInstallment
+		teamIDStr := "nil"
+		if installment.TeamID != nil {
+			teamIDStr = fmt.Sprintf("%d", *installment.TeamID)
+		}
+		subIDStr := "nil"
+		if installment.SubscriptionID != nil {
+			subIDStr = fmt.Sprintf("%d", *installment.SubscriptionID)
+		}
+		customlogger.Info(ctx, "webhook resolving installment",
+			customlogger.Tag("installment_id", fmt.Sprintf("%d", installment.ID)),
+			customlogger.Tag("installment_number", fmt.Sprintf("%d", installment.InstallmentNumber)),
+			customlogger.Tag("subscription_id", subIDStr),
+			customlogger.Tag("team_id", teamIDStr),
+			customlogger.Tag("status", installment.Status),
+			customlogger.TagMethod("HandleWebhook"))
 
-			if installment.TeamID != nil {
-				// Cuota de equipo (change suscripcion-teams-split D10)
-				if err := s.applyApprovedTeamInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
-					return fmt.Errorf("error confirming team installment: %w", err)
-				}
-			} else {
-				// Cuota de tier (D6/D7)
-				if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
-					return fmt.Errorf("error confirming installment: %w", err)
-				}
+		if installment.TeamID != nil {
+			// Cuota de equipo (change suscripcion-teams-split D10)
+			if err := s.applyApprovedTeamInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+				return fmt.Errorf("error confirming team installment: %w", err)
+			}
+		} else {
+			// Cuota de tier (D6/D7)
+			if err := s.applyApprovedInstallment(ctx, paymentRecord, mpPaymentID); err != nil {
+				return fmt.Errorf("error confirming installment: %w", err)
 			}
 		}
 	}

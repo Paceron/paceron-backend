@@ -721,3 +721,29 @@ func TestUserRoleController_DeactivateEntrenador_InternalError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
+
+func TestUserRoleController_AssignRole_RunnerExplicitTierRejected(t *testing.T) {
+	mockSvc := &mockUserRoleService{
+		assignRoleFn: func(ctx *gin.Context, userID int64, req *userrole.AssignRoleRequest) (*userrole.UserRoleResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewUserRoleController(mockSvc)
+	response := httptest.NewRecorder()
+	body := `{"role_id":1,"tier_id":2}`
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/users/1/roles", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+	setAuthUserID(c, 1)
+
+	controller.AssignRole(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}

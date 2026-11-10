@@ -3,6 +3,7 @@ package customlogger
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -27,6 +28,7 @@ const (
 	_callerFileBase = 4
 	_tagMsgFormat   = "%s - %s"
 	_XrequestID     = "x-request-id"
+	_requestIDKey   = "X-Request-Id"
 	_Flow           = "flow"
 	_URLTag         = "url"
 	_root           = "/"
@@ -113,11 +115,34 @@ func addRequestIDToTags(ctx *gin.Context, tags *[]string) {
 	if ctx == nil {
 		return
 	}
-	requestID := ctx.Writer.Header().Get("X-Request-Id")
+	requestID := ""
+	if responseWriterAvailable(ctx.Writer) {
+		requestID = ctx.Writer.Header().Get(_XrequestID)
+	}
+	if requestID == "" {
+		if value, ok := ctx.Get(_requestIDKey); ok {
+			requestID, _ = value.(string)
+		}
+	}
+	if requestID == "" && ctx.Request != nil {
+		requestID = ctx.Request.Header.Get(_XrequestID)
+	}
 	if requestID != "" {
 		b := []string{_XrequestID + ":" + requestID}
 		*tags = append(b, *tags...)
 	}
+}
+
+// responseWriterAvailable: ctx.Copy() conserva el Writer pero le saca el
+// ResponseWriter subyacente, así que Header() paniquearía.
+func responseWriterAvailable(writer gin.ResponseWriter) bool {
+	if writer == nil {
+		return false
+	}
+	if unwrapper, ok := writer.(interface{ Unwrap() http.ResponseWriter }); ok {
+		return unwrapper.Unwrap() != nil
+	}
+	return true
 }
 
 // addURLToTags agrega la ruta registrada del endpoint actual (ctx.FullPath, ej.

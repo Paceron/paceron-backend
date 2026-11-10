@@ -109,7 +109,7 @@ func TestCompetitionService_CreateAttemptE2E_FlujoCompleto(t *testing.T) {
 
 	compDao := daos.NewCompetitionDao(db)
 	compSvc := NewCompetitionService(compDao, nil, nil)
-	runnerSvc := NewRunnerSessionService(daos.NewRunnerSessionDao(db), nil, compDao)
+	runnerSvc := NewRunnerSessionServiceWithAccess(daos.NewRunnerSessionDao(db), daos.NewSessionInstanceDao(db), nil, compDao)
 	teamID := fx.team.ID
 
 	// Alta por el owner (trainer): active directo, max_attempts 2.

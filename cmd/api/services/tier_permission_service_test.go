@@ -14,11 +14,12 @@ import (
 )
 
 type mockTierPermissionDao struct {
-	createFn                   func(ctx *gin.Context, tp *dbs.TierPermission) error
-	findByTierAndPermissionFn  func(ctx *gin.Context, tierID, permissionID int64) (*dbs.TierPermission, error)
-	findByTierIDFn             func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
-	listPermissionNamesByTierFn func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error)
-	softDeleteFn               func(ctx *gin.Context, id int64) error
+	createFn                     func(ctx *gin.Context, tp *dbs.TierPermission) error
+	findByTierAndPermissionFn    func(ctx *gin.Context, tierID, permissionID int64) (*dbs.TierPermission, error)
+	findByTierIDFn               func(ctx *gin.Context, tierID int64) ([]dbs.TierPermission, error)
+	listPermissionNamesByTierFn  func(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error)
+	listPermissionNamesByTiersFn func(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error)
+	softDeleteFn                 func(ctx *gin.Context, id int64) error
 }
 
 func (m *mockTierPermissionDao) Create(ctx *gin.Context, tp *dbs.TierPermission) error {
@@ -45,6 +46,13 @@ func (m *mockTierPermissionDao) FindByTierID(ctx *gin.Context, tierID int64) ([]
 func (m *mockTierPermissionDao) ListPermissionNamesByTier(ctx *gin.Context, tierID int64) ([]daos.TierPermissionName, error) {
 	if m.listPermissionNamesByTierFn != nil {
 		return m.listPermissionNamesByTierFn(ctx, tierID)
+	}
+	return nil, nil
+}
+
+func (m *mockTierPermissionDao) ListPermissionNamesByTiers(ctx *gin.Context, tierIDs []int64) ([]daos.TierPermissionNameByTier, error) {
+	if m.listPermissionNamesByTiersFn != nil {
+		return m.listPermissionNamesByTiersFn(ctx, tierIDs)
 	}
 	return nil, nil
 }

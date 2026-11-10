@@ -194,7 +194,7 @@ func TestNoLeak_CalendarGetRange_DBFailureKeepsContractMessage(t *testing.T) {
 func TestNoLeak_WorkoutFeedbackHistory_DBFailureHasDescriptiveDAOError(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	failing := testutils.FailingDB(t, db, func(op string) bool { return op == "select" })
-	svc := NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(failing))
+	svc := NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(failing), daos.NewSessionInstanceDao(db))
 
 	_, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
 

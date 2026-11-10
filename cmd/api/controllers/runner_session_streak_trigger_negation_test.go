@@ -20,9 +20,14 @@ import (
 	"simple-arq-golang/cmd/api/services"
 )
 
-// mockStreakTrigger graba las invocaciones del hook de racha.
+// mockStreakTrigger graba las invocaciones del hook de racha y cuenta los
+// snapshots calculados, para verificar el cómputo único del finish.
 type mockStreakTrigger struct {
-	completions []int64
+	completions      []int64
+	computeCalls     int
+	computedSnapshot *services.StreakSnapshot
+	receivedSnapshot *services.StreakSnapshot
+	receivedUserID   int64
 }
 
 func (m *mockStreakTrigger) OnRunnerSessionCompletion(ctx *gin.Context, userID int64) {
@@ -30,6 +35,19 @@ func (m *mockStreakTrigger) OnRunnerSessionCompletion(ctx *gin.Context, userID i
 }
 
 func (m *mockStreakTrigger) EvaluateRunnerCompletion(ctx *gin.Context, userID int64) error {
+	return nil
+}
+
+func (m *mockStreakTrigger) ComputeSnapshot(ctx *gin.Context, userID int64) (*services.StreakSnapshot, error) {
+	m.computeCalls++
+	m.computedSnapshot = &services.StreakSnapshot{StrictCurrent: 3, FlexibleCurrent: 4, StrictBest: 9, FlexibleBest: 11}
+	return m.computedSnapshot, nil
+}
+
+func (m *mockStreakTrigger) EvaluateRunnerCompletionWithSnapshot(ctx *gin.Context, userID int64, snapshot *services.StreakSnapshot) error {
+	m.completions = append(m.completions, userID)
+	m.receivedUserID = userID
+	m.receivedSnapshot = snapshot
 	return nil
 }
 
@@ -74,6 +92,7 @@ func TestRunnerSessionController_Finish_DisparaStreakTrigger(t *testing.T) {
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
+	controller.(*runnerSessionController).asyncHook = func(fn func()) { fn() }
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)
@@ -96,6 +115,7 @@ func TestRunnerSessionController_Finish_Interrupted_DisparaStreakTrigger(t *test
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)
+	controller.(*runnerSessionController).asyncHook = func(fn func()) { fn() }
 
 	response := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(response)

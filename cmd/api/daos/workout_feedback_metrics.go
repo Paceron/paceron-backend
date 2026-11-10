@@ -33,16 +33,25 @@ func computePeakSpeedKPH(points []dbs.WorkoutFeedbackPoint) *float64 {
 	sorted := make([]dbs.WorkoutFeedbackPoint, len(points))
 	copy(sorted, points)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Order < sorted[j].Order })
+	return computePeakSpeedKPHOrdered(sorted)
+}
 
+// computePeakSpeedKPHOrdered es la variante para callers que ya entregan los
+// puntos ordenados por Order (p. ej. la query del recompute): evita copia y
+// sort conservando exactamente el mismo valor.
+func computePeakSpeedKPHOrdered(points []dbs.WorkoutFeedbackPoint) *float64 {
+	if len(points) < 2 {
+		return nil
+	}
 	peak := -1.0
-	for i := 1; i < len(sorted); i++ {
-		dt := sorted[i].RecordedAt.Sub(sorted[i-1].RecordedAt).Seconds()
+	for i := 1; i < len(points); i++ {
+		dt := points[i].RecordedAt.Sub(points[i-1].RecordedAt).Seconds()
 		if dt <= 0 {
 			continue
 		}
 		speedKPH := routematch.HaversineMeters(
-			sorted[i-1].Latitude, sorted[i-1].Longitude,
-			sorted[i].Latitude, sorted[i].Longitude,
+			points[i-1].Latitude, points[i-1].Longitude,
+			points[i].Latitude, points[i].Longitude,
 		) / dt * 3.6
 		if speedKPH > peak {
 			peak = speedKPH

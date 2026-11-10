@@ -38,6 +38,13 @@ func (f *fakeStreakView) ComputeCurrentStreaks(ctx *gin.Context, targetUserID in
 	return f.strictCurrent, 0, f.err
 }
 
+func (f *fakeStreakView) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*StreakSnapshot, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &StreakSnapshot{StrictCurrent: f.strictCurrent, StrictBest: f.strictBest}, nil
+}
+
 // fakePushTokenDAO devuelve los tokens según fixture (o error).
 type fakePushTokenDAO struct {
 	tokens  []dbs.PushToken
@@ -49,6 +56,13 @@ func (f *fakePushTokenDAO) Upsert(ctx *gin.Context, userID int64, token, platfor
 }
 
 func (f *fakePushTokenDAO) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
+	if f.findErr != nil {
+		return nil, f.findErr
+	}
+	return f.tokens, nil
+}
+
+func (f *fakePushTokenDAO) FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
 	if f.findErr != nil {
 		return nil, f.findErr
 	}
@@ -207,6 +221,21 @@ func TestAchievementsService_SessionsUnlock(t *testing.T) {
 		assert.Equal(t, "achievements", row.Section)
 		assert.EqualValues(t, 7, row.UserID)
 	}
+}
+
+func TestAchievementsService_ConSnapshotNoConsultaRachas(t *testing.T) {
+	dao := &fakeAchievementDao{alreadyUnlocked: map[string]bool{}, finishedCount: 5}
+	gamDao := &mockGamificationDao{}
+	// panicStreakView explota en GetStreaks: el snapshot debe evitar la llamada.
+	svc := newAchievementsTestService(dao, gamDao, panicStreakView{}, &fakePushTokenDAO{}, &stubPushClient{})
+
+	err := svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 4, StrictBest: 6})
+
+	require.NoError(t, err)
+	// best strict 6 desbloquea streak_3 y no streak_7; 5 sesiones desbloquea
+	// first_session y sessions_5.
+	assert.Equal(t, []string{"first_session", "streak_3", "sessions_5"}, dao.unlocks)
 }
 
 func TestAchievementsService_UmbralNoAlcanza(t *testing.T) {
@@ -417,6 +446,10 @@ func (panicStreakView) GetStreaks(ctx *gin.Context, targetUserID int64, days int
 
 func (panicStreakView) ComputeCurrentStreaks(ctx *gin.Context, targetUserID int64) (int, int, error) {
 	return 0, 0, nil
+}
+
+func (panicStreakView) ComputeSnapshot(ctx *gin.Context, targetUserID int64) (*StreakSnapshot, error) {
+	panic("boom del cálculo de rachas en logros")
 }
 
 func TestAchievementsService_OnEvent_NilSafe(t *testing.T) {

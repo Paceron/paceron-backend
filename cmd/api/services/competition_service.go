@@ -5,6 +5,7 @@ package services
 // stamps a los ganadores, unseen por participante y push best-effort a todos.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -71,6 +72,9 @@ type competitionService struct {
 	pushTokenDao     daos.PushTokenDaoInterface
 	pushClient       expopushclient.ExpoPushClientInterface
 	runnerSessionDao daos.RunnerSessionDAOInterface
+	// asyncHook despacha el fan-out de push fuera del camino de respuesta;
+	// los tests lo reemplazan por una ejecución síncrona.
+	asyncHook func(func())
 }
 
 // NewCompetitionService crea el service de competencias. runnerSessionDao es
@@ -975,7 +979,7 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 	}
 
 	if len(winners) > 0 {
-		s.notifyFinish(bundle.participants, competitionID)
+		s.notifyFinishAsync(bundle.participants, competitionID)
 	}
 
 	// Respuesta directo del bundle (sin re-Get: el guard de detalle puede
@@ -1104,18 +1108,50 @@ func closeEffects(bundle *competitionBundle, winners []int64, finishedAt time.Ti
 	return stamps, unseen
 }
 
+// notifyFinishAsync saca el fan-out del cierre del camino de respuesta (D7):
+// goroutine best-effort con recover, sin heredar el contexto de la request.
+func (s *competitionService) notifyFinishAsync(participants []int64, competitionID int64) {
+	if s.pushTokenDao == nil || s.pushClient == nil {
+		return
+	}
+	dispatch := s.asyncHook
+	if dispatch == nil {
+		dispatch = func(fn func()) { go fn() }
+	}
+	dispatch(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				customlogger.Error(nil, "panic en push de cierre de competencia", fmt.Errorf("%v", r), customlogger.TagMethod("CompetitionClosePush"))
+			}
+		}()
+		s.notifyFinish(participants, competitionID)
+	})
+}
+
 // notifyFinish es el push best-effort del cierre a los participantes: texto
 // genérico (D8: sin title, "Competencia Finalizada"), data.route placeholder y
 // fail silencioso con log.
 func (s *competitionService) notifyFinish(participants []int64, competitionID int64) {
-	if s.pushTokenDao == nil || s.pushClient == nil {
+	tokens, err := s.pushTokenDao.FindByUserIDs(nil, participants)
+	if err != nil {
+		customlogger.Error(nil, "error finding push tokens for competition close", err,
+			customlogger.Tag("competition_id", fmt.Sprintf("%d", competitionID)))
+		return
+	}
+	tokenStrings := make([]string, len(tokens))
+	for i, t := range tokens {
+		tokenStrings[i] = t.Token
+	}
+	if len(tokenStrings) == 0 {
 		return
 	}
 	route := fmt.Sprintf("/competencias/%d", competitionID)
-	for _, uid := range participants {
-		sendPushToUser(nil, s.pushTokenDao, s.pushClient, uid,
-			"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", "competition_finished", route)
-	}
+	data := map[string]string{"type": "competition_finished", "route": route}
+	sendCtx, cancel := context.WithTimeout(context.Background(), pushSendTimeout)
+	defer cancel()
+	sendPushTokenChunks(sendCtx, nil, s.pushClient, tokenStrings,
+		"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", data,
+		customlogger.Tag("competition_id", fmt.Sprintf("%d", competitionID)))
 }
 
 // notifyCreator es el push best-effort de moderación hacia el corredor

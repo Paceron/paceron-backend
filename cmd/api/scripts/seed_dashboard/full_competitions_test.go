@@ -129,7 +129,7 @@ func TestFullSeederSeedCompetitions_SeedsCompetitionContractsIdempotently(t *tes
 	require.NoError(t, db.First(&metricInstance, s.ids.competitionInstances["finished_metric_tie_metric"]).Error)
 	assert.Equal(t, fmt.Sprintf("Competencia métrica %d", s.ids.competitions["finished_metric_tie"]), metricInstance.Name)
 	assert.Contains(t, pointerValue(metricInstance.Description), fullSeedMarker)
-	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(db))
+	feedbackService := services.NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(db), daos.NewSessionInstanceDao(db))
 	r6ID := s.ids.users["r6"]
 	calendarFeedback, err := feedbackService.GetSessionFeedback(nil, trainerID, sourceFeedback.AssignedSessionID, &r6ID)
 	require.NoError(t, err)

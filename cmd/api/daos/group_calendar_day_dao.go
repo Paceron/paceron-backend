@@ -46,6 +46,10 @@ type GroupCalendarDaoInterface interface {
 	FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
 	ClearSourcePlan(ctx *gin.Context, planID int64) error
 	UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	// UpdateDatesForShiftBatch mueve todas las fechas con un batch constante
+	// (dos UPDATEs internos) sin colisiones transitorias del unique
+	// (group_id, date).
+	UpdateDatesForShiftBatch(ctx *gin.Context, groupID int64, shifts []GroupCalendarDayShift) error
 	// FindBySessionInstanceID devuelve el día de calendario que referencia
 	// esa session instance (design.md Gap 26 D6, relación 1:1 por diseño):
 	// nil si no hay día — instancia huérfana o id inexistente.
@@ -76,6 +80,13 @@ type GroupCalendarDayUpsertResult struct {
 	ID        int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// GroupCalendarDayShift es un par fecha vieja → fecha nueva para el UPDATE
+// batch del Shift.
+type GroupCalendarDayShift struct {
+	OldDate time.Time
+	NewDate time.Time
 }
 
 type groupCalendarDayDao struct {
@@ -357,6 +368,63 @@ func (d *groupCalendarDayDao) ClearSourcePlan(ctx *gin.Context, planID int64) er
 
 func (d *groupCalendarDayDao) UpdateDatesForShift(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error {
 	return d.DB.Model(&dbs.GroupCalendarDay{}).Where("group_id = ? AND date = ?", groupID, oldDate).Update("date", newDate).Error
+}
+
+// UpdateDatesForShiftBatch mueve N filas con dos UPDATEs constantes. Un solo
+// UPDATE no puede garantizar el orden en que Postgres procesa las filas (el
+// plan puede recorrer la tabla destino en cualquier orden y chocar el unique
+// transitoriamente), así que primero se estacionan todas las filas por debajo
+// de cualquier fecha actual o final y después se las lleva a su destino. Con
+// las fechas viejas ya liberadas, la segunda pasada no puede colisionar.
+func (d *groupCalendarDayDao) UpdateDatesForShiftBatch(ctx *gin.Context, groupID int64, shifts []GroupCalendarDayShift) error {
+	if len(shifts) == 0 {
+		return nil
+	}
+	var minDate time.Time
+	if err := d.DB.Model(&dbs.GroupCalendarDay{}).
+		Where("group_id = ?", groupID).
+		Select("MIN(date)").
+		Scan(&minDate).Error; err != nil {
+		return fmt.Errorf("error finding min calendar day date for shift: %w", err)
+	}
+	parkingBase := minDate
+	for _, shift := range shifts {
+		if shift.NewDate.Before(parkingBase) {
+			parkingBase = shift.NewDate
+		}
+	}
+	parkingBase = parkingBase.AddDate(0, 0, -len(shifts)-1)
+	parked := make([]GroupCalendarDayShift, len(shifts))
+	for i, shift := range shifts {
+		parked[i] = GroupCalendarDayShift{OldDate: shift.OldDate, NewDate: parkingBase.AddDate(0, 0, i)}
+	}
+	if err := d.applyShiftValues(ctx, groupID, parked); err != nil {
+		return err
+	}
+	final := make([]GroupCalendarDayShift, len(shifts))
+	for i, shift := range shifts {
+		final[i] = GroupCalendarDayShift{OldDate: parked[i].NewDate, NewDate: shift.NewDate}
+	}
+	return d.applyShiftValues(ctx, groupID, final)
+}
+
+// applyShiftValues aplica un mapa old_date → new_date en un único UPDATE. El
+// orden no importa: el caller garantiza que ningún new_date está ocupado.
+func (d *groupCalendarDayDao) applyShiftValues(ctx *gin.Context, groupID int64, shifts []GroupCalendarDayShift) error {
+	values := make([]string, 0, len(shifts))
+	args := make([]interface{}, 0, len(shifts)*2+1)
+	for _, shift := range shifts {
+		values = append(values, "(CAST(? AS date), CAST(? AS date))")
+		args = append(args, shift.OldDate, shift.NewDate)
+	}
+	args = append(args, groupID)
+	query := "UPDATE group_calendar_days AS g SET date = v.new_date, updated_at = NOW() FROM (VALUES " +
+		strings.Join(values, ", ") + ") AS v(old_date, new_date) " +
+		"WHERE g.group_id = ? AND g.date = v.old_date"
+	if err := d.DB.Exec(query, args...).Error; err != nil {
+		return fmt.Errorf("error updating calendar day dates for shift: %w", err)
+	}
+	return nil
 }
 
 // FindBySessionInstanceID resuelve el día que referencia la instancia (D6).

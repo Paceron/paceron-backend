@@ -203,3 +203,54 @@ func TestTierDao_SoftDelete_Success(t *testing.T) {
 	found, _ := dao.FindByID(nil, tier.ID)
 	assert.Nil(t, found)
 }
+
+func TestTierDao_FindByIDs_ExcludesDeleted(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	role := testRole(db, "role_for_tier_findids")
+
+	first := &dbs.Tier{Name: "tier_findids_a", RoleID: role.ID, RoleName: role.Name}
+	second := &dbs.Tier{Name: "tier_findids_b", RoleID: role.ID, RoleName: role.Name}
+	require.NoError(t, dao.Create(nil, first))
+	require.NoError(t, dao.Create(nil, second))
+	require.NoError(t, dao.SoftDelete(nil, first.ID))
+
+	found, err := dao.FindByIDs(nil, []int64{first.ID, second.ID, 999999})
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, second.ID, found[0].ID)
+
+	empty, err := dao.FindByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+func TestTierDao_FindLowestByRoles_OnePerRole(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	roleA := testRole(db, "role_for_lowest_tiers_a")
+	roleB := testRole(db, "role_for_lowest_tiers_b")
+
+	baseA := &dbs.Tier{Name: "base_a", RoleID: roleA.ID, RoleName: roleA.Name, Hierarchy: 1}
+	premiumA := &dbs.Tier{Name: "premium_a", RoleID: roleA.ID, RoleName: roleA.Name, Hierarchy: 3}
+	baseB := &dbs.Tier{Name: "base_b", RoleID: roleB.ID, RoleName: roleB.Name, Hierarchy: 2}
+	for _, tier := range []*dbs.Tier{premiumA, baseA, baseB} {
+		require.NoError(t, dao.Create(nil, tier))
+	}
+
+	found, err := dao.FindLowestByRoles(nil, []int64{roleA.ID, roleB.ID})
+
+	require.NoError(t, err)
+	require.Len(t, found, 2)
+	byRole := map[int64]dbs.Tier{}
+	for _, tier := range found {
+		byRole[tier.RoleID] = tier
+	}
+	assert.Equal(t, baseA.ID, byRole[roleA.ID].ID)
+	assert.Equal(t, baseB.ID, byRole[roleB.ID].ID)
+
+	empty, err := dao.FindLowestByRoles(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

@@ -13,6 +13,7 @@ import (
 type PushTokenDaoInterface interface {
 	Upsert(ctx *gin.Context, userID int64, token, platform string) error
 	FindByUserID(ctx *gin.Context, userID int64) ([]dbs.PushToken, error)
+	FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error)
 }
 
 type pushTokenDao struct {
@@ -48,6 +49,19 @@ func (d *pushTokenDao) Upsert(ctx *gin.Context, userID int64, token, platform st
 func (d *pushTokenDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
 	var tokens []dbs.PushToken
 	err := d.DB.Where("user_id = ?", userID).Find(&tokens).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding push tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+// FindByUserIDs devuelve los tokens de varios usuarios en una sola query.
+func (d *pushTokenDao) FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var tokens []dbs.PushToken
+	err := d.DB.Where("user_id IN ?", userIDs).Find(&tokens).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding push tokens: %w", err)
 	}

@@ -101,3 +101,31 @@ func TestPushTokenDao_FindByUserID_NoTokens(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tokens)
 }
+
+func TestPushTokenDao_FindByUserIDs_MultipleUsers(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPushTokenDao(db)
+	first := persistUser(db, "push-batch-1@test.com", "91000007")
+	second := persistUser(db, "push-batch-2@test.com", "91000008")
+	third := persistUser(db, "push-batch-3@test.com", "91000009")
+
+	require.NoError(t, dao.Upsert(nil, first.ID, "ExponentPushToken[batch-1]", "android"))
+	require.NoError(t, dao.Upsert(nil, second.ID, "ExponentPushToken[batch-2]", "web"))
+
+	tokens, err := dao.FindByUserIDs(nil, []int64{first.ID, second.ID, third.ID})
+
+	require.NoError(t, err)
+	require.Len(t, tokens, 2)
+	assert.ElementsMatch(t, []string{"ExponentPushToken[batch-1]", "ExponentPushToken[batch-2]"},
+		[]string{tokens[0].Token, tokens[1].Token})
+}
+
+func TestPushTokenDao_FindByUserIDs_Empty(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPushTokenDao(db)
+
+	tokens, err := dao.FindByUserIDs(nil, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, tokens)
+}

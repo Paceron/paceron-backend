@@ -86,7 +86,7 @@ func newHistoryMock(calls *historyDAOCalls, rows []dbs.WorkoutFeedbackHistoryRow
 
 func TestWorkoutFeedbackService_AthleteHistory_TargetDistinto_403(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	_, err := svc.AthleteHistory(nil, 7, 99, workoutfeedback.HistoryQuery{})
 
@@ -96,7 +96,7 @@ func TestWorkoutFeedbackService_AthleteHistory_TargetDistinto_403(t *testing.T) 
 
 func TestWorkoutFeedbackService_AthleteHistory_Self_ScopeYDefaults(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	resp, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
 
@@ -121,7 +121,7 @@ func TestWorkoutFeedbackService_AthleteHistory_Self_ScopeYDefaults(t *testing.T)
 
 func TestWorkoutFeedbackService_AthleteHistory_FiltrosYPaginacion(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	teamID := int64(4)
 	groupID := int64(6)
@@ -200,7 +200,7 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 		calls.teamIDs = teamIDs
 		return []dbs.Team{{ID: 4, Name: "Equipo"}}, nil
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	resp, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
 	require.NoError(t, err)
@@ -286,7 +286,7 @@ func TestWorkoutFeedbackService_AthleteHistory_Validaciones_400(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := &historyDAOCalls{}
-			svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+			svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 			_, err := svc.AthleteHistory(nil, 7, 7, tc.query)
 
@@ -298,7 +298,7 @@ func TestWorkoutFeedbackService_AthleteHistory_Validaciones_400(t *testing.T) {
 
 func TestWorkoutFeedbackService_AthleteHistory_FechasIguales_UnDia_OK(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	_, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{
 		DateFrom: histStrPtr("2026-01-15"),
@@ -313,7 +313,7 @@ func TestWorkoutFeedbackService_AthleteHistory_FechasIguales_UnDia_OK(t *testing
 
 func TestWorkoutFeedbackService_AdministeredHistory_TargetDistinto_403(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	_, err := svc.AdministeredHistory(nil, 7, 99, workoutfeedback.HistoryQuery{TeamID: histInt64Ptr(4)})
 
@@ -324,7 +324,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_TargetDistinto_403(t *testin
 
 func TestWorkoutFeedbackService_AdministeredHistory_SinTeam_400(t *testing.T) {
 	calls := &historyDAOCalls{}
-	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil))
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
 
 	_, err := svc.AdministeredHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
 
@@ -340,7 +340,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_TeamInexistente_404(t *testi
 		calls.teamExists = true
 		return false, nil
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.AdministeredHistory(nil, 7, 7, workoutfeedback.HistoryQuery{TeamID: histInt64Ptr(4)})
 
@@ -355,7 +355,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_NoOwner_403(t *testing.T) {
 		calls.isTeamOwner = true
 		return false, nil
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.AdministeredHistory(nil, 7, 7, workoutfeedback.HistoryQuery{TeamID: histInt64Ptr(4)})
 
@@ -367,7 +367,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_OK_AthleteFilterSegundoNivel
 	calls := &historyDAOCalls{}
 	svc := NewWorkoutFeedbackService(newHistoryMock(calls, []dbs.WorkoutFeedbackHistoryRow{
 		{ID: 1, AthleteUserID: 9, IsPresencial: true, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 3},
-	}))
+	}), fbAccessDao())
 
 	athleteFilter := int64(9)
 	resp, err := svc.AdministeredHistory(nil, 7, 7, workoutfeedback.HistoryQuery{
@@ -400,7 +400,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_DAOError_Propaga(t *testing.
 	mock.historySearchFn = func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, sortCol, order string, limit, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error) {
 		return nil, errors.New("db caida")
 	}
-	svc := NewWorkoutFeedbackService(mock)
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
 
 	_, err := svc.AdministeredHistory(nil, 7, 7, workoutfeedback.HistoryQuery{TeamID: histInt64Ptr(4)})
 

@@ -105,3 +105,25 @@ func TestWorkoutFeedbackDTO_NoExponeColumnasLeaderboard(t *testing.T) {
 	assert.NotContains(t, string(pointBody), "pace_sec_per_km")
 	assert.NotContains(t, string(pointBody), "peak_speed_kph")
 }
+
+// Task 6.4: la variante "ordered" no copia ni reordena y devuelve exactamente
+// el mismo valor que la versión que ordena, para el input ya ordenado por Order.
+func TestComputePeakSpeedKPHOrdered_MismoValorSinSort(t *testing.T) {
+	base := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
+	points := []dbs.WorkoutFeedbackPoint{
+		{Order: 0, Latitude: 0, Longitude: 0, RecordedAt: base},
+		{Order: 1, Latitude: 0.001, Longitude: 0, RecordedAt: base.Add(time.Minute)},
+		{Order: 2, Latitude: 0.011, Longitude: 0, RecordedAt: base.Add(90 * time.Second)},
+	}
+	ordered := computePeakSpeedKPHOrdered(points)
+	sorted := computePeakSpeedKPH(points)
+	require.NotNil(t, ordered)
+	require.NotNil(t, sorted)
+	assert.InDelta(t, *sorted, *ordered, 0.0001)
+	assert.InDelta(t, 1111.9/30*3.6, *ordered, 1.0)
+
+	assert.Nil(t, computePeakSpeedKPHOrdered(nil))
+	assert.Nil(t, computePeakSpeedKPHOrdered([]dbs.WorkoutFeedbackPoint{
+		{Order: 0, Latitude: 0, Longitude: 0, RecordedAt: base},
+	}))
+}

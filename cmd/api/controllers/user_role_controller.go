@@ -94,7 +94,7 @@ func (urc *userRoleController) AssignRole(c *gin.Context) {
 		} else if errMsg == "el usuario ya tiene asignado este rol" {
 			statusCode = http.StatusConflict
 			code = "Conflict"
-		} else if errMsg == "el tier no pertenece al rol especificado" || errMsg == "el tier por defecto 'base' no existe para este rol" {
+		} else if errMsg == "el tier no pertenece al rol especificado" || errMsg == "el tier por defecto 'base' no existe para este rol" || errMsg == "el rol corredor no admite tiers" {
 			statusCode = http.StatusBadRequest
 			code = "Bad request"
 		}

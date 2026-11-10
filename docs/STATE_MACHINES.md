@@ -42,7 +42,8 @@ active ──ChangeTier──► ended
 - `ended` y `canceled` quedan fuera del conjunto vigente: no cuentan para el índice ni para `FindActiveByUserRole`.
 - **`ChangeTier` bloqueado con primer pago impago**: si existe sub `first_payment_pending` para el `(user_id, role_id)`, el `PUT tier` responde `409 SUBSCRIPTION_PENDING_FIRST_PAYMENT`. La vía de salida es cancelarla (DELETE) y reintentar.
 - El acceso al tier pago se habilita recién en `active` (cuota #1 pagada).
-- Los endpoints que reportan el tier de un rol (`GET /api/v1/auth/permissions`, `GET /api/v1/team-configuration`) resuelven el mismo criterio que `GetCurrentSubscription`: sub vigente primero, fallback a `user_roles.tier_id`. El `tier_id` de la asignación es un caché del ledger, no la fuente de verdad.
+- `GET /api/v1/auth/permissions` **no usa `user_roles.tier_id` como fallback**: resuelve el tier efectivo por la suscripción `active` del ledger y, si no hay ninguna, por `FindLowestByRole` del rol (ver §10).
+- `GET /api/v1/team-configuration` sí usa el criterio de `GetCurrentSubscription`: sub vigente primero, fallback a `user_roles.tier_id`. El `tier_id` de la asignación es un caché del ledger, no la fuente de verdad.
 
 ---
 
@@ -260,3 +261,49 @@ deauthorized ──reconexión mp-connect──► authorized
 
 - Solo `authorized` habilita cobrar con split.
 - Sin `authorized`, las suscripciones de contenido pago del rol quedan sin cobrador hasta reconectar.
+
+---
+
+## 10. Tiers del rol corredor — modelo interno (Gap 42)
+
+El corredor **no tiene catálogo de tiers ni cambio de tier**. `user_roles.tier_id` sigue siendo
+NOT NULL porque toda asignación de rol exige un tier, así que el rol conserva un único
+**tier base interno** (`hierarchy` mínima, `payment_required=false`). Ese tier base es el que
+`AssignRole` resuelve con `FindLowestByRole` cuando no se envía `tier_id`.
+
+`GET /api/v1/auth/permissions` **no usa `user_roles.tier_id`**: resuelve el tier efectivo por la
+suscripción `active` del ledger y, si no hay ninguna, por `FindLowestByRole` del rol. Por eso,
+aunque se purguen los tiers pagos del corredor, sus permisos siguen resolviendo el base interno.
+
+### Contrato API
+
+- `GET /api/v1/tiers?role_id=<corredor>` devuelve `[]`. Sin `role_id`, el listado excluye los tiers del corredor.
+- `POST`/`PUT`/`DELETE /api/v1/tiers` sobre el corredor devuelven `400 "el rol corredor no admite tiers"` (protege el base interno).
+- `POST /api/v1/users/:id/roles` con `tier_id` explícito para corredor devuelve `400 "el rol corredor no admite tiers"`; sin `tier_id` sigue asignando el base interno.
+- `PUT /api/v1/users/:id/roles/:role_id/tier` para corredor devuelve `400 "el rol corredor no admite cambios de tier"`.
+- El entrenador no cambia: conserva catálogo, asignación y cambio de tier.
+
+### Purga manual — `scripts/purge_runner_tiers.sql`
+
+Script **manual, transaccional e idempotente**, no una migración: `AutoMigrate` no lo
+ejecuta y no corre solo en ningún arranque. **Solo bases descartables de test; nunca
+local/demo/producción.**
+
+Pasos (dentro de una transacción):
+
+1. Resuelve `roles.id` de `corredor`; si no existe, no hace nada.
+2. Resuelve el tier base como el de menor `hierarchy` activa con `payment_required=false` del rol; si no existe un tier base gratuito, aborta.
+3. Reasigna al base todo `user_roles` de corredor que apunte a otro tier (incluye filas soft-deleted).
+4. Borra `installments` de **todas** las suscripciones de tier del rol corredor y luego todas esas `user_role_tier_subscriptions` (el base es gratuito y no debe tener suscripciones).
+5. Borra `tier_permissions` de los tiers de corredor distintos del base.
+6. Borra físicamente los tiers de corredor distintos del base.
+7. Verifica que quede exactamente un tier de corredor, que sea gratuito, y que no queden asignaciones fuera del base ni suscripciones del rol; si falla, revierte la transacción.
+
+No toca el tier base, el rol `entrenador`, los roles globales ni la tabla `roles`.
+Los pagos ya conciliados conservan su fila. En bases migradas por la app, donde existe la FK
+`payments.installment_id ON DELETE SET NULL`, pierden el vínculo a la cuota purgada; en bases
+sin esa FK el campo conserva el valor viejo.
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/purge_runner_tiers.sql
+```

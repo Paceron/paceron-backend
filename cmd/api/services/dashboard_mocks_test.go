@@ -195,8 +195,10 @@ func (m *mockDashboardUserDao) UpdatePhoto(ctx *gin.Context, id int64, key strin
 func (m *mockDashboardUserDao) ClearPhoto(ctx *gin.Context, id int64) error { return nil }
 
 type mockDashboardGroupUserDao struct {
-	members []dbs.GroupUser
-	err     error
+	members             []dbs.GroupUser
+	err                 error
+	findByGroupIDCalls  int
+	findByGroupIDsCalls int
 }
 
 func (m *mockDashboardGroupUserDao) Create(ctx *gin.Context, groupUser *dbs.GroupUser) error {
@@ -206,12 +208,30 @@ func (m *mockDashboardGroupUserDao) FindByGroupAndUser(ctx *gin.Context, groupID
 	return nil, nil
 }
 func (m *mockDashboardGroupUserDao) FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error) {
+	m.findByGroupIDCalls++
 	if m.err != nil {
 		return nil, m.err
 	}
 	out := make([]dbs.GroupUser, 0, len(m.members))
 	for _, member := range m.members {
 		if member.GroupID == groupID {
+			out = append(out, member)
+		}
+	}
+	return out, nil
+}
+func (m *mockDashboardGroupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error) {
+	m.findByGroupIDsCalls++
+	if m.err != nil {
+		return nil, m.err
+	}
+	wanted := make(map[int64]struct{}, len(groupIDs))
+	for _, id := range groupIDs {
+		wanted[id] = struct{}{}
+	}
+	out := make([]dbs.GroupUser, 0, len(m.members))
+	for _, member := range m.members {
+		if _, ok := wanted[member.GroupID]; ok {
 			out = append(out, member)
 		}
 	}

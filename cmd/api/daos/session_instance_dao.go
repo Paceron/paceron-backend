@@ -49,6 +49,13 @@ type SessionInstanceDaoInterface interface {
 	// queries independiente de la lista; todo userIDs queda en el map (false
 	// si sin acceso). Lote vacío no toca la DB.
 	HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
+	// TeamIDForSessionInstance devuelve el team_id del día de calendario que
+	// referencia la instancia (grupo y equipo no borrados). nil, nil si la
+	// instancia es sintética (ruta) o huérfana, o si su día/equipo ya no existe.
+	TeamIDForSessionInstance(ctx *gin.Context, instanceID int64) (*int64, error)
+	// ExerciseBelongsToSessionInstance reporta si existe un link
+	// session_exercise_instances para el par (instancia, ejercicio).
+	ExerciseBelongsToSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, error)
 }
 
 type sessionInstanceDao struct {
@@ -115,6 +122,36 @@ func (d *sessionInstanceDao) DeleteByIDs(ctx *gin.Context, ids []int64) error {
 		return fmt.Errorf("error deleting session instances batch: %w", err)
 	}
 	return nil
+}
+
+func (d *sessionInstanceDao) TeamIDForSessionInstance(ctx *gin.Context, instanceID int64) (*int64, error) {
+	var teamID int64
+	err := d.DB.Raw(`
+SELECT g.team_id
+FROM group_calendar_days gcd
+JOIN groups g ON g.id = gcd.group_id AND g.deleted_at IS NULL
+JOIN teams t ON t.id = g.team_id AND t.deleted_at IS NULL
+WHERE gcd.session_instance_id = ?
+ORDER BY gcd.id
+LIMIT 1`, instanceID).Scan(&teamID).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding session instance team: %w", err)
+	}
+	if teamID == 0 {
+		return nil, nil
+	}
+	return &teamID, nil
+}
+
+func (d *sessionInstanceDao) ExerciseBelongsToSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, error) {
+	var count int64
+	err := d.DB.Model(&dbs.SessionExerciseInstance{}).
+		Where("session_instance_id = ? AND exercise_instance_id = ?", instanceID, exerciseInstanceID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("error checking session instance exercise link: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (d *sessionInstanceDao) HasFeedbackByIDs(ctx *gin.Context, ids []int64) ([]int64, error) {

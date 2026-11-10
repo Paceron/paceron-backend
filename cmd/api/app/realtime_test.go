@@ -82,6 +82,14 @@ func (s *channelAuthorizerStubDAO) HasInstanceAccessBatch(*gin.Context, int64, [
 	return map[int64]bool{}, nil
 }
 
+func (s *channelAuthorizerStubDAO) TeamIDForSessionInstance(*gin.Context, int64) (*int64, error) {
+	return nil, nil
+}
+
+func (s *channelAuthorizerStubDAO) ExerciseBelongsToSessionInstance(*gin.Context, int64, int64) (bool, error) {
+	return false, nil
+}
+
 func TestChannelAuthorizer(t *testing.T) {
 	stub := &channelAuthorizerStubDAO{}
 	authorizer := newChannelAuthorizer(stub)

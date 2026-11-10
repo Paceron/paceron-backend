@@ -1,13 +1,17 @@
 package services
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/calendar"
@@ -107,6 +111,9 @@ func (m *mockGroupCalendarDao) UpdateDatesForShift(ctx *gin.Context, groupID int
 	if m.updateDatesForShiftFn != nil {
 		return m.updateDatesForShiftFn(ctx, groupID, oldDate, newDate)
 	}
+	return nil
+}
+func (m *mockGroupCalendarDao) UpdateDatesForShiftBatch(_ *gin.Context, _ int64, _ []daos.GroupCalendarDayShift) error {
 	return nil
 }
 func (m *mockGroupCalendarDao) FindBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error) {
@@ -1105,4 +1112,187 @@ func TestCalendarService_UpsertDay_PresencialTimeToBeforeFrom(t *testing.T) {
 	_, err := svc.UpsertDay(nil, 1, 7, time.Now(), req)
 
 	assert.ErrorIs(t, err, ErrCalendarInvalidTimeRange)
+}
+
+// recordingConnPool registra el texto de cada query que pasa por s.db para
+// poder contar round trips por tabla (no por total, que incluye guards).
+type recordingConnPool struct {
+	underlying gorm.ConnPool
+	queries    *[]string
+}
+
+func (p *recordingConnPool) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return p.underlying.PrepareContext(ctx, query)
+}
+
+func (p *recordingConnPool) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	*p.queries = append(*p.queries, query)
+	return p.underlying.ExecContext(ctx, query, args...)
+}
+
+func (p *recordingConnPool) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	*p.queries = append(*p.queries, query)
+	return p.underlying.QueryContext(ctx, query, args...)
+}
+
+func (p *recordingConnPool) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	*p.queries = append(*p.queries, query)
+	return p.underlying.QueryRowContext(ctx, query, args...)
+}
+
+func (p *recordingConnPool) BeginTx(ctx context.Context, opt *sql.TxOptions) (*sql.Tx, error) {
+	return nil, gorm.ErrInvalidTransaction
+}
+
+func recordingDB(t *testing.T, db *gorm.DB, queries *[]string) *gorm.DB {
+	t.Helper()
+	sess := db.Session(&gorm.Session{Context: db.Statement.Context, NewDB: true})
+	sess.Statement.ConnPool = &recordingConnPool{underlying: db.Statement.ConnPool, queries: queries}
+	return sess
+}
+
+// Task 6.1: el detalle lee la instancia UNA vez y reutiliza la fila en el
+// builder; antes hacía FindByID + otro FindByID dentro de sessionInstanceResponse.
+func TestCalendarService_Task6_SessionInstanceDetail_SingleFindByID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := detailFixtureSetup(t, db, "T6D")
+	exerciseDao := daos.NewExerciseInstanceDao(db)
+	linkDao := daos.NewSessionExerciseInstanceDao(db)
+	ex := &dbs.ExerciseInstance{Name: "detalle ex", Kind: "running"}
+	require.NoError(t, exerciseDao.Create(nil, ex))
+	require.NoError(t, linkDao.Create(nil, &dbs.SessionExerciseInstance{SessionInstanceID: f.instDay.ID, ExerciseInstanceID: ex.ID, Role: "main"}))
+
+	queries := make([]string, 0, 8)
+	sess := recordingDB(t, db, &queries)
+	svc := NewCalendarService(daos.NewGroupCalendarDayDao(sess), daos.NewGroupDao(sess), daos.NewTeamDao(sess), daos.NewGroupUserDao(sess), nil, nil, nil, nil, sess)
+
+	resp, err := svc.SessionInstanceDetail(nil, f.instDay.ID, f.athlete.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, f.instDay.ID, resp.ID)
+	require.Len(t, resp.Exercises, 1)
+
+	instanceReads := 0
+	for _, query := range queries {
+		if strings.Contains(query, `"session_instances"`) {
+			instanceReads++
+		}
+	}
+	assert.Equal(t, 1, instanceReads, "una sola lectura de session_instances, sin FindByID duplicado")
+}
+
+// Task 6.2: UpsertDay instancia en batch; el número de round trips no crece
+// con la cantidad de ejercicios de la sesión de catálogo.
+func TestCalendarService_Task6_UpsertDay_BatchQueriesConstantes(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "t6up")
+	exercise := &dbs.Exercise{OwnerID: owner.ID, Name: "t6 ex", Kind: "running"}
+	require.NoError(t, db.Create(exercise).Error)
+
+	small := &dbs.Session{OwnerID: owner.ID, Name: "t6 small"}
+	require.NoError(t, db.Create(small).Error)
+	require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: small.ID, ExerciseID: exercise.ID, Role: "main"}).Error)
+
+	big := &dbs.Session{OwnerID: owner.ID, Name: "t6 big"}
+	require.NoError(t, db.Create(big).Error)
+	for i := 0; i < 3; i++ {
+		require.NoError(t, db.Create(&dbs.SessionExercise{SessionID: big.ID, ExerciseID: exercise.ID, Role: "main", RepeatCount: i + 1, RestMinutes: 1}).Error)
+	}
+
+	counter := 0
+	counting := txCountingDB(t, db, &counter)
+	svc := NewCalendarService(
+		daos.NewGroupCalendarDayDao(counting), daos.NewGroupDao(counting), daos.NewTeamDao(counting),
+		daos.NewGroupUserDao(counting), nil, nil, nil, nil, counting,
+	)
+
+	dateSmall := time.Now().AddDate(0, 0, 60)
+	resp, err := svc.UpsertDay(nil, group.ID, owner.ID, dateSmall, calendar.CalendarDayRequest{Kind: "training", SessionID: &small.ID})
+	require.NoError(t, err)
+	require.NotNil(t, resp.SessionInstance)
+	require.Len(t, resp.SessionInstance.Exercises, 1)
+	smallQueries := counter
+
+	counter = 0
+	dateBig := time.Now().AddDate(0, 0, 61)
+	resp, err = svc.UpsertDay(nil, group.ID, owner.ID, dateBig, calendar.CalendarDayRequest{Kind: "training", SessionID: &big.ID})
+	require.NoError(t, err)
+	require.NotNil(t, resp.SessionInstance)
+	require.Len(t, resp.SessionInstance.Exercises, 3)
+	bigQueries := counter
+
+	assert.Equal(t, smallQueries, bigQueries, "instanciación batch: mismo round trip con 1 o 3 ejercicios")
+}
+
+// Task 6.2 + D10: reasignar un día borra la instancia superada, salvo que un
+// feedback activo la proteja (integración real de UpsertDay con el batch).
+func TestCalendarService_Task6_UpsertDay_PreservesSupersededWithFeedback(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "t6d10")
+	protected := createSupersededInstance(t, db, "t6 protegida", "ex protegido")
+	createSupersedeFeedback(t, db, protected.instance.ID, protected.exercises[0].ID, false)
+	session, _ := referenciaCatalogSession(t, db, owner.ID, "t6d10")
+
+	date := time.Now().AddDate(0, 0, 70)
+	oldID := protected.instance.ID
+	require.NoError(t, daos.NewGroupCalendarDayDao(db).Upsert(nil, &dbs.GroupCalendarDay{
+		GroupID: group.ID, Date: date, Kind: "training", SessionInstanceID: &oldID,
+	}))
+
+	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
+	resp, err := svc.UpsertDay(nil, group.ID, owner.ID, date, calendar.CalendarDayRequest{Kind: "training", SessionID: &session.ID})
+	require.NoError(t, err)
+	require.NotNil(t, resp.SessionInstance)
+	assert.NotEqual(t, oldID, resp.SessionInstance.ID, "el día apunta a la instancia nueva")
+
+	assertInstanceIntact(t, db, protected)
+}
+
+// Task 6.3: Shift lee los destinos en batch y actualiza en batch; el número de
+// round trips es constante y las filas consecutivas se corren sin colisión
+// transitoria del unique.
+func TestCalendarService_Task6_Shift_BatchQueriesConstantes(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "t6shift")
+	setupDao := daos.NewGroupCalendarDayDao(db)
+
+	base := time.Now().AddDate(0, 0, 80)
+	for i := 0; i < 2; i++ {
+		require.NoError(t, setupDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: base.AddDate(0, 0, i), Kind: "rest"}))
+	}
+
+	counter := 0
+	counting := txCountingDB(t, db, &counter)
+	svc := NewCalendarService(
+		daos.NewGroupCalendarDayDao(counting), daos.NewGroupDao(counting), daos.NewTeamDao(counting),
+		daos.NewGroupUserDao(counting), nil, nil, nil, nil, counting,
+	)
+
+	resp, err := svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: base.Format("2006-01-02"), Days: 1})
+	require.NoError(t, err)
+	require.Len(t, resp.Days, 2)
+	smallQueries := counter
+
+	secondBase := base.AddDate(0, 0, 10)
+	for i := 0; i < 5; i++ {
+		require.NoError(t, setupDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: secondBase.AddDate(0, 0, i), Kind: "rest"}))
+	}
+	counter = 0
+	resp, err = svc.Shift(nil, group.ID, owner.ID, calendar.ShiftRequest{FromDate: secondBase.Format("2006-01-02"), Days: 1})
+	require.NoError(t, err)
+	require.Len(t, resp.Days, 5)
+	bigQueries := counter
+
+	assert.Equal(t, smallQueries, bigQueries, "shift batch: round trips constantes, sin término lineal por fila")
+
+	for i := 0; i < 2; i++ {
+		moved, ferr := setupDao.FindByGroupAndDate(nil, group.ID, base.AddDate(0, 0, i+1))
+		require.NoError(t, ferr)
+		require.NotNil(t, moved, "fila %d movida a +1 día", i)
+	}
+	for i := 0; i < 5; i++ {
+		moved, ferr := setupDao.FindByGroupAndDate(nil, group.ID, secondBase.AddDate(0, 0, i+1))
+		require.NoError(t, ferr)
+		require.NotNil(t, moved, "fila %d movida a +1 día", i)
+	}
 }

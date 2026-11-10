@@ -288,3 +288,36 @@ func TestGroupUserDao_MissingGroupMembers(t *testing.T) {
 		assert.Empty(t, missing)
 	})
 }
+
+func TestGroupUserDao_FindByGroupIDs_Batch(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupUserDao(db)
+	owner := persistUser(db, "gu-batch-owner@test.com", "50000901")
+	other := persistUser(db, "gu-batch-other@test.com", "50000902")
+	team := testTeam(db, "equipo_gu_batch", owner.ID)
+	groupA := testGroup(db, "grupo_gu_batch_a", team.ID)
+	groupB := testGroup(db, "grupo_gu_batch_b", team.ID)
+
+	activeA := &dbs.GroupUser{GroupID: groupA.ID, UserID: owner.ID, DateStart: time.Now()}
+	activeB := &dbs.GroupUser{GroupID: groupB.ID, UserID: other.ID, DateStart: time.Now()}
+	deletedA := &dbs.GroupUser{GroupID: groupA.ID, UserID: other.ID, DateStart: time.Now()}
+	for _, gu := range []*dbs.GroupUser{activeA, activeB, deletedA} {
+		require.NoError(t, dao.Create(nil, gu))
+	}
+	require.NoError(t, dao.SoftDelete(nil, deletedA.ID))
+
+	found, err := dao.FindByGroupIDs(nil, []int64{groupA.ID, groupB.ID})
+
+	require.NoError(t, err)
+	require.Len(t, found, 2)
+	ids := map[int64]struct{}{}
+	for _, gu := range found {
+		ids[gu.ID] = struct{}{}
+	}
+	assert.Contains(t, ids, activeA.ID)
+	assert.Contains(t, ids, activeB.ID)
+
+	empty, err := dao.FindByGroupIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

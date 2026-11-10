@@ -4,11 +4,26 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"simple-arq-golang/cmd/api/config"
 	"simple-arq-golang/cmd/api/restclients/storageclient"
 )
+
+// La base pública de storage se resuelve una sola vez: la config del proceso
+// es inmutable después del arranque.
+var (
+	mediaPublicBaseOnce sync.Once
+	mediaPublicBase     string
+)
+
+func mediaPublicBaseURL() string {
+	mediaPublicBaseOnce.Do(func() {
+		mediaPublicBase = storageclient.PublicBaseURL(config.MyStorage.Endpoint, config.MyStorage.Bucket, config.MyStorage.PublicBaseURL)
+	})
+	return mediaPublicBase
+}
 
 // buildMediaURL arma la URL pública de un objeto de storage a partir de su key
 // y la fecha de última actualización (usada como parámetro de cache-busting).
@@ -23,7 +38,7 @@ func buildMediaURL(key *string, updatedAt *time.Time) *string {
 		version = updatedAt.Unix()
 	}
 
-	base := storageclient.PublicBaseURL(config.MyStorage.Endpoint, config.MyStorage.Bucket, config.MyStorage.PublicBaseURL)
+	base := mediaPublicBaseURL()
 	url := fmt.Sprintf("%s/%s?v=%d", base, *key, version)
 	return &url
 }

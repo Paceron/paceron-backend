@@ -427,6 +427,95 @@ func TestProcessPayment_InstallmentForbidden(t *testing.T) {
 	assert.Equal(t, constants.ErrorCodePaymentInstallmentForbidden, apiErr.Code)
 }
 
+func TestProcessPayment_AmountMismatch_Returns400(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments", controller.ProcessPayment)
+
+	insID := int64(501)
+	reqBody := payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1000,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		InstallmentID:     &insID,
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("ProcessPayment", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, services.ErrPaymentAmountMismatch)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	service.AssertExpectations(t)
+}
+
+func TestProcessPayment_PreferenceOfAnotherUser_Returns404(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments", controller.ProcessPayment)
+
+	reqBody := payment.ProcessPaymentRequest{
+		Token:             "tok_visa",
+		TransactionAmount: 1500,
+		PaymentMethodID:   "visa",
+		Installments:      1,
+		PayerEmail:        "payer@example.com",
+		PreferenceID:      "pref-ajena",
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("ProcessPayment", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, errors.New("payment not found"))
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var apiErr apierror.APIError
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &apiErr))
+	assert.Equal(t, "Not found", apiErr.Code)
+	service.AssertExpectations(t)
+}
+
+func TestCreatePreference_AmountMismatch_Returns400(t *testing.T) {
+	service := new(mockPaymentService)
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments/preference", controller.CreatePreference)
+
+	insID := int64(5)
+	reqBody := payment.CreatePreferenceRequest{
+		Concept:       string(constants.PaymentConceptTeamSubscription),
+		Description:   "Cuota equipo",
+		InstallmentID: &insID,
+		Items: []payment.PreferenceItem{
+			{Title: "Mensualidad", Quantity: 1, UnitPrice: 1000},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	service.On("CreatePreference", mock.AnythingOfType("*gin.Context"), reqBody).Return(nil, services.ErrPaymentAmountMismatch)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments/preference", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	service.AssertExpectations(t)
+}
+
 func TestGetPaymentStatus_Success(t *testing.T) {
 	service := new(mockPaymentService)
 	controller := NewPaymentController(service)
@@ -605,6 +694,63 @@ func TestHandleWebhook_MissingSignature(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	service.AssertNotCalled(t, "HandleWebhook")
+}
+
+func TestHandleWebhook_AmountMismatch_Returns500(t *testing.T) {
+	service := new(mockPaymentService)
+	service.On("ValidateWebhookSignature", "ts=123,v1=ok", "req-id", "12345").Return(nil)
+	service.On("HandleWebhook", mock.AnythingOfType("*gin.Context"), mock.Anything).
+		Return(fmt.Errorf("webhook: %w", services.ErrPaymentAmountMismatch))
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments/webhook", controller.HandleWebhook)
+
+	reqBody := payment.WebhookNotification{
+		Type: "payment",
+		Data: struct {
+			ID string `json:"id"`
+		}{ID: "12345"},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments/webhook", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", "ts=123,v1=ok")
+	req.Header.Set("X-Request-Id", "req-id")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	service.AssertExpectations(t)
+}
+
+func TestHandleWebhook_GenericError_StillReturns200(t *testing.T) {
+	service := new(mockPaymentService)
+	service.On("ValidateWebhookSignature", "ts=123,v1=ok", "req-id", "12345").Return(nil)
+	service.On("HandleWebhook", mock.AnythingOfType("*gin.Context"), mock.Anything).Return(errors.New("db boom"))
+	controller := NewPaymentController(service)
+
+	router := setupRouter()
+	router.POST("/api/v1/payments/webhook", controller.HandleWebhook)
+
+	reqBody := payment.WebhookNotification{
+		Type: "payment",
+		Data: struct {
+			ID string `json:"id"`
+		}{ID: "12345"},
+	}
+	body, _ := json.Marshal(reqBody)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/api/v1/payments/webhook", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature", "ts=123,v1=ok")
+	req.Header.Set("X-Request-Id", "req-id")
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	service.AssertExpectations(t)
 }
 
 func TestGenerateTestCardToken_Success(t *testing.T) {

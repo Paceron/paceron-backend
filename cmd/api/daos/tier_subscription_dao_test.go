@@ -314,3 +314,36 @@ func TestTierSubscriptionDao_FindByUserRoleTier(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, missing)
 }
+func TestTierSubscriptionDao_FindActiveByUserRoles_Batch(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierSubscriptionDao(db)
+	user := persistUser(db, "ts-batch@test.com", "31000999")
+	roleA := testRole(db, "role_for_ts_batch_a")
+	roleB := testRole(db, "role_for_ts_batch_b")
+	roleC := testRole(db, "role_for_ts_batch_c")
+
+	active := persistSubscription(db, user.ID, roleA.ID, 1, string(constants.SubscriptionStatusActive))
+	persistSubscription(db, user.ID, roleB.ID, 1, string(constants.SubscriptionStatusEnded))
+	pending := persistSubscription(db, user.ID, roleC.ID, 1, string(constants.SubscriptionStatusFirstPaymentPending))
+
+	onlyActive, err := dao.FindActiveByUserRoles(nil, user.ID, []int64{roleA.ID, roleB.ID, roleC.ID}, string(constants.SubscriptionStatusActive))
+
+	require.NoError(t, err)
+	require.Len(t, onlyActive, 1)
+	assert.Equal(t, active.ID, onlyActive[0].ID)
+
+	both, err := dao.FindActiveByUserRoles(nil, user.ID, []int64{roleA.ID, roleB.ID, roleC.ID})
+
+	require.NoError(t, err)
+	require.Len(t, both, 2)
+	ids := map[int64]struct{}{}
+	for _, sub := range both {
+		ids[sub.ID] = struct{}{}
+	}
+	assert.Contains(t, ids, active.ID)
+	assert.Contains(t, ids, pending.ID)
+
+	empty, err := dao.FindActiveByUserRoles(nil, user.ID, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

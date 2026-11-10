@@ -77,6 +77,9 @@ func (s *userRoleService) AssignRole(ctx *gin.Context, userID int64, req *userro
 	if role == nil {
 		return nil, fmt.Errorf("rol no encontrado")
 	}
+	if role.Name == protectedRoleName && req.TierID != 0 {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
+	}
 
 	existing, err := s.userRoleDao.FindByUserAndRole(ctx, userID, req.RoleID)
 	if err != nil {

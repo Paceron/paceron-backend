@@ -17,8 +17,9 @@ import (
 // zero-value sin panic, para poder usarse como mockPushTokenDao{} en tests que no
 // les interesa este colaborador.
 type mockPushTokenDao struct {
-	mockUpsert       func(ctx *gin.Context, userID int64, token, platform string) error
-	mockFindByUserID func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error)
+	mockUpsert        func(ctx *gin.Context, userID int64, token, platform string) error
+	mockFindByUserID  func(ctx *gin.Context, userID int64) ([]dbs.PushToken, error)
+	mockFindByUserIDs func(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error)
 }
 
 func (m mockPushTokenDao) Upsert(ctx *gin.Context, userID int64, token, platform string) error {
@@ -31,6 +32,13 @@ func (m mockPushTokenDao) Upsert(ctx *gin.Context, userID int64, token, platform
 func (m mockPushTokenDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.PushToken, error) {
 	if m.mockFindByUserID != nil {
 		return m.mockFindByUserID(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m mockPushTokenDao) FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
+	if m.mockFindByUserIDs != nil {
+		return m.mockFindByUserIDs(ctx, userIDs)
 	}
 	return nil, nil
 }

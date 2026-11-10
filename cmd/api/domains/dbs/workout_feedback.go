@@ -20,7 +20,7 @@ type WorkoutFeedback struct {
 	AssignedSessionID   int64      `gorm:"column:assigned_session_id;not null;index:idx_feedback_session_exercise,priority:1"`                                        // Sesión asignada (FK opaca, > 0)
 	AssignedExerciseID  int64      `gorm:"column:assigned_exercise_id;not null;index:idx_feedback_session_exercise,priority:2"`                                       // Ejercicio asignado (FK opaca, > 0)
 	AthleteUserID       int64      `gorm:"column:athlete_user_id;not null;index:idx_feedback_athlete_date,priority:1"`                                                // Atleta que ejecutó el entrenamiento
-	FeedbackOwnerUserID int64      `gorm:"column:feedback_owner_user_id;not null"`                                                                                    // Usuario que reportó el feedback (atleta o entrenador)
+	FeedbackOwnerUserID int64      `gorm:"column:feedback_owner_user_id;not null;index"`                                                                              // Usuario que reportó el feedback (atleta o entrenador)
 	ReportSource        string     `gorm:"column:report_source;not null"`                                                                                             // Origen del reporte
 	SessionDate         time.Time  `gorm:"column:session_date;type:date;not null;index:idx_feedback_team_date,priority:2;index:idx_feedback_athlete_date,priority:2"` // Fecha de la sesión
 	SetNumber           int        `gorm:"column:set_number;not null;default:0;index:idx_feedback_session_exercise,priority:3"`                                       // Número de serie dentro del set
