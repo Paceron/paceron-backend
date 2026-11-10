@@ -265,13 +265,20 @@ func (s *teamService) Create(ctx *gin.Context, ownerID int64, req *team.CreateTe
 		return nil, fmt.Errorf("error al crear equipo")
 	}
 
-	hasEntrenadorRole := false
+	roleIDs := make([]int64, 0, len(userRoles))
 	for _, ur := range userRoles {
-		role, err := s.roleDao.FindByID(ctx, ur.RoleID)
-		if err != nil {
-			continue
-		}
-		if role != nil && role.Name == teamOwnerRoleName {
+		roleIDs = append(roleIDs, ur.RoleID)
+	}
+	roles, err := s.roleDao.FindByIDs(ctx, roleIDs)
+	if err != nil {
+		customlogger.Error(ctx, "error finding owner roles by ids", err,
+			customlogger.Tag("owner_id", fmt.Sprintf("%d", ownerID)),
+			customlogger.TagMethod("Create"))
+	}
+
+	hasEntrenadorRole := false
+	for _, role := range roles {
+		if role.Name == teamOwnerRoleName {
 			hasEntrenadorRole = true
 			break
 		}
@@ -557,15 +564,21 @@ func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) 
 	return responses, nil
 }
 
-// filterByMember reduce una lista de equipos a los que el usuario indicado integra.
+// filterByMember reduce una lista de equipos a los que el usuario indicado integra,
+// resolviendo sus membresías una sola vez.
 func (s *teamService) filterByMember(ctx *gin.Context, teams []dbs.Team, memberID int64) ([]dbs.Team, error) {
+	memberships, err := s.teamUserDao.FindByUserID(ctx, memberID)
+	if err != nil {
+		return nil, err
+	}
+	memberTeams := make(map[int64]struct{}, len(memberships))
+	for _, m := range memberships {
+		memberTeams[m.TeamID] = struct{}{}
+	}
+
 	filtered := make([]dbs.Team, 0, len(teams))
 	for _, t := range teams {
-		member, err := s.teamUserDao.FindByTeamAndUser(ctx, t.ID, memberID)
-		if err != nil {
-			return nil, err
-		}
-		if member != nil {
+		if _, ok := memberTeams[t.ID]; ok {
 			filtered = append(filtered, t)
 		}
 	}

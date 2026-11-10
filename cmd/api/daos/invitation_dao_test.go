@@ -31,12 +31,16 @@ func TestInvitationDao_NoPanic(t *testing.T) {
 }
 
 func testInvitation(db *gorm.DB, teamID, inviterID, inviteeID int64) *dbs.Invitation {
+	return testInvitationWithExpiry(db, teamID, inviterID, inviteeID, time.Now().Add(24*time.Hour))
+}
+
+func testInvitationWithExpiry(db *gorm.DB, teamID, inviterID, inviteeID int64, expiresAt time.Time) *dbs.Invitation {
 	inv := &dbs.Invitation{
 		TeamID:    teamID,
 		InviterID: inviterID,
 		InviteeID: inviteeID,
 		Status:    string(constants.InvitationStatusPending),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		ExpiresAt: expiresAt,
 	}
 	db.Create(inv)
 	return inv
@@ -148,6 +152,50 @@ func TestInvitationDao_FindPendingByInviteeID_ExcludesNonPending(t *testing.T) {
 	}
 	assert.Contains(t, ids, pending.ID)
 	assert.NotContains(t, ids, rejected.ID)
+}
+
+func TestInvitationDao_FindPendingByTeamID_ExcludesExpiredAndKeepsOrder(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewInvitationDao(db)
+	owner := persistUser(db, "inv-pendteam-exp-owner@test.com", "60000016")
+	invitee1 := persistUser(db, "inv-pendteam-exp-invitee1@test.com", "60000017")
+	invitee2 := persistUser(db, "inv-pendteam-exp-invitee2@test.com", "60000018")
+	invitee3 := persistUser(db, "inv-pendteam-exp-invitee3@test.com", "60000019")
+	team := testTeam(db, "equipo_inv_pendteam_exp", owner.ID)
+	valid1 := testInvitation(db, team.ID, owner.ID, invitee1.ID)
+	testInvitationWithExpiry(db, team.ID, owner.ID, invitee2.ID, time.Now().Add(-time.Hour))
+	valid2 := testInvitation(db, team.ID, owner.ID, invitee3.ID)
+
+	found, err := dao.FindPendingByTeamID(nil, team.ID)
+
+	require.NoError(t, err)
+	ids := make([]int64, 0, len(found))
+	for _, f := range found {
+		ids = append(ids, f.ID)
+	}
+	assert.Equal(t, []int64{valid1.ID, valid2.ID}, ids)
+}
+
+func TestInvitationDao_FindPendingByInviteeID_ExcludesExpiredAndKeepsOrder(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewInvitationDao(db)
+	owner := persistUser(db, "inv-pendinvitee-exp-owner@test.com", "60000020")
+	invitee := persistUser(db, "inv-pendinvitee-exp-invitee@test.com", "60000021")
+	team1 := testTeam(db, "equipo_inv_pendinvitee_exp1", owner.ID)
+	team2 := testTeam(db, "equipo_inv_pendinvitee_exp2", owner.ID)
+	team3 := testTeam(db, "equipo_inv_pendinvitee_exp3", owner.ID)
+	valid1 := testInvitation(db, team1.ID, owner.ID, invitee.ID)
+	testInvitationWithExpiry(db, team2.ID, owner.ID, invitee.ID, time.Now().Add(-time.Hour))
+	valid2 := testInvitation(db, team3.ID, owner.ID, invitee.ID)
+
+	found, err := dao.FindPendingByInviteeID(nil, invitee.ID)
+
+	require.NoError(t, err)
+	ids := make([]int64, 0, len(found))
+	for _, f := range found {
+		ids = append(ids, f.ID)
+	}
+	assert.Equal(t, []int64{valid1.ID, valid2.ID}, ids)
 }
 
 func TestInvitationDao_UpdateStatus_Success(t *testing.T) {
