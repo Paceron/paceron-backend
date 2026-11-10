@@ -231,3 +231,30 @@ func TestGroupDao_FindByOwnerIDWithTeamName(t *testing.T) {
 	assert.Equal(t, teamA.ID, rows[0].TeamID)
 	assert.Equal(t, teamA.Name, rows[0].TeamName)
 }
+
+func TestGroupDao_FindNamesByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-names-owner@test.com", "40000913")
+	team := testTeam(db, "equipo_group_nombres", owner.ID)
+	active := testGroup(db, "grupo_nombres_activo", team.ID)
+	deleted := testGroup(db, "grupo_nombres_borrado", team.ID)
+	require.NoError(t, dao.SoftDelete(nil, deleted.ID))
+
+	results, err := dao.FindNamesByIDs(nil, []int64{active.ID, deleted.ID, 999999})
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, active.ID, results[0].ID)
+	assert.Equal(t, active.Name, results[0].Name)
+}
+
+func TestGroupDao_FindNamesByIDs_EmptyInput(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+
+	results, err := dao.FindNamesByIDs(nil, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}

@@ -171,6 +171,21 @@ func (m mockUserDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, 
 	return m.mockFindByIDs(ctx, userIDs)
 }
 
+func (m mockUserDao) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	if m.mockFindByIDs == nil {
+		return nil, nil
+	}
+	users, err := m.mockFindByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.UserName, 0, len(users))
+	for _, u := range users {
+		out = append(out, dbs.UserName{ID: u.ID, Name: u.Name, Surname: u.Surname, Email: u.Email})
+	}
+	return out, nil
+}
+
 func (m mockUserDao) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
 	if m.mockUpdatePhoto != nil {
 		return m.mockUpdatePhoto(ctx, userID, key, updatedAt)

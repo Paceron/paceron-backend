@@ -573,20 +573,38 @@ func (d *workoutFeedbackDao) UsersByIDs(ctx *gin.Context, userIDs []int64) ([]*d
 	return d.users.FindByIDs(ctx, userIDs)
 }
 
-// TeamsByIDs delega en TeamDao para el batch de team_name del historial.
+// TeamsByIDs resuelve solo id/name de los equipos del historial (el caller
+// únicamente usa el nombre). Mantiene el shape []dbs.Team de la interface.
 func (d *workoutFeedbackDao) TeamsByIDs(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error) {
 	if len(teamIDs) == 0 {
 		return nil, nil
 	}
-	return d.teams.FindByIDs(ctx, teamIDs)
+	found, err := d.teams.FindNamesByIDs(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	teams := make([]dbs.Team, 0, len(found))
+	for _, t := range found {
+		teams = append(teams, dbs.Team{ID: t.ID, Name: t.Name})
+	}
+	return teams, nil
 }
 
-// GroupsByIDs delega en GroupDao para el batch de group_name del historial.
+// GroupsByIDs resuelve solo id/name de los grupos del historial (mismo criterio
+// que TeamsByIDs).
 func (d *workoutFeedbackDao) GroupsByIDs(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error) {
 	if len(groupIDs) == 0 {
 		return nil, nil
 	}
-	return d.groups.FindByIDs(ctx, groupIDs)
+	found, err := d.groups.FindNamesByIDs(ctx, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]dbs.Group, 0, len(found))
+	for _, g := range found {
+		groups = append(groups, dbs.Group{ID: g.ID, Name: g.Name})
+	}
+	return groups, nil
 }
 
 // IsTeamOwner indica si userID es el owner del team (teams.owner_id).

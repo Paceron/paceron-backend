@@ -49,6 +49,10 @@ func (m *mockUserDaoForQuery) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*d
 	return nil, nil
 }
 
+func (m *mockUserDaoForQuery) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	return nil, nil
+}
+
 func (m *mockUserDaoForQuery) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
 	return nil
 }

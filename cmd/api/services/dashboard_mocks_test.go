@@ -189,6 +189,18 @@ func (m *mockDashboardUserDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*
 	}
 	return out, nil
 }
+
+func (m *mockDashboardUserDao) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	users, err := m.FindByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.UserName, 0, len(users))
+	for _, u := range users {
+		out = append(out, dbs.UserName{ID: u.ID, Name: u.Name, Surname: u.Surname, Email: u.Email})
+	}
+	return out, nil
+}
 func (m *mockDashboardUserDao) UpdatePhoto(ctx *gin.Context, id int64, key string, t time.Time) error {
 	return nil
 }

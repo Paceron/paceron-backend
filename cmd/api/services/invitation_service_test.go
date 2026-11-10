@@ -62,6 +62,18 @@ func (m *mockUserDaoForInvitation) FindByIDs(ctx *gin.Context, userIDs []int64) 
 	return nil, nil
 }
 
+func (m *mockUserDaoForInvitation) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	users, err := m.FindByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.UserName, 0, len(users))
+	for _, u := range users {
+		out = append(out, dbs.UserName{ID: u.ID, Name: u.Name, Surname: u.Surname, Email: u.Email})
+	}
+	return out, nil
+}
+
 func (m *mockUserDaoForInvitation) UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error {
 	return nil
 }

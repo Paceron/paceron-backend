@@ -29,3 +29,12 @@ type User struct {
 	CreatedAt            time.Time  `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 }
+
+// UserName es la proyección mínima para resolver nombres en batch sin traer el
+// resto de columnas pesadas del perfil.
+type UserName struct {
+	ID      int64  `gorm:"column:id"`
+	Name    string `gorm:"column:name"`
+	Surname string `gorm:"column:surname"`
+	Email   string `gorm:"column:email"`
+}

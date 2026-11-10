@@ -766,6 +766,18 @@ func (m *attendanceUserStub) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*db
 	return m.users, m.err
 }
 
+func (m *attendanceUserStub) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	users, err := m.FindByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.UserName, 0, len(users))
+	for _, u := range users {
+		out = append(out, dbs.UserName{ID: u.ID, Name: u.Name, Surname: u.Surname, Email: u.Email})
+	}
+	return out, nil
+}
+
 func (m *attendanceUserStub) GetByID(ctx *gin.Context, userID int64) (*dbs.User, error) {
 	return nil, errors.New("no usado en asistencia")
 }
@@ -816,6 +828,10 @@ func (m *groupStub) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Group,
 	return nil, errors.New("no usado en asistencia")
 }
 func (m *groupStub) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	return nil, errors.New("no usado en asistencia")
+}
+
+func (m *groupStub) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error) {
 	return nil, errors.New("no usado en asistencia")
 }
 func (m *groupStub) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {

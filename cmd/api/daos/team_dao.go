@@ -20,6 +20,9 @@ type TeamDaoInterface interface {
 	// FindByIDs devuelve varios equipos activos en una sola query — batch de
 	// nombres para los banners del home (design.md D6/D8, evita N+1).
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
+	// FindNamesByIDs resuelve solo id/name de equipos activos para batches de
+	// nombres que no necesitan el resto del equipo.
+	FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error)
 	Update(ctx *gin.Context, team *dbs.Team) error
 	SoftDelete(ctx *gin.Context, id int64) error
 	UpdateIcon(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
@@ -108,6 +111,22 @@ func (d *teamDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
 	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&teams).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding teams by ids: %w", err)
+	}
+	return teams, nil
+}
+
+// FindNamesByIDs devuelve id/name de los equipos activos indicados.
+func (d *teamDao) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var teams []dbs.IDName
+	err := d.DB.Model(&dbs.Team{}).
+		Select("id, name").
+		Where("id IN ? AND deleted_at IS NULL", ids).
+		Find(&teams).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding team names by ids: %w", err)
 	}
 	return teams, nil
 }

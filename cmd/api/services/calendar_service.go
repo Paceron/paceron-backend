@@ -2064,7 +2064,7 @@ func (s *calendarService) NextPresencialSession(ctx *gin.Context, userID int64) 
 		groupByID[g.ID] = g
 		teamIDs = append(teamIDs, g.TeamID)
 	}
-	teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
+	teams, err := s.teamDao.FindNamesByIDs(ctx, teamIDs)
 	if err != nil {
 		customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextPresencialSession"))
 		return nil, fmt.Errorf("error al buscar equipos del entrenador")
@@ -2117,34 +2117,17 @@ func (s *calendarService) groupNamesByIDs(ctx *gin.Context, groupIDs []int64) (m
 	if len(groupIDs) == 0 {
 		return names, nil
 	}
-	groups, err := s.groupDao.FindByIDs(ctx, groupIDs)
+	groups, err := s.groupDao.FindWithTeamNameByIDs(ctx, groupIDs)
 	if err != nil {
 		customlogger.Error(ctx, "error finding groups for banner", err, customlogger.TagMethod("NextSession"))
 		return nil, fmt.Errorf("error al buscar grupos del usuario")
 	}
-	teamIDs := make([]int64, 0)
 	for _, g := range groups {
 		if g.Name != "" {
 			names[g.ID] = g.Name
 			continue
 		}
-		teamIDs = append(teamIDs, g.TeamID)
-	}
-	if len(teamIDs) > 0 {
-		teams, err := s.teamDao.FindByIDs(ctx, teamIDs)
-		if err != nil {
-			customlogger.Error(ctx, "error finding teams for banner", err, customlogger.TagMethod("NextSession"))
-			return nil, fmt.Errorf("error al buscar grupos del usuario")
-		}
-		teamNames := make(map[int64]string, len(teams))
-		for _, t := range teams {
-			teamNames[t.ID] = t.Name
-		}
-		for _, g := range groups {
-			if g.Name == "" {
-				names[g.ID] = teamNames[g.TeamID]
-			}
-		}
+		names[g.ID] = g.TeamName
 	}
 	return names, nil
 }

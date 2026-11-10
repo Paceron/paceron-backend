@@ -331,3 +331,29 @@ func TestTeamDao_SearchPublic_HasMore(t *testing.T) {
 	assert.Len(t, results, 2)
 	assert.True(t, hasMore)
 }
+
+func TestTeamDao_FindNamesByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-names-owner@test.com", "50000009")
+	active := testTeam(db, "equipo_nombres_activo", owner.ID)
+	deleted := testTeam(db, "equipo_nombres_borrado", owner.ID)
+	require.NoError(t, dao.SoftDelete(nil, deleted.ID))
+
+	results, err := dao.FindNamesByIDs(nil, []int64{active.ID, deleted.ID, 999999})
+
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, active.ID, results[0].ID)
+	assert.Equal(t, active.Name, results[0].Name)
+}
+
+func TestTeamDao_FindNamesByIDs_EmptyInput(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+
+	results, err := dao.FindNamesByIDs(nil, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}

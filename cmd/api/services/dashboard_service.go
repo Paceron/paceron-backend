@@ -1177,16 +1177,13 @@ func (s *dashboardService) athleteNames(ctx *gin.Context, athleteIDs []int64) (m
 	if len(athleteIDs) == 0 {
 		return names, nil
 	}
-	users, err := s.userDao.FindByIDs(ctx, athleteIDs)
+	users, err := s.userDao.FindNamesByIDs(ctx, athleteIDs)
 	if err != nil {
 		customlogger.Error(ctx, "error resolving dashboard athlete names", err,
 			customlogger.TagMethod("Dashboard.athleteNames"))
 		return nil, fmt.Errorf("error al resolver los corredores del dashboard")
 	}
 	for _, user := range users {
-		if user == nil {
-			continue
-		}
 		names[user.ID] = dashboard.AthleteName{Name: user.Name, Surname: user.Surname}
 	}
 	return names, nil

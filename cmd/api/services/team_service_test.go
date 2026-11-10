@@ -63,6 +63,18 @@ func (m *mockTeamDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, erro
 	return nil, nil
 }
 
+func (m *mockTeamDao) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error) {
+	teams, err := m.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.IDName, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, dbs.IDName{ID: t.ID, Name: t.Name})
+	}
+	return out, nil
+}
+
 func (m *mockTeamDao) GetAll(ctx *gin.Context) ([]dbs.Team, error) {
 	if m.getAllFn != nil {
 		return m.getAllFn(ctx)

@@ -35,6 +35,9 @@ type GroupDaoInterface interface {
 	// FindByIDs devuelve varios grupos activos en una sola query — batch de
 	// nombres para los banners del home (design.md D6/D8, evita N+1).
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
+	// FindNamesByIDs resuelve solo id/name de grupos activos para batches de
+	// nombres que no necesitan el resto del grupo.
+	FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error)
 	// FindWithTeamNameByIDs devuelve varios grupos activos con el nombre de su
 	// equipo en una sola query.
 	FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]GroupWithTeamName, error)
@@ -130,6 +133,22 @@ func (d *groupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 	err := d.DB.Where("id IN ? AND deleted_at IS NULL", ids).Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding groups by ids: %w", err)
+	}
+	return groups, nil
+}
+
+// FindNamesByIDs devuelve id/name de los grupos activos indicados.
+func (d *groupDao) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var groups []dbs.IDName
+	err := d.DB.Model(&dbs.Group{}).
+		Select("id, name").
+		Where("id IN ? AND deleted_at IS NULL", ids).
+		Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding group names by ids: %w", err)
 	}
 	return groups, nil
 }

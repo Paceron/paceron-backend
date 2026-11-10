@@ -137,11 +137,31 @@ func (m *mockGroupDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, er
 	return nil, nil
 }
 
+func (m *mockGroupDao) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName, error) {
+	groups, err := m.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dbs.IDName, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, dbs.IDName{ID: g.ID, Name: g.Name})
+	}
+	return out, nil
+}
+
 func (m *mockGroupDao) FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
 	if m.findWithTeamNameByIDsFn != nil {
 		return m.findWithTeamNameByIDsFn(ctx, ids)
 	}
-	return nil, nil
+	groups, err := m.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]daos.GroupWithTeamName, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, daos.GroupWithTeamName{ID: g.ID, Name: g.Name, TeamID: g.TeamID})
+	}
+	return out, nil
 }
 
 func (m *mockGroupDao) Update(ctx *gin.Context, g *dbs.Group) error {

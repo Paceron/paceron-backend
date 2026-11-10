@@ -451,33 +451,22 @@ func TestDBError_NextPresencialSession_BannerConInstanciaReal(t *testing.T) {
 	require.NotNil(t, resp.PresencialTimeTo)
 }
 
-// groupNamesByIDs: errores de grupo y de team envuelven igual; y la rama del
+// groupNamesByIDs: la consulta única groups→teams envuelve el error igual; y el
 // fallback por team_name para grupos sin nombre sale bien.
 func TestDBError_groupNamesByIDs_DaoErrors(t *testing.T) {
 	groupUserDao := &mockGroupUserDao{findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 		return []dbs.GroupUser{{GroupID: 1, UserID: userID}}, nil
 	}}
-	groupDao := &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
+	groupDao := &mockGroupDao{findWithTeamNameByIDsFn: func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
 		return nil, errors.New("boom grupos")
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)
 	_, err := svc.NextSession(nil, 42)
 	require.EqualError(t, err, "error al buscar grupos del usuario")
 
-	// Grupo sin nombre y team lookup err → mismo envoltorio.
-	groupDao = &mockGroupDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "", TeamID: 10}}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return nil, errors.New("boom team find")
-	}}
-	svc = NewCalendarService(nil, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
-	_, err = svc.NextSession(nil, 42)
-	require.EqualError(t, err, "error al buscar grupos del usuario")
-
-	// Grupo sin nombre, team existe → el nombre sale del team.
-	teamDao = &mockTeamDao{findByIDsFn: func(ctx *gin.Context, ids []int64) ([]dbs.Team, error) {
-		return []dbs.Team{{ID: 10, Name: "T10"}}, nil
+	// Grupo sin nombre: el nombre sale del team resuelto por el LEFT JOIN.
+	groupDao = &mockGroupDao{findWithTeamNameByIDsFn: func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
+		return []daos.GroupWithTeamName{{ID: 1, Name: "", TeamID: 10, TeamName: "T10"}}, nil
 	}}
 	calDao := &mockGroupCalendarDao{findNextForGroupsByKindFn: func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 		if kind == "cancelled" {
@@ -485,7 +474,7 @@ func TestDBError_groupNamesByIDs_DaoErrors(t *testing.T) {
 		}
 		return &dbs.GroupCalendarDay{GroupID: 1, Date: today.AddDate(0, 0, 1), Kind: "training"}, nil
 	}}
-	svc = NewCalendarService(calDao, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+	svc = NewCalendarService(calDao, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)
 	resp, err := svc.NextSession(nil, 42)
 	require.NoError(t, err)
 	require.NotNil(t, resp.NextTraining)

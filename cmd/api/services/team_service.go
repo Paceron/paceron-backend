@@ -707,7 +707,7 @@ func (s *teamService) Search(ctx *gin.Context, callerID int64, filters team.Sear
 	canReceive := s.batchCanReceive(ctx, ownerIDs)
 
 	ownerNameByID := make(map[int64]string, len(ownerIDs))
-	users, err := s.userDao.FindByIDs(ctx, ownerIDs)
+	users, err := s.userDao.FindNamesByIDs(ctx, ownerIDs)
 	if err == nil {
 		for _, u := range users {
 			ownerNameByID[u.ID] = u.Name + " " + u.Surname
