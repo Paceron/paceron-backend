@@ -246,6 +246,43 @@ func TestSessionInstanceDao_TeamIDForSessionInstance(t *testing.T) {
 		assert.Nil(t, teamID)
 	})
 
+	t.Run("sintetica_route_anclada_por_competencia", func(t *testing.T) {
+		routeInst := &dbs.SessionInstance{Name: "Route anclada"}
+		require.NoError(t, db.Create(routeInst).Error)
+		comp := newRouteCompetition()
+		comp.TeamID = f.teamA.ID
+		comp.CreatedByUserID = f.owner.ID
+		comp.CreatedByRole = competition.CreatorRoleTrainer
+		comp.Status = competition.StatusActive
+		comp.RouteSessionInstanceID = &routeInst.ID
+		require.NoError(t, db.Create(comp).Error)
+
+		teamID, err := dao.TeamIDForSessionInstance(nil, routeInst.ID)
+		require.NoError(t, err)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("intento_2_route_por_runner_session", func(t *testing.T) {
+		attempt := &dbs.SessionInstance{Name: "Intento 2 route"}
+		require.NoError(t, db.Create(attempt).Error)
+		comp := newRouteCompetition()
+		comp.TeamID = f.teamA.ID
+		comp.CreatedByUserID = f.owner.ID
+		comp.CreatedByRole = competition.CreatorRoleTrainer
+		comp.Status = competition.StatusActive
+		require.NoError(t, db.Create(comp).Error)
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: attempt.ID, AthleteUserID: f.athlete.ID,
+			Status: "wip", StartDate: time.Now(), CompetitionID: &comp.ID,
+		}).Error)
+
+		teamID, err := dao.TeamIDForSessionInstance(nil, attempt.ID)
+		require.NoError(t, err)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
 	t.Run("dia_con_grupo_borrado", func(t *testing.T) {
 		team := testTeam(db, "equipo_access_group_deleted", f.owner.ID)
 		group := testGroup(db, "grupo_access_deleted", team.ID)

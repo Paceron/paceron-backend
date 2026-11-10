@@ -37,21 +37,21 @@ type SessionInstanceDaoInterface interface {
 	// owner del equipo, O feedback activo sobre la instancia donde el caller
 	// es atleta, reportante u owner del equipo. TERCERA rama
 	// (competencias-ruta-intake D8, extendida por
-	// competencias-ruta-intentos-multiples D3): si la instancia es la
-	// sintética de una competencia type=route —anclada por
-	// route_session_instance_id o con algún runner_session tagueado con ella
-	// (intentos 2+, cualquier status)— autoriza al participante de esa
-	// competencia (el front suscribe el canal session:{id} del intento en el
-	// pre-start, antes de que exista feedback).
+	// competencias-ruta-intentos-multiples D3): la instancia sintética de una
+	// competencia type=route (anclada por route_session_instance_id) autoriza
+	// a sus participantes; un intento 2+ (runner_session tagueado) autoriza
+	// solo a su propio atleta (que además debe ser participante).
 	HasInstanceAccess(ctx *gin.Context, instanceID, callerID int64) (bool, error)
 	// HasInstanceAccessBatch: espejo en lote de HasInstanceAccess (misma regla,
 	// incluida la rama de competencias route con sus dos vías). Cantidad de
 	// queries independiente de la lista; todo userIDs queda en el map (false
 	// si sin acceso). Lote vacío no toca la DB.
 	HasInstanceAccessBatch(ctx *gin.Context, instanceID int64, userIDs []int64) (map[int64]bool, error)
-	// TeamIDForSessionInstance devuelve el team_id del día de calendario que
-	// referencia la instancia (grupo y equipo no borrados). nil, nil si la
-	// instancia es sintética (ruta) o huérfana, o si su día/equipo ya no existe.
+	// TeamIDForSessionInstance devuelve el team_id efectivo de la instancia:
+	// primero el día de calendario (grupo y equipo no borrados); si no hay día,
+	// la competencia route que la ancla como instancia sintética; y si tampoco,
+	// la competencia route del runner_session tagueado (intentos 2+). nil, nil
+	// si no hay ninguna de las tres vías.
 	TeamIDForSessionInstance(ctx *gin.Context, instanceID int64) (*int64, error)
 	// ExerciseBelongsToSessionInstance reporta si existe un link
 	// session_exercise_instances para el par (instancia, ejercicio).
@@ -134,6 +134,36 @@ JOIN teams t ON t.id = g.team_id AND t.deleted_at IS NULL
 WHERE gcd.session_instance_id = ?
 ORDER BY gcd.id
 LIMIT 1`, instanceID).Scan(&teamID).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding session instance team: %w", err)
+	}
+	if teamID != 0 {
+		return &teamID, nil
+	}
+
+	// Instancia sintética anclada por una competencia route.
+	err = d.DB.Raw(`
+SELECT c.team_id
+FROM competition c
+WHERE c.route_session_instance_id = ? AND c.type = ?
+ORDER BY c.id
+LIMIT 1`, instanceID, competition.TypeRoute).Scan(&teamID).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding session instance team: %w", err)
+	}
+	if teamID != 0 {
+		return &teamID, nil
+	}
+
+	// Intentos 2+: la instancia no está anclada, pero un runner_session la
+	// tagueó con una competencia route.
+	err = d.DB.Raw(`
+SELECT c.team_id
+FROM runner_session rs
+JOIN competition c ON c.id = rs.competition_id AND c.type = ?
+WHERE rs.session_instance_id = ?
+ORDER BY rs.id
+LIMIT 1`, competition.TypeRoute, instanceID).Scan(&teamID).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding session instance team: %w", err)
 	}
@@ -221,6 +251,7 @@ SELECT EXISTS (
     FROM runner_session rs
     JOIN competition c2 ON c2.id = rs.competition_id AND c2.type = $3
     WHERE rs.session_instance_id = $2
+      AND rs.athlete_user_id = $1
       AND EXISTS (
           SELECT 1
           FROM competition_participant cp2
@@ -283,6 +314,7 @@ WHERE EXISTS (
     FROM runner_session rs
     JOIN competition c2 ON c2.id = rs.competition_id AND c2.type = $3
     WHERE rs.session_instance_id = $2
+      AND rs.athlete_user_id = u.user_id
       AND EXISTS (
           SELECT 1
           FROM competition_participant cp2

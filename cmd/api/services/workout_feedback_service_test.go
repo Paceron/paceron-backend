@@ -1414,6 +1414,36 @@ func TestWorkoutFeedbackService_Update_MoveInstanceDerivesTeam(t *testing.T) {
 	assert.Equal(t, int64(5), applied["team_id"])
 }
 
+// Un update que solo cambia el ejercicio de un feedback con instancia huérfana
+// conserva el team_id existente: no se re-deriva ni se pisa con nil.
+func TestWorkoutFeedbackService_Update_ExerciseOnly_KeepsOrphanTeam(t *testing.T) {
+	team := int64(3)
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7, TeamID: &team, AssignedSessionID: 10, AssignedExerciseID: 2}
+	var applied map[string]interface{}
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(ctx *gin.Context, id int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		updateFn: func(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
+			applied = updates
+			return fb, nil
+		},
+	}
+	instanceDao := &mockSessionInstanceDao{
+		exerciseBelongsFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		teamIDForSessionFn: func(_ *gin.Context, _ int64) (*int64, error) {
+			t.Fatal("no debe re-derivar el team si la instancia no cambió")
+			return nil, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock, instanceDao)
+
+	newExercise := int64(5)
+	_, err := svc.Update(nil, 7, 1, workoutfeedback.UpdateFeedbackRequest{AssignedExerciseID: &newExercise})
+
+	require.NoError(t, err)
+	_, hasTeam := applied["team_id"]
+	assert.False(t, hasTeam, "el team_id existente se preserva sin tocarse")
+}
+
 // Propagación de errores de los helpers de instancia (sin tragarlos ni
 // convertirlos a sentinels de negocio).
 

@@ -34,6 +34,9 @@ func sendPushToUser(
 	userID int64,
 	title, body, notifType, route string,
 ) {
+	if pushClient == nil {
+		return
+	}
 	tokens, err := pushTokenDao.FindByUserID(ctx, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding push tokens for notification", err,
@@ -72,6 +75,22 @@ func sendPushToUser(
 // y los envía best-effort: un lote fallido no frena a los siguientes. logCtx
 // conserva el contexto original para los logs (nil cuando no hay request).
 func sendPushTokenChunks(sendCtx context.Context, logCtx *gin.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, tags ...string) {
+	if pushClient == nil {
+		return
+	}
+	seen := make(map[string]struct{}, len(tokens))
+	unique := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if token == "" {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		unique = append(unique, token)
+	}
+	tokens = unique
 	for start := 0; start < len(tokens); start += expoPushBatchLimit {
 		end := start + expoPushBatchLimit
 		if end > len(tokens) {

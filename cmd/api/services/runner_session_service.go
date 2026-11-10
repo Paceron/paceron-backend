@@ -98,6 +98,19 @@ func (s *runnerSessionService) requireInstanceAccess(ctx *gin.Context, sessionIn
 	return nil
 }
 
+// requireInstanceAccessForCaller valida al atleta efectivo y, cuando el caller
+// es un coach, también al caller: un entrenador solo opera sobre un atleta en
+// una instancia a la que él mismo tiene acceso.
+func (s *runnerSessionService) requireInstanceAccessForCaller(ctx *gin.Context, sessionInstanceID, authUserID, athleteUserID int64) error {
+	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
+		return err
+	}
+	if authUserID != athleteUserID {
+		return s.requireInstanceAccess(ctx, sessionInstanceID, authUserID)
+	}
+	return nil
+}
+
 // validateCompetitionIntent aplica las reglas del intento tagueado (D9): la
 // competencia debe existir, estar active, el caller ser participante, el
 // instante actual estar dentro del rango activo y respetar el anclaje de
@@ -175,9 +188,9 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 		return nil, nil, false, err
 	}
 
-	// Acceso del atleta efectivo a la instancia, después del 403 de
-	// resolveAthlete y antes del gate/WRITE.
-	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
+	// Acceso del atleta efectivo (y del caller coach si aplica) a la
+	// instancia, después del 403 de resolveAthlete y antes del gate/WRITE.
+	if err := s.requireInstanceAccessForCaller(ctx, sessionInstanceID, authUserID, athleteUserID); err != nil {
 		return nil, nil, false, err
 	}
 
@@ -234,12 +247,21 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 		return nil, fmt.Errorf("%w: status solo admite 'finished' o 'interrupted'", ErrRunnerSessionInvalid)
 	}
 
+	// Instancia inexistente = 404 antes del guard de acceso (403).
+	exists, err := s.runnerSessionDao.SessionInstanceExists(ctx, sessionInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrSessionInstanceNotFound
+	}
+
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
+	if err := s.requireInstanceAccessForCaller(ctx, sessionInstanceID, authUserID, athleteUserID); err != nil {
 		return nil, err
 	}
 
@@ -264,11 +286,19 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 // Get devuelve el estado actual de la sesión para el atleta resuelto (self por
 // default). Sin fila → 404.
 func (s *runnerSessionService) Get(ctx *gin.Context, authUserID, sessionInstanceID int64, athleteUserID *int64) (*dbs.RunnerSession, error) {
+	// Instancia inexistente = 404 antes del guard de acceso (403).
+	exists, err := s.runnerSessionDao.SessionInstanceExists(ctx, sessionInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrSessionInstanceNotFound
+	}
 	target, err := s.resolveAthlete(ctx, authUserID, athleteUserID)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireInstanceAccess(ctx, sessionInstanceID, target); err != nil {
+	if err := s.requireInstanceAccessForCaller(ctx, sessionInstanceID, authUserID, target); err != nil {
 		return nil, err
 	}
 	return s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, target)
