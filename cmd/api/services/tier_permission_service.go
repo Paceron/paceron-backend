@@ -22,18 +22,32 @@ type tierPermissionService struct {
 	tierPermissionDao daos.TierPermissionDaoInterface
 	tierDao           daos.TierDaoInterface
 	permissionDao     daos.PermissionDaoInterface
+	roleDao           daos.RoleDaoInterface
 }
 
 func NewTierPermissionService(
 	tierPermissionDao daos.TierPermissionDaoInterface,
 	tierDao daos.TierDaoInterface,
 	permissionDao daos.PermissionDaoInterface,
+	roleDao daos.RoleDaoInterface,
 ) TierPermissionServiceInterface {
 	return &tierPermissionService{
 		tierPermissionDao: tierPermissionDao,
 		tierDao:           tierDao,
 		permissionDao:     permissionDao,
+		roleDao:           roleDao,
 	}
+}
+
+// tierBelongsToProtectedRole resuelve el rol vivo por RoleID (no el RoleName
+// denormalizado del tier) para que un role_name vacío/desincronizado no abra el
+// bypass del tier base interno del corredor.
+func (s *tierPermissionService) tierBelongsToProtectedRole(ctx *gin.Context, t *dbs.Tier) (bool, error) {
+	role, err := s.roleDao.FindByID(ctx, t.RoleID)
+	if err != nil {
+		return false, err
+	}
+	return role != nil && role.Name == protectedRoleName, nil
 }
 
 func (s *tierPermissionService) Assign(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error) {
@@ -46,6 +60,16 @@ func (s *tierPermissionService) Assign(ctx *gin.Context, tierID int64, req *tier
 	}
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
+	}
+	protected, err := s.tierBelongsToProtectedRole(ctx, t)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for tier", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("Assign"))
+		return nil, fmt.Errorf("error al asignar permiso")
+	}
+	if protected {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
 	}
 
 	perm, err := s.permissionDao.FindByID(ctx, req.PermissionID)
@@ -99,6 +123,27 @@ func (s *tierPermissionService) Assign(ctx *gin.Context, tierID int64, req *tier
 }
 
 func (s *tierPermissionService) Unassign(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error) {
+	t, err := s.tierDao.FindByID(ctx, tierID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding tier for permission unassign", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("Unassign"))
+		return nil, fmt.Errorf("error al desasignar permiso")
+	}
+	if t == nil {
+		return nil, fmt.Errorf("tier no encontrado")
+	}
+	protected, err := s.tierBelongsToProtectedRole(ctx, t)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for tier", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("Unassign"))
+		return nil, fmt.Errorf("error al desasignar permiso")
+	}
+	if protected {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
+	}
+
 	existing, err := s.tierPermissionDao.FindByTierAndPermission(ctx, tierID, permissionID)
 	if err != nil {
 		customlogger.Error(ctx, "error finding assignment for unassign", err,
@@ -139,6 +184,18 @@ func (s *tierPermissionService) List(ctx *gin.Context, tierID int64) (*tierpermi
 	}
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
+	}
+	// List también falla cerrado (400): el tier base del corredor es soporte
+	// interno y no se expone ni por lectura, consistente con Assign/Unassign.
+	protected, err := s.tierBelongsToProtectedRole(ctx, t)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for tier", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", tierID)),
+			customlogger.TagMethod("List"))
+		return nil, fmt.Errorf("error al listar permisos")
+	}
+	if protected {
+		return nil, fmt.Errorf("el rol corredor no admite tiers")
 	}
 
 	items, err := s.tierPermissionDao.ListPermissionNamesByTier(ctx, tierID)

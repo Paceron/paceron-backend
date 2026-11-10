@@ -332,7 +332,7 @@ Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`**
 
 **Conexión:** `wss://host/api/v1/ws?token=<access_token>` — mismo access token JWT del resto de la API, en query param (no hay header `Authorization` en el handshake). Falta/inválido/expirado → `401` JSON `apierror.APIError` antes del upgrade (`code` ∈ {`unauthorized`, `token_expired`}). Clientes nativos sin header `Origin` pasan; browser con origin fuera de `CORS_ALLOWED_ORIGINS` → upgrade rechazado.
 
-**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla dual de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
+**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla de acceso de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
 
 **Eventos:**
 
@@ -817,7 +817,7 @@ Cualquier fallo posterior a la creación de la instancia → **rollback total** 
 
 ### 19.4 Autorización WS por instancia de intento
 
-La 3ª rama de acceso a instancia (`HasInstanceAccess`, §11/§12) se extiende con un `OR EXISTS`: además del ancla `route_session_instance_id` (ruta de siempre), ahora un participante de la competencia accede a cualquier instancia con un runner session tagueado `competition_id` de esa competencia (**cualquier status del intento**, sin filtro). Cada lado del OR mantiene su participant-check propio. Singular y batch espejo idénticos (no pueden divergir). Efecto: el canal `session:{session_instance_id}` de **cada intento 2+** es accesible para sus participantes con la misma suscripción de §11 — un participante corre su intento 2 con live WS normal sobre esa instancia.
+La 3ª rama de acceso a instancia (`HasInstanceAccess`, §11/§12) se extiende con un `OR EXISTS`: además del ancla `route_session_instance_id` (ruta de siempre), ahora el **atleta dueño** del `runner_session` tagueado con `competition_id` accede a la instancia de **su propio intento** (**cualquier status del intento**, sin filtro). La instancia compartida del intento 1 sigue accesible a todos los participantes por el ancla. Cada lado del OR mantiene su participant-check propio. Singular y batch espejo idénticos (no pueden divergir). Efecto: el canal `session:{session_instance_id}` de **cada intento 2+** es accesible solo para el atleta dueño de ese intento con la misma suscripción de §11 — otro participante no accede a la instancia ajena; el cierre le llega por los canales de sus propios intentos (o por el push/refetch).
 
 ### 19.5 NUEVO — `GET /competitions/{id}/attempts`
 
@@ -946,13 +946,15 @@ Cambios de comportamiento **confirmados en el código final** de la rama `featur
 
 - `POST /workout-feedback`: ahora exige que el caller **y** el atleta efectivo tengan acceso a `assigned_session_id` → `403` (`"no tenés permisos para operar sobre este feedback"`). Además:
   - `assigned_exercise_id` debe pertenecer a la instancia → `400` (`"datos inválidos: assigned_exercise_id no pertenece a la sesión asignada"`).
-  - Si viene `team_id`, debe coincidir con el equipo derivado del día de calendario; si no coincide (o la instancia no tiene equipo) → `400` (`"datos inválidos: team_id no coincide con el equipo de la sesión asignada"`). Si no viene, el backend persiste el derivado.
+  - Si viene `team_id`, debe coincidir con el equipo efectivo derivado de la instancia; si no coincide (o la instancia no tiene equipo) → `400` (`"datos inválidos: team_id no coincide con el equipo de la sesión asignada"`). Si no viene, el backend persiste el derivado. El equipo efectivo ahora se deriva, en este orden: día de calendario → competencia route que ancla la instancia compartida (`route_session_instance_id`) → competencia route del `runner_session` del intento 2+. Por eso el feedback de un intento route (incluidos los intentos 2+) ya persiste `team_id` y el entrenador dueño puede leerlo con `GET /session-instances/:id/feedback` sin cambios de shape.
 - `PUT /workout-feedback/:id`: si el payload cambia `assigned_session_id`, `assigned_exercise_id` o `team_id`, aplica los **mismos guards** (`403`/`400`). Cierra el bypass que permitía mover un feedback a una instancia ajena. Si no cambia ninguno, no hay validación extra ni cambio de comportamiento.
 - `GET /session-instances/:id/feedback`: ahora exige que el caller tenga acceso a la instancia → `403` (antes no validaba el acceso del caller). El shape y los filtros (`athlete_user_id`) no cambian.
 
 ### 22.2 Runner sessions: acceso del atleta efectivo
 
-`POST`, `PATCH` y `GET /session-instances/:id/runner` exigen que el atleta efectivo (self o el que indica un entrenador) tenga acceso a la instancia → `403` con `"no tenés permisos para operar sobre este estado de sesión"`. Orden de guards en `POST`: `404` instancia inexistente → `403` atleta ajeno (regla previa) → `403` sin acceso a la instancia → `409` del gate presencial (`session_closed`/`session_not_opened`, §12.2). En `PATCH`/`GET`, el `403` nuevo va después de resolver el atleta y antes de leer/escribir. Los intentos de competencia siguen funcionando (la regla de acceso incluye las instancias de ruta). Shapes y transiciones sin cambios (§12.1/§16.6).
+`POST`, `PATCH` y `GET /session-instances/:id/runner` exigen que el atleta efectivo (self o el que indica un entrenador) tenga acceso a la instancia → `403` con `"no tenés permisos para operar sobre este estado de sesión"`. Cuando el caller actúa sobre otro atleta, además se exige el acceso **propio** del caller: un coach sin acceso a la instancia ya no puede operar sobre el atleta → `403`, aunque el atleta tenga acceso. La autorización es la misma de `HasInstanceAccess` (día/grupo, feedback activo o competencia route; en intentos 2+ solo el atleta dueño del intento).
+
+Orden exacto de guards en `POST`: `404` instancia inexistente → `403` atleta ajeno (regla previa) → `403` caller/atleta sin acceso a la instancia → `409` del gate presencial (`session_closed`/`session_not_opened`, §12.2). En `PATCH`/`GET`, el `404` de instancia inexistente va **antes** del `403` de acceso (y de resolver el atleta), y el `403` de acceso va antes de leer/escribir. Los intentos de competencia siguen funcionando (la regla de acceso incluye las instancias de ruta). Shapes y transiciones sin cambios (§12.1/§16.6).
 
 ### 22.3 Pagos: ownership de preferencia y montos de cuota
 

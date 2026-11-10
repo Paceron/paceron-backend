@@ -28,7 +28,7 @@ func (m *mockRunnerSessionDao) SessionInstanceExists(ctx *gin.Context, sessionIn
 	if m.sessionInstanceExistsFn != nil {
 		return m.sessionInstanceExistsFn(ctx, sessionInstanceID)
 	}
-	return false, nil
+	return true, nil
 }
 
 func (m *mockRunnerSessionDao) Create(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
@@ -643,10 +643,10 @@ func TestRunnerSessionService_Get_NoInstanceAccess_Forbidden(t *testing.T) {
 
 func TestRunnerSessionService_Access_TrainerForAthleteInOwnedTeam(t *testing.T) {
 	athlete := int64(30)
-	var checkedCaller int64
+	var checkedCallers []int64
 	instanceDao := &mockSessionInstanceDao{
 		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
-			checkedCaller = callerID
+			checkedCallers = append(checkedCallers, callerID)
 			return true, nil
 		},
 	}
@@ -663,7 +663,91 @@ func TestRunnerSessionService_Access_TrainerForAthleteInOwnedTeam(t *testing.T) 
 	_, err := svc.Get(nil, 7, 10, &athlete)
 
 	require.NoError(t, err)
-	assert.Equal(t, athlete, checkedCaller, "el acceso se valida para el atleta efectivo")
+	assert.Contains(t, checkedCallers, athlete, "el acceso se valida para el atleta efectivo")
+	assert.Contains(t, checkedCallers, int64(7), "y también para el caller coach")
+}
+
+// Un coach solo puede operar sobre un atleta en una instancia a la que él
+// también tiene acceso (el atleta sí tiene acceso, el coach no).
+func TestRunnerSessionService_CoachWithoutInstanceAccess_Forbidden(t *testing.T) {
+	athlete := int64(30)
+	accessDao := func(athleteAccess bool) *mockSessionInstanceDao {
+		return &mockSessionInstanceDao{
+			hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+				if callerID == athlete {
+					return athleteAccess, nil
+				}
+				return false, nil
+			},
+		}
+	}
+	ownedAthlete := func(ctx *gin.Context, targetUserID, ownerUserID int64) (bool, error) { return true, nil }
+
+	t.Run("create", func(t *testing.T) {
+		writeAttempted := false
+		mock := &mockRunnerSessionDao{
+			existsUserInTeamOwnedByFn: ownedAthlete,
+			createFn: func(ctx *gin.Context, rs *dbs.RunnerSession) (bool, error) {
+				writeAttempted = true
+				return true, nil
+			},
+		}
+		svc := NewRunnerSessionServiceWithAccess(mock, accessDao(true), nil)
+
+		_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+			AthleteUserID: &athlete, StartDate: sessionDate,
+		})
+		require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+		assert.False(t, writeAttempted)
+	})
+
+	t.Run("finish", func(t *testing.T) {
+		mock := &mockRunnerSessionDao{
+			existsUserInTeamOwnedByFn: ownedAthlete,
+			getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+				return fixtureRunnerSession(), nil
+			},
+		}
+		svc := NewRunnerSessionServiceWithAccess(mock, accessDao(true), nil)
+
+		_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{
+			Status: "finished", AthleteUserID: &athlete,
+		})
+		require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+	})
+
+	t.Run("get", func(t *testing.T) {
+		mock := &mockRunnerSessionDao{
+			existsUserInTeamOwnedByFn: ownedAthlete,
+			getBySessionAthleteFn: func(ctx *gin.Context, sessionInstanceID, athleteUserID int64) (*dbs.RunnerSession, error) {
+				return fixtureRunnerSession(), nil
+			},
+		}
+		svc := NewRunnerSessionServiceWithAccess(mock, accessDao(true), nil)
+
+		_, err := svc.Get(nil, 7, 10, &athlete)
+		require.ErrorIs(t, err, ErrRunnerSessionForbidden)
+	})
+}
+
+// La instancia inexistente gana al guard de acceso: 404, no 403.
+func TestRunnerSessionService_InstanceMissing_BeforeAccessGuard(t *testing.T) {
+	instanceDao := &mockSessionInstanceDao{
+		hasInstanceAccessFn: func(ctx *gin.Context, instanceID, callerID int64) (bool, error) {
+			t.Fatal("no se debe consultar acceso de una instancia inexistente")
+			return false, nil
+		},
+	}
+	mock := &mockRunnerSessionDao{
+		sessionInstanceExistsFn: func(ctx *gin.Context, sessionInstanceID int64) (bool, error) { return false, nil },
+	}
+	svc := NewRunnerSessionServiceWithAccess(mock, instanceDao, nil)
+
+	_, err := svc.Finish(nil, 7, 10, runnersession.RunnerStatusRequest{Status: "finished"})
+	require.ErrorIs(t, err, ErrSessionInstanceNotFound)
+
+	_, err = svc.Get(nil, 7, 10, nil)
+	require.ErrorIs(t, err, ErrSessionInstanceNotFound)
 }
 
 func TestRunnerSessionService_NilInstanceDao_FailsClosed(t *testing.T) {

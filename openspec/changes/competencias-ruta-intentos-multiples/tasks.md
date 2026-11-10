@@ -168,9 +168,10 @@ Files/interfaces:
 Steps:
 - [x] 3.1 Extensión de la 3ª rama `HasInstanceAccess`: OR EXISTS
       (runner_session rs JOIN competition c2 rs.competition_id = c2.id AND
-      c2.type='route' WHERE rs.session_instance_id = ? AND caller participante
-      de c2) SIN filtro de status del intento. La rama original
-      (route_session_instance_id) queda intacta.
+      c2.type='route' WHERE rs.session_instance_id = ? AND
+      rs.athlete_user_id = caller) SIN filtro de status del intento. La rama
+      original (route_session_instance_id) queda intacta y sigue autorizando a
+      los participantes de la instancia compartida.
 - [x] 3.2 Mirror idéntico en `hasAccessBatchCompetitionSQL` (espejo batch,
       mismo OR con u.user_id como caller) — singular y batch no pueden
       divergir.

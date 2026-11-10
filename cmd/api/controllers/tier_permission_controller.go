@@ -75,6 +75,9 @@ func (tpc *tierPermissionController) Assign(c *gin.Context) {
 		} else if errMsg == "el permiso ya está asignado a este tier" {
 			statusCode = http.StatusConflict
 			code = "Conflict"
+		} else if errMsg == "el rol corredor no admite tiers" {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -96,6 +99,7 @@ func (tpc *tierPermissionController) Assign(c *gin.Context) {
 // @Param        id             path      int  true  "Tier ID"
 // @Param        permission_id  path      int  true  "Permission ID"
 // @Success      200            {object}  tierpermission.DeleteTierPermissionResponse
+// @Failure      400            {object}  apierror.APIError
 // @Failure      404            {object}  apierror.APIError
 // @Failure      500            {object}  apierror.APIError
 // @Router       /api/v1/tiers/{id}/permissions/{permission_id} [delete]
@@ -128,9 +132,12 @@ func (tpc *tierPermissionController) Unassign(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		code := "Internal Server Error"
 
-		if errMsg == "asignación no encontrada" {
+		if errMsg == "asignación no encontrada" || errMsg == "tier no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el rol corredor no admite tiers" {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{
@@ -176,6 +183,9 @@ func (tpc *tierPermissionController) List(c *gin.Context) {
 		if errMsg == "tier no encontrado" {
 			statusCode = http.StatusNotFound
 			code = "Not Found"
+		} else if errMsg == "el rol corredor no admite tiers" {
+			statusCode = http.StatusBadRequest
+			code = "Bad request"
 		}
 
 		c.JSON(statusCode, apierror.APIError{

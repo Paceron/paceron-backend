@@ -85,12 +85,14 @@ func (d *tierDao) FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Tier, error) {
 	return tiers, nil
 }
 
-// FindLowestByRole devuelve el tier de menor jerarquía (base) de un rol — sirve
-// como tier de acceso inicial cuando se asigna un rol con tier pago (D2).
+// FindLowestByRole devuelve el tier base gratuito de menor jerarquía de un rol —
+// sirve como tier de acceso inicial cuando se asigna un rol con tier pago (D2).
+// El filtro payment_required=false garantiza que el base nunca sea un tier pago;
+// si el rol no tiene base gratuito devuelve nil y los flujos fallan cerrado.
 func (d *tierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, error) {
 	var tier dbs.Tier
 	err := d.DB.
-		Where("role_id = ? AND deleted_at IS NULL", roleID).
+		Where("role_id = ? AND deleted_at IS NULL AND payment_required = FALSE", roleID).
 		Order("hierarchy ASC, id ASC").
 		First(&tier).Error
 	if err != nil {
@@ -102,8 +104,9 @@ func (d *tierDao) FindLowestByRole(ctx *gin.Context, roleID int64) (*dbs.Tier, e
 	return &tier, nil
 }
 
-// FindLowestByRoles es la variante batch de FindLowestByRole: devuelve el tier de
-// menor jerarquía de cada rol en una sola query (DISTINCT ON de Postgres).
+// FindLowestByRoles es la variante batch de FindLowestByRole: devuelve el tier
+// base gratuito de menor jerarquía de cada rol en una sola query (DISTINCT ON de
+// Postgres). Los roles sin base gratuito quedan ausentes del resultado.
 func (d *tierDao) FindLowestByRoles(ctx *gin.Context, roleIDs []int64) ([]dbs.Tier, error) {
 	if len(roleIDs) == 0 {
 		return nil, nil
@@ -112,7 +115,7 @@ func (d *tierDao) FindLowestByRoles(ctx *gin.Context, roleIDs []int64) ([]dbs.Ti
 	err := d.DB.Raw(`
 SELECT DISTINCT ON (role_id) *
 FROM tiers
-WHERE role_id IN ? AND deleted_at IS NULL
+WHERE role_id IN ? AND deleted_at IS NULL AND payment_required = FALSE
 ORDER BY role_id ASC, hierarchy ASC, id ASC`, roleIDs).Scan(&tiers).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding lowest tiers by roles: %w", err)

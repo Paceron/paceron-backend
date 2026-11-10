@@ -236,6 +236,80 @@ func TestSessionInstanceDao_HasInstanceAccess_IntentosMultiples(t *testing.T) {
 	})
 }
 
+// Dos participantes de la MISMA competencia route: el ancla compartida
+// autoriza a ambos, pero cada intento 2+ solo lo ve su propio atleta.
+func TestSessionInstanceDao_HasInstanceAccess_IntentoRouteSoloDueño(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewSessionInstanceDao(db)
+	f := accessFixtureSetup(t, db)
+	second := persistUser(db, "access-second-comp@test.com", "70000009")
+
+	shared := &dbs.SessionInstance{Name: "Ancla compartida"}
+	require.NoError(t, db.Create(shared).Error)
+	comp := newRouteCompetition()
+	comp.TeamID = f.teamA.ID
+	comp.CreatedByUserID = f.owner.ID
+	comp.CreatedByRole = competition.CreatorRoleTrainer
+	comp.Status = competition.StatusActive
+	comp.RouteSessionInstanceID = &shared.ID
+	require.NoError(t, db.Create(comp).Error)
+	require.NoError(t, db.Create(&dbs.CompetitionParticipant{CompetitionID: comp.ID, UserID: f.athlete.ID}).Error)
+	require.NoError(t, db.Create(&dbs.CompetitionParticipant{CompetitionID: comp.ID, UserID: second.ID}).Error)
+
+	attemptFor := func(name string, athleteID int64) *dbs.SessionInstance {
+		inst := &dbs.SessionInstance{Name: name}
+		require.NoError(t, db.Create(inst).Error)
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: inst.ID, AthleteUserID: athleteID,
+			Status: "wip", StartDate: time.Now(), CompetitionID: &comp.ID,
+		}).Error)
+		return inst
+	}
+	instAthlete := attemptFor("Intento athlete", f.athlete.ID)
+	instSecond := attemptFor("Intento second", second.ID)
+
+	t.Run("ancla_autoriza_a_ambos_participantes", func(t *testing.T) {
+		for _, u := range []int64{f.athlete.ID, second.ID} {
+			ok, err := dao.HasInstanceAccess(nil, shared.ID, u)
+			require.NoError(t, err)
+			assert.True(t, ok)
+		}
+	})
+	t.Run("intento_solo_lo_ve_su_atleta", func(t *testing.T) {
+		ok, err := dao.HasInstanceAccess(nil, instAthlete.ID, f.athlete.ID)
+		require.NoError(t, err)
+		assert.True(t, ok)
+		ok, err = dao.HasInstanceAccess(nil, instAthlete.ID, second.ID)
+		require.NoError(t, err)
+		assert.False(t, ok, "otro participante no accede al intento 2+ ajeno")
+
+		ok, err = dao.HasInstanceAccess(nil, instSecond.ID, second.ID)
+		require.NoError(t, err)
+		assert.True(t, ok)
+		ok, err = dao.HasInstanceAccess(nil, instSecond.ID, f.athlete.ID)
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+	t.Run("batch_espejo", func(t *testing.T) {
+		users := []int64{f.athlete.ID, second.ID}
+
+		access, err := dao.HasInstanceAccessBatch(nil, shared.ID, users)
+		require.NoError(t, err)
+		assert.True(t, access[f.athlete.ID])
+		assert.True(t, access[second.ID])
+
+		access, err = dao.HasInstanceAccessBatch(nil, instAthlete.ID, users)
+		require.NoError(t, err)
+		assert.True(t, access[f.athlete.ID])
+		assert.False(t, access[second.ID])
+
+		access, err = dao.HasInstanceAccessBatch(nil, instSecond.ID, users)
+		require.NoError(t, err)
+		assert.False(t, access[f.athlete.ID])
+		assert.True(t, access[second.ID])
+	})
+}
+
 // Espejo batch de la rama extendida: singular y batch no pueden divergir.
 func TestSessionInstanceDao_HasInstanceAccessBatch_IntentosMultiples(t *testing.T) {
 	db := testutils.SetupTestDB(t)

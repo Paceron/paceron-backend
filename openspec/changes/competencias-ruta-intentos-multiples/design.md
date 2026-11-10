@@ -102,38 +102,46 @@ y el intento quedaría sin realtime aunque exista su canal.
 ```sql
 -- rama actual (queda igual)
 competition.route_session_instance_id = ? AND competition.type = 'route'
--- OR nuevo
+-- OR nuevo (intentos 2+)
 OR EXISTS (
   SELECT 1 FROM runner_session rs
   JOIN competition c2 ON rs.competition_id = c2.id AND c2.type = 'route'
   WHERE rs.session_instance_id = ?           -- la instancia pedida
+    AND rs.athlete_user_id = callerID        -- solo el atleta dueño del intento
     AND EXISTS (
       SELECT 1 FROM competition_participant cp
       WHERE cp.competition_id = c2.id AND cp.user_id = callerID)
 )
 ```
 
-- caller es participante de una competencia `type=route` que tiene un
-  `runner_session` tagueado con esa instancia (cualquier status — SIN filtro de
-  status: el front suscribe en pre-start con wip y debe recibir
-  `control:competition_finished` si el intento finished o incluso si otro miembro
-  escucha post-close).
-- La instancia compartida queda autorizada por ambas vías (la rama actual la
-  matchea; el OR nuevo también la matchea — misma competencia, mismo resultado,
-  sin efecto práctico).
+- **Instancia compartida** (`competition.route_session_instance_id`): autoriza
+  a cualquier participante de esa competencia (sin cambios respecto de la rama
+  original).
+- **Intento 2+** (instancia tagueada por un `runner_session`): autoriza SOLO al
+  atleta dueño del intento (`rs.athlete_user_id = callerID`), que además debe
+  ser participante de la competencia route del intento. Otro participante de la
+  misma competencia NO accede a la instancia de un intento ajeno.
+- Ninguna vía filtra por status: el front suscribe en pre-start con wip y el
+  atleta dueño debe recibir `control:competition_finished` cuando el intento
+  cierra. Un intento finished sigue autorizando a su atleta.
+- La instancia compartida la matchea la rama actual para cualquier
+  participante; el OR nuevo también la matchea para el atleta dueño del intento
+  1 (mismo resultado, sin efecto práctico).
 - La competencia del OR es por el join `runner_session.competition_id` (FK
   opaca), NO por columna de competition — coherente con D10.
 
 **Mirror obligatorio:** `hasAccessBatchCompetitionSQL` (espejo de
-`HasInstanceAccessBatch`) se extiende con el mismo OR (`u.user_id` como
-caller). Los tests DAO de la rama nueva deben cubrir el batch también: los
-controller paths que resuelven acceso en lote no pueden divergir del singular.
+`HasInstanceAccessBatch`) se extiende con el mismo OR (`u.user_id` como caller
+y `rs.athlete_user_id = u.user_id`). Los tests DAO de la rama nueva deben cubrir
+el batch también: los controller paths que resuelven acceso en lote no pueden
+divergir del singular.
 
-**Test:** participante de la competencia route sí accede a la instancia de su
-intento 2 con solo el `runner_session` wip (sin día, sin feedback); usuario
-ajeno al competition_participant no; una instancia regular de calendario sigue
-regida por las 2 ramas duales intactas (regresión); intento finished también
-autoriza (sin filtro de status).
+**Test:** el atleta dueño accede a la instancia de su intento 2 con solo el
+`runner_session` wip (sin día, sin feedback); otro participante de la misma
+competencia no accede a esa instancia; usuario ajeno al
+`competition_participant` no; una instancia regular de calendario sigue regida
+por las 2 ramas duales intactas (regresión); intento finished también autoriza
+(sin filtro de status).
 
 ## D4 — Endpoint GET /api/v1/competitions/{id}/attempts
 

@@ -361,18 +361,30 @@ func (s *workoutFeedbackService) guardContentUpdate(ctx *gin.Context, authUserID
 		}
 	}
 
-	derivedTeamID, err := s.sessionInstanceDao.TeamIDForSessionInstance(ctx, effectiveInstanceID)
-	if err != nil {
-		return err
+	if instanceChanged {
+		derivedTeamID, err := s.sessionInstanceDao.TeamIDForSessionInstance(ctx, effectiveInstanceID)
+		if err != nil {
+			return err
+		}
+		if req.TeamID != nil {
+			if derivedTeamID == nil || *derivedTeamID != *req.TeamID {
+				return fmt.Errorf("%w: team_id no coincide con el equipo de la sesión asignada", ErrWorkoutFeedbackInvalid)
+			}
+		} else if derivedTeamID != nil {
+			updates["team_id"] = *derivedTeamID
+		} else {
+			updates["team_id"] = nil
+		}
+		return nil
 	}
+
+	// Instancia sin cambios: el team efectivo es el actual. No se re-deriva
+	// (una instancia huérfana conserva su team) y solo se valida un team_id
+	// explícito contra él.
 	if req.TeamID != nil {
-		if derivedTeamID == nil || *derivedTeamID != *req.TeamID {
+		if current.TeamID == nil || *current.TeamID != *req.TeamID {
 			return fmt.Errorf("%w: team_id no coincide con el equipo de la sesión asignada", ErrWorkoutFeedbackInvalid)
 		}
-	} else if derivedTeamID != nil {
-		updates["team_id"] = *derivedTeamID
-	} else {
-		updates["team_id"] = nil
 	}
 	return nil
 }

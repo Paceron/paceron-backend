@@ -46,12 +46,11 @@ D1-D8). Resumen:
    dentro del tx (el unique de DB ya NO arbitra: las instancias son distintas).
 3. **D3 — WS: tercera rama de `HasInstanceAccess` extendida.** Hoy solo
    autoriza la instancia compartida (`route_session_instance_id = ?`). Se
-   extiende con un OR: caller es participante de una competencia `type=route`
-   que tiene un `runner_session` tagueado con esa instancia (EXISTS
-   runner_session × competition × participants, SIN filtro de status — para
-   recibir `control:competition_finished` hay que poder suscribirse con el
-   intento en cualquier estado). Mirror idéntico en
-   `HasInstanceAccessBatch` (SQL batch).
+   extiende con un OR: el **atleta dueño** del `runner_session` tagueado con
+   esa instancia (EXISTS runner_session × competition, SIN filtro de status)
+   accede a la instancia de su propio intento; la instancia compartida del
+   intento 1 sigue autorizando a los participantes por el ancla. Mirror
+   idéntico en `HasInstanceAccessBatch` (SQL batch).
 4. **D4 — Endpoint `GET /competitions/{id}/attempts`.** Guard igual que el
    detalle (404 antes de 403; miembro de grupo del team u owner).
    `athlete_user_id` default = caller; cualquier miembro puede ver los intentos

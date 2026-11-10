@@ -7461,6 +7461,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_tierpermission.DeleteTierPermissionResponse"
                         }
                     },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_apierror.APIError"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {

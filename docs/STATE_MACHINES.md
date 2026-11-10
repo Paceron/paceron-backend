@@ -269,7 +269,9 @@ deauthorized ──reconexión mp-connect──► authorized
 El corredor **no tiene catálogo de tiers ni cambio de tier**. `user_roles.tier_id` sigue siendo
 NOT NULL porque toda asignación de rol exige un tier, así que el rol conserva un único
 **tier base interno** (`hierarchy` mínima, `payment_required=false`). Ese tier base es el que
-`AssignRole` resuelve con `FindLowestByRole` cuando no se envía `tier_id`.
+`AssignRole` resuelve con `FindLowestByRole` cuando no se envía `tier_id`; ese query filtra
+`payment_required=false`, así que un tier pago de menor jerarquía nunca se toma como base y,
+si no hay base gratuito, los flujos fallan cerrado.
 
 `GET /api/v1/auth/permissions` **no usa `user_roles.tier_id`**: resuelve el tier efectivo por la
 suscripción `active` del ledger y, si no hay ninguna, por `FindLowestByRole` del rol. Por eso,
@@ -279,6 +281,7 @@ aunque se purguen los tiers pagos del corredor, sus permisos siguen resolviendo 
 
 - `GET /api/v1/tiers?role_id=<corredor>` devuelve `[]`. Sin `role_id`, el listado excluye los tiers del corredor.
 - `POST`/`PUT`/`DELETE /api/v1/tiers` sobre el corredor devuelven `400 "el rol corredor no admite tiers"` (protege el base interno).
+- `GET`/`POST`/`DELETE /api/v1/tiers/{id}/permissions` sobre el corredor devuelven `400 "el rol corredor no admite tiers"`; el guard resuelve el rol vivo por `RoleID` (no el `role_name` denormalizado del tier).
 - `POST /api/v1/users/:id/roles` con `tier_id` explícito para corredor devuelve `400 "el rol corredor no admite tiers"`; sin `tier_id` sigue asignando el base interno.
 - `PUT /api/v1/users/:id/roles/:role_id/tier` para corredor devuelve `400 "el rol corredor no admite cambios de tier"`.
 - El entrenador no cambia: conserva catálogo, asignación y cambio de tier.
@@ -297,7 +300,7 @@ Pasos (dentro de una transacción):
 4. Borra `installments` de **todas** las suscripciones de tier del rol corredor y luego todas esas `user_role_tier_subscriptions` (el base es gratuito y no debe tener suscripciones).
 5. Borra `tier_permissions` de los tiers de corredor distintos del base.
 6. Borra físicamente los tiers de corredor distintos del base.
-7. Verifica que quede exactamente un tier de corredor, que sea gratuito, y que no queden asignaciones fuera del base ni suscripciones del rol; si falla, revierte la transacción.
+7. Verifica que quede exactamente un tier de corredor, que sea gratuito, que conserve `tier_permissions` activos, y que no queden asignaciones fuera del base ni suscripciones del rol; si falla, revierte la transacción.
 
 No toca el tier base, el rol `entrenador`, los roles globales ni la tabla `roles`.
 Los pagos ya conciliados conservan su fila. En bases migradas por la app, donde existe la FK
