@@ -54,8 +54,8 @@ func countingDB(t *testing.T, db *gorm.DB, counter *int) *gorm.DB {
 	return sess
 }
 
-// prefs: 2.4 — GetRange de N días con instancia debe tirar exactamente 3
-// queries de detalle (instancias IN + links IN + ejercicios IN), ninguna
+// prefs: 2.4 — GetRange de N días con instancia debe tirar exactamente 2
+// queries de detalle (instancias IN + links con ejercicios JOIN), ninguna
 // FindByID por fila; los días sin instancia no agregan queries.
 func TestCalendarService_GetRange_BatchDetalleQueries(t *testing.T) {
 	db := testutils.SetupTestDB(t)
@@ -114,5 +114,5 @@ func TestCalendarService_GetRange_BatchDetalleQueries(t *testing.T) {
 		assert.Equal(t, "main", resp.SessionInstance.Exercises[0].Role)
 	}
 	assert.Nil(t, responses[3].SessionInstance)
-	assert.Equal(t, 3, counter, "3 queries batch para 4 días, sin FindByID por fila")
+	assert.Equal(t, 2, counter, "2 queries batch para 4 días, sin FindByID por fila")
 }

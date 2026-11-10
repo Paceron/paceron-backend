@@ -1204,7 +1204,7 @@ func buildDayResponse(d dbs.GroupCalendarDay, inst *instance.SessionInstanceResp
 }
 
 // toCalendarDayResponses arma las respuestas de un rango/lista de días con
-// un solo batch de instancias (3 queries) en vez de una por día; el path
+// un solo batch de instancias (2 queries) en vez de una por día; el path
 // por fila (toCalendarDayResponse) queda intacto para callers de fila única.
 func (s *calendarService) toCalendarDayResponses(ctx *gin.Context, days []dbs.GroupCalendarDay) ([]calendar.CalendarDayResponse, error) {
 	responses := make([]calendar.CalendarDayResponse, len(days))
@@ -1247,39 +1247,34 @@ func (s *calendarService) toCalendarDayResponses(ctx *gin.Context, days []dbs.Gr
 	return responses, nil
 }
 
-// sessionInstanceResponsesByIds carga instancias + links + ejercicios en
-// batch y devuelve las mismas respuestas que sessionInstanceResponse por
-// fila, agrupadas por id.
+// sessionInstanceResponsesByIds carga instancias y links+ejercicios (una
+// consulta cada uno) y arma las mismas respuestas que sessionInstanceResponse
+// por fila, reutilizando un único índice de ejercicios por colección.
 func (s *calendarService) sessionInstanceResponsesByIds(ctx *gin.Context, ids []int64) (map[int64]*instance.SessionInstanceResponse, error) {
 	if len(ids) == 0 {
 		return map[int64]*instance.SessionInstanceResponse{}, nil
 	}
 	sessionDao := daos.NewSessionInstanceDao(s.db)
 	linkDao := daos.NewSessionExerciseInstanceDao(s.db)
-	exerciseDao := daos.NewExerciseInstanceDao(s.db)
 	sessions, err := sessionDao.FindByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	links, err := linkDao.FindBySessionInstances(ctx, ids)
+	joined, err := linkDao.FindWithExercisesBySessionInstances(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	exerciseIDs := make([]int64, len(links))
-	for i, link := range links {
-		exerciseIDs[i] = link.ExerciseInstanceID
-	}
-	exercises, err := exerciseDao.FindByIDs(ctx, exerciseIDs)
-	if err != nil {
-		return nil, err
-	}
+	exercisesByID := make(map[int64]dbs.ExerciseInstance, len(joined))
 	linksByInstance := make(map[int64][]dbs.SessionExerciseInstance, len(sessions))
-	for _, link := range links {
-		linksByInstance[link.SessionInstanceID] = append(linksByInstance[link.SessionInstanceID], link)
+	for _, row := range joined {
+		if row.Exercise != nil {
+			exercisesByID[row.Exercise.ID] = *row.Exercise
+		}
+		linksByInstance[row.Link.SessionInstanceID] = append(linksByInstance[row.Link.SessionInstanceID], row.Link)
 	}
 	result := make(map[int64]*instance.SessionInstanceResponse, len(sessions))
 	for i := range sessions {
-		response, err := instance.NewSessionResponse(sessions[i], linksByInstance[sessions[i].ID], exercises)
+		response, err := instance.NewSessionResponseWithIndex(sessions[i], linksByInstance[sessions[i].ID], exercisesByID)
 		if err != nil {
 			return nil, err
 		}
@@ -1971,24 +1966,64 @@ func (s *calendarService) NextSession(ctx *gin.Context, userID int64) (*calendar
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	nowHHMM := now.Format("15:04")
 
+	days, err := s.calendarDao.FindNextForGroupsByKinds(ctx, groupIDs, []string{
+		string(constants.GroupCalendarDayKindCancelled),
+		string(constants.GroupCalendarDayKindTraining),
+	}, today, nowHHMM)
+	if err != nil {
+		customlogger.Error(ctx, "error finding next banner days", err, customlogger.TagMethod("NextSession"))
+		return nil, fmt.Errorf("error al buscar próxima sesión")
+	}
+	sessionNames := s.sessionNamesByInstanceIDs(ctx, days)
 	resp := &calendar.NextSessionResponse{}
-	cancelledDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindCancelled), today, nowHHMM)
-	if err != nil {
-		customlogger.Error(ctx, "error finding next cancelled day", err, customlogger.TagMethod("NextSession"))
-		return nil, fmt.Errorf("error al buscar próxima sesión")
-	}
-	if cancelledDay != nil {
-		resp.NextCancelled = s.bannerItem(ctx, *cancelledDay, groupNames)
-	}
-	trainingDay, err := s.calendarDao.FindNextForGroupsByKind(ctx, groupIDs, string(constants.GroupCalendarDayKindTraining), today, nowHHMM)
-	if err != nil {
-		customlogger.Error(ctx, "error finding next training day", err, customlogger.TagMethod("NextSession"))
-		return nil, fmt.Errorf("error al buscar próxima sesión")
-	}
-	if trainingDay != nil {
-		resp.NextTraining = s.trainingBannerItem(ctx, *trainingDay, groupNames)
+	for i := range days {
+		day := days[i]
+		switch day.Kind {
+		case string(constants.GroupCalendarDayKindCancelled):
+			if resp.NextCancelled == nil {
+				resp.NextCancelled = s.bannerItem(day, groupNames, sessionNames)
+			}
+		case string(constants.GroupCalendarDayKindTraining):
+			if resp.NextTraining == nil {
+				resp.NextTraining = s.trainingBannerItem(day, groupNames, sessionNames)
+			}
+		}
 	}
 	return resp, nil
+}
+
+// sessionNamesByInstanceIDs resuelve en batch los nombres de las instancias
+// de los días de banner; un error de lectura deja los nombres nil sin romper
+// la respuesta (misma tolerancia que el lookup por fila anterior).
+func (s *calendarService) sessionNamesByInstanceIDs(ctx *gin.Context, days []dbs.GroupCalendarDay) map[int64]string {
+	names := make(map[int64]string, len(days))
+	if s.db == nil {
+		return names
+	}
+	ids := make([]int64, 0, len(days))
+	seen := make(map[int64]struct{}, len(days))
+	for _, day := range days {
+		if day.SessionInstanceID == nil {
+			continue
+		}
+		if _, dup := seen[*day.SessionInstanceID]; dup {
+			continue
+		}
+		seen[*day.SessionInstanceID] = struct{}{}
+		ids = append(ids, *day.SessionInstanceID)
+	}
+	if len(ids) == 0 {
+		return names
+	}
+	instances, err := daos.NewSessionInstanceDao(s.db).FindByIDs(ctx, ids)
+	if err != nil {
+		customlogger.Error(ctx, "error finding session instances for banner", err, customlogger.TagMethod("NextSession"))
+		return names
+	}
+	for _, inst := range instances {
+		names[inst.ID] = inst.Name
+	}
+	return names
 }
 
 // NextPresencialSession resuelve el banner del entrenador (design.md D7, spec
@@ -2116,19 +2151,14 @@ func (s *calendarService) groupNamesByIDs(ctx *gin.Context, groupIDs []int64) (m
 
 // bannerItem arma el shape común del banner. session_name sale de la
 // instancia congelada (nil si la instancia falta — no rompe).
-func (s *calendarService) bannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextSessionBannerItem {
+func (s *calendarService) bannerItem(day dbs.GroupCalendarDay, groupNames, sessionNames map[int64]string) *calendar.NextSessionBannerItem {
 	item := &calendar.NextSessionBannerItem{
 		GroupID:   day.GroupID,
 		GroupName: groupNames[day.GroupID],
 		Date:      day.Date.Format("2006-01-02"),
 	}
-	if day.SessionInstanceID != nil && s.db != nil {
-		sessionDao := daos.NewSessionInstanceDao(s.db)
-		instance, err := sessionDao.FindByID(ctx, *day.SessionInstanceID)
-		if err != nil {
-			customlogger.Error(ctx, "error finding session instance for banner", err, customlogger.TagMethod("NextSession"))
-		} else if instance != nil {
-			name := instance.Name
+	if day.SessionInstanceID != nil {
+		if name, ok := sessionNames[*day.SessionInstanceID]; ok {
 			item.SessionName = &name
 		}
 	}
@@ -2136,9 +2166,9 @@ func (s *calendarService) bannerItem(ctx *gin.Context, day dbs.GroupCalendarDay,
 }
 
 // trainingBannerItem agrega los datos presenciales al banner común.
-func (s *calendarService) trainingBannerItem(ctx *gin.Context, day dbs.GroupCalendarDay, groupNames map[int64]string) *calendar.NextTrainingBannerItem {
+func (s *calendarService) trainingBannerItem(day dbs.GroupCalendarDay, groupNames, sessionNames map[int64]string) *calendar.NextTrainingBannerItem {
 	item := &calendar.NextTrainingBannerItem{
-		NextSessionBannerItem: *s.bannerItem(ctx, day, groupNames),
+		NextSessionBannerItem: *s.bannerItem(day, groupNames, sessionNames),
 		IsPresencial:          day.IsPresencial,
 	}
 	if day.IsPresencial {

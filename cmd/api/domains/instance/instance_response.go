@@ -90,6 +90,17 @@ func NewExerciseResponse(link dbs.SessionExerciseInstance, ex dbs.ExerciseInstan
 // requiere orden paralelo); si algún link referencia un ExerciseInstance que
 // no vino en la carga, devuelve error en vez de producir un D9 incompleto.
 func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseInstance, exercises []dbs.ExerciseInstance) (SessionInstanceResponse, error) {
+	byID := make(map[int64]dbs.ExerciseInstance, len(exercises))
+	for _, ex := range exercises {
+		byID[ex.ID] = ex
+	}
+	return NewSessionResponseWithIndex(sess, links, byID)
+}
+
+// NewSessionResponseWithIndex es el mapper de colección: reutiliza el índice
+// id→ExerciseInstance construido una vez por el caller en vez de reconstruirlo
+// por sesión. La semántica de error es la misma que NewSessionResponse.
+func NewSessionResponseWithIndex(sess dbs.SessionInstance, links []dbs.SessionExerciseInstance, exercisesByID map[int64]dbs.ExerciseInstance) (SessionInstanceResponse, error) {
 	result := SessionInstanceResponse{
 		ID:          sess.ID,
 		SessionID:   sess.SourceSessionID,
@@ -98,12 +109,8 @@ func NewSessionResponse(sess dbs.SessionInstance, links []dbs.SessionExerciseIns
 		CreatedAt:   sess.CreatedAt,
 		Exercises:   make([]InstanceExerciseResponse, 0, len(links)),
 	}
-	byID := make(map[int64]dbs.ExerciseInstance, len(exercises))
-	for _, ex := range exercises {
-		byID[ex.ID] = ex
-	}
 	for _, link := range links {
-		ex, ok := byID[link.ExerciseInstanceID]
+		ex, ok := exercisesByID[link.ExerciseInstanceID]
 		if !ok {
 			return SessionInstanceResponse{}, fmt.Errorf("session instance %d: ejercicio instancia %d faltante (link %d)", sess.ID, link.ExerciseInstanceID, link.ID)
 		}

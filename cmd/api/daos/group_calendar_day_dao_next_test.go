@@ -74,3 +74,45 @@ func TestGroupCalendarDayDao_FindNextForGroupsByKind_DesempateMismaFecha(t *test
 	assert.Equal(t, groupA.ID, found.GroupID)
 	assert.Equal(t, future.AddDate(0, 0, 1).Format("2006-01-02"), found.Date.Format("2006-01-02"))
 }
+
+func TestGroupCalendarDayDao_FindNextForGroupsByKinds(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	groupA := setupCalendarGroup(t, db, "kinds-a")
+	groupB := setupCalendarGroup(t, db, "kinds-b")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	tomorrow := today.AddDate(0, 0, 1)
+	dayAfter := today.AddDate(0, 0, 2)
+
+	// Training de hoy ya arrancado: no cuenta. El próximo es el de mañana a
+	// las 09:00 (groupB) aunque groupA tenga otro a las 15:00.
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: today, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday("00:00"), PresencialTimeTo: utcTimeToday("23:59")}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: tomorrow, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday("15:00"), PresencialTimeTo: utcTimeToday("16:00")}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: tomorrow, Kind: "training", IsPresencial: true, PresencialTimeFrom: utcTimeToday("09:00"), PresencialTimeTo: utcTimeToday("10:00")}))
+	// Cancelled de hoy asincrónico: cuenta.
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupA.ID, Date: today, Kind: "cancelled"}))
+	require.NoError(t, dao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: groupB.ID, Date: dayAfter, Kind: "cancelled"}))
+
+	days, err := dao.FindNextForGroupsByKinds(nil, []int64{groupA.ID, groupB.ID}, []string{"cancelled", "training"}, today, "12:00")
+
+	require.NoError(t, err)
+	require.Len(t, days, 2, "una fila por kind")
+	byKind := make(map[string]dbs.GroupCalendarDay, len(days))
+	for _, day := range days {
+		byKind[day.Kind] = day
+	}
+	require.Contains(t, byKind, "training")
+	assert.Equal(t, groupB.ID, byKind["training"].GroupID)
+	assert.Equal(t, tomorrow.Format("2006-01-02"), byKind["training"].Date.Format("2006-01-02"))
+	require.Contains(t, byKind, "cancelled")
+	assert.Equal(t, groupA.ID, byKind["cancelled"].GroupID)
+	assert.Equal(t, today.Format("2006-01-02"), byKind["cancelled"].Date.Format("2006-01-02"))
+
+	days, err = dao.FindNextForGroupsByKinds(nil, nil, []string{"training"}, today, "12:00")
+	require.NoError(t, err)
+	assert.Empty(t, days)
+
+	days, err = dao.FindNextForGroupsByKinds(nil, []int64{groupA.ID}, nil, today, "12:00")
+	require.NoError(t, err)
+	assert.Empty(t, days)
+}

@@ -21,20 +21,21 @@ import (
 )
 
 type mockGroupCalendarDao struct {
-	upsertFn                  func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
-	findByGroupAndDateFn      func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
-	findByGroupAndRangeFn     func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
-	findForGroupsInRangeFn    func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
-	findPresencialForGroupsFn func(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
-	deleteFn                  func(ctx *gin.Context, groupID int64, date time.Time) error
-	deleteByDatesFn           func(ctx *gin.Context, groupID int64, dates []time.Time) error
-	findNextForGroupsByKindFn func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
-	findNextPresencialFn      func(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
-	clearSourcePlanFn         func(ctx *gin.Context, planID int64) error
-	updateDatesForShiftFn     func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
-	findBySessionInstanceIDFn func(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error)
-	setPresencialOpenedAtFn   func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
-	setPresencialClosedAtFn   func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	upsertFn                   func(ctx *gin.Context, day *dbs.GroupCalendarDay) error
+	findByGroupAndDateFn       func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error)
+	findByGroupAndRangeFn      func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	findForGroupsInRangeFn     func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]dbs.GroupCalendarDay, error)
+	findPresencialForGroupsFn  func(ctx *gin.Context, groupIDs []int64, dates []time.Time) ([]dbs.GroupCalendarDay, error)
+	deleteFn                   func(ctx *gin.Context, groupID int64, date time.Time) error
+	deleteByDatesFn            func(ctx *gin.Context, groupID int64, dates []time.Time) error
+	findNextForGroupsByKindFn  func(ctx *gin.Context, groupIDs []int64, kind string, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
+	findNextForGroupsByKindsFn func(ctx *gin.Context, groupIDs []int64, kinds []string, today time.Time, nowHHMM string) ([]dbs.GroupCalendarDay, error)
+	findNextPresencialFn       func(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error)
+	clearSourcePlanFn          func(ctx *gin.Context, planID int64) error
+	updateDatesForShiftFn      func(ctx *gin.Context, groupID int64, oldDate, newDate time.Time) error
+	findBySessionInstanceIDFn  func(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error)
+	setPresencialOpenedAtFn    func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	setPresencialClosedAtFn    func(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
 }
 
 func (m *mockGroupCalendarDao) Upsert(ctx *gin.Context, day *dbs.GroupCalendarDay) error {
@@ -95,6 +96,26 @@ func (m *mockGroupCalendarDao) FindNextForGroupsByKind(ctx *gin.Context, groupID
 	}
 	return nil, nil
 }
+func (m *mockGroupCalendarDao) FindNextForGroupsByKinds(ctx *gin.Context, groupIDs []int64, kinds []string, today time.Time, nowHHMM string) ([]dbs.GroupCalendarDay, error) {
+	if m.findNextForGroupsByKindsFn != nil {
+		return m.findNextForGroupsByKindsFn(ctx, groupIDs, kinds, today, nowHHMM)
+	}
+	var days []dbs.GroupCalendarDay
+	for _, kind := range kinds {
+		if m.findNextForGroupsByKindFn == nil {
+			continue
+		}
+		day, err := m.findNextForGroupsByKindFn(ctx, groupIDs, kind, today, nowHHMM)
+		if err != nil {
+			return nil, err
+		}
+		if day != nil {
+			days = append(days, *day)
+		}
+	}
+	return days, nil
+}
+
 func (m *mockGroupCalendarDao) FindNextPresencialForGroups(ctx *gin.Context, groupIDs []int64, today time.Time, nowHHMM string) (*dbs.GroupCalendarDay, error) {
 	if m.findNextPresencialFn != nil {
 		return m.findNextPresencialFn(ctx, groupIDs, today, nowHHMM)
