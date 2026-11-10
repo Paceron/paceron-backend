@@ -2432,6 +2432,11 @@ definitions:
         type: string
       installment_number:
         type: integer
+      net_amount:
+        description: |-
+          NetAmount es Amount menos la comisión vigente de Paceron, con el mismo
+          cálculo que ObligationsBlock.NetAmount: el entrenador ve siempre el neto.
+        type: number
       payer:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef'
       team:

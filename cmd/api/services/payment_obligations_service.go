@@ -87,6 +87,7 @@ func (s *paymentHistoryService) addPendingObligations(ctx *gin.Context, sellerID
 				Payer:             payment.PaymentPayerRef{ID: m.UserID, Name: deref(m.UserName), Surname: deref(m.UserSurname), Email: deref(m.UserEmail)},
 				InstallmentNumber: o.Number,
 				Amount:            round2(o.Amount),
+				NetAmount:         round2(net),
 				DueDate:           formatUTC(o.DueDate),
 			})
 		}

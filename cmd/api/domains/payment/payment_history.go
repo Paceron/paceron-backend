@@ -142,7 +142,10 @@ type ObligationItem struct {
 	Payer             PaymentPayerRef `json:"payer"`
 	InstallmentNumber int             `json:"installment_number"`
 	Amount            float64         `json:"amount"`
-	DueDate           string          `json:"due_date"`
+	// NetAmount es Amount menos la comisión vigente de Paceron, con el mismo
+	// cálculo que ObligationsBlock.NetAmount: el entrenador ve siempre el neto.
+	NetAmount float64 `json:"net_amount"`
+	DueDate   string  `json:"due_date"`
 }
 
 // ObligationsBlock agrupa obligaciones sin pagar del mes actual.
