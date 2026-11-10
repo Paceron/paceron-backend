@@ -909,17 +909,24 @@ func parseHistoryDate(param, raw string) (time.Time, error) {
 	return parsed, nil
 }
 
-// buildHistoryResponse ejecuta las 4 lecturas del historial (ítems paginados,
-// total sin paginar, pools) y arma el response D6 con nombres en batch.
+// buildHistoryResponse ejecuta las lecturas del historial (ítems paginados,
+// total y pools) y arma el response D6 con nombres en batch. El total viaja en
+// el COUNT(*) OVER() de la primera fila (D2); solo con la página vacía (offset
+// fuera de rango) se paga un HistoryCount aparte.
 func (s *workoutFeedbackService) buildHistoryResponse(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters, q *historyQuery) (*workoutfeedback.WorkoutFeedbackHistoryResponse, error) {
 	wrap := func(e error) error { return fmt.Errorf("error interno: %w", e) }
 	rows, err := s.workoutFeedbackDao.HistorySearch(ctx, filters, q.Sort, q.Order, q.PageSize, (q.Page-1)*q.PageSize)
 	if err != nil {
 		return nil, wrap(err)
 	}
-	total, err := s.workoutFeedbackDao.HistoryCount(ctx, filters)
-	if err != nil {
-		return nil, wrap(err)
+	var total int64
+	if len(rows) > 0 {
+		total = rows[0].TotalCount
+	} else {
+		total, err = s.workoutFeedbackDao.HistoryCount(ctx, filters)
+		if err != nil {
+			return nil, wrap(err)
+		}
 	}
 	athletes, err := s.workoutFeedbackDao.HistoryAvailableAthletes(ctx, filters)
 	if err != nil {
@@ -930,8 +937,8 @@ func (s *workoutFeedbackService) buildHistoryResponse(ctx *gin.Context, filters 
 		return nil, wrap(err)
 	}
 
-	// historyItems devuelve errores crudos del DAO (Users/Teams/GroupsByIDs):
-	// se envuelven acá en el mismo sitio, sin doble capa.
+	// historyItems devuelve errores crudos del DAO (Teams/GroupsByIDs): se
+	// envuelven acá en el mismo sitio, sin doble capa.
 	items, err := s.historyItems(ctx, rows)
 	if err != nil {
 		return nil, wrap(err)
@@ -957,26 +964,21 @@ func (s *workoutFeedbackService) buildHistoryResponse(ctx *gin.Context, filters 
 }
 
 // historyItems mapea las filas del DAO a ítems del response resolviendo
-// athlete/team/group names en batch (1 query por entidad, deduplicada).
-// El nombre de atleta sale de users.name — misma fuente que el pool de
-// available_athletes, para que ítems y pool queden consistentes. El nombre de
-// equipo/grupo queda null si la entidad ya no existe aunque el id persista.
+// team/group names en batch (1 query por entidad, deduplicada). El nombre de
+// atleta ya viene embebido desde el LEFT JOIN users de HistorySearch (D2), con
+// la misma fuente users.name que el pool de available_athletes; sin fila de user
+// queda vacío. El nombre de equipo/grupo queda null si la entidad ya no existe
+// aunque el id persista.
 func (s *workoutFeedbackService) historyItems(ctx *gin.Context, rows []dbs.WorkoutFeedbackHistoryRow) ([]workoutfeedback.WorkoutFeedbackHistoryItem, error) {
 	if len(rows) == 0 {
 		return []workoutfeedback.WorkoutFeedbackHistoryItem{}, nil
 	}
 
-	athleteIDs := make([]int64, 0, len(rows))
 	teamIDs := make([]int64, 0)
 	groupIDs := make([]int64, 0)
-	seenAthlete := map[int64]bool{}
 	seenTeam := map[int64]bool{}
 	seenGroup := map[int64]bool{}
 	for _, r := range rows {
-		if !seenAthlete[r.AthleteUserID] {
-			seenAthlete[r.AthleteUserID] = true
-			athleteIDs = append(athleteIDs, r.AthleteUserID)
-		}
 		if r.TeamID != nil && !seenTeam[*r.TeamID] {
 			seenTeam[*r.TeamID] = true
 			teamIDs = append(teamIDs, *r.TeamID)
@@ -985,15 +987,6 @@ func (s *workoutFeedbackService) historyItems(ctx *gin.Context, rows []dbs.Worko
 			seenGroup[*r.GroupID] = true
 			groupIDs = append(groupIDs, *r.GroupID)
 		}
-	}
-
-	users, err := s.workoutFeedbackDao.UsersByIDs(ctx, athleteIDs)
-	if err != nil {
-		return nil, err
-	}
-	athleteNameByID := make(map[int64]string, len(users))
-	for _, u := range users {
-		athleteNameByID[u.ID] = u.Name
 	}
 
 	teamNameByID := map[int64]string{}
@@ -1016,10 +1009,14 @@ func (s *workoutFeedbackService) historyItems(ctx *gin.Context, rows []dbs.Worko
 
 	items := make([]workoutfeedback.WorkoutFeedbackHistoryItem, 0, len(rows))
 	for _, r := range rows {
+		athleteName := ""
+		if r.AthleteName != nil {
+			athleteName = *r.AthleteName
+		}
 		item := workoutfeedback.WorkoutFeedbackHistoryItem{
 			ID:                r.ID,
 			AthleteUserID:     r.AthleteUserID,
-			AthleteName:       athleteNameByID[r.AthleteUserID],
+			AthleteName:       athleteName,
 			TeamID:            r.TeamID,
 			GroupID:           r.GroupID,
 			IsPresencial:      r.IsPresencial,

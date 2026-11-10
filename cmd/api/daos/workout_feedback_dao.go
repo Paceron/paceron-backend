@@ -99,15 +99,17 @@ type WorkoutFeedbackDAOInterface interface {
 	// GetPointsByFeedback devuelve el recorrido de la serie ordenado por "order".
 	GetPointsByFeedback(ctx *gin.Context, feedbackID int64) ([]dbs.WorkoutFeedbackPoint, error)
 
-	// HistorySearch devuelve las filas enriquecidas del historial (design.md D1/D5)
-	// que cumplen los filtros (1er + 2do nivel), con ORDER BY whitelisted
+	// HistorySearch devuelve las filas enriquecidas del historial (design.md
+	// D1/D2) que cumplen los filtros (1er + 2do nivel), con ORDER BY whitelisted
 	// (feedback_date/set_number/exercise_name) y desempate determinista por wf.id
 	// en la misma dirección; sort/order desconocidos caen al default
-	// (feedback_date DESC) — validar la whitelist antes es del service. limit <= 0
-	// significa sin tope.
+	// (feedback_date DESC) — validar la whitelist antes es del service. Cada fila
+	// trae athlete_name (LEFT JOIN users, nil si el user no existe) y TotalCount
+	// (COUNT(*) OVER(), el total sin paginar). limit <= 0 significa sin tope.
 	HistorySearch(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters, sortCol string, order string, limit int, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error)
 	// HistoryCount cuenta los feedbacks que cumplen TODOS los filtros (1er + 2do
-	// nivel), sin paginación.
+	// nivel), sin paginación. El service solo lo usa como fallback cuando
+	// HistorySearch devuelve la página vacía (offset fuera de rango).
 	HistoryCount(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters) (int64, error)
 	// HistoryAvailableAthletes e HistoryAvailableExercises arman los pools de
 	// filtros de la UI: DISTINCT sobre los feedbacks que cumplen SOLO el primer
@@ -461,13 +463,16 @@ func applyHistoryFilters(query *gorm.DB, filters WorkoutFeedbackHistoryFilters, 
 // quedan dentro con los nulls correspondientes (decisión del usuario, D1).
 func (d *workoutFeedbackDao) HistorySearch(ctx *gin.Context, filters WorkoutFeedbackHistoryFilters, sortCol string, order string, limit int, offset int) ([]dbs.WorkoutFeedbackHistoryRow, error) {
 	query := d.DB.Table("workout_feedback AS wf").
-		Select(`wf.id, wf.athlete_user_id, wf.team_id, gcd.group_id, wf.session_date,
+		Select(`wf.id, wf.athlete_user_id, u.name AS athlete_name, wf.team_id,
+			gcd.group_id, wf.session_date,
 			COALESCE(gcd.is_presencial, false) AS is_presencial,
 			wf.set_number, wf.completion_status, wf.duration_ms, wf.active_duration_ms,
 			wf.distance_meters, wf.started_at, wf.ended_at,
 			wf.assigned_exercise_id AS exercise_id, ei.name AS exercise_name,
 			ei.source_exercise_id AS catalog_exercise_id,
-			wf.assigned_session_id AS session_instance_id, si.name AS session_name`).
+			wf.assigned_session_id AS session_instance_id, si.name AS session_name,
+			COUNT(*) OVER() AS total_count`).
+		Joins("LEFT JOIN users u ON u.id = wf.athlete_user_id").
 		Joins("LEFT JOIN group_calendar_days gcd ON gcd.session_instance_id = wf.assigned_session_id").
 		Joins("LEFT JOIN exercise_instances ei ON ei.id = wf.assigned_exercise_id").
 		Joins("LEFT JOIN session_instances si ON si.id = wf.assigned_session_id")

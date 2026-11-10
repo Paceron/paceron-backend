@@ -161,6 +161,9 @@ func TestWorkoutFeedbackDao_HistorySearch_TeamScopeEnrichedRows(t *testing.T) {
 	row := historyRowByID(rows, f.fbNormal.ID)
 	require.NotNil(t, row)
 	assert.Equal(t, f.athleteA.ID, row.AthleteUserID)
+	require.NotNil(t, row.AthleteName)
+	assert.Equal(t, "Anita", *row.AthleteName)
+	assert.Equal(t, int64(6), row.TotalCount)
 	require.NotNil(t, row.TeamID)
 	assert.Equal(t, f.teamA.ID, *row.TeamID)
 	require.NotNil(t, row.GroupID)
@@ -407,6 +410,45 @@ func TestWorkoutFeedbackDao_HistorySearch_Pagination(t *testing.T) {
 	assert.Equal(t, full[4:6], last)
 
 	beyond, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA}, "feedback_date", "asc", 2, 100)
+	require.NoError(t, err)
+	assert.Empty(t, beyond)
+}
+
+func TestWorkoutFeedbackDao_HistorySearch_TotalYAtletaEmbebidos(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+	f := setupWorkoutFeedbackHistoryFixture(t, db)
+	teamA := f.teamA.ID
+
+	// Feedback de un atleta que ya no existe (FK opaca): la fila sobrevive con
+	// athlete_name null y el total la cuenta.
+	sinUser := historyFeedback(t, db, 999999, f.sessionInst.ID, f.exA.ID, &teamA, 0, time.Date(2026, 1, 28, 0, 0, 0, 0, time.UTC))
+
+	first, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA}, "feedback_date", "desc", 2, 0)
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+	// El total sin paginar viaja en cada fila (COUNT(*) OVER()).
+	assert.Equal(t, int64(7), first[0].TotalCount)
+	assert.Equal(t, int64(7), first[1].TotalCount)
+
+	row := historyRowByID(first, sinUser.ID)
+	require.NotNil(t, row)
+	assert.Nil(t, row.AthleteName)
+
+	// El atleta que sí existe trae users.name embebido.
+	resolved := historyRowByID(first, f.fbOrphan.ID)
+	require.NotNil(t, resolved)
+	require.NotNil(t, resolved.AthleteName)
+	assert.Equal(t, "Anita", *resolved.AthleteName)
+
+	// Última página: mismo total. Fuera de rango: sin filas (el service cae a
+	// HistoryCount, no hay total que leer de una página vacía).
+	last, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA}, "feedback_date", "desc", 2, 6)
+	require.NoError(t, err)
+	require.Len(t, last, 1)
+	assert.Equal(t, int64(7), last[0].TotalCount)
+
+	beyond, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA}, "feedback_date", "desc", 2, 100)
 	require.NoError(t, err)
 	assert.Empty(t, beyond)
 }
