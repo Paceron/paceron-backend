@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/workoutfeedback"
+	"simple-arq-golang/cmd/api/testutils"
 )
 
 type historyDAOCalls struct {
@@ -22,6 +24,7 @@ type historyDAOCalls struct {
 	limit         int
 	offset        int
 	searchCalled  bool
+	countCalled   bool
 	teamExists    bool
 	isTeamOwner   bool
 	userIDs       []int64
@@ -41,6 +44,7 @@ func newHistoryMock(calls *historyDAOCalls, rows []dbs.WorkoutFeedbackHistoryRow
 			return rows, nil
 		},
 		historyCountFn: func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) (int64, error) {
+			calls.countCalled = true
 			return 42, nil
 		},
 		historyAthletesFn: func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
@@ -181,17 +185,18 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	catalog := int64(12)
 
 	rows := []dbs.WorkoutFeedbackHistoryRow{
-		{ID: 1, AthleteUserID: 7, TeamID: &teamID, GroupID: &groupID, IsPresencial: true, SessionDate: sessionDate,
+		{ID: 1, AthleteUserID: 7, AthleteName: histStrPtr("Atleta7"), TotalCount: 4,
+			TeamID: &teamID, GroupID: &groupID, IsPresencial: true, SessionDate: sessionDate,
 			SetNumber: 1, CompletionStatus: &status, DurationMs: &duration, ActiveDurationMs: &active,
 			DistanceMeters: &distance, StartedAt: &started, EndedAt: &ended,
 			ExerciseID: 3, ExerciseName: &exName, CatalogExerciseID: &catalog, SessionName: &sessionName,
 			SessionInstanceID: 404},
-		// mismo atleta de nuevo: el batch de users debe deduplicar
-		{ID: 2, AthleteUserID: 7, TeamID: &teamID, SessionDate: sessionDate, SetNumber: 2, ExerciseID: 3},
+		// mismo atleta de nuevo: el nombre viene embebido por fila, sin batch
+		{ID: 2, AthleteUserID: 7, AthleteName: histStrPtr("Atleta7"), TotalCount: 4, TeamID: &teamID, SessionDate: sessionDate, SetNumber: 2, ExerciseID: 3},
 		// huérfano: sin team, sin group
-		{ID: 3, AthleteUserID: 8, SessionDate: sessionDate, SetNumber: 1, ExerciseID: 5},
+		{ID: 3, AthleteUserID: 8, AthleteName: histStrPtr("Atleta8"), TotalCount: 4, SessionDate: sessionDate, SetNumber: 1, ExerciseID: 5},
 		// team inexistente en el batch (soft-delete): id presente, nombre no resuelve
-		{ID: 4, AthleteUserID: 8, TeamID: &orphanTeam, SessionDate: sessionDate, SetNumber: 1, ExerciseID: 5},
+		{ID: 4, AthleteUserID: 8, AthleteName: histStrPtr("Atleta8"), TotalCount: 4, TeamID: &orphanTeam, SessionDate: sessionDate, SetNumber: 1, ExerciseID: 5},
 	}
 
 	calls := &historyDAOCalls{}
@@ -257,10 +262,41 @@ func TestWorkoutFeedbackService_AthleteHistory_ResponseShapeNombresBatch(t *test
 	assert.Equal(t, int64(999), *resp.Items[3].TeamID)
 	assert.Nil(t, resp.Items[3].TeamName)
 
-	// batches deduplicados
-	assert.Equal(t, []int64{7, 8}, calls.userIDs)
+	// batches deduplicados (el atleta ya no se resuelve por batch: viene embebido)
+	assert.Nil(t, calls.userIDs, "historyItems no debe pedir UsersByIDs")
 	assert.Equal(t, []int64{4, 999}, calls.teamIDs)
 	assert.Equal(t, []int64{6}, calls.groupIDs)
+	assert.False(t, calls.countCalled, "con página no vacía el total sale de la fila")
+	assert.Equal(t, int64(4), resp.Total)
+}
+
+func TestWorkoutFeedbackService_AthleteHistory_PaginaVaciaCaeAHistoryCount(t *testing.T) {
+	calls := &historyDAOCalls{}
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, nil), fbAccessDao())
+
+	resp, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{Page: histIntPtr(99), PageSize: histIntPtr(10)})
+
+	require.NoError(t, err)
+	assert.Empty(t, resp.Items)
+	assert.Equal(t, 980, calls.offset)
+	assert.True(t, calls.countCalled, "sin filas el total cae a HistoryCount")
+	assert.Equal(t, int64(42), resp.Total)
+}
+
+func TestWorkoutFeedbackService_AthleteHistory_AtletaNoResuelto_NombreVacio(t *testing.T) {
+	calls := &historyDAOCalls{}
+	svc := NewWorkoutFeedbackService(newHistoryMock(calls, []dbs.WorkoutFeedbackHistoryRow{
+		// athlete_name nil: el user ya no existe (LEFT JOIN sin match).
+		{ID: 1, AthleteUserID: 8, TotalCount: 1, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 5},
+	}), fbAccessDao())
+
+	resp, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, int64(8), resp.Items[0].AthleteUserID)
+	assert.Equal(t, "", resp.Items[0].AthleteName)
+	assert.Nil(t, calls.userIDs, "sin nombre embebido no se dispara un batch de users")
 }
 
 func TestWorkoutFeedbackService_AthleteHistory_Validaciones_400(t *testing.T) {
@@ -366,7 +402,7 @@ func TestWorkoutFeedbackService_AdministeredHistory_NoOwner_403(t *testing.T) {
 func TestWorkoutFeedbackService_AdministeredHistory_OK_AthleteFilterSegundoNivel(t *testing.T) {
 	calls := &historyDAOCalls{}
 	svc := NewWorkoutFeedbackService(newHistoryMock(calls, []dbs.WorkoutFeedbackHistoryRow{
-		{ID: 1, AthleteUserID: 9, IsPresencial: true, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 3},
+		{ID: 1, AthleteUserID: 9, AthleteName: histStrPtr("Atleta9"), TotalCount: 1, IsPresencial: true, SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 1, ExerciseID: 3},
 	}), fbAccessDao())
 
 	athleteFilter := int64(9)
@@ -389,6 +425,8 @@ func TestWorkoutFeedbackService_AdministeredHistory_OK_AthleteFilterSegundoNivel
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "Atleta9", resp.Items[0].AthleteName)
 	assert.True(t, resp.Items[0].IsPresencial)
+	assert.EqualValues(t, 1, resp.Total, "con filtro de segundo nivel el total sale de la fila")
+	assert.False(t, calls.countCalled)
 	// pools passthrough: el service no los recorta por el filtro de 2do nivel
 	assert.Equal(t, []dbs.IDName{{ID: 7, Name: "Juan"}}, resp.AvailableAthletes)
 	assert.Equal(t, []dbs.IDName{{ID: 3, Name: "Sentadilla"}}, resp.AvailableExercises)
@@ -418,4 +456,114 @@ func histIntPtr(v int) *int {
 
 func histStrPtr(v string) *string {
 	return &v
+}
+
+// Query-count del historial del atleta (D2): el total viaja en el COUNT(*) OVER()
+// de la primera fila, así que una lectura paginada no paga un HistoryCount extra
+// ni el batch de UsersByIDs. Página no vacía: search + 2 pools + teams + groups =
+// 5 (antes 7). Página vacía (offset fuera de rango): search + HistoryCount + 2
+// pools = 4 — historyItems corta antes de resolver equipos/grupos porque no hay
+// filas, así que el fallback suma una sola lectura.
+func TestWorkoutFeedbackService_AthleteHistory_QueryCount(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	user := &dbs.User{Name: "Atleta QC", Surname: "X", Email: "wf-qc@test.com", DNI: "93000001",
+		BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(user).Error)
+	team := &dbs.Team{Name: "Team QC", MaxMembers: 10, OwnerID: user.ID}
+	require.NoError(t, db.Create(team).Error)
+	group := &dbs.Group{Name: "Grupo QC", TeamID: team.ID}
+	require.NoError(t, db.Create(group).Error)
+	inst := &dbs.SessionInstance{Name: "Sesión QC"}
+	require.NoError(t, db.Create(inst).Error)
+	ex := &dbs.ExerciseInstance{Name: "Ejercicio QC", Kind: "running"}
+	require.NoError(t, db.Create(ex).Error)
+	require.NoError(t, db.Create(&dbs.GroupCalendarDay{
+		GroupID: group.ID, Date: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Kind: "training",
+		SessionInstanceID: &inst.ID,
+	}).Error)
+	var media pgtype.TextArray
+	require.NoError(t, media.Set(nil))
+	require.NoError(t, db.Create(&dbs.WorkoutFeedback{
+		TeamID: &team.ID, AssignedSessionID: inst.ID, AssignedExerciseID: ex.ID,
+		AthleteUserID: user.ID, FeedbackOwnerUserID: user.ID, ReportSource: "corredor",
+		SessionDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), SetNumber: 0, MediaURLs: media,
+	}).Error)
+
+	counter := 0
+	cdb := countingDB(t, db, &counter)
+	svc := NewWorkoutFeedbackService(daos.NewWorkoutFeedbackDao(cdb), daos.NewSessionInstanceDao(cdb))
+
+	resp, err := svc.AthleteHistory(nil, user.ID, user.ID, workoutfeedback.HistoryQuery{})
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "Atleta QC", resp.Items[0].AthleteName)
+	assert.EqualValues(t, 1, resp.Total)
+	assert.Equal(t, 5, counter, "search + 2 pools + teams + groups (sin HistoryCount ni users)")
+
+	counter = 0
+	resp, err = svc.AthleteHistory(nil, user.ID, user.ID, workoutfeedback.HistoryQuery{Page: histIntPtr(99), PageSize: histIntPtr(10)})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Items)
+	assert.EqualValues(t, 1, resp.Total, "el total se recupera con HistoryCount en la página vacía")
+	assert.Equal(t, 4, counter, "página vacía: search + HistoryCount + 2 pools (historyItems corta sin filas)")
+}
+
+// Cada lectura de buildHistoryResponse/historyItems propaga el error envuelto:
+// fallback de total con página vacía, pools, y batches de equipo/grupo.
+func TestWorkoutFeedbackService_AthleteHistory_ErrorPaths(t *testing.T) {
+	sessionDate := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
+	teamID, groupID := int64(4), int64(6)
+	row := dbs.WorkoutFeedbackHistoryRow{
+		ID: 1, AthleteUserID: 7, TotalCount: 1, TeamID: &teamID, GroupID: &groupID,
+		SessionDate: sessionDate, SetNumber: 1, ExerciseID: 3,
+	}
+	boom := func() error { return errors.New("db caida") }
+
+	cases := []struct {
+		name      string
+		rows      []dbs.WorkoutFeedbackHistoryRow
+		configure func(*mockWorkoutFeedbackDao)
+	}{
+		{"history count con pagina vacia", nil, func(m *mockWorkoutFeedbackDao) {
+			m.historyCountFn = func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) (int64, error) {
+				return 0, boom()
+			}
+		}},
+		{"pool de atletas", nil, func(m *mockWorkoutFeedbackDao) {
+			m.historyAthletesFn = func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+				return nil, boom()
+			}
+		}},
+		{"pool de ejercicios", nil, func(m *mockWorkoutFeedbackDao) {
+			m.historyExercisesFn = func(ctx *gin.Context, filters daos.WorkoutFeedbackHistoryFilters) ([]dbs.IDName, error) {
+				return nil, boom()
+			}
+		}},
+		{"batch de equipos", []dbs.WorkoutFeedbackHistoryRow{row}, func(m *mockWorkoutFeedbackDao) {
+			m.teamsByIDsFn = func(ctx *gin.Context, teamIDs []int64) ([]dbs.Team, error) {
+				return nil, boom()
+			}
+		}},
+		{"batch de grupos", []dbs.WorkoutFeedbackHistoryRow{row}, func(m *mockWorkoutFeedbackDao) {
+			m.groupsByIDsFn = func(ctx *gin.Context, groupIDs []int64) ([]dbs.Group, error) {
+				return nil, boom()
+			}
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := &historyDAOCalls{}
+			mock := newHistoryMock(calls, tc.rows)
+			tc.configure(mock)
+			svc := NewWorkoutFeedbackService(mock, fbAccessDao())
+
+			_, err := svc.AthleteHistory(nil, 7, 7, workoutfeedback.HistoryQuery{})
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "error interno")
+			assert.Contains(t, err.Error(), "db caida")
+		})
+	}
 }

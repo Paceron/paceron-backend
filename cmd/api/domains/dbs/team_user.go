@@ -11,7 +11,7 @@ import "time"
 // `installments` (historial financiero, arco exclusivo con `team_id`).
 type TeamUser struct {
 	ID                 int64      `gorm:"column:id;primaryKey"`                                                          // ID único de la asociación
-	TeamID             int64      `gorm:"column:team_id;not null;index;index:idx_team_users_team_id_user_id,priority:1"` // ID del equipo
+	TeamID             int64      `gorm:"column:team_id;not null;index:idx_team_users_team_id_user_id,priority:1"`       // ID del equipo
 	UserID             int64      `gorm:"column:user_id;not null;index;index:idx_team_users_team_id_user_id,priority:2"` // ID del usuario
 	RoleInTeam         string     `gorm:"column:role_in_team;not null"`                                                  // Rol del usuario en el equipo (entrenador, corredor)
 	Status             string     `gorm:"column:status;not null;default:active"`                                         // Estado de la asociación (active, inactive)

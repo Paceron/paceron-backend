@@ -103,10 +103,10 @@ func (s *stubPushClient) SendBatch(ctx context.Context, tokens []string, title, 
 type fakeAchievementDao struct {
 	// agregados por criterio.
 	finishedCount  int64
+	earlyCount     int64
 	sumDistance    float64
 	maxSingle      float64
 	gpsCount       int64
-	starts         []time.Time
 	attendanceDays int64
 
 	// vitrina.
@@ -175,11 +175,15 @@ func (f *fakeAchievementDao) CountGPSFinishedSessions(ctx *gin.Context, userID i
 	return f.gpsCount, nil
 }
 
-func (f *fakeAchievementDao) ListFinishedSessionStarts(ctx *gin.Context, userID int64) ([]time.Time, error) {
+func (f *fakeAchievementDao) CountEarlyFinishedSessions(ctx *gin.Context, userID int64) (int64, error) {
 	if f.queriesErr != nil {
-		return nil, f.queriesErr
+		return 0, f.queriesErr
 	}
-	return f.starts, nil
+	return f.earlyCount, nil
+}
+
+func (f *fakeAchievementDao) ListFinishedSessionStarts(ctx *gin.Context, userID int64) ([]time.Time, error) {
+	panic("el servicio no debe traer el histórico: usa CountEarlyFinishedSessions")
 }
 
 func (f *fakeAchievementDao) CountAttendanceDays(ctx *gin.Context, userID int64) (int64, error) {
@@ -193,15 +197,26 @@ func newAchievementsTestService(dao *fakeAchievementDao, gamDao *mockGamificatio
 	return NewAchievementsService(dao, gamDao, streaks, tokens, client)
 }
 
-func TestCountEarlyStarts_FronteraOchoHoras(t *testing.T) {
-	// TZ Cordoba (UTC-3): 11:00 UTC = 08:00 → NO cuenta; 10:59 UTC = 07:59 → sí.
-	starts := []time.Time{
-		time.Date(2026, 10, 12, 10, 59, 0, 0, time.UTC),
-		time.Date(2026, 10, 12, 11, 0, 0, 0, time.UTC),
-		time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC),  // 06:00 → sí
-		time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC), // 09:00 → no
-	}
-	assert.Equal(t, 2, countEarlyStarts(starts))
+func TestAchievementsService_EarlyUnlock(t *testing.T) {
+	dao := &fakeAchievementDao{alreadyUnlocked: map[string]bool{}, finishedCount: 5, earlyCount: 5}
+	gamDao := &mockGamificationDao{}
+	svc := newAchievementsTestService(dao, gamDao, &fakeStreakView{}, &fakePushTokenDAO{}, &stubPushClient{})
+
+	err := svc.EvaluateEvent(nil, 7, AchievementTriggerRunnerSession)
+
+	require.NoError(t, err)
+	assert.Contains(t, dao.unlocks, "early_5")
+}
+
+func TestAchievementsService_EarlyNoAlcanza(t *testing.T) {
+	dao := &fakeAchievementDao{alreadyUnlocked: map[string]bool{}, finishedCount: 5, earlyCount: 4}
+	gamDao := &mockGamificationDao{}
+	svc := newAchievementsTestService(dao, gamDao, &fakeStreakView{}, &fakePushTokenDAO{}, &stubPushClient{})
+
+	err := svc.EvaluateEvent(nil, 7, AchievementTriggerRunnerSession)
+
+	require.NoError(t, err)
+	assert.NotContains(t, dao.unlocks, "early_5")
 }
 
 func TestAchievementsService_SessionsUnlock(t *testing.T) {

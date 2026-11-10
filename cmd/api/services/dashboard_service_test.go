@@ -806,7 +806,9 @@ func TestDashboardService_ExerciseSeriesResuelveInstanciasPorNombre(t *testing.T
 	dao.catalogByIDFn = func(ctx *gin.Context, id int64) (*daos.DashboardCatalogExercises, error) {
 		return &daos.DashboardCatalogExercises{ID: id, OwnerID: 10, Name: "Distancia 4 km", Kind: "ritmo_continuo"}, nil
 	}
-	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64) ([]daos.UnlinkedExerciseInstance, error) {
+	var legacyFrom, legacyTo time.Time
+	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
+		legacyFrom, legacyTo = from, to
 		return []daos.UnlinkedExerciseInstance{
 			// Mismo dueño y mismo nombre normalizado: entra.
 			{ExerciseInstanceID: 500, Name: "distancia 4 KM.", OwnerID: 10},
@@ -829,6 +831,25 @@ func TestDashboardService_ExerciseSeriesResuelveInstanciasPorNombre(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, []int64{7}, filter.ExerciseIDs)
 	assert.Equal(t, []int64{500}, filter.LegacyExerciseInstanceIDs)
+	assert.Equal(t, "2026-09-01", legacyFrom.Format("2006-01-02"), "el rango llega al DAO de legacy")
+	assert.Equal(t, "2026-09-30", legacyTo.Format("2006-01-02"))
+}
+
+// Un error del DAO de instancias legacy no se traga: el endpoint tiene que fallar
+// en vez de devolver series parciales sin el histórico previo al backfill.
+func TestDashboardService_ExerciseSeriesErrorDeInstanciasLegacy(t *testing.T) {
+	service, dao, _ := dashboardFixture(t)
+	dao.catalogByIDFn = func(ctx *gin.Context, id int64) (*daos.DashboardCatalogExercises, error) {
+		return &daos.DashboardCatalogExercises{ID: id, OwnerID: 10, Name: "Distancia 4 km", Kind: "ritmo_continuo"}, nil
+	}
+	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
+		return nil, assert.AnError
+	}
+
+	_, err := service.ExerciseSeries(nil, 10, 7, dashboardQuery())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "histórico del ejercicio")
 }
 
 // Un ejercicio de catálogo de otro dueño no se resuelve por nombre.
@@ -974,4 +995,81 @@ func TestDashboardService_ValidateAthletes_UnaSolaLecturaBatch(t *testing.T) {
 	require.ErrorAs(t, err, &athleteErr)
 	assert.Equal(t, int64(3), athleteErr.AthleteUserID)
 	assert.ErrorIs(t, err, ErrDashboardForbidden)
+}
+
+// Errores de las lecturas del dashboard: ninguno se traga porque devolver
+// métricas parciales sería peor que un 500 explícito.
+func TestDashboardService_ErroresDeLectura(t *testing.T) {
+	t.Run("series", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.findSeriesFn = func(ctx *gin.Context, f daos.DashboardScopeFilter) ([]daos.DashboardSeriesRow, error) {
+			return nil, assert.AnError
+		}
+
+		_, err := service.Summary(nil, dashboardOwnerID, dashboardQuery())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al obtener las series del dashboard")
+	})
+
+	t.Run("open sessions", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.countOpenFn = func(ctx *gin.Context, filter daos.DashboardScopeFilter) (daos.DashboardOpenSessions, error) {
+			return daos.DashboardOpenSessions{}, assert.AnError
+		}
+
+		_, err := service.Summary(nil, dashboardOwnerID, dashboardQuery())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al contar las sesiones abiertas del dashboard")
+	})
+
+	t.Run("scope athletes", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.athletesFn = func(ctx *gin.Context, groupIDs []int64) ([]int64, error) {
+			return nil, assert.AnError
+		}
+
+		_, err := service.Filters(nil, dashboardOwnerID, 29)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al resolver los corredores del dashboard")
+	})
+
+	t.Run("athlete names", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.athletesFn = func(ctx *gin.Context, groupIDs []int64) ([]int64, error) {
+			return []int64{1}, nil
+		}
+		service.userDao = &mockDashboardUserDao{err: assert.AnError}
+
+		_, err := service.Filters(nil, dashboardOwnerID, 29)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al resolver los corredores del dashboard")
+	})
+
+	t.Run("catalogo del owner", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.catalogByOwnerFn = func(ctx *gin.Context, ownerID int64, kinds []string) ([]daos.DashboardCatalogExercises, error) {
+			return nil, assert.AnError
+		}
+
+		_, err := service.Filters(nil, dashboardOwnerID, 29)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al resolver el catálogo del dashboard")
+	})
+
+	t.Run("rango de fechas", func(t *testing.T) {
+		service, dao, _ := dashboardFixture(t)
+		dao.dateRangeFn = func(ctx *gin.Context, groupIDs []int64) (*time.Time, *time.Time, error) {
+			return nil, nil, assert.AnError
+		}
+
+		_, err := service.Filters(nil, dashboardOwnerID, 29)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error al resolver el rango de fechas del dashboard")
+	})
 }

@@ -18,6 +18,9 @@ type UserDaoInterface interface {
 	UpdateStatus(ctx *gin.Context, userID int64, status string) error
 	SearchActive(ctx *gin.Context, query string, limit int) ([]*dbs.User, error)
 	FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, error)
+	// FindNamesByIDs resuelve solo id/name/surname/email en batch, para
+	// resoluciones de nombres que no necesitan el perfil completo.
+	FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error)
 	UpdatePhoto(ctx *gin.Context, userID int64, key string, updatedAt time.Time) error
 	ClearPhoto(ctx *gin.Context, userID int64) error
 }
@@ -130,6 +133,23 @@ func (ud *userDao) FindByIDs(ctx *gin.Context, userIDs []int64) ([]*dbs.User, er
 	err := ud.DB.Where("id IN ?", userIDs).Find(&users).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding users by ids: %w", err)
+	}
+	return users, nil
+}
+
+// FindNamesByIDs es la variante ligera de FindByIDs: solo las columnas que
+// necesitan los batches de nombres (id, nombre, apellido, email).
+func (ud *userDao) FindNamesByIDs(ctx *gin.Context, userIDs []int64) ([]dbs.UserName, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var users []dbs.UserName
+	err := ud.DB.Model(&dbs.User{}).
+		Select("id, name, surname, email").
+		Where("id IN ?", userIDs).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding user names by ids: %w", err)
 	}
 	return users, nil
 }

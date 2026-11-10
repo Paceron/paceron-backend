@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1492,4 +1493,85 @@ func TestWorkoutFeedbackService_GetSessionFeedback_InstanceGuardErrorPropagates(
 	_, err := svc.GetSessionFeedback(nil, 7, 10, nil)
 
 	require.ErrorIs(t, err, assert.AnError)
+}
+
+// buildUpdates arma el update parcial completo y valida cada campo provisto
+// antes de tocar la DB.
+func TestWorkoutFeedbackService_BuildUpdates_CompletoYValidaciones(t *testing.T) {
+	review := "2026-03-10"
+	reportSource := "corredor"
+	completion := "completa"
+	annotations := "nota"
+	startedAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)
+	endedAt := startedAt.Add(time.Hour)
+
+	updates, err := buildUpdates(workoutfeedback.UpdateFeedbackRequest{
+		TeamID: fbInt64Ptr(4), AssignedSessionID: fbInt64Ptr(5), AssignedExerciseID: fbInt64Ptr(6),
+		ReportSource: &reportSource, SessionDate: &review, SetNumber: fbIntPtr(1),
+		StartedAt: &startedAt, EndedAt: &endedAt, DurationMs: fbInt64Ptr(60000),
+		ActiveDurationMs: fbInt64Ptr(50000), WeightKg: fbFloat64Ptr(2.5), Reps: fbIntPtr(10),
+		DistanceMeters: fbFloat64Ptr(3.2), RPE: fbInt16Ptr(8), AvgHeartRate: fbInt16Ptr(145),
+		MaxHeartRate: fbInt16Ptr(170), CompletionStatus: &completion,
+		ElevationGainMeters: fbFloat64Ptr(12), Cadence: fbInt16Ptr(88),
+		Annotations: &annotations, MediaURLs: []string{"https://media.foo/a.jpg"},
+	})
+
+	require.NoError(t, err)
+	for _, key := range []string{
+		"team_id", "assigned_session_id", "assigned_exercise_id", "report_source",
+		"session_date", "set_number", "started_at", "ended_at", "duration_ms",
+		"active_duration_ms", "weight_kg", "reps", "distance_meters", "rpe",
+		"avg_heart_rate", "max_heart_rate", "completion_status", "elevation_gain_meters",
+		"cadence", "annotations", "media_urls",
+	} {
+		assert.Contains(t, updates, key)
+	}
+
+	assert.Equal(t, int64(4), updates["team_id"])
+	assert.Equal(t, int64(5), updates["assigned_session_id"])
+	assert.Equal(t, int64(6), updates["assigned_exercise_id"])
+	assert.Equal(t, reportSource, updates["report_source"])
+	assert.Equal(t, time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), updates["session_date"])
+	assert.Equal(t, 1, updates["set_number"])
+	assert.Equal(t, startedAt, updates["started_at"])
+	assert.Equal(t, endedAt, updates["ended_at"])
+	assert.Equal(t, int64(60000), updates["duration_ms"])
+	assert.Equal(t, int64(50000), updates["active_duration_ms"])
+	assert.Equal(t, 2.5, updates["weight_kg"])
+	assert.Equal(t, 10, updates["reps"])
+	assert.Equal(t, 3.2, updates["distance_meters"])
+	assert.Equal(t, int16(8), updates["rpe"])
+	assert.Equal(t, int16(145), updates["avg_heart_rate"])
+	assert.Equal(t, int16(170), updates["max_heart_rate"])
+	assert.Equal(t, completion, updates["completion_status"])
+	assert.Equal(t, 12.0, updates["elevation_gain_meters"])
+	assert.Equal(t, int16(88), updates["cadence"])
+	assert.Equal(t, annotations, updates["annotations"])
+
+	media, ok := updates["media_urls"].(pgtype.TextArray)
+	require.True(t, ok)
+	var mediaURLs []string
+	require.NoError(t, media.AssignTo(&mediaURLs))
+	assert.Equal(t, []string{"https://media.foo/a.jpg"}, mediaURLs)
+
+	badDate := "10/03/2026"
+	emptySource := ""
+	cases := []struct {
+		name string
+		req  workoutfeedback.UpdateFeedbackRequest
+	}{
+		{"team cero", workoutfeedback.UpdateFeedbackRequest{TeamID: fbInt64Ptr(0)}},
+		{"session cero", workoutfeedback.UpdateFeedbackRequest{AssignedSessionID: fbInt64Ptr(0)}},
+		{"exercise cero", workoutfeedback.UpdateFeedbackRequest{AssignedExerciseID: fbInt64Ptr(0)}},
+		{"set negativo", workoutfeedback.UpdateFeedbackRequest{SetNumber: fbIntPtr(-1)}},
+		{"report source vacio", workoutfeedback.UpdateFeedbackRequest{ReportSource: &emptySource}},
+		{"fecha invalida", workoutfeedback.UpdateFeedbackRequest{SessionDate: &badDate}},
+		{"ended antes de started", workoutfeedback.UpdateFeedbackRequest{StartedAt: &endedAt, EndedAt: &startedAt}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildUpdates(tc.req)
+			require.ErrorIs(t, err, ErrWorkoutFeedbackInvalid)
+		})
+	}
 }

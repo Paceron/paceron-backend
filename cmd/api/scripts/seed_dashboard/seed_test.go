@@ -76,7 +76,7 @@ func TestSeed_DejaInstanciasParaElFallbackPorNombre(t *testing.T) {
 	require.NoError(t, s.run())
 
 	dao := daos.NewDashboardDao(db)
-	unlinked, err := dao.UnlinkedExerciseInstances(nil, []int64{s.groupID})
+	unlinked, err := dao.UnlinkedExerciseInstances(nil, []int64{s.groupID}, s.window.from(), s.window.to())
 	require.NoError(t, err)
 	require.NotEmpty(t, unlinked, "el seed tiene que dejar instancias sin source_exercise_id")
 

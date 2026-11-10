@@ -114,3 +114,14 @@ func createFullGuardTrainer(t *testing.T, db *gorm.DB, email, dni string) int64 
 	require.NoError(t, db.Create(&trainer).Error)
 	return trainer.ID
 }
+
+func TestRunFullSeed_ValidacionesYBaseVacia(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	require.Error(t, runFullSeed(db, options{profile: "nope"}))
+	require.ErrorContains(t, runFullSeed(db, options{profile: fullProfile, cleanup: true}), "--yes")
+
+	require.NoError(t, runFullSeed(db, options{profile: fullProfile, seed: true, dryRun: true}))
+	require.NoError(t, runFullSeed(db, options{profile: fullProfile, cleanup: true, dryRun: true, yes: true}))
+	require.NoError(t, runFullSeed(db, options{profile: fullProfile, cleanup: true, yes: true}))
+}

@@ -547,3 +547,25 @@ func TestWorkoutFeedbackDao_GetBySession_EmptyIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, feedbacks)
 }
+func TestWorkoutFeedbackDao_Update_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("update", 1))
+	dao := NewWorkoutFeedbackDao(failing)
+
+	_, err := dao.Update(nil, 1, map[string]interface{}{"weight_kg": 80.5})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error updating workout feedback")
+	assert.NotErrorIs(t, err, ErrWorkoutFeedbackNotFound)
+}
+
+func TestWorkoutFeedbackDao_SoftDelete_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("update", 1))
+	dao := NewWorkoutFeedbackDao(failing)
+
+	err := dao.SoftDelete(nil, 1)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error soft-deleting workout feedback")
+}

@@ -260,6 +260,7 @@ JOIN groups g
 JOIN teams t
 	ON t.id = g.team_id AND t.deleted_at IS NULL
 WHERE gcd.group_id IN ?
+  AND gcd.date BETWEEN ? AND ?
   AND ei.source_exercise_id IS NULL`
 
 // DashboardDaoInterface define el acceso a datos de métricas del dashboard.
@@ -270,7 +271,7 @@ type DashboardDaoInterface interface {
 	FindRunnerSeries(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]DashboardSeriesRow, error)
 	CountOpenSessions(ctx *gin.Context, filter DashboardScopeFilter) (DashboardOpenSessions, error)
 	ScopeDateRange(ctx *gin.Context, groupIDs []int64) (minDate, maxDate *time.Time, err error)
-	UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64) ([]UnlinkedExerciseInstance, error)
+	UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]UnlinkedExerciseInstance, error)
 	ScopeAthletes(ctx *gin.Context, groupIDs []int64) ([]int64, error)
 	FindCatalogExercisesByOwner(ctx *gin.Context, ownerID int64, kinds []string) ([]DashboardCatalogExercises, error)
 	FindDashboardCatalogExerciseByID(ctx *gin.Context, id int64) (*DashboardCatalogExercises, error)
@@ -538,9 +539,10 @@ func (d *dashboardDao) ScopeDateRange(ctx *gin.Context, groupIDs []int64) (minDa
 }
 
 // UnlinkedExerciseInstances devuelve las instancias sin source_exercise_id del
-// scope, con el dueño de su equipo. La resolución por nombre normalizado vive en
-// el dominio (dashboard.NewNameIndex); el DAO solo trae los candidatos.
-func (d *dashboardDao) UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64) ([]UnlinkedExerciseInstance, error) {
+// scope acotadas al rango de días consultado, con el dueño de su equipo. La
+// resolución por nombre normalizado vive en el dominio (dashboard.NewNameIndex);
+// el DAO solo trae los candidatos.
+func (d *dashboardDao) UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]UnlinkedExerciseInstance, error) {
 	if len(groupIDs) == 0 {
 		return nil, nil
 	}
@@ -549,7 +551,7 @@ func (d *dashboardDao) UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []in
 		Name               string `gorm:"column:name"`
 		OwnerID            int64  `gorm:"column:owner_id"`
 	}
-	if err := d.DB.Raw(unlinkedExerciseInstancesSQL, groupIDs).Scan(&rows).Error; err != nil {
+	if err := d.DB.Raw(unlinkedExerciseInstancesSQL, groupIDs, from, to).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("error finding unlinked exercise instances: %w", err)
 	}
 	out := make([]UnlinkedExerciseInstance, 0, len(rows))

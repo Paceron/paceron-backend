@@ -321,3 +321,34 @@ func TestGroupUserDao_FindByGroupIDs_Batch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, empty)
 }
+
+func TestGroupUserDao_FindActiveWithGroupByUserID_OrderAndFilters(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupUserDao(db)
+	owner := persistUser(db, "gu-activewithgroup-owner@test.com", "50000910")
+	member := persistUser(db, "gu-activewithgroup-member@test.com", "50000911")
+	team := testTeam(db, "equipo_gu_activewithgroup", owner.ID)
+	groupB := testGroup(db, "grupo_gu_activewithgroup_b", team.ID)
+	groupA := testGroup(db, "grupo_gu_activewithgroup_a", team.ID)
+	groupDeleted := testGroup(db, "grupo_gu_activewithgroup_deleted", team.ID)
+
+	// Orden de inserción: B, A, borrado, expirada, baja lógica.
+	for _, groupID := range []int64{groupB.ID, groupA.ID, groupDeleted.ID} {
+		require.NoError(t, dao.Create(nil, &dbs.GroupUser{GroupID: groupID, UserID: member.ID, DateStart: time.Now()}))
+	}
+	expiredEnd := time.Now().AddDate(0, 0, -1)
+	require.NoError(t, dao.Create(nil, &dbs.GroupUser{GroupID: groupA.ID, UserID: member.ID, DateStart: time.Now().AddDate(0, 0, -10), DateEnd: &expiredEnd}))
+	deleted := &dbs.GroupUser{GroupID: groupA.ID, UserID: member.ID, DateStart: time.Now()}
+	require.NoError(t, dao.Create(nil, deleted))
+	require.NoError(t, dao.SoftDelete(nil, deleted.ID))
+	require.NoError(t, db.Model(&dbs.Group{}).Where("id = ?", groupDeleted.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+
+	rows, err := dao.FindActiveWithGroupByUserID(nil, member.ID)
+
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, groupB.ID, rows[0].GroupID, "conserva el orden de las membresías")
+	assert.Equal(t, groupB.Name, rows[0].GroupName)
+	assert.Equal(t, groupA.ID, rows[1].GroupID)
+	assert.Equal(t, groupA.Name, rows[1].GroupName)
+}

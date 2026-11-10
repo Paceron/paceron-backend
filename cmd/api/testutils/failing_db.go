@@ -42,8 +42,10 @@ type failingConnPool struct {
 var errInjected = errors.New("error de base de datos inyectado por testutils.FailingDB")
 
 func opOfSQL(query string) string {
+	// SQL armado con Raw puede venir con salto de línea/indentación inicial.
+	trimmed := strings.TrimSpace(query)
 	for _, prefix := range []string{"SELECT", "INSERT", "UPDATE", "DELETE"} {
-		if strings.HasPrefix(query, prefix) {
+		if strings.HasPrefix(trimmed, prefix) {
 			return strings.ToLower(prefix)
 		}
 	}

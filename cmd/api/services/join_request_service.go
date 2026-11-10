@@ -293,7 +293,7 @@ func (s *joinRequestService) ListMine(ctx *gin.Context, runnerID int64) ([]joinr
 
 	teamNames := make(map[int64]string, len(teamIDs))
 	if len(teamIDs) > 0 {
-		if teams, err := s.teamDao.FindByIDs(ctx, teamIDs); err == nil {
+		if teams, err := s.teamDao.FindNamesByIDs(ctx, teamIDs); err == nil {
 			for _, team := range teams {
 				teamNames[team.ID] = team.Name
 			}
@@ -377,14 +377,11 @@ func (s *joinRequestService) runnerNames(ctx *gin.Context, runnerIDs []int64) ma
 	if len(runnerIDs) == 0 {
 		return names
 	}
-	users, err := s.userDao.FindByIDs(ctx, runnerIDs)
+	users, err := s.userDao.FindNamesByIDs(ctx, runnerIDs)
 	if err != nil {
 		return names
 	}
 	for _, user := range users {
-		if user == nil {
-			continue
-		}
 		names[user.ID] = user.Name + " " + user.Surname
 	}
 	return names

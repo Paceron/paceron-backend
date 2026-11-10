@@ -15,7 +15,6 @@ import (
 	"simple-arq-golang/cmd/api/domains/gamification"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
 	"simple-arq-golang/cmd/api/restclients/expopushclient"
-	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
 // AchievementTrigger identifica el hecho que dispara la re-evaluación: cada
@@ -166,23 +165,6 @@ func (s *achievementsService) GetUserStamps(ctx *gin.Context, targetUserID int64
 	return &gamification.StampsResponse{Data: items}, nil
 }
 
-// earlyStartHour es la frontera de early_5: started_at ANTES de las 08:00
-// America/Argentina/Cordoba (D1/gametime), hora del instante en la TZ fija.
-const earlyStartHour = 8
-
-// countEarlyStarts es la agregación en Go de early_N: cada instancia con
-// started_at antes de las 08:00 de Cordoba cuenta una vez.
-func countEarlyStarts(starts []time.Time) int {
-	n := 0
-	for _, raw := range starts {
-		local := raw.In(gametime.Location)
-		if local.Hour() < earlyStartHour {
-			n++
-		}
-	}
-	return n
-}
-
 func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) (map[string]float64, error) {
 	switch trigger {
 	case AchievementTriggerRunnerSession:
@@ -206,7 +188,7 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 				bestStrict = streaks.Strict.Best
 			}
 		}
-		starts, err := s.achievementDao.ListFinishedSessionStarts(ctx, userID)
+		early, err := s.achievementDao.CountEarlyFinishedSessions(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -217,7 +199,7 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 			"streak_3": float64(bestStrict), "streak_7": float64(bestStrict),
 			"streak_14": float64(bestStrict), "streak_30": float64(bestStrict),
 			"streak_60": float64(bestStrict),
-			"early_5":   float64(countEarlyStarts(starts)),
+			"early_5":   float64(early),
 		}, nil
 	case AchievementTriggerFeedback:
 		totalMeters, err := s.achievementDao.SumDistanceMeters(ctx, userID)

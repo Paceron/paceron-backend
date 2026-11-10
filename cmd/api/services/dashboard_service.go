@@ -550,7 +550,7 @@ func (s *dashboardService) sessionComparisonSide(
 	if !catalogOwnerInScope(scope, teamID, catalog.OwnerID) {
 		return dashboard.SessionComparisonSide{}, ErrDashboardForbidden
 	}
-	prepared := &validatedMetricsQuery{Scope: scope, TeamID: teamID, GroupIDs: groupIDs}
+	prepared := &validatedMetricsQuery{Scope: scope, TeamID: teamID, GroupIDs: groupIDs, From: from, To: to}
 	legacyIDs, err := s.resolveLegacyInstances(ctx, prepared, ref.ExerciseID)
 	if err != nil {
 		return dashboard.SessionComparisonSide{}, err
@@ -1055,7 +1055,7 @@ func (s *dashboardService) resolveLegacyInstances(ctx *gin.Context, prepared *va
 		return nil, ErrDashboardForbidden
 	}
 
-	unlinked, err := s.dashboardDao.UnlinkedExerciseInstances(ctx, prepared.GroupIDs)
+	unlinked, err := s.dashboardDao.UnlinkedExerciseInstances(ctx, prepared.GroupIDs, prepared.From, prepared.To)
 	if err != nil {
 		customlogger.Error(ctx, "error listing unlinked exercise instances", err,
 			customlogger.TagMethod("Dashboard.resolveLegacyInstances"))
@@ -1177,16 +1177,13 @@ func (s *dashboardService) athleteNames(ctx *gin.Context, athleteIDs []int64) (m
 	if len(athleteIDs) == 0 {
 		return names, nil
 	}
-	users, err := s.userDao.FindByIDs(ctx, athleteIDs)
+	users, err := s.userDao.FindNamesByIDs(ctx, athleteIDs)
 	if err != nil {
 		customlogger.Error(ctx, "error resolving dashboard athlete names", err,
 			customlogger.TagMethod("Dashboard.athleteNames"))
 		return nil, fmt.Errorf("error al resolver los corredores del dashboard")
 	}
 	for _, user := range users {
-		if user == nil {
-			continue
-		}
 		names[user.ID] = dashboard.AthleteName{Name: user.Name, Surname: user.Surname}
 	}
 	return names, nil

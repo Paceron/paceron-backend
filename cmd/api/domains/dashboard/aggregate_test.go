@@ -618,3 +618,50 @@ func TestBuildPeriods_Verdict(t *testing.T) {
 	// Dentro de ±2 pp es estable: 50 de 60 contra 50 de 60 son los mismos 83,3 %.
 	assert.Equal(t, TrendStable, build(50, 60, 50, 60))
 }
+
+func TestApplyAthleteNames(t *testing.T) {
+	series := []ComparisonRow{
+		{AthleteUserID: 1},
+		{AthleteUserID: 2, Name: "Previo", Surname: "Previo"},
+	}
+
+	ApplyAthleteNames(series, map[int64]AthleteName{1: {Name: "Ana", Surname: "Gómez"}})
+
+	assert.Equal(t, "Ana", series[0].Name)
+	assert.Equal(t, "Gómez", series[0].Surname)
+	assert.Equal(t, "Previo", series[1].Name, "sin nombre en el mapa la fila queda intacta")
+	assert.Equal(t, "Previo", series[1].Surname)
+}
+
+// leaderboardComparableValue traduce la columna de orden a un valor numérico y
+// marca "sin dato" (false) para que los nulos queden al final en cualquier orden.
+func TestLeaderboardComparableValue(t *testing.T) {
+	full := LeaderboardEntry{
+		BestTimeMs:     ptrInt64(240000),
+		MeanSpeedKph:   ptrFloat(15.5),
+		TotalDistanceM: ptrFloat(42000),
+		ComplianceRate: ptrFloat(0.85),
+	}
+
+	cases := []struct {
+		sort  string
+		entry LeaderboardEntry
+		want  float64
+		ok    bool
+	}{
+		{SortBestTimeMs, full, 240000, true},
+		{SortBestTimeMs, LeaderboardEntry{}, 0, false},
+		{SortMeanSpeedKph, full, 15.5, true},
+		{SortMeanSpeedKph, LeaderboardEntry{}, 0, false},
+		{SortTotalDistanceM, full, 42000, true},
+		{SortTotalDistanceM, LeaderboardEntry{}, 0, false},
+		{SortComplianceRate, full, 0.85, true},
+		{SortComplianceRate, LeaderboardEntry{}, 0, false},
+		{"columna-desconocida", full, 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := leaderboardComparableValue(tc.entry, tc.sort)
+		assert.Equal(t, tc.want, got, tc.sort)
+		assert.Equal(t, tc.ok, ok, tc.sort)
+	}
+}

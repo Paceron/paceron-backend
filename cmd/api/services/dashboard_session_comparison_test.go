@@ -173,17 +173,36 @@ func TestDashboardService_SessionComparisonRechazaSessionIDAjeno(t *testing.T) {
 	assert.ErrorIs(t, err, ErrDashboardNotFound)
 }
 
+func TestDashboardService_SessionComparisonPropagaRangoAInstanciasLegacy(t *testing.T) {
+	service, dao, _ := dashboardFixture(t)
+	service.groupUserDao = &mockDashboardGroupUserDao{members: []dbs.GroupUser{{GroupID: 39, UserID: 1}}}
+	configureSessionComparisonDAO(dao)
+	var legacyFrom, legacyTo time.Time
+	dao.unlinkedFn = func(_ *gin.Context, _ []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
+		legacyFrom, legacyTo = from, to
+		return nil, nil
+	}
+	dao.findSeriesFn = func(_ *gin.Context, filter daos.DashboardScopeFilter) ([]daos.DashboardSeriesRow, error) {
+		return []daos.DashboardSeriesRow{sessionComparisonDAOrow(*filter.SessionInstanceID, 1)}, nil
+	}
+
+	_, err := service.SessionComparison(nil, dashboardOwnerID, sessionComparisonRequest(1, 1))
+
+	require.NoError(t, err)
+	assert.Equal(t, "2026-09-01", legacyFrom.Format("2006-01-02"), "el rango de la comparación llega al DAO de legacy")
+	assert.Equal(t, "2026-09-30", legacyTo.Format("2006-01-02"))
+}
+
 func configureSessionComparisonDAO(dao *mockDashboardDao) {
 	dao.catalogByIDFn = func(_ *gin.Context, id int64) (*daos.DashboardCatalogExercises, error) {
 		return &daos.DashboardCatalogExercises{
 			ID: id, OwnerID: dashboardOwnerID, Name: "Ritmo", Kind: string(constants.ExerciseKindRitmoContinuo),
 		}, nil
 	}
-	dao.unlinkedFn = func(_ *gin.Context, _ []int64) ([]daos.UnlinkedExerciseInstance, error) {
+	dao.unlinkedFn = func(_ *gin.Context, _ []int64, _, _ time.Time) ([]daos.UnlinkedExerciseInstance, error) {
 		return nil, nil
 	}
 }
-
 func sessionComparisonRequest(athleteA, athleteB int64) dashboard.SessionComparisonRequest {
 	return dashboard.SessionComparisonRequest{
 		TeamID: 29,

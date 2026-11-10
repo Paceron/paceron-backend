@@ -214,3 +214,42 @@ func TestUserDao_ClearPhoto_Success(t *testing.T) {
 	assert.Nil(t, found.PhotoKey)
 	assert.Nil(t, found.PhotoUpdatedAt)
 }
+
+func TestUserDao_FindNamesByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewUserDao(db)
+	user1 := persistUser(db, "names1@test.com", "11100015")
+	user2 := persistUser(db, "names2@test.com", "11100016")
+	persistUser(db, "names3@test.com", "11100017")
+
+	results, err := dao.FindNamesByIDs(nil, []int64{user1.ID, user2.ID, 999999})
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	byID := map[int64]string{}
+	for _, u := range results {
+		byID[u.ID] = u.Email
+	}
+	assert.Equal(t, user1.Email, byID[user1.ID])
+	assert.Equal(t, user2.Email, byID[user2.ID])
+}
+
+func TestUserDao_FindNamesByIDs_EmptyInput(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewUserDao(db)
+
+	results, err := dao.FindNamesByIDs(nil, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}
+
+func TestUserDao_FindNamesByIDs_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+
+	_, err := NewUserDao(failing).FindNamesByIDs(nil, []int64{1})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding user names by ids")
+}

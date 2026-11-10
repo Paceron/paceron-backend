@@ -304,7 +304,28 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
-	// 10. Índices parciales de competencias y de las consultas analíticas del dashboard.
+	// 10. Limpieza de índices redundantes/duplicados. Los tags GORM ya no los
+	// crean en bases nuevas; en bases existentes hay que dropearlos explícitamente.
+	// - idx_runner_session_athlete_user_id duplicaba idx_runner_session_athlete
+	//   (misma columna). Se conserva el CONCURRENTLY creado abajo.
+	// - idx_group_users_group_id / idx_team_users_team_id son prefijo de los
+	//   compuestos (group_id, user_id) / (team_id, user_id), que los cubren.
+	// Los índices por user_id se conservan: no son prefijo del compuesto.
+	// Para tablas grandes CONCURRENTLY evita el lock exclusivo; DROP INDEX no
+	// puede correr dentro de una transacción, y ConfigDB no abre una.
+	redundantIndexes := []string{
+		`DROP INDEX CONCURRENTLY IF EXISTS idx_runner_session_athlete_user_id;`,
+		`DROP INDEX CONCURRENTLY IF EXISTS idx_group_users_group_id;`,
+		`DROP INDEX CONCURRENTLY IF EXISTS idx_team_users_team_id;`,
+	}
+	for _, stmt := range redundantIndexes {
+		if err := db.Exec(stmt).Error; err != nil {
+			customlogger.Error(nil, "error dropping redundant index", err)
+			return nil, err
+		}
+	}
+
+	// 11. Índices parciales de competencias y de las consultas analíticas del dashboard.
 	// Los primeros permiten filtrar competencias de ruta; los segundos aceleran
 	// el scope del dashboard por atleta y fecha.
 	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_runner_session_competition
@@ -326,15 +347,27 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 	// pero la vista de corredor filtra por atleta sin conocer la sesión.
 	// idx_feedback_session_date: el índice de assigned_session_id no incluye la
 	// fecha que limita las consultas del dashboard.
+	// idx_feedback_assigned_exercise / idx_group_calendar_days_source_plan_id:
+	// parciales (solo filas activas / con plan) porque las consultas siempre
+	// filtran por esos predicados (HasFeedbackByIDs, ClearSourcePlan); el costo
+	// de escritura queda acotado a las filas que sí indexan.
 	// Si un índice queda INVALID, IF NOT EXISTS no lo reintenta. Rollback:
 	//   DROP INDEX CONCURRENTLY IF EXISTS idx_runner_session_athlete;
 	//   DROP INDEX CONCURRENTLY IF EXISTS idx_feedback_session_date;
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_feedback_assigned_exercise;
+	//   DROP INDEX CONCURRENTLY IF EXISTS idx_group_calendar_days_source_plan_id;
 	dashboardIndexes := []string{
 		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_runner_session_athlete
 			ON runner_session (athlete_user_id);`,
 		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feedback_session_date
 			ON workout_feedback (assigned_session_id, session_date)
 			WHERE deleted_at IS NULL;`,
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_feedback_assigned_exercise
+			ON workout_feedback (assigned_exercise_id)
+			WHERE deleted_at IS NULL;`,
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_group_calendar_days_source_plan_id
+			ON group_calendar_days (source_plan_id)
+			WHERE source_plan_id IS NOT NULL;`,
 	}
 	for _, stmt := range dashboardIndexes {
 		if err := db.Exec(stmt).Error; err != nil {
@@ -343,7 +376,7 @@ func ConfigDB(configDB config.DB) (*gorm.DB, error) {
 		}
 	}
 
-	// 11. Backfill de exercise_instances.source_exercise_id (2026-10-13).
+	// 12. Backfill de exercise_instances.source_exercise_id (2026-10-13).
 	// AutoMigrate agregó la columna y la llena para nuevas instancias, pero no toca
 	// las filas históricas. El backfill matchea por (owner_id, nombre normalizado)
 	// una sola vez; los casos ambiguos/no resueltos quedan para el fallback legacy.

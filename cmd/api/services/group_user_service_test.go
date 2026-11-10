@@ -8,18 +8,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/groupuser"
 )
 
 type mockGroupUserDao struct {
-	createFn             func(ctx *gin.Context, gu *dbs.GroupUser) error
-	findByGroupAndUserFn func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error)
-	findByGroupIDFn      func(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
-	findByGroupIDsFn     func(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error)
-	findByUserIDFn       func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
-	softDeleteFn         func(ctx *gin.Context, id int64) error
-	softDeleteByTeamIDFn func(ctx *gin.Context, teamID int64) error
+	createFn                      func(ctx *gin.Context, gu *dbs.GroupUser) error
+	findByGroupAndUserFn          func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error)
+	findByGroupIDFn               func(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error)
+	findByGroupIDsFn              func(ctx *gin.Context, groupIDs []int64) ([]dbs.GroupUser, error)
+	findByUserIDFn                func(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error)
+	findActiveWithGroupByUserIDFn func(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error)
+	softDeleteFn                  func(ctx *gin.Context, id int64) error
+	softDeleteByTeamIDFn          func(ctx *gin.Context, teamID int64) error
 }
 
 func (m *mockGroupUserDao) Create(ctx *gin.Context, gu *dbs.GroupUser) error {
@@ -53,6 +55,13 @@ func (m *mockGroupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([
 func (m *mockGroupUserDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.GroupUser, error) {
 	if m.findByUserIDFn != nil {
 		return m.findByUserIDFn(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupUserDao) FindActiveWithGroupByUserID(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error) {
+	if m.findActiveWithGroupByUserIDFn != nil {
+		return m.findActiveWithGroupByUserIDFn(ctx, userID)
 	}
 	return nil, nil
 }
