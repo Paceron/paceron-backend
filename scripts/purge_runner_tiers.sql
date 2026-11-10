@@ -10,7 +10,9 @@
 -- resuelve el tier efectivo por la suscripción `active` del ledger o, si no hay,
 -- por `FindLowestByRole` del rol. Con el base presente, los permisos del
 -- corredor siguen resolviendo base. Reasigna las asignaciones al base antes de
--- borrar los tiers pagos; no toca entrenador, roles globales ni el base.
+-- borrar los tiers pagos; no toca entrenador, roles globales ni el base. Antes
+-- de confirmar verifica que el base conserve `tier_permissions` activos: si no,
+-- aborta y revierte para no dejar al corredor sin permisos.
 --
 -- Efecto colateral esperado: en bases migradas por la app existe la FK
 -- `payments.installment_id ON DELETE SET NULL`, así que los pagos ya conciliados
@@ -28,6 +30,7 @@ DECLARE
   v_base_tier_id bigint;
   v_tier_count int;
   v_tier_is_free boolean;
+  v_base_permissions int;
 BEGIN
   SELECT id INTO v_role_id
   FROM roles
@@ -80,6 +83,17 @@ BEGIN
   END IF;
   IF v_tier_is_free IS DISTINCT FROM TRUE THEN
     RAISE EXCEPTION 'verificación de purga falló: el tier restante del corredor no es gratuito';
+  END IF;
+
+  -- El base conservado debe seguir teniendo permisos activos: sin ellos el
+  -- corredor perdería el acceso que antes resolvía por el tier que se purga.
+  SELECT count(*)
+  INTO v_base_permissions
+  FROM tier_permissions
+  WHERE tier_id = v_base_tier_id AND deleted_at IS NULL;
+
+  IF v_base_permissions = 0 THEN
+    RAISE EXCEPTION 'verificación de purga falló: el tier base conservado (id=%) no tiene tier_permissions activos', v_base_tier_id;
   END IF;
   IF EXISTS (
     SELECT 1

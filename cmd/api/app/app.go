@@ -182,7 +182,7 @@ func NewApplication() *Application {
 
 	// Tier Permission flow
 	tierPermissionDao := daos.NewTierPermissionDao(db)
-	tierPermissionService := services.NewTierPermissionService(tierPermissionDao, tierDao, permissionDao)
+	tierPermissionService := services.NewTierPermissionService(tierPermissionDao, tierDao, permissionDao, roleDao)
 	tierPermissionController := controllers.NewTierPermissionController(tierPermissionService)
 
 	// Team User flow (needed by teamService, groupService, and userRoleService's

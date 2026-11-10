@@ -52,6 +52,16 @@ func tierRulesByName(name string) (hierarchy int, forceFree bool) {
 	}
 }
 
+// tierRoleIsProtected resuelve el rol vivo por RoleID en vez de confiar en el
+// RoleName denormalizado del tier, que puede quedar vacío o desincronizado.
+func (s *tierService) tierRoleIsProtected(ctx *gin.Context, roleID int64) (bool, error) {
+	role, err := s.roleDao.FindByID(ctx, roleID)
+	if err != nil {
+		return false, err
+	}
+	return role != nil && role.Name == protectedRoleName, nil
+}
+
 func (s *tierService) Create(ctx *gin.Context, req *tier.CreateTierRequest) (*tier.TierResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -139,7 +149,14 @@ func (s *tierService) Update(ctx *gin.Context, id int64, req *tier.UpdateTierReq
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
 	}
-	if t.RoleName == protectedRoleName {
+	protected, err := s.tierRoleIsProtected(ctx, t.RoleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for tier update", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Update"))
+		return nil, fmt.Errorf("error al actualizar tier")
+	}
+	if protected {
 		return nil, fmt.Errorf("el rol corredor no admite tiers")
 	}
 
@@ -222,7 +239,14 @@ func (s *tierService) Delete(ctx *gin.Context, id int64) (*tier.DeleteTierRespon
 	if t == nil {
 		return nil, fmt.Errorf("tier no encontrado")
 	}
-	if t.RoleName == protectedRoleName {
+	protected, err := s.tierRoleIsProtected(ctx, t.RoleID)
+	if err != nil {
+		customlogger.Error(ctx, "error finding role for tier delete", err,
+			customlogger.Tag("tier_id", fmt.Sprintf("%d", id)),
+			customlogger.TagMethod("Delete"))
+		return nil, fmt.Errorf("error al eliminar tier")
+	}
+	if protected {
 		return nil, fmt.Errorf("el rol corredor no admite tiers")
 	}
 
@@ -327,9 +351,22 @@ func (s *tierService) GetAll(ctx *gin.Context, roleID *int64) ([]tier.TierRespon
 		tiers = filtered
 	} else {
 		// El tier base del corredor es soporte interno: no se expone en el catálogo.
+		// El rol se resuelve por RoleID (vivo), no por el RoleName del tier.
+		protectedByRole := make(map[int64]bool, len(tiers))
 		filtered := make([]dbs.Tier, 0, len(tiers))
 		for _, t := range tiers {
-			if t.RoleName != protectedRoleName {
+			protected, ok := protectedByRole[t.RoleID]
+			if !ok {
+				protected, err = s.tierRoleIsProtected(ctx, t.RoleID)
+				if err != nil {
+					customlogger.Error(ctx, "error finding role for tier filter", err,
+						customlogger.Tag("role_id", fmt.Sprintf("%d", t.RoleID)),
+						customlogger.TagMethod("GetAll"))
+					return nil, fmt.Errorf("error al obtener tiers")
+				}
+				protectedByRole[t.RoleID] = protected
+			}
+			if !protected {
 				filtered = append(filtered, t)
 			}
 		}

@@ -426,3 +426,89 @@ func TestTierPermissionController_Assign_InvalidBodyMalformed(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
+
+func TestTierPermissionController_Assign_ProtectedRole(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		assignFn: func(ctx *gin.Context, tierID int64, req *tierpermission.AssignPermissionRequest) (*tierpermission.TierPermissionResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/tiers/1/permissions", strings.NewReader(`{"permission_id":1}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.Assign(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Bad request", result.Code)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}
+
+func TestTierPermissionController_Unassign_ProtectedRole(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		unassignFn: func(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/tiers/1/permissions/1", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}, {Key: "permission_id", Value: "1"}}
+
+	controller.Unassign(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}
+
+func TestTierPermissionController_List_ProtectedRole(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		listFn: func(ctx *gin.Context, tierID int64) (*tierpermission.ListTierPermissionsResponse, error) {
+			return nil, errors.New("el rol corredor no admite tiers")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/tiers/1/permissions", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "1"}}
+
+	controller.List(c)
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "el rol corredor no admite tiers", result.Message)
+}
+
+func TestTierPermissionController_Unassign_TierNotFound(t *testing.T) {
+	mockSvc := &mockTierPermissionService{
+		unassignFn: func(ctx *gin.Context, tierID, permissionID int64) (*tierpermission.DeleteTierPermissionResponse, error) {
+			return nil, errors.New("tier no encontrado")
+		},
+	}
+
+	controller := NewTierPermissionController(mockSvc)
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request, _ = http.NewRequest(http.MethodDelete, "/api/v1/tiers/999/permissions/1", nil)
+	c.Params = []gin.Param{{Key: "id", Value: "999"}, {Key: "permission_id", Value: "1"}}
+
+	controller.Unassign(c)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+	var result apierror.APIError
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equal(t, "Not Found", result.Code)
+}

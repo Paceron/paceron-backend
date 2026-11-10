@@ -151,6 +151,58 @@ func TestTierDao_FindLowestByRole_NotFound(t *testing.T) {
 	assert.Nil(t, found)
 }
 
+func TestTierDao_FindLowestByRole_SkipsPaidLowerHierarchy(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	role := testRole(db, "role_for_tier_lowest_paid")
+
+	paid := &dbs.Tier{Name: "paid_h0", RoleID: role.ID, RoleName: role.Name, Hierarchy: 0, PaymentRequired: true}
+	free := &dbs.Tier{Name: "free_h5", RoleID: role.ID, RoleName: role.Name, Hierarchy: 5, PaymentRequired: false}
+	require.NoError(t, dao.Create(nil, paid))
+	require.NoError(t, dao.Create(nil, free))
+
+	lowest, err := dao.FindLowestByRole(nil, role.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, lowest)
+	assert.Equal(t, free.ID, lowest.ID)
+	assert.False(t, lowest.PaymentRequired)
+}
+
+func TestTierDao_FindLowestByRole_NoFreeBase(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	role := testRole(db, "role_for_tier_lowest_only_paid")
+
+	require.NoError(t, dao.Create(nil, &dbs.Tier{Name: "paid_only", RoleID: role.ID, RoleName: role.Name, Hierarchy: 1, PaymentRequired: true}))
+
+	found, err := dao.FindLowestByRole(nil, role.ID)
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
+func TestTierDao_FindLowestByRoles_SkipsPaidLowerHierarchy(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTierDao(db)
+	roleA := testRole(db, "role_for_lowest_paid_a")
+	roleB := testRole(db, "role_for_lowest_paid_b")
+
+	paidA := &dbs.Tier{Name: "paid_a_h0", RoleID: roleA.ID, RoleName: roleA.Name, Hierarchy: 0, PaymentRequired: true}
+	freeA := &dbs.Tier{Name: "free_a_h5", RoleID: roleA.ID, RoleName: roleA.Name, Hierarchy: 5, PaymentRequired: false}
+	paidB := &dbs.Tier{Name: "paid_b_h1", RoleID: roleB.ID, RoleName: roleB.Name, Hierarchy: 1, PaymentRequired: true}
+	for _, tier := range []*dbs.Tier{paidA, freeA, paidB} {
+		require.NoError(t, dao.Create(nil, tier))
+	}
+
+	found, err := dao.FindLowestByRoles(nil, []int64{roleA.ID, roleB.ID})
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, freeA.ID, found[0].ID)
+	assert.Equal(t, roleA.ID, found[0].RoleID)
+}
+
 func TestTierDao_GetAll_ExcludesSoftDeleted(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTierDao(db)

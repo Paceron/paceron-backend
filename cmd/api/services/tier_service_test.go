@@ -974,7 +974,16 @@ func TestTierService_GetAll_NoRoleID_HidesRunnerTiers(t *testing.T) {
 		},
 	}
 
-	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	roleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			if id == 1 {
+				return &dbs.Role{ID: 1, Name: "corredor"}, nil
+			}
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, roleDao)
 	resp, err := svc.GetAll(nil, nil)
 
 	assert.NoError(t, err)
@@ -1017,7 +1026,13 @@ func TestTierService_Update_RunnerTierRejected(t *testing.T) {
 		},
 	}
 
-	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	roleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, roleDao)
 	newName := "premium"
 	_, err := svc.Update(nil, 1, &tier.UpdateTierRequest{Name: &newName})
 
@@ -1038,10 +1053,160 @@ func TestTierService_Delete_RunnerTierRejected(t *testing.T) {
 		},
 	}
 
-	svc := NewTierService(mockTierDao, &mockRoleDaoForTier{})
+	roleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 1, Name: "corredor"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, roleDao)
 	_, err := svc.Delete(nil, 1)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "el rol corredor no admite tiers")
 	assert.False(t, deleted)
+}
+
+func TestTierService_Update_ProtectedRoleByLiveRoleIgnoresStaleName(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 10, RoleName: ""}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 10, Name: protectedRoleName}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	newDesc := "cambio"
+	_, err := svc.Update(nil, 1, &tier.UpdateTierRequest{Description: &newDesc})
+
+	assert.Error(t, err)
+	assert.Equal(t, "el rol corredor no admite tiers", err.Error())
+}
+
+func TestTierService_Delete_ProtectedRoleByLiveRoleIgnoresStaleName(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 10, RoleName: ""}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 10, Name: protectedRoleName}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	_, err := svc.Delete(nil, 1)
+
+	assert.Error(t, err)
+	assert.Equal(t, "el rol corredor no admite tiers", err.Error())
+}
+
+func TestTierService_Update_StaleProtectedNameButLiveRoleAllowed(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 20, RoleName: protectedRoleName}, nil
+		},
+		updateFn: func(ctx *gin.Context, t *dbs.Tier) error { return nil },
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return &dbs.Role{ID: 20, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	newDesc := "cambio"
+	resp, err := svc.Update(nil, 1, &tier.UpdateTierRequest{Description: &newDesc})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+}
+
+func TestTierService_Update_RoleLookupError(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 10}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	newDesc := "cambio"
+	_, err := svc.Update(nil, 1, &tier.UpdateTierRequest{Description: &newDesc})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al actualizar tier")
+}
+
+func TestTierService_Delete_RoleLookupError(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Tier, error) {
+			return &dbs.Tier{ID: 1, Name: "base", RoleID: 10}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	_, err := svc.Delete(nil, 1)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al eliminar tier")
+}
+
+func TestTierService_GetAll_ExcludesProtectedByLiveRole(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{
+				{ID: 1, Name: "base", RoleID: 10, RoleName: ""},
+				{ID: 2, Name: "base_entrenador", RoleID: 20, RoleName: "entrenador"},
+			}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			if id == 10 {
+				return &dbs.Role{ID: 10, Name: protectedRoleName}, nil
+			}
+			return &dbs.Role{ID: id, Name: "entrenador"}, nil
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	resp, err := svc.GetAll(nil, nil)
+
+	assert.NoError(t, err)
+	assert.Len(t, resp, 1)
+	assert.Equal(t, int64(2), resp[0].ID)
+}
+
+func TestTierService_GetAll_RoleLookupError(t *testing.T) {
+	mockTierDao := &mockTierDao{
+		getAllFn: func(ctx *gin.Context) ([]dbs.Tier, error) {
+			return []dbs.Tier{{ID: 1, Name: "base", RoleID: 10}}, nil
+		},
+	}
+	mockRoleDao := &mockRoleDaoForTier{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Role, error) {
+			return nil, errors.New("db error")
+		},
+	}
+
+	svc := NewTierService(mockTierDao, mockRoleDao)
+	_, err := svc.GetAll(nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "error al obtener tiers")
 }
