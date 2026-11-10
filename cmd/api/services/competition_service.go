@@ -1147,10 +1147,10 @@ func (s *competitionService) notifyFinish(participants []int64, competitionID in
 	}
 	route := fmt.Sprintf("/competencias/%d", competitionID)
 	data := map[string]string{"type": "competition_finished", "route": route}
-	sendCtx, cancel := context.WithTimeout(context.Background(), pushSendTimeout)
+	sendCtx, cancel := context.WithTimeout(context.Background(), pushFinishTotalBudget)
 	defer cancel()
-	sendPushTokenChunks(sendCtx, nil, s.pushClient, tokenStrings,
-		"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", data,
+	sendPushTokenChunksWithTimeout(sendCtx, nil, s.pushClient, tokenStrings,
+		"Competencia finalizada", "La competencia cerró y ya podés ver el resultado.", data, pushSendTimeout,
 		customlogger.Tag("competition_id", fmt.Sprintf("%d", competitionID)))
 }
 

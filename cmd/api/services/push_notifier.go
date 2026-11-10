@@ -13,7 +13,11 @@ import (
 )
 
 const (
+	// pushSendTimeout es el timeout de cada request de push.
 	pushSendTimeout = 10 * time.Second
+	// pushFinishTotalBudget acota el fan-out completo del cierre: cada lote
+	// tiene su propio timeout, pero el total no supera este techo.
+	pushFinishTotalBudget = 30 * time.Second
 	// expoPushBatchLimit es el máximo de tokens por request que acepta Expo.
 	expoPushBatchLimit = 100
 )
@@ -75,6 +79,14 @@ func sendPushToUser(
 // y los envía best-effort: un lote fallido no frena a los siguientes. logCtx
 // conserva el contexto original para los logs (nil cuando no hay request).
 func sendPushTokenChunks(sendCtx context.Context, logCtx *gin.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, tags ...string) {
+	sendPushTokenChunksWithTimeout(sendCtx, logCtx, pushClient, tokens, title, body, data, 0, tags...)
+}
+
+// sendPushTokenChunksWithTimeout es la variante del fan-out del cierre: cada
+// lote de hasta 100 tokens recibe su propio timeout, siempre acotado por el
+// deadline de sendCtx (el presupuesto total). chunkTimeout <= 0 desactiva el
+// timeout por lote.
+func sendPushTokenChunksWithTimeout(sendCtx context.Context, logCtx *gin.Context, pushClient expopushclient.ExpoPushClientInterface, tokens []string, title, body string, data map[string]string, chunkTimeout time.Duration, tags ...string) {
 	if pushClient == nil {
 		return
 	}
@@ -96,7 +108,14 @@ func sendPushTokenChunks(sendCtx context.Context, logCtx *gin.Context, pushClien
 		if end > len(tokens) {
 			end = len(tokens)
 		}
-		if err := pushClient.SendBatch(sendCtx, tokens[start:end], title, body, data); err != nil {
+		chunkCtx := sendCtx
+		cancel := func() {}
+		if chunkTimeout > 0 {
+			chunkCtx, cancel = context.WithTimeout(sendCtx, chunkTimeout)
+		}
+		err := pushClient.SendBatch(chunkCtx, tokens[start:end], title, body, data)
+		cancel()
+		if err != nil {
 			customlogger.Error(logCtx, "error sending push notification", err, tags...)
 		}
 	}

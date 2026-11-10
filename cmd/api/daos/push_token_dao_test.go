@@ -129,3 +129,28 @@ func TestPushTokenDao_FindByUserIDs_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tokens)
 }
+
+func TestPushTokenDao_FindByUserIDs_BatchesAt500(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	counting, counter := countingDB(db)
+	dao := NewPushTokenDao(counting)
+
+	ids := make([]int64, 1201)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+
+	_, err := dao.FindByUserIDs(nil, ids)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), *counter, "1201 IDs = lotes de 500/500/201")
+
+	*counter = 0
+	_, err = dao.FindByUserIDs(nil, ids[:500])
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), *counter, "hasta 500 IDs entra en una query")
+
+	*counter = 0
+	_, err = dao.FindByUserIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), *counter, "sin IDs no consulta")
+}

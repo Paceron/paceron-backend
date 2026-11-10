@@ -120,3 +120,53 @@ func TestSendPushToUser_KeepsRequestContext(t *testing.T) {
 
 	require.Same(t, ctx, gotCtx)
 }
+
+// TestSendPushTokenChunksWithTimeout_PerChunkTimeout: cada lote de 100 tokens
+// arranca con su propio deadline, no con el del presupuesto total.
+func TestSendPushTokenChunksWithTimeout_PerChunkTimeout(t *testing.T) {
+	tokens := make([]string, 250)
+	for i := range tokens {
+		tokens[i] = fmt.Sprintf("ExponentPushToken[%d]", i)
+	}
+	var deadlines []time.Time
+	pushClient := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, _ []string, _, _ string, _ map[string]string) error {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		deadlines = append(deadlines, deadline)
+		return nil
+	}}
+
+	parent, cancel := context.WithTimeout(context.Background(), pushFinishTotalBudget)
+	defer cancel()
+	sendPushTokenChunksWithTimeout(parent, nil, pushClient, tokens, "T", "B", nil, pushSendTimeout)
+
+	require.Len(t, deadlines, 3)
+	for _, deadline := range deadlines {
+		remaining := time.Until(deadline)
+		assert.Greater(t, remaining, 9*time.Second)
+		assert.LessOrEqual(t, remaining, 10*time.Second)
+	}
+}
+
+// TestSendPushTokenChunksWithTimeout_BoundedByParent: el presupuesto total
+// corta el fan-out aunque el timeout por lote sea mayor.
+func TestSendPushTokenChunksWithTimeout_BoundedByParent(t *testing.T) {
+	tokens := make([]string, 250)
+	for i := range tokens {
+		tokens[i] = fmt.Sprintf("ExponentPushToken[%d]", i)
+	}
+	calls := 0
+	pushClient := &mockExpoPushClient{mockSendBatch: func(ctx context.Context, _ []string, _, _ string, _ map[string]string) error {
+		calls++
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+
+	parent, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	sendPushTokenChunksWithTimeout(parent, nil, pushClient, tokens, "T", "B", nil, time.Second)
+
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Equal(t, 3, calls)
+}

@@ -16,6 +16,10 @@ type PushTokenDaoInterface interface {
 	FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error)
 }
 
+// pushTokenUserIDsBatchSize acota el IN de FindByUserIDs: el fan-out de un
+// cierre puede tener muchos participantes y no conviene una query gigante.
+const pushTokenUserIDsBatchSize = 500
+
 type pushTokenDao struct {
 	DB *gorm.DB
 }
@@ -55,15 +59,22 @@ func (d *pushTokenDao) FindByUserID(ctx *gin.Context, userID int64) ([]dbs.PushT
 	return tokens, nil
 }
 
-// FindByUserIDs devuelve los tokens de varios usuarios en una sola query.
+// FindByUserIDs devuelve los tokens de varios usuarios en lotes acotados.
 func (d *pushTokenDao) FindByUserIDs(ctx *gin.Context, userIDs []int64) ([]dbs.PushToken, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
 	var tokens []dbs.PushToken
-	err := d.DB.Where("user_id IN ?", userIDs).Find(&tokens).Error
-	if err != nil {
-		return nil, fmt.Errorf("error finding push tokens: %w", err)
+	for start := 0; start < len(userIDs); start += pushTokenUserIDsBatchSize {
+		end := start + pushTokenUserIDsBatchSize
+		if end > len(userIDs) {
+			end = len(userIDs)
+		}
+		var batch []dbs.PushToken
+		if err := d.DB.Where("user_id IN ?", userIDs[start:end]).Find(&batch).Error; err != nil {
+			return nil, fmt.Errorf("error finding push tokens: %w", err)
+		}
+		tokens = append(tokens, batch...)
 	}
 	return tokens, nil
 }
