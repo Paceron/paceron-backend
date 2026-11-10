@@ -156,3 +156,44 @@ func TestTeamDao_DBFail_Operaciones(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error searching teams")
 }
+
+// Lecturas de nombres nuevas del rework de calendario: cada una envuelve el
+// error de DB con su mensaje propio.
+func TestGroupDao_DBFail_LecturasDeNombres(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	_, err := NewGroupDao(failing).FindNamesByIDs(nil, []int64{1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding group names by ids")
+
+	failing = testutils.FailingDB(t, db, nthFail("select", 1))
+	_, err = NewGroupDao(failing).FindByOwnerIDWithTeamName(nil, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding groups by owner with team")
+
+	failing = testutils.FailingDB(t, db, nthFail("select", 1))
+	_, err = NewGroupDao(failing).FindWithTeamNameByIDs(nil, []int64{1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding groups with team by ids")
+}
+
+func TestGroupUserDao_DBFail_FindActiveWithGroupByUserID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+
+	_, err := NewGroupUserDao(failing).FindActiveWithGroupByUserID(nil, 1)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding user groups with group")
+}
+
+func TestTeamDao_DBFail_FindNamesByIDs(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+
+	_, err := NewTeamDao(failing).FindNamesByIDs(nil, []int64{1})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding team names by ids")
+}

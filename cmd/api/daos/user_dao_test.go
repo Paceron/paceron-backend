@@ -243,3 +243,13 @@ func TestUserDao_FindNamesByIDs_EmptyInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, results)
 }
+
+func TestUserDao_FindNamesByIDs_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+
+	_, err := NewUserDao(failing).FindNamesByIDs(nil, []int64{1})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding user names by ids")
+}

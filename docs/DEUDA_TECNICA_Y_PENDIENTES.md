@@ -155,8 +155,8 @@ Ronda de revisión de performance sobre `bff7083`, **solo diagnóstico**: no se 
 - **Rango de calendario sin cota máxima.** Los tres handlers parsean `from`/`to` y delegan sin límite de amplitud: `controllers/calendar_controller.go:119` (`GetRange`), `:436` (`MemberCalendar`) y `:495` (`AdministeredCalendar`). El service (`services/calendar_service.go:978`) llama a `FindByGroupAndRange`/`FindForGroupsInRange` (`daos/group_calendar_day_dao.go:251`, `:263`), que traen todas las filas del rango y luego arman todas las instancias embebidas. Un rango de años equivale a leer el histórico completo. Agregar cota (p. ej. 366 días → `400`) es cambio de contrato, propio change. Relacionado: `GetRange` **no valida `from <= to`** (MemberCalendar/Administered sí lo hacen).
 - **Rachas releen todo el histórico en GET y hooks.** `services/streak_service.go:103` (`GetStreaks`) → `loadStreakHistory` (`:165`) → `loadHistory` (`:219`), con `FindTrainingDaysUntil` (`daos/gamification_dao.go:69`) y `FindFinishedRunnerSessions` (`:84`) sobre el pasado abierto (best cubre **todo** el histórico, D2). El mismo camino corre en `ComputeSnapshot`/`ComputeCurrentStreaks` (`:135`, `:145`) desde los hooks de finish. Evaluar estado incremental o memoización (usar `gamification_streak_state` como caché con recomputo acotado) — diseño aparte por D14 y por la exactitud del GET.
 - **Dashboard `FindSeries` trae filas crudas y agrega en Go.** `daos/dashboard_dao.go:303` devuelve una fila por serie y `services/dashboard_service.go:479`/`:1096` calculan resumen, timeseries, leaderboard y comparaciones en memoria. Evaluar agregación SQL (`GROUP BY` bucket) para los KPI que hoy recorren el set completo, conservando las funciones puras para los endpoints que necesitan el detalle.
-- **`UnlinkedExerciseInstances` escanea histórico sin índice ni fecha.** `daos/dashboard_dao.go:543` (`UnlinkedExerciseInstances`) ejecuta `unlinkedExerciseInstancesSQL` (`:246-263`): `DISTINCT` sobre `group_calendar_days → session_instances → session_exercise_instances → exercise_instances` de todo el scope con `ei.source_exercise_id IS NULL`, sin filtro de fecha. Lo invoca `SessionComparison` vía `resolveLegacyInstances` (`services/dashboard_service.go:1044`). Evaluar índice parcial (`exercise_instances(source_exercise_id) WHERE source_exercise_id IS NULL`) y/o acotar por la ventana de la comparación.
-- **Logros tratan `early_N` con todo el histórico.** `daos/achievement_dao.go:136` (`ListFinishedSessionStarts`) hace `Pluck("start_date")` de **todas** las runner sessions finished del atleta; `services/achievements_service.go:209` solo lo usa para `countEarlyStarts`. Evaluar resolverlo con `COUNT`/agregado por hora en SQL en vez de traer todas las fechas.
+- **`UnlinkedExerciseInstances` escanea histórico sin índice ni fecha.** `daos/dashboard_dao.go:543` (`UnlinkedExerciseInstances`) ejecutaba `DISTINCT` de todo el scope sin filtro de fecha. **Resuelto en `optimizaciones-lecturas-cache-2`**: la SQL ahora acota por `from/to` de la consulta; ver la sección de cierre de esa rama.
+- **Logros tratan `early_N` con todo el histórico.** `daos/achievement_dao.go:136` (`ListFinishedSessionStarts`) hacía `Pluck("start_date")` de **todas** las runner sessions finished del atleta. **Resuelto en `optimizaciones-lecturas-cache-2`**: `CountEarlyFinishedSessions` agrega en SQL con `AT TIME ZONE`; ver la sección de cierre de esa rama.
 - **Push sincrónico dentro de requests de invitación/equipo/usuario.** `services/invitation_service.go:191-199` y `:593-596`, `services/team_user_service.go:361-364` y `:396-399`, `services/user_service.go:437-438` llaman `sendPushToUser` (`services/push_notifier.go:30`) en el camino de respuesta: se espera la query de tokens + `SendBatch` de Expo (hasta `pushSendTimeout`, 10s). Es best-effort ante error pero **no async**. Mover a goroutine con `context.Background()` + timeout + recover, mismo patrón que `notifyFinishAsync` (`services/competition_service.go:1113`).
 - **`FindByUserIDs` de push tokens sin chunking.** **RESUELTO** (change `optimizaciones-lecturas-cache`, Task 3, `3a1b6b0`): `FindByUserIDs` parte los IDs en lotes de 500 (`pushTokenUserIDsBatchSize`) y concatena los tokens preservando el orden de los lotes. Para ≤500 IDs sigue siendo una sola query.
 - **Timeout único de 10s para todos los chunks del push de cierre.** **RESUELTO** (Task 3, `3a1b6b0`/`60b4c2d`): cada lote de hasta 100 tokens crea su propio `context.WithTimeout` acotado por el presupuesto padre (`pushFinishTotalBudget = 30s`); al agotarse el presupuesto se corta el fan-out con un único log. Residual: 30s es un techo arbitrario (3× el timeout por lote) y los lotes que quedan fuera no se reintentan (best-effort, no bloquea la respuesta) — ver "Minors de esta ronda" en la sección del cierre.
@@ -189,8 +189,6 @@ Verificados y sin cambios; el detalle y la ubicación de cada uno viven en las s
 - Cota de rango de calendario (`GetRange`/member/admin sin límite de amplitud; `GetRange` no valida `from <= to`) — ver "Deuda conocida (no abordada en esta rama)".
 - Rachas con histórico completo en GET y hooks — misma sección.
 - `FindSeries` del dashboard trayendo filas crudas y agregando en Go — misma sección.
-- `UnlinkedExerciseInstances` escaneando histórico sin índice ni fecha — misma sección.
-- `early_N` de logros resolviéndose con todo el histórico — misma sección.
 - Caché/memoización del matching de ruta (samples) — ver "Memoización del matching de ruta".
 - `WithContext` masivo, email sincrónico, lock de `CreateAttemptSession`, visibilidad de equipos/PII — ver "Performance y estabilidad — diferidos".
 - `Aislar token inválido dentro del lote` del push — ver "Deuda conocida (no abordada en esta rama)".
@@ -199,14 +197,14 @@ Verificados y sin cambios; el detalle y la ubicación de cada uno viven en las s
 ### Nuevos pendientes detectados en esta ronda
 
 - **`ILIKE` sin `pg_trgm`.** `daos/user_dao.go:116` (`name`/`surname`/`email`) y `daos/team_dao.go:158` (`teams.name`) resuelven búsquedas con `ILIKE '%...%'`, que no puede usar un btree: scan secuencial proporcional a la tabla. Evaluar índices GIN con la extensión `pg_trgm` cuando las búsquedas sean camino caliente; requiere extensión + migración (y confirmar disponibilidad en Supabase/testing) — propio change.
-- **Índice duplicado sobre `runner_session(athlete_user_id)`.** El tag GORM de `AthleteUserID` crea `idx_runner_session_athlete_user_id` y `infrastructure/postgresdb` crea a mano `idx_runner_session_athlete` sobre la misma columna (`CREATE INDEX CONCURRENTLY`). Ambos existen; sobra uno. No se borró en esta rama (D3: no se eliminan índices). Limpieza con migración: conservar el `CONCURRENTLY` y quitar el tag, o al revés.
-- **Índices prefijo redundantes tras T2.** El compuesto `(group_id, user_id)` deja redundante el simple `idx_group_users_group_id`; el compuesto `(team_id, user_id)` deja redundante `idx_team_users_team_id`. Se conservaron a propósito en esta rama; candidatos a borrar en una limpieza de índices (los simples de `user_id` sí aportan: no son prefijo del compuesto).
+- **Resuelto en `optimizaciones-lecturas-cache-2`:** el índice duplicado `idx_runner_session_athlete_user_id` se dropea con SQL idempotente y se conserva `idx_runner_session_athlete` (CONCURRENTLY).
+- **Resuelto en `optimizaciones-lecturas-cache-2`:** se dropean los prefijos redundantes `idx_group_users_group_id`/`idx_team_users_team_id`; los simples de `user_id` se conservan (no son prefijo de los compuestos).
 
 ### Minors de esta ronda
 
 - **Log de presupuesto de push sin granularidad.** Al agotarse `pushFinishTotalBudget`, `sendPushTokenChunksWithTimeout` corta el fan-out con un único `customlogger.Error`; no registra cuántos lotes/tokens quedaron sin enviar. Si importa operar el cierre, loguear el remanente o emitir una métrica.
 - **Desempate de `NextSession` cambia la fila ganadora en empates.** El query agrupado de T1 ordena por `kind, date, presencial_time_from NULLS LAST, id`; antes `FindNextForGroupsByKind` ordenaba solo por `date`. En empates reales puede cambiar cuál fila gana, sin cambio de shape. Es el comportamiento pedido por D2; documentado para que no se lea como bug.
-- **Test de índices valida nombre, no composición.** `TestDaos_HotTablesIndexes` consulta `pg_indexes` por `indexname`; no verifica `indexdef` (columnas/orden/parcialidad). Un índice con nombre correcto pero columnas equivocadas pasaría. Si se toca, comparar `indexdef` para los compuestos.
+- **Resuelto en `optimizaciones-lecturas-cache-2`:** `TestDaos_HotTablesIndexes` valida `indexdef` (columnas/orden/parcialidad) además del nombre.
 - **Chunks descartados al agotar presupuesto de push.** Best-effort por diseño: los lotes posteriores al vencimiento del presupuesto no se envían ni se reintentan. Aceptado; si el cierre necesita garantía, va a cola/worker con reintentos.
 
 ### Política de caching (esta rama no cachea nada)
@@ -216,6 +214,26 @@ No se agregó caché en `optimizaciones-lecturas-cache` (design D6). La ronda se
 - **Candidatos seguros futuros:** samples de ruta de competencias (inmutables una vez creada la ruta; hoy el matching se recomputa en cada GET — ver "Memoización del matching de ruta") y, en general, datos inmutables cuyo ciclo de vida tenga invalidación explícita al escribirse.
 - **No cachear:** permisos, dashboard, rachas, calendario, membresías de equipos/grupos, ni datos por usuario/PII. Cambian con frecuencia o dependen de autorización/estado de sesión, y un caché sin invalidación correcta filtra datos entre usuarios o sirve estado viejo.
 - Cualquier caché futuro necesita dueño de invalidación explícito y una prueba de que respeta autorización; no se implementó en esta rama.
+
+## Performance — cierre optimizaciones de lecturas y cache 2 (2026-11-10)
+
+Cierre de `feature/optimizaciones-lecturas-cache-2` (`37941fe..9e1bf12`, Tasks 1-6). Sin cambios de endpoints, DTOs, shapes ni autorización.
+
+### Resuelto en esta rama
+
+- **`early_N` en SQL.** `achievementDao.CountEarlyFinishedSessions` agrega con `COUNT(*)` + `AT TIME ZONE 'America/Argentina/Cordoba'` en vez de traer todo el histórico de `start_date`; paridad fijada con tests de 07:59/08:00, sesiones no `finished` e instantes con otro offset. Resuelve el pendiente homónimo de la sección anterior.
+- **Historial de feedback en menos lecturas.** `HistorySearch` agrega `COUNT(*) OVER()` y `LEFT JOIN users`; el total y el nombre del atleta viajan en cada fila. `HistoryCount` queda solo como fallback de página vacía (offset fuera de rango) y se eliminó el batch de `UsersByIDs` del service. Los batches de equipo/grupo usan proyecciones ligeras `id/name`.
+- **Instancias legacy del dashboard acotadas.** `UnlinkedExerciseInstances` recibe `from/to` y filtra `group_calendar_days.date BETWEEN ? AND ?` (inclusivo). Resuelve el pendiente de "escaneando histórico sin fecha" de la sección anterior.
+- **Nombres de calendario en una consulta.** `CalendarSummary` resuelve membresías + grupos con JOIN; `MemberCalendar`/`AdministeredCalendar` resuelven grupo + equipo con LEFT JOIN, conservando orden, deduplicación y exclusión de soft-deleted.
+- **Índices.** Se eliminan `idx_runner_session_athlete_user_id` (duplicado de `idx_runner_session_athlete`) y los prefijos `idx_group_users_group_id`/`idx_team_users_team_id`; se agregan los parciales `idx_feedback_assigned_exercise (assigned_exercise_id) WHERE deleted_at IS NULL` y `idx_group_calendar_days_source_plan_id (source_plan_id) WHERE source_plan_id IS NOT NULL`. Todo con SQL idempotente/CONCURRENTLY. Resuelve los dos pendientes de índices de la sección anterior.
+- **Tests.** `daos_indexes_test.go` ahora valida `indexdef` (composición y parcialidad), y se sumaron caminos de error/fallback/bordes de las lecturas tocadas.
+
+### Riesgos de índices (leer antes de tocarlos)
+
+- Los parciales solo son usables si la consulta mantiene el predicado exacto (`deleted_at IS NULL`, `source_plan_id IS NOT NULL`). Un cambio a `OR`/expresión que rompa la implicancia los vuelve inutilizables sin error visible.
+- `CREATE INDEX CONCURRENTLY IF NOT EXISTS` **no repara** un índice que quedó `INVALID` por un build interrumpido. Verificar con `pg_indexes`/`pg_class` y recrear en ese caso.
+- `DROP INDEX CONCURRENTLY` no puede correr dentro de una transacción; `ConfigDB` no abre una, pero un wrapper futuro que lo haga rompería el arranque.
+- El test `TestDaos_PartialIndexesUsablesConSeqscanOff` fuerza `SET LOCAL enable_seqscan = off` y verifica que el planner puede usar ambos parciales. Es determinista contra la DB de test (transacción con rollback), pero **no prueba** que el planner real los elija con volumen/estadísticas de producción: esa verificación con datos prod-like queda **parked**, junto con el costo de escritura de los parciales bajo carga real.
 
 ## Gamificación (change `gamificacion-core`, 2026-10-13)
 
@@ -284,6 +302,14 @@ Mismo caso, otro motivo: `TestAttendanceMigration_ScriptDeclaresSessionInstanceF
 ## Cobertura de tests
 
 > Registrado el 2026-09-22 con el change `cobertura-calendario-recientes` (2026-09-22, ronda de tests de calendario/controller/session/exercise/DAOs). Estado luego del change: analyzer **85.2% (7649/8976)**, meta puntual ≥84% superada, gate de `make coverage` subido a 85% (2026-09-23, `chore/coverage-threshold-85`).
+
+### Ronda `optimizaciones-lecturas-cache-2` (2026-11-10, Task 6)
+
+- **Antes:** analyzer **86.2% (17870/20719)**; `go tool cover` 86.0%.
+- **Después:** analyzer **86.7% (17960/20719)**; `go tool cover` 86.4%. Delta **+0.5 pp / +90 statements**.
+- Sumado: errores de DAO de `CountEarlyFinishedSessions`, `UnlinkedExerciseInstances`, lecturas de scope del dashboard y batches de nombres; fallbacks/errores de `buildHistoryResponse` (total de página vacía, pools, equipos/grupos); total con filtros de segundo nivel en historial; borde inclusivo `from/to` de instancias legacy; `CalendarSummary` sin grupos/error ya cubierto y verificado; `buildUpdates` completo/validaciones; `ApplyAthleteNames` y `leaderboardComparableValue`; y `EXPLAIN` con `enable_seqscan=off` para los parciales nuevos.
+- **Para 88%:** faltan ~273 statements cubiertos. **Para 90%:** ~688. Los bloques más grandes restantes son `scripts/seed_dashboard/*` (~500 statements), `payment_service`, `competition_service`/`competition_dao`, `dashboard_service` (ramas de paginación/agrupación), controllers y `infrastructure`. Es trabajo de una ronda dedicada de coverage (Etapa 2), no de esta rama: forzarlo acá implicaría tests de áreas ajenas a las lecturas optimizadas.
+- No se bajó `.testcoverage.yml` ni se cubrió código muerto/defensivo a la fuerza (`calendar_service.instantiateSession` 0% y sin call sites, ramas parked de la sección siguiente).
 
 ### Etapa 2 de coverage: legacy → 90% (trabajo futuro / repuesto)
 

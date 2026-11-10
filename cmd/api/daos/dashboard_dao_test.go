@@ -791,3 +791,89 @@ func emptyMediaURLs(t *testing.T) pgtype.TextArray {
 	require.NoError(t, media.Set([]string{}))
 	return media
 }
+
+// El rango de UnlinkedExerciseInstances es inclusivo en ambos extremos: un día
+// en el borde entra, el día siguiente al to queda afuera.
+func TestDashboardDao_UnlinkedExerciseInstancesRangoInclusivo(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "unlinkedbounds")
+	orphan := &dbs.ExerciseInstance{Name: "Distancia 4 km", Kind: string(constants.ExerciseKindRitmoContinuo)}
+	require.NoError(t, db.Create(orphan).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: fixture.sessionInst, ExerciseInstanceID: orphan.ID, Role: "main",
+	}).Error)
+
+	day := fixture.calendarDay
+	fromDay := func(d time.Time) []int64 {
+		t.Helper()
+		rows, err := fixture.dao.UnlinkedExerciseInstances(nil, []int64{fixture.groupID}, d, d)
+		require.NoError(t, err)
+		ids := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ExerciseInstanceID)
+		}
+		return ids
+	}
+
+	assert.Contains(t, fromDay(day), orphan.ID, "from=to=el día del calendario incluye")
+	assert.NotContains(t, fromDay(day.AddDate(0, 0, 1)), orphan.ID, "el día posterior al to queda afuera")
+	assert.NotContains(t, fromDay(day.AddDate(0, 0, -1)), orphan.ID, "el día anterior al from queda afuera")
+}
+
+func TestDashboardDao_UnlinkedExerciseInstances_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao := NewDashboardDao(failing)
+
+	_, err := dao.UnlinkedExerciseInstances(nil, []int64{1}, time.Now(), time.Now())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding unlinked exercise instances")
+}
+
+// Todas las lecturas de scope del dashboard envuelven el error de DB.
+func TestDashboardDao_LecturasDeScope_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	filter := DashboardScopeFilter{GroupIDs: []int64{1}, From: time.Now(), To: time.Now()}
+
+	cases := []struct {
+		name string
+		run  func(DashboardDaoInterface) error
+		want string
+	}{
+		{"CountOpenSessions", func(d DashboardDaoInterface) error {
+			_, err := d.CountOpenSessions(nil, filter)
+			return err
+		}, "error counting dashboard open sessions"},
+		{"ScopeDateRange", func(d DashboardDaoInterface) error {
+			_, _, err := d.ScopeDateRange(nil, filter.GroupIDs)
+			return err
+		}, "error finding dashboard date range"},
+		{"ScopeAthletes", func(d DashboardDaoInterface) error {
+			_, err := d.ScopeAthletes(nil, filter.GroupIDs)
+			return err
+		}, "error finding dashboard athletes"},
+		{"FindCatalogExercisesByOwner", func(d DashboardDaoInterface) error {
+			_, err := d.FindCatalogExercisesByOwner(nil, 1, []string{"ritmo_continuo"})
+			return err
+		}, "error finding dashboard catalog exercises"},
+		{"FindDashboardCatalogExerciseByID", func(d DashboardDaoInterface) error {
+			_, err := d.FindDashboardCatalogExerciseByID(nil, 1)
+			return err
+		}, "error finding dashboard catalog exercise"},
+		{"FindDashboardCatalogExercisesByIDs", func(d DashboardDaoInterface) error {
+			_, err := d.FindDashboardCatalogExercisesByIDs(nil, []int64{1})
+			return err
+		}, "error finding dashboard catalog exercises"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			failing := testutils.FailingDB(t, db, nthFail("select", 1))
+			err := tc.run(NewDashboardDao(failing))
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}

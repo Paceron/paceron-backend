@@ -348,3 +348,17 @@ func TestAchievementDAO_InsertUnlock_ConsistenciaConGetByID(t *testing.T) {
 	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", runner.ID).Count(&count).Error)
 	assert.Equal(t, int64(1), count, "la PK compuesta impide la segunda fila")
 }
+
+// El conteo agregado de early_N propaga el error de DB sin tragarlo (el caller
+// de gamificación decide si re-evalúa o no).
+func TestAchievementDAO_CountEarlyFinishedSessions_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao := NewAchievementDao(failing)
+
+	n, err := dao.CountEarlyFinishedSessions(nil, 1)
+
+	require.Error(t, err)
+	assert.Zero(t, n)
+	assert.Contains(t, err.Error(), "error counting early finished runner sessions")
+}

@@ -303,10 +303,14 @@ func TestWorkoutFeedbackDao_HistorySearch_SecondLevelFilters(t *testing.T) {
 	assert.ElementsMatch(t,
 		[]int64{f.fbNormal.ID, f.fbNormalSet1.ID, f.fbTie1.ID},
 		historyRowIDs(byExercise))
+	require.NotEmpty(t, byExercise)
+	assert.Equal(t, int64(3), byExercise[0].TotalCount, "el total refleja el filtro de segundo nivel")
 
 	bySet, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, SetNumber: &[]int{2}[0]}, "feedback_date", "desc", 0, 0)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []int64{f.fbTie1.ID, f.fbTie2.ID}, historyRowIDs(bySet))
+	require.NotEmpty(t, bySet)
+	assert.Equal(t, int64(2), bySet[0].TotalCount)
 
 	byAthlete, err := dao.HistorySearch(nil, WorkoutFeedbackHistoryFilters{TeamID: &teamA, AthleteFilterUserID: &f.athleteA.ID}, "feedback_date", "desc", 0, 0)
 	require.NoError(t, err)
@@ -646,4 +650,57 @@ func TestWorkoutFeedbackDao_HistorySearch_ExerciseFilterFamiliaCatalogo(t *testi
 		{ID: source, Name: "Trote"},
 		{ID: legacy.ID, Name: "Zancada legado"},
 	}, exercises)
+}
+
+// Los batches de nombres del historial siguen resolviendo por delegación y
+// devuelven vacío con input vacío; UsersByIDs quedó sin caller en el service
+// (el atleta viene embebido) pero la interface lo conserva.
+func TestWorkoutFeedbackDao_NameBatches(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+	f := setupWorkoutFeedbackHistoryFixture(t, db)
+
+	users, err := dao.UsersByIDs(nil, []int64{f.athleteA.ID})
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	assert.Equal(t, "Anita", users[0].Name)
+
+	teams, err := dao.TeamsByIDs(nil, []int64{f.teamA.ID})
+	require.NoError(t, err)
+	require.Len(t, teams, 1)
+	assert.Equal(t, f.teamA.Name, teams[0].Name)
+
+	groups, err := dao.GroupsByIDs(nil, []int64{f.groupA.ID})
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	assert.Equal(t, f.groupA.Name, groups[0].Name)
+
+	users, err = dao.UsersByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, users)
+	teams, err = dao.TeamsByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, teams)
+	groups, err = dao.GroupsByIDs(nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, groups)
+}
+
+func TestWorkoutFeedbackDao_NameBatches_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+
+	usersDao := &workoutFeedbackDao{users: NewUserDao(testutils.FailingDB(t, db, nthFail("select", 1)))}
+	_, err := usersDao.UsersByIDs(nil, []int64{1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding users by ids")
+
+	teamsDao := &workoutFeedbackDao{teams: NewTeamDao(testutils.FailingDB(t, db, nthFail("select", 1)))}
+	_, err = teamsDao.TeamsByIDs(nil, []int64{1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding team names by ids")
+
+	groupsDao := &workoutFeedbackDao{groups: NewGroupDao(testutils.FailingDB(t, db, nthFail("select", 1)))}
+	_, err = groupsDao.GroupsByIDs(nil, []int64{1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "error finding group names by ids")
 }
