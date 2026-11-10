@@ -332,7 +332,7 @@ Contrato frontend del gateway WS. Referencia completa: **`docs/REALTIME_WS.md`**
 
 **Conexión:** `wss://host/api/v1/ws?token=<access_token>` — mismo access token JWT del resto de la API, en query param (no hay header `Authorization` en el handshake). Falta/inválido/expirado → `401` JSON `apierror.APIError` antes del upgrade (`code` ∈ {`unauthorized`, `token_expired`}). Clientes nativos sin header `Origin` pasan; browser con origin fuera de `CORS_ALLOWED_ORIGINS` → upgrade rechazado.
 
-**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla dual de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
+**Canales:** el único patrón es `session:{id}` con `{id}` = **session instance id** (el de `assigned_session_id` en feedback / `session_instance.id` en calendario — la copia congelada, no el id de catálogo). Suscribirse a una instancia que el usuario puede ver (misma regla de acceso de `GET /session-instances/{id}`) responde `{"type":"subscribed","channel":"session:123"}`; canal ajeno/desconocido responde `error` y la conexión sigue viva. Tope 20 canales por conexión; resubscribe idempotente. El ID va en decimal canónico (`session:7`, nunca `session:07`).
 
 **Eventos:**
 
@@ -817,7 +817,7 @@ Cualquier fallo posterior a la creación de la instancia → **rollback total** 
 
 ### 19.4 Autorización WS por instancia de intento
 
-La 3ª rama de acceso a instancia (`HasInstanceAccess`, §11/§12) se extiende con un `OR EXISTS`: además del ancla `route_session_instance_id` (ruta de siempre), ahora un participante de la competencia accede a cualquier instancia con un runner session tagueado `competition_id` de esa competencia (**cualquier status del intento**, sin filtro). Cada lado del OR mantiene su participant-check propio. Singular y batch espejo idénticos (no pueden divergir). Efecto: el canal `session:{session_instance_id}` de **cada intento 2+** es accesible para sus participantes con la misma suscripción de §11 — un participante corre su intento 2 con live WS normal sobre esa instancia.
+La 3ª rama de acceso a instancia (`HasInstanceAccess`, §11/§12) se extiende con un `OR EXISTS`: además del ancla `route_session_instance_id` (ruta de siempre), ahora el **atleta dueño** del `runner_session` tagueado con `competition_id` accede a la instancia de **su propio intento** (**cualquier status del intento**, sin filtro). La instancia compartida del intento 1 sigue accesible a todos los participantes por el ancla. Cada lado del OR mantiene su participant-check propio. Singular y batch espejo idénticos (no pueden divergir). Efecto: el canal `session:{session_instance_id}` de **cada intento 2+** es accesible solo para el atleta dueño de ese intento con la misma suscripción de §11 — otro participante no accede a la instancia ajena; el cierre le llega por los canales de sus propios intentos (o por el push/refetch).
 
 ### 19.5 NUEVO — `GET /competitions/{id}/attempts`
 

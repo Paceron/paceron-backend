@@ -73,9 +73,10 @@ Reglas comunes:
 El único patrón registrado hoy: **`session:{id}`**, con `{id}` = ID de **session instance** (la copia congelada del calendario, ver `docs/CATALOGO_Y_CALENDARIO.md` §8).
 
 - **ID canónico estricto:** se acepta solo el decimal canónico (`session:123`). Alias que parten la sala en strings distintos son rechazados con `error`: `session:07`, `session:+7`, `session:7abc`, `session: 7`, `session:0`, `session:-3`, `session:abc` — y cualquier canal sin patrón (`team:5`, etc.).
-- **Regla de acceso** (la misma dual de `GET /session-instances/{id}`, Gap 14 — delega en `sessionInstanceDao.HasInstanceAccess`):
+- **Regla de acceso** (la misma de `GET /session-instances/{id}`, Gap 14 — delega en `sessionInstanceDao.HasInstanceAccess`):
   1. Miembro activo del grupo del día con esa instancia, **u** owner del equipo del grupo; **o**
-  2. Feedback activo sobre la instancia, como atleta (`athlete_user_id`), reportante (`feedback_owner_user_id`) u owner del equipo.
+  2. Feedback activo sobre la instancia, como atleta (`athlete_user_id`), reportante (`feedback_owner_user_id`) u owner del equipo; **o**
+  3. Instancia de competencia route: participante sobre la instancia compartida (ancla) o **atleta dueño** del `runner_session` de un intento 2+ sobre esa instancia (cualquier status). Un participante de la competencia **no** accede a la instancia de un intento ajeno.
 - Canal no reconocido/inválido → sin acceso, **ni toca la DB**.
 - La autorización se evalúa **una vez, en el `subscribe`** — no se re-chequea durante la vida de la suscripción (si el acceso se revoca, la suscripción ya establecida sigue hasta reconectar; la HTTP sigue siendo la fuente de verdad para datos sensibles).
 - Fallo del authorizer (error de DB) → `error` ("error verificando acceso al canal"), conexión viva.
