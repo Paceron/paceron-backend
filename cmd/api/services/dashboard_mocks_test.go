@@ -20,7 +20,7 @@ type mockDashboardDao struct {
 	findRunnerFn     func(ctx *gin.Context, athleteUserID int64, from, to time.Time) ([]daos.DashboardSeriesRow, error)
 	countOpenFn      func(ctx *gin.Context, filter daos.DashboardScopeFilter) (daos.DashboardOpenSessions, error)
 	dateRangeFn      func(ctx *gin.Context, groupIDs []int64) (*time.Time, *time.Time, error)
-	unlinkedFn       func(ctx *gin.Context, groupIDs []int64) ([]daos.UnlinkedExerciseInstance, error)
+	unlinkedFn       func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error)
 	athletesFn       func(ctx *gin.Context, groupIDs []int64) ([]int64, error)
 	catalogByOwnerFn func(ctx *gin.Context, ownerID int64, kinds []string) ([]daos.DashboardCatalogExercises, error)
 	catalogByIDFn    func(ctx *gin.Context, id int64) (*daos.DashboardCatalogExercises, error)
@@ -62,10 +62,10 @@ func (m *mockDashboardDao) ScopeDateRange(ctx *gin.Context, groupIDs []int64) (*
 	return nil, nil, nil
 }
 
-func (m *mockDashboardDao) UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64) ([]daos.UnlinkedExerciseInstance, error) {
+func (m *mockDashboardDao) UnlinkedExerciseInstances(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
 	m.calls++
 	if m.unlinkedFn != nil {
-		return m.unlinkedFn(ctx, groupIDs)
+		return m.unlinkedFn(ctx, groupIDs, from, to)
 	}
 	return nil, nil
 }

@@ -371,7 +371,8 @@ func TestDashboardDao_UnlinkedExerciseInstances(t *testing.T) {
 		SessionInstanceID: fixture.sessionInst, ExerciseInstanceID: orphan.ID, Role: "main",
 	}).Error)
 
-	unlinked, err := fixture.dao.UnlinkedExerciseInstances(nil, []int64{fixture.groupID})
+	from, to := fixture.calendarDay.AddDate(0, 0, -1), fixture.calendarDay.AddDate(0, 0, 1)
+	unlinked, err := fixture.dao.UnlinkedExerciseInstances(nil, []int64{fixture.groupID}, from, to)
 
 	require.NoError(t, err)
 	ids := make([]int64, 0, len(unlinked))
@@ -385,6 +386,55 @@ func TestDashboardDao_UnlinkedExerciseInstances(t *testing.T) {
 	assert.Contains(t, ids, orphan.ID)
 	// La instancia con source_exercise_id no aparece: ya tiene su vínculo.
 	assert.NotContains(t, ids, fixture.mainEx)
+}
+
+// D3: el rango de la consulta acota la SQL. Una instancia legacy fuera del rango
+// no se trae, porque ya no puede aportar series al agregado.
+func TestDashboardDao_UnlinkedExerciseInstancesAcotaAlRango(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "unlinkedrange")
+	inRange := &dbs.ExerciseInstance{Name: "Distancia 4 km", Kind: string(constants.ExerciseKindRitmoContinuo), Minutes: intPtrDAO(30), DistanceM: intPtrDAO(4000)}
+	require.NoError(t, db.Create(inRange).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: fixture.sessionInst, ExerciseInstanceID: inRange.ID, Role: "main",
+	}).Error)
+
+	oldSession := testSessionInstance(db, "sesion-dash-unlinkedrange-old")
+	require.NoError(t, db.Create(&dbs.GroupCalendarDay{
+		GroupID: fixture.groupID, Date: time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC),
+		Kind: "training", SessionInstanceID: &oldSession,
+	}).Error)
+	outOfRange := &dbs.ExerciseInstance{Name: "Distancia 4 km", Kind: string(constants.ExerciseKindRitmoContinuo), Minutes: intPtrDAO(30), DistanceM: intPtrDAO(4000)}
+	require.NoError(t, db.Create(outOfRange).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: oldSession, ExerciseInstanceID: outOfRange.ID, Role: "main",
+	}).Error)
+
+	from, to := fixture.calendarDay.AddDate(0, 0, -1), fixture.calendarDay.AddDate(0, 0, 1)
+	unlinked, err := fixture.dao.UnlinkedExerciseInstances(nil, []int64{fixture.groupID}, from, to)
+
+	require.NoError(t, err)
+	ids := make([]int64, 0, len(unlinked))
+	for _, instance := range unlinked {
+		ids = append(ids, instance.ExerciseInstanceID)
+	}
+	assert.Contains(t, ids, inRange.ID, "la instancia dentro del rango sigue apareciendo")
+	assert.NotContains(t, ids, outOfRange.ID, "la instancia fuera del rango no se escanea")
+}
+
+func TestDashboardDao_UnlinkedExerciseInstancesSinGruposORangoVacio(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newDashboardFixture(t, db, "unlinkedempty")
+
+	noGroups, err := fixture.dao.UnlinkedExerciseInstances(nil, nil,
+		fixture.calendarDay, fixture.calendarDay)
+	require.NoError(t, err)
+	assert.Empty(t, noGroups)
+
+	emptyRange, err := fixture.dao.UnlinkedExerciseInstances(nil, []int64{fixture.groupID},
+		time.Time{}, time.Time{})
+	require.NoError(t, err)
+	assert.Empty(t, emptyRange)
 }
 
 func TestDashboardDao_FindSeriesPorEjercicio(t *testing.T) {

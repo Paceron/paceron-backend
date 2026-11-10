@@ -550,7 +550,7 @@ func (s *dashboardService) sessionComparisonSide(
 	if !catalogOwnerInScope(scope, teamID, catalog.OwnerID) {
 		return dashboard.SessionComparisonSide{}, ErrDashboardForbidden
 	}
-	prepared := &validatedMetricsQuery{Scope: scope, TeamID: teamID, GroupIDs: groupIDs}
+	prepared := &validatedMetricsQuery{Scope: scope, TeamID: teamID, GroupIDs: groupIDs, From: from, To: to}
 	legacyIDs, err := s.resolveLegacyInstances(ctx, prepared, ref.ExerciseID)
 	if err != nil {
 		return dashboard.SessionComparisonSide{}, err
@@ -1055,7 +1055,7 @@ func (s *dashboardService) resolveLegacyInstances(ctx *gin.Context, prepared *va
 		return nil, ErrDashboardForbidden
 	}
 
-	unlinked, err := s.dashboardDao.UnlinkedExerciseInstances(ctx, prepared.GroupIDs)
+	unlinked, err := s.dashboardDao.UnlinkedExerciseInstances(ctx, prepared.GroupIDs, prepared.From, prepared.To)
 	if err != nil {
 		customlogger.Error(ctx, "error listing unlinked exercise instances", err,
 			customlogger.TagMethod("Dashboard.resolveLegacyInstances"))

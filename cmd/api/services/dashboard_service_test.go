@@ -806,7 +806,9 @@ func TestDashboardService_ExerciseSeriesResuelveInstanciasPorNombre(t *testing.T
 	dao.catalogByIDFn = func(ctx *gin.Context, id int64) (*daos.DashboardCatalogExercises, error) {
 		return &daos.DashboardCatalogExercises{ID: id, OwnerID: 10, Name: "Distancia 4 km", Kind: "ritmo_continuo"}, nil
 	}
-	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64) ([]daos.UnlinkedExerciseInstance, error) {
+	var legacyFrom, legacyTo time.Time
+	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
+		legacyFrom, legacyTo = from, to
 		return []daos.UnlinkedExerciseInstance{
 			// Mismo dueño y mismo nombre normalizado: entra.
 			{ExerciseInstanceID: 500, Name: "distancia 4 KM.", OwnerID: 10},
@@ -829,6 +831,25 @@ func TestDashboardService_ExerciseSeriesResuelveInstanciasPorNombre(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, []int64{7}, filter.ExerciseIDs)
 	assert.Equal(t, []int64{500}, filter.LegacyExerciseInstanceIDs)
+	assert.Equal(t, "2026-09-01", legacyFrom.Format("2006-01-02"), "el rango llega al DAO de legacy")
+	assert.Equal(t, "2026-09-30", legacyTo.Format("2006-01-02"))
+}
+
+// Un error del DAO de instancias legacy no se traga: el endpoint tiene que fallar
+// en vez de devolver series parciales sin el histórico previo al backfill.
+func TestDashboardService_ExerciseSeriesErrorDeInstanciasLegacy(t *testing.T) {
+	service, dao, _ := dashboardFixture(t)
+	dao.catalogByIDFn = func(ctx *gin.Context, id int64) (*daos.DashboardCatalogExercises, error) {
+		return &daos.DashboardCatalogExercises{ID: id, OwnerID: 10, Name: "Distancia 4 km", Kind: "ritmo_continuo"}, nil
+	}
+	dao.unlinkedFn = func(ctx *gin.Context, groupIDs []int64, from, to time.Time) ([]daos.UnlinkedExerciseInstance, error) {
+		return nil, assert.AnError
+	}
+
+	_, err := service.ExerciseSeries(nil, 10, 7, dashboardQuery())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "histórico del ejercicio")
 }
 
 // Un ejercicio de catálogo de otro dueño no se resuelve por nombre.
