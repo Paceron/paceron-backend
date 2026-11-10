@@ -158,9 +158,9 @@ Ronda de revisión de performance sobre `bff7083`, **solo diagnóstico**: no se 
 - **`UnlinkedExerciseInstances` escanea histórico sin índice ni fecha.** `daos/dashboard_dao.go:543` (`UnlinkedExerciseInstances`) ejecuta `unlinkedExerciseInstancesSQL` (`:246-263`): `DISTINCT` sobre `group_calendar_days → session_instances → session_exercise_instances → exercise_instances` de todo el scope con `ei.source_exercise_id IS NULL`, sin filtro de fecha. Lo invoca `SessionComparison` vía `resolveLegacyInstances` (`services/dashboard_service.go:1044`). Evaluar índice parcial (`exercise_instances(source_exercise_id) WHERE source_exercise_id IS NULL`) y/o acotar por la ventana de la comparación.
 - **Logros tratan `early_N` con todo el histórico.** `daos/achievement_dao.go:136` (`ListFinishedSessionStarts`) hace `Pluck("start_date")` de **todas** las runner sessions finished del atleta; `services/achievements_service.go:209` solo lo usa para `countEarlyStarts`. Evaluar resolverlo con `COUNT`/agregado por hora en SQL en vez de traer todas las fechas.
 - **Push sincrónico dentro de requests de invitación/equipo/usuario.** `services/invitation_service.go:191-199` y `:593-596`, `services/team_user_service.go:361-364` y `:396-399`, `services/user_service.go:437-438` llaman `sendPushToUser` (`services/push_notifier.go:30`) en el camino de respuesta: se espera la query de tokens + `SendBatch` de Expo (hasta `pushSendTimeout`, 10s). Es best-effort ante error pero **no async**. Mover a goroutine con `context.Background()` + timeout + recover, mismo patrón que `notifyFinishAsync` (`services/competition_service.go:1113`).
-- **`FindByUserIDs` de push tokens sin chunking.** `daos/push_token_dao.go:59` arma un único `user_id IN ?` con todos los participantes; en cierres de competencia grandes crece sin límite (parámetros del driver/DB). Chunkear por lotes o usar `= ANY`.
-- **Timeout único de 10s para todos los chunks del push de cierre.** `services/competition_service.go:1150` crea un solo `context.WithTimeout(..., pushSendTimeout)` y `sendPushTokenChunks` (`services/push_notifier.go:77`, loop en `:94-102`) reutiliza ese `sendCtx` para todos los lotes de 100. Con más de 100 tokens, los lotes posteriores comparten el presupuesto y pueden quedar cancelados; conviene deadline por chunk o acotar el total.
-- **`NextSession` con 2 queries por kind y lookups extra.** `services/calendar_service.go:1956` llama `FindNextForGroupsByKind` dos veces (`:1975` cancelled, `:1983` training; SQL en `daos/group_calendar_day_dao.go:323`), y `bannerItem`/`trainingBannerItem` (`:2119`, `:2139`) hacen un `session_instances.FindByID` por banner; `groupNamesByIDs` (`:2080`) suma 1–2 queries. Se puede resolver ambos "next" en una query (`DISTINCT ON (kind)`) y batchear instancias/nombres.
+- **`FindByUserIDs` de push tokens sin chunking.** **RESUELTO** (change `optimizaciones-lecturas-cache`, Task 3, `3a1b6b0`): `FindByUserIDs` parte los IDs en lotes de 500 (`pushTokenUserIDsBatchSize`) y concatena los tokens preservando el orden de los lotes. Para ≤500 IDs sigue siendo una sola query.
+- **Timeout único de 10s para todos los chunks del push de cierre.** **RESUELTO** (Task 3, `3a1b6b0`/`60b4c2d`): cada lote de hasta 100 tokens crea su propio `context.WithTimeout` acotado por el presupuesto padre (`pushFinishTotalBudget = 30s`); al agotarse el presupuesto se corta el fan-out con un único log. Residual: 30s es un techo arbitrario (3× el timeout por lote) y los lotes que quedan fuera no se reintentan (best-effort, no bloquea la respuesta) — ver "Minors de esta ronda" en la sección del cierre.
+- **`NextSession` con 2 queries por kind y lookups extra.** **RESUELTO** (Task 1, `06f752f`): `FindNextForGroupsByKinds` resuelve ambos kinds en una sola query con `DISTINCT ON (kind)` y las instancias/nombres de ambos banners se resuelven en un único `FindByIDs`. Residual: el desempate determinista cambió la fila ganadora en empates reales — ver "Minors de esta ronda" en la sección del cierre.
 - **Aislar token inválido dentro del lote de push.** `sendPushTokenChunks` (`services/push_notifier.go:77`) ya descarta tokens vacíos y duplicados (`574d09b`) y manda lotes de 100, pero un token inválido dentro de un lote hace fallar el lote completo: no hay reintento individual ni fallback a envíos unitarios. Evaluar degradación controlada del lote (p. ej. reintentar los tokens uno a uno cuando `SendBatch` falla).
 - **Errores de batch de join requests degradan todos los nombres.** `services/join_request_service.go:375` (`runnerNames`) devuelve un map vacío si `userDao.FindByIDs` (`:380`) falla, así que **todos** los `runner_name` de la respuesta quedan `""`; `ListMine` (`:271`) también ignora silenciosamente el error de `teamDao.FindByIDs` (`:296`). No rompe el status, pero oculta el fallo y degrada la UI completa — decidir si fallar 500 o loguear y seguir.
 - **Orden de `Permissions` pasó a `p.id`.** `daos/tier_permission_dao.go:79` y `:101` ordenan por `p.id ASC` en los listados por tier y batch. Es un cambio de orden de la respuesta de `/auth/permissions` sin versión de contrato; si el front dependía del orden anterior, coordinarlo. Además, el fallback per-tier (`services/permissions_query_service.go:265` → `ListPermissionNamesByTier`, inner JOIN en `:77`) **descarta** `tier_permissions` cuyo permiso está soft-deleted, mientras el batch (`:99`, LEFT JOIN) conserva la fila y reporta `permiso_id=N no configurado`; si el batch falla, el fallback pierde esos permisos y cambia la respuesta.
@@ -176,6 +176,46 @@ Ronda de revisión de performance sobre `bff7083`, **solo diagnóstico**: no se 
 ### Decisión de contrato pendiente (decidido no abordar ahora)
 
 - **`GET /tiers/{id}` y `GET /tiers/by-name` siguen exponiendo el tier interno de corredor.** `services/tier_service.go:269` (`GetByID`) y `:295` (`GetByName`) no aplican el filtro de rol `corredor` que sí aplica `GetAll` (`:321`); los handlers son `controllers/tier_controller.go:162` y `:206`. `GET /tiers` oculta el tier base de corredor (soporte interno), pero los endpoints puntuales lo devuelven si se conoce el id/nombre. No es un bug accidental: falta decidir el contrato (¿404/403 o exponerlo explícitamente?) antes de tocarlo.
+
+## Performance — cierre optimizaciones de lecturas y cache (2026-11-10)
+
+Cierre de la rama `feature/optimizaciones-lecturas-cache` (`6a7870c..60b4c2d`, Tasks 1-4). Resuelto en esta ronda: detalle de instancias/banners del calendario en batch (T1), `NextSession` agrupado en una query (T1), índices P1 `group_users`/`team_users`/`groups.team_id`/`exercise_instances.source_exercise_id` (T2), chunking de `FindByUserIDs` y timeout por lote del push de cierre (T3), invitaciones vencidas filtradas en SQL y N+1 de equipos/roles resueltos en batch (T4). Sin cambios de endpoints, DTOs, shapes ni autorización.
+
+### Sigue vigente (no abordado en esta rama)
+
+Verificados y sin cambios; el detalle y la ubicación de cada uno viven en las secciones anteriores, no se repiten acá:
+
+- Búsquedas sin tope (`/attendance/search`, `/workout-feedback/search`) — ver "Fuera de alcance (no-goals)".
+- Cota de rango de calendario (`GetRange`/member/admin sin límite de amplitud; `GetRange` no valida `from <= to`) — ver "Deuda conocida (no abordada en esta rama)".
+- Rachas con histórico completo en GET y hooks — misma sección.
+- `FindSeries` del dashboard trayendo filas crudas y agregando en Go — misma sección.
+- `UnlinkedExerciseInstances` escaneando histórico sin índice ni fecha — misma sección.
+- `early_N` de logros resolviéndose con todo el histórico — misma sección.
+- Caché/memoización del matching de ruta (samples) — ver "Memoización del matching de ruta".
+- `WithContext` masivo, email sincrónico, lock de `CreateAttemptSession`, visibilidad de equipos/PII — ver "Performance y estabilidad — diferidos".
+- `Aislar token inválido dentro del lote` del push — ver "Deuda conocida (no abordada en esta rama)".
+- Índice redundante `idx_user_achievement_progress_user` — ver "Minors de tests/internals (tasks 1-6)".
+
+### Nuevos pendientes detectados en esta ronda
+
+- **`ILIKE` sin `pg_trgm`.** `daos/user_dao.go:116` (`name`/`surname`/`email`) y `daos/team_dao.go:158` (`teams.name`) resuelven búsquedas con `ILIKE '%...%'`, que no puede usar un btree: scan secuencial proporcional a la tabla. Evaluar índices GIN con la extensión `pg_trgm` cuando las búsquedas sean camino caliente; requiere extensión + migración (y confirmar disponibilidad en Supabase/testing) — propio change.
+- **Índice duplicado sobre `runner_session(athlete_user_id)`.** El tag GORM de `AthleteUserID` crea `idx_runner_session_athlete_user_id` y `infrastructure/postgresdb` crea a mano `idx_runner_session_athlete` sobre la misma columna (`CREATE INDEX CONCURRENTLY`). Ambos existen; sobra uno. No se borró en esta rama (D3: no se eliminan índices). Limpieza con migración: conservar el `CONCURRENTLY` y quitar el tag, o al revés.
+- **Índices prefijo redundantes tras T2.** El compuesto `(group_id, user_id)` deja redundante el simple `idx_group_users_group_id`; el compuesto `(team_id, user_id)` deja redundante `idx_team_users_team_id`. Se conservaron a propósito en esta rama; candidatos a borrar en una limpieza de índices (los simples de `user_id` sí aportan: no son prefijo del compuesto).
+
+### Minors de esta ronda
+
+- **Log de presupuesto de push sin granularidad.** Al agotarse `pushFinishTotalBudget`, `sendPushTokenChunksWithTimeout` corta el fan-out con un único `customlogger.Error`; no registra cuántos lotes/tokens quedaron sin enviar. Si importa operar el cierre, loguear el remanente o emitir una métrica.
+- **Desempate de `NextSession` cambia la fila ganadora en empates.** El query agrupado de T1 ordena por `kind, date, presencial_time_from NULLS LAST, id`; antes `FindNextForGroupsByKind` ordenaba solo por `date`. En empates reales puede cambiar cuál fila gana, sin cambio de shape. Es el comportamiento pedido por D2; documentado para que no se lea como bug.
+- **Test de índices valida nombre, no composición.** `TestDaos_HotTablesIndexes` consulta `pg_indexes` por `indexname`; no verifica `indexdef` (columnas/orden/parcialidad). Un índice con nombre correcto pero columnas equivocadas pasaría. Si se toca, comparar `indexdef` para los compuestos.
+- **Chunks descartados al agotar presupuesto de push.** Best-effort por diseño: los lotes posteriores al vencimiento del presupuesto no se envían ni se reintentan. Aceptado; si el cierre necesita garantía, va a cola/worker con reintentos.
+
+### Política de caching (esta rama no cachea nada)
+
+No se agregó caché en `optimizaciones-lecturas-cache` (design D6). La ronda se limitó a reducir round-trips y trabajo redundante por request.
+
+- **Candidatos seguros futuros:** samples de ruta de competencias (inmutables una vez creada la ruta; hoy el matching se recomputa en cada GET — ver "Memoización del matching de ruta") y, en general, datos inmutables cuyo ciclo de vida tenga invalidación explícita al escribirse.
+- **No cachear:** permisos, dashboard, rachas, calendario, membresías de equipos/grupos, ni datos por usuario/PII. Cambian con frecuencia o dependen de autorización/estado de sesión, y un caché sin invalidación correcta filtra datos entre usuarios o sirve estado viejo.
+- Cualquier caché futuro necesita dueño de invalidación explícito y una prueba de que respeta autorización; no se implementó en esta rama.
 
 ## Gamificación (change `gamificacion-core`, 2026-10-13)
 
