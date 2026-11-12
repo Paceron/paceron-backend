@@ -257,6 +257,29 @@ func TestAchievementDAO_SumAndMaxDistance(t *testing.T) {
 	assert.InEpsilon(t, 50000.0, total, 0.0001)
 }
 
+func seedGPSFeedback(t *testing.T, db *gorm.DB, athleteID, key int64, deletedAt *time.Time) int64 {
+	t.Helper()
+	var media pgtype.TextArray
+	require.NoError(t, media.Set([]string{"https://media.foo/a.jpg"}))
+	f := &dbs.WorkoutFeedback{
+		AssignedSessionID: key, AssignedExerciseID: 1,
+		AthleteUserID: athleteID, FeedbackOwnerUserID: athleteID,
+		ReportSource: "corredor",
+		SessionDate:  time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC),
+		SetNumber:    1, DeletedAt: deletedAt, MediaURLs: media,
+	}
+	require.NoError(t, db.Create(f).Error)
+	return f.ID
+}
+
+func seedGPSPoint(t *testing.T, db *gorm.DB, feedbackID, instanceID int64, order int, at time.Time) {
+	t.Helper()
+	require.NoError(t, db.Create(&dbs.WorkoutFeedbackPoint{
+		FeedbackID: feedbackID, SessionInstanceID: instanceID, ExerciseInstanceID: 1,
+		Order: order, Latitude: -31.4, Longitude: -64.2, RecordedAt: at,
+	}).Error)
+}
+
 func TestAchievementDAO_CountGPSFinishedSessions(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
@@ -272,14 +295,54 @@ func TestAchievementDAO_CountGPSFinishedSessions(t *testing.T) {
 	require.NoError(t, db.Create(&dbs.RunnerSession{SessionInstanceID: 301, AthleteUserID: runner.ID, Status: "finished", StartDate: start, EndDate: &end}).Error)
 	require.NoError(t, db.Create(&dbs.RunnerSession{SessionInstanceID: 302, AthleteUserID: runner.ID, Status: "wip", StartDate: start}).Error)
 
-	point := func(instance int64) *dbs.WorkoutFeedbackPoint {
-		return &dbs.WorkoutFeedbackPoint{FeedbackID: instance, SessionInstanceID: instance, ExerciseInstanceID: 1, Order: 0, Latitude: -31.4, Longitude: -64.2, RecordedAt: start}
-	}
-	require.NoError(t, db.Create(point(300)).Error) // GPS en la instancia 300
-	require.NoError(t, db.Create(point(301)).Error)
-	require.NoError(t, db.Create(point(302)).Error) // wip: NO cuenta
-	require.NoError(t, db.Create(point(399)).Error) // sin sesión del runner: NO cuenta
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, runner.ID, 300, nil), 300, 0, start) // GPS en la instancia 300
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, runner.ID, 301, nil), 301, 0, start)
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, runner.ID, 302, nil), 302, 0, start) // wip: NO cuenta
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, runner.ID, 399, nil), 399, 0, start) // sin sesión del runner: NO cuenta
 
+	n, err = dao.CountGPSFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+}
+
+func TestAchievementDAO_CountGPSFinishedSessions_AtribuyePuntosAlAtletaDelFeedback(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runner := setupAchievementsRunner(t, db, "12")
+	other := setupAchievementsRunner(t, db, "13")
+
+	start := time.Date(2026, 10, 6, 7, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	mkFinished := func(instanceID, athleteID int64) {
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: instanceID, AthleteUserID: athleteID,
+			Status: "finished", StartDate: start, EndDate: &end,
+		}).Error)
+	}
+
+	// 500: instancia compartida con puntos de ambos; los del runner cuentan una vez.
+	mkFinished(500, runner.ID)
+	mkFinished(500, other.ID)
+	own500 := seedGPSFeedback(t, db, runner.ID, 500, nil)
+	seedGPSPoint(t, db, own500, 500, 0, start)
+	seedGPSPoint(t, db, own500, 500, 1, start.Add(time.Minute))
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, other.ID, 500, nil), 500, 0, start)
+
+	// 501: solo el otro atleta tiene puntos; no cuenta para el runner.
+	mkFinished(501, runner.ID)
+	mkFinished(501, other.ID)
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, other.ID, 501, nil), 501, 0, start)
+
+	// 502: feedback soft-deleted del propio atleta; la política vigente lo mantiene.
+	mkFinished(502, runner.ID)
+	deleted := time.Now()
+	seedGPSPoint(t, db, seedGPSFeedback(t, db, runner.ID, 502, &deleted), 502, 0, start)
+
+	n, err := dao.CountGPSFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "500 y 502; 501 solo tiene puntos del otro atleta")
+
+	// Re-evaluación idempotente: mismo agregado.
 	n, err = dao.CountGPSFinishedSessions(nil, runner.ID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n)

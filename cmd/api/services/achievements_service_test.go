@@ -304,8 +304,16 @@ func TestAchievementsService_GPSYTeamUnlock(t *testing.T) {
 	require.NoError(t, svc.EvaluateEvent(nil, 7, AchievementTriggerGPSPoints))
 	assert.Equal(t, []string{"gps_first", "gps_10"}, dao.unlocks)
 
+	// Re-evaluación con el mismo agregado: idempotente, sin unlocks nuevos.
+	require.NoError(t, svc.EvaluateEvent(nil, 7, AchievementTriggerGPSPoints))
+	assert.Equal(t, []string{"gps_first", "gps_10"}, dao.unlocks)
+
+	dao.gpsCount = 50
+	require.NoError(t, svc.EvaluateEvent(nil, 7, AchievementTriggerGPSPoints))
+	assert.Equal(t, []string{"gps_first", "gps_10", "gps_50"}, dao.unlocks)
+
 	require.NoError(t, svc.EvaluateEvent(nil, 7, AchievementTriggerAttendance))
-	assert.Equal(t, []string{"gps_first", "gps_10", "team_first"}, dao.unlocks)
+	assert.Equal(t, []string{"gps_first", "gps_10", "gps_50", "team_first"}, dao.unlocks)
 }
 
 func TestAchievementsService_TriggersAislados(t *testing.T) {
