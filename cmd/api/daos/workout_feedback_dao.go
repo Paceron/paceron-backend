@@ -316,7 +316,8 @@ func (d *workoutFeedbackDao) BulkCreatePointsRecompute(ctx *gin.Context, feedbac
 			return fmt.Errorf("error loading feedback for recompute: %w", err)
 		}
 		var all []dbs.WorkoutFeedbackPoint
-		if err := tx.Where("feedback_id = ?", feedbackID).Order(`"order"`).Find(&all).Error; err != nil {
+		if err := tx.Select(`"order", recorded_at, latitude, longitude`).
+			Where("feedback_id = ?", feedbackID).Order(`"order"`).Find(&all).Error; err != nil {
 			return fmt.Errorf("error loading points for recompute: %w", err)
 		}
 		if err := tx.Model(&dbs.WorkoutFeedback{}).
