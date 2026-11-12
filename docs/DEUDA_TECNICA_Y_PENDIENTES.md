@@ -235,6 +235,34 @@ Cierre de `feature/optimizaciones-lecturas-cache-2` (`37941fe..0f8384b`, Tasks 1
 - `DROP INDEX CONCURRENTLY` no puede correr dentro de una transacción; `ConfigDB` no abre una, pero un wrapper futuro que lo haga rompería el arranque.
 - El test `TestDaos_PartialIndexesUsablesConSeqscanOff` fuerza `SET LOCAL enable_seqscan = off` y verifica que el planner puede usar ambos parciales. Es determinista contra la DB de test (transacción con rollback), pero **no prueba** que el planner real los elija con volumen/estadísticas de producción: esa verificación con datos prod-like queda **parked**, junto con el costo de escritura de los parciales bajo carga real.
 
+## Performance — cierre optimizaciones de métricas (2026-11-12)
+
+Cierre de `feature/optimizaciones-metricas` (`3f5ba97..7791e89`, Tasks 1-8 y esta Task 9). Sin cambios de endpoints, parámetros, DTOs, JSON, status, autorización, WS ni frontend. La única corrección de resultado es la atribución de `gps_N`.
+
+### Resuelto en esta rama
+
+- **`gps_N` atribuye los puntos al atleta del feedback.** `achievementDao.CountGPSFinishedSessions` agrega `INNER JOIN workout_feedback` por `feedback_id` y exige `workout_feedback.athlete_user_id = rs.athlete_user_id`: los puntos de otro atleta en una instancia compartida ya no otorgan logros al evaluado. Se conserva `COUNT(DISTINCT session_instance_id)`, no se filtra `deleted_at` (política de soft-deleted vigente, ver Gamificación) y `gps_first`/`gps_10`/`gps_50` mantienen contrato e idempotencia. Tests PostgreSQL con dos atletas en la misma instancia y feedback propio soft-deleted. Spec: `optimizaciones-metricas/specs/gamification-achievements/spec.md`.
+- **`DataQuality` sin resumen completo y validaciones del dashboard sin duplicación.** `dashboard.BuildDataQuality` reutiliza `dataQualityFromSeries` y lo usan Leaderboard, ExerciseSeries, Comparisons, Periods y TimeSeries; `BuildSummary` sigue armando el resumen completo. `Comparisons` ya no repite `validateAthletes`, y `resolveTeamGroup` reutiliza `DashboardScope.Groups` consultando el DAO solo para grupos fuera del scope, con 403/404 y orden de validaciones intactos.
+- **`ScopeDateRange` con semijoins (adoptado con evidencia).** `scopeDateRangeSQL` reemplaza los `JOIN` a `exercise_instances`/`session_exercise_instances` por `EXISTS` (semijoin), conservando `role = 'main'`, feedback activo, runner statuses, `rs.status IS NULL` para feedback huérfano y el mismo resultado nulo. Fixture amplio de paridad `MIN/MAX` y medición `EXPLAIN (ANALYZE, BUFFERS)` mostraron menor trabajo; no quedó como deuda de medición.
+- **`Close` de competencias reutiliza lecturas request-local.** El `competitionBundle` memoiza el agregado metric (`metricAgg`/`metricAggLoaded`) y las lecturas route (`routeReads`); winners, progreso y canales WS comparten el mismo snapshot lógico, sin `ListAttemptSessions` extra en metric y sin caché entre requests. Se conservan winners, stamps, unseen, notificaciones y frames WS.
+- **Evaluador de logros agrupado con unlock+unseen atómico.** `CountFinishedSessionStats` combina finished/early_N y `SumAndMaxDistance` combina total/máximo por sesión en una lectura cada uno. `InsertUnlocksWithUnseen` inserta unlocks y unseen en una sola sentencia (`ON CONFLICT DO NOTHING RETURNING`) y reporta solo los IDs nuevos; cada unlock confirmado deja su unseen durable aunque la respuesta se pierda, con fallback idempotente logro por logro y push en orden de catálogo.
+- **Asistencia bulk con un agregado y un job.** `BulkSaveAttendance` junta los user IDs afectados (insertados y actualizados) y encola una sola evaluación batch (`OnEventBatch`) que resuelve los días distintos de todo el roster con `CountAttendanceDaysByUsers` en una lectura. Un único job asíncrono por lote, procesamiento secuencial por usuario, sin fan-out adicional; se conservan la re-evaluación de filas actualizadas, unseen/push idempotentes y los frames WS por fila.
+- **`DeleteDay` con borrado batch y D10.** El borrado reutiliza `deleteSupersededInstances` para las instancias supersedidas dentro de la misma transacción, conservando la protección D10 (feedback de sesión/ejercicio), orden, colisión y rollback.
+- **Recompute GPS con proyección de columnas.** `BulkCreatePointsRecompute` selecciona solo `order`, `recorded_at`, `latitude` y `longitude` al recalcular; pace/peak quedan idénticos en lotes parciales, repetidos y puntos fuera de orden. El recompute sigue siendo completo (no incremental).
+
+### Residuales y minors diferidos
+
+- **Push de logros best-effort ante respuesta ambigua (aceptado).** El unlock y su unseen son atómicos y durables, pero si la confirmación de la sentencia se pierde, el push asociado puede no emitirse. Se acepta el costo excepcional: no se duplican ni inventan unseen/unlocks, y el push sigue sin garantía de entrega.
+- **Paridad de `ScopeDateRange` no del todo independiente (test-only).** La SQL legacy del test de paridad comparte `membershipWindowEXISTS` con producción, así que el predicado de membresía no se valida contra una referencia separada; los bordes y la medición sí están cubiertos.
+- **Query-count de `Close` route: canales con un solo ID.** El test de conteo verifica un ID de instancia registrada; una prueba futura puede asertar los IDs/canales exactos cuando los intentos usen instancias distintas.
+
+### No abordado (sigue en deuda)
+
+- **Índices nuevos o medición con datos representativos.** Esta rama no crea ni elimina índices; los candidatos quedan sujetos a `EXPLAIN (ANALYZE, BUFFERS)` prod-like (D9 y "Riesgos de índices").
+- **Recompute GPS incremental.** Solo se redujeron columnas; el algoritmo sigue O(puntos) sobre el recorrido persistido.
+- **`FindSeries` del dashboard con agregación SQL y rachas con histórico completo.** Sin cambios; ver "Deuda conocida (no abordada en esta rama)".
+- **Cachés entre requests, búsquedas sin tope y cota del rango de calendario.** Siguen diferidos por contrato/diseño; ver "Política de caching" y "Fuera de alcance (no-goals)".
+
 ## Gamificación (change `gamificacion-core`, 2026-10-13)
 
 Ítems de deuda/decisión del módulo de gamificación (rachas, logros, leaderboard, competencias). Mecánica en `docs/CATALOGO_Y_CALENDARIO.md` §8.14; contratos en `docs/FRONTEND_IMPACTO_INSTANCIACION.md` §16 y §17 (ruta, `competencias-ruta-intake`).
@@ -277,7 +305,7 @@ El mapeo de día (`utcDateToDay`) toma la **fecha UTC** del timestamptz: un `dat
 - **Pin de queries del trigger sin rama "sin evento" assertionada:** `TestStreakTrigger_Evaluate_QueriesConstantes` pinea el conteo (6) de la corrida **con** evento y compara 3 vs 12 días; la corrida sin evento (sin INSERT de unseen) solo se loguea (`t.Logf`), sin assert de conteo.
 - **Gate del hook por service-success sin chequeo explícito de status:** los hooks de racha/logros corren tras **cualquier** PATCH exitoso del runner (finished, interrupted, interrupted idempotente) sin inspeccionar el status final de la fila; es inofensivo (recálculo idempotente + baseline) pero un gate más fino exigiría chequear status.
 - **Idx redundante `idx_user_achievement_progress_user`:** `user_id` ya es prefijo de la PK compuesta `(user_id, achievement_id)`; el índice separado no aporta y podría eliminarse (requiere migración).
-- **`gps_N` cuenta puntos de feedbacks borrados (decisión consciente):** `CountGPSFinishedSessions` cuenta por existencia de puntos en `workout_feedback_points`; un feedback soft-deleted deja sus puntos contando para el criterio.
+- **`gps_N` conserva el conteo de feedbacks soft-deleted (decisión consciente):** además de la atribución al atleta del feedback (resuelta en `optimizaciones-metricas`, ver esa sección), `CountGPSFinishedSessions` no filtra `deleted_at`: los puntos de un feedback soft-deleted del mismo atleta siguen contando para el criterio.
 - **`GetUserStamps` sin test de rama 500:** la suite del controller cubre 200/403/401 del GET de stamps pero no el pin FailingDB de la rama de error interno.
 - **Sin assert negativo "record nil en period=week":** el scenario existe en el spec delta pero la suite del service no tiene el assert negativo explícito (solo cubre record presente en `all`).
 
