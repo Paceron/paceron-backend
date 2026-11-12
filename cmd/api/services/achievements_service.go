@@ -168,10 +168,11 @@ func (s *achievementsService) GetUserStamps(ctx *gin.Context, targetUserID int64
 func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) (map[string]float64, error) {
 	switch trigger {
 	case AchievementTriggerRunnerSession:
-		finished, err := s.achievementDao.CountFinishedSessions(ctx, userID)
+		counts, err := s.achievementDao.CountFinishedSessionStats(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
+		finished, early := counts.Finished, counts.Early
 		var bestStrict int
 		if snapshot != nil {
 			bestStrict = snapshot.StrictCurrent
@@ -188,10 +189,6 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 				bestStrict = streaks.Strict.Best
 			}
 		}
-		early, err := s.achievementDao.CountEarlyFinishedSessions(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]float64{
 			"first_session": float64(finished), "sessions_5": float64(finished),
 			"sessions_25": float64(finished), "sessions_50": float64(finished),
@@ -202,14 +199,11 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 			"early_5":   float64(early),
 		}, nil
 	case AchievementTriggerFeedback:
-		totalMeters, err := s.achievementDao.SumDistanceMeters(ctx, userID)
+		distances, err := s.achievementDao.SumAndMaxDistance(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
-		maxMeters, err := s.achievementDao.MaxDistanceSingleSession(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
+		totalMeters, maxMeters := distances.Total, distances.MaxSingle
 		return map[string]float64{
 			"distance_10k": totalMeters / 1000, "distance_50k": totalMeters / 1000,
 			"distance_100k": totalMeters / 1000, "distance_42k_single": maxMeters / 1000,
@@ -262,7 +256,7 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 	// ON CONFLICT DO NOTHING: re-evaluar lo ya desbloqueado no inserta ni
 	// cambia unlocked_at; solo la primera inserción genera unseen y push.
 	now := time.Now()
-	var newlyUnlocked []appconstants.AchievementRow
+	eligible := make([]string, 0, len(ids))
 	for _, id := range ids {
 		row, ok := catalogByID[id]
 		if !ok {
@@ -272,32 +266,70 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 		if !ok || value < row.Threshold {
 			continue
 		}
-		inserted, err := s.achievementDao.InsertUnlock(ctx, userID, id, now)
-		if err != nil {
-			return fmt.Errorf("desbloqueo de logros: %w", err)
-		}
-		if inserted {
-			newlyUnlocked = append(newlyUnlocked, row)
-		}
+		eligible = append(eligible, id)
 	}
-	if len(newlyUnlocked) == 0 {
+	if len(eligible) == 0 {
 		return nil
 	}
 
-	// El fallo de unseen/push no deshace el desbloqueo (best-effort): la
-	// vitrina es exacta; el punto rojo y el push son avisos derivables.
-	unseen := make([]dbs.GamificationUnseen, 0, len(newlyUnlocked))
-	for range newlyUnlocked {
-		unseen = append(unseen, dbs.GamificationUnseen{UserID: userID, Section: constants.GamificationSectionAchievements})
+	inserted, err := s.achievementDao.InsertUnlocks(ctx, userID, eligible, now)
+	if err != nil {
+		customlogger.Error(ctx, "batch de unlocks falló; reintentando por logro", err, customlogger.TagMethod("EvaluateEvent"))
+		inserted, err = s.insertUnlocksFallback(ctx, userID, eligible, now)
 	}
-	if err := s.gamificationDao.InsertUnseen(ctx, unseen); err != nil {
-		customlogger.Error(ctx, "error insertando unseen de logros", err, customlogger.TagMethod("EvaluateEvent"))
+
+	// El orden del catálogo se impone acá: la inserción batch no garantiza
+	// el orden de RETURNING y unseen/push deben salir en el orden original.
+	insertedSet := make(map[string]struct{}, len(inserted))
+	for _, id := range inserted {
+		insertedSet[id] = struct{}{}
 	}
-	for _, row := range newlyUnlocked {
-		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, userID,
-			"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
+	newlyUnlocked := make([]appconstants.AchievementRow, 0, len(insertedSet))
+	for _, id := range eligible {
+		if _, ok := insertedSet[id]; ok {
+			newlyUnlocked = append(newlyUnlocked, catalogByID[id])
+		}
+	}
+	if len(newlyUnlocked) > 0 {
+		// El fallo de unseen/push no deshace el desbloqueo (best-effort): la
+		// vitrina es exacta; el punto rojo y el push son avisos derivables.
+		unseen := make([]dbs.GamificationUnseen, 0, len(newlyUnlocked))
+		for range newlyUnlocked {
+			unseen = append(unseen, dbs.GamificationUnseen{UserID: userID, Section: constants.GamificationSectionAchievements})
+		}
+		if err := s.gamificationDao.InsertUnseen(ctx, unseen); err != nil {
+			customlogger.Error(ctx, "error insertando unseen de logros", err, customlogger.TagMethod("EvaluateEvent"))
+		}
+		for _, row := range newlyUnlocked {
+			sendPushToUser(ctx, s.pushTokenDao, s.pushClient, userID,
+				"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("desbloqueo de logros: %w", err)
 	}
 	return nil
+}
+
+// insertUnlocksFallback conserva el mejor esfuerzo cuando el batch falla:
+// reintenta logro por logro (idempotente) para no perder los que sí se pueden
+// guardar, y devuelve solo los insertados junto con el primer error.
+func (s *achievementsService) insertUnlocksFallback(ctx *gin.Context, userID int64, ids []string, unlockedAt time.Time) ([]string, error) {
+	inserted := make([]string, 0, len(ids))
+	var firstErr error
+	for _, id := range ids {
+		ok, err := s.achievementDao.InsertUnlock(ctx, userID, id, unlockedAt)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if ok {
+			inserted = append(inserted, id)
+		}
+	}
+	return inserted, firstErr
 }
 
 // run es la unidad que el goroutine ejecuta: panic-guard + log y nada más.

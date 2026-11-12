@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/gamification"
 )
@@ -116,6 +117,8 @@ type fakeAchievementDao struct {
 
 	// ejercito de errores y grabaciones.
 	queriesErr      error
+	batchErr        error
+	rowErrFor       map[string]error
 	alreadyUnlocked map[string]bool
 	unlocks         []string
 	listProgressErr error
@@ -132,12 +135,34 @@ func (f *fakeAchievementDao) InsertUnlock(ctx *gin.Context, userID int64, achiev
 	if f.queriesErr != nil {
 		return false, f.queriesErr
 	}
+	if err := f.rowErrFor[achievementID]; err != nil {
+		return false, err
+	}
 	if f.alreadyUnlocked[achievementID] {
 		return false, nil
 	}
 	f.alreadyUnlocked[achievementID] = true
 	f.unlocks = append(f.unlocks, achievementID)
 	return true, nil
+}
+
+func (f *fakeAchievementDao) InsertUnlocks(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error) {
+	if f.queriesErr != nil {
+		return nil, f.queriesErr
+	}
+	if f.batchErr != nil {
+		return nil, f.batchErr
+	}
+	inserted := make([]string, 0, len(achievementIDs))
+	for _, id := range achievementIDs {
+		if f.alreadyUnlocked[id] {
+			continue
+		}
+		f.alreadyUnlocked[id] = true
+		f.unlocks = append(f.unlocks, id)
+		inserted = append(inserted, id)
+	}
+	return inserted, nil
 }
 
 func (f *fakeAchievementDao) ListStamps(ctx *gin.Context, userID int64) ([]dbs.GamificationStamp, error) {
@@ -154,11 +179,25 @@ func (f *fakeAchievementDao) CountFinishedSessions(ctx *gin.Context, userID int6
 	return f.finishedCount, nil
 }
 
+func (f *fakeAchievementDao) CountFinishedSessionStats(ctx *gin.Context, userID int64) (daos.FinishedSessionStats, error) {
+	if f.queriesErr != nil {
+		return daos.FinishedSessionStats{}, f.queriesErr
+	}
+	return daos.FinishedSessionStats{Finished: f.finishedCount, Early: f.earlyCount}, nil
+}
+
 func (f *fakeAchievementDao) SumDistanceMeters(ctx *gin.Context, userID int64) (float64, error) {
 	if f.queriesErr != nil {
 		return 0, f.queriesErr
 	}
 	return f.sumDistance, nil
+}
+
+func (f *fakeAchievementDao) SumAndMaxDistance(ctx *gin.Context, userID int64) (daos.DistanceStats, error) {
+	if f.queriesErr != nil {
+		return daos.DistanceStats{}, f.queriesErr
+	}
+	return daos.DistanceStats{Total: f.sumDistance, MaxSingle: f.maxSingle}, nil
 }
 
 func (f *fakeAchievementDao) MaxDistanceSingleSession(ctx *gin.Context, userID int64) (float64, error) {
@@ -314,6 +353,92 @@ func TestAchievementsService_GPSYTeamUnlock(t *testing.T) {
 
 	require.NoError(t, svc.EvaluateEvent(nil, 7, AchievementTriggerAttendance))
 	assert.Equal(t, []string{"gps_first", "gps_10", "gps_50", "team_first"}, dao.unlocks)
+}
+
+func TestAchievementsService_BatchUnlock_SoloNuevosYOrdenDeCatalogo(t *testing.T) {
+	dao := &fakeAchievementDao{
+		alreadyUnlocked: map[string]bool{"sessions_5": true},
+		finishedCount:   5, earlyCount: 5,
+	}
+	gamDao := &mockGamificationDao{}
+	client := &stubPushClient{}
+	tokens := &fakePushTokenDAO{tokens: []dbs.PushToken{{Token: "ExponentPushToken[abc]"}}}
+	svc := newAchievementsTestService(dao, gamDao, &fakeStreakView{}, tokens, client)
+
+	err := svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 6, StrictBest: 6})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"first_session", "streak_3", "early_5"}, dao.unlocks,
+		"solo los insertados nuevos, en orden de catálogo")
+	require.Len(t, gamDao.insertedUnseen, 1)
+	assert.Len(t, gamDao.insertedUnseen[0], 3)
+	require.Len(t, client.calls, 3)
+	assert.Equal(t, []string{"Primer paso", "Racha de 3", "Madrugador"},
+		[]string{client.calls[0].body, client.calls[1].body, client.calls[2].body})
+
+	// Segunda evaluación: idempotente, sin filas nuevas, unseen ni push.
+	gamDao.insertedUnseen = nil
+	client.calls = nil
+	require.NoError(t, svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 6, StrictBest: 6}))
+	assert.Equal(t, []string{"first_session", "streak_3", "early_5"}, dao.unlocks)
+	assert.Empty(t, gamDao.insertedUnseen)
+	assert.Empty(t, client.calls)
+}
+
+func TestAchievementsService_BatchError_FallbackBestEffort(t *testing.T) {
+	dao := &fakeAchievementDao{
+		alreadyUnlocked: map[string]bool{}, batchErr: errors.New("batch caído"),
+		finishedCount: 5,
+	}
+	gamDao := &mockGamificationDao{}
+	client := &stubPushClient{}
+	tokens := &fakePushTokenDAO{tokens: []dbs.PushToken{{Token: "ExponentPushToken[abc]"}}}
+	svc := newAchievementsTestService(dao, gamDao, &fakeStreakView{}, tokens, client)
+
+	err := svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 6, StrictBest: 6})
+	require.NoError(t, err, "el fallback guarda todos los unlocks que puede")
+
+	assert.Equal(t, []string{"first_session", "streak_3", "sessions_5"}, dao.unlocks)
+	require.Len(t, gamDao.insertedUnseen, 1)
+	assert.Len(t, gamDao.insertedUnseen[0], 3)
+	assert.Len(t, client.calls, 3)
+}
+
+func TestAchievementsService_BatchError_FallbackParcialNoPierdeGuardables(t *testing.T) {
+	dao := &fakeAchievementDao{
+		alreadyUnlocked: map[string]bool{}, batchErr: errors.New("batch caído"),
+		rowErrFor:     map[string]error{"streak_3": errors.New("fila rechazada")},
+		finishedCount: 5,
+	}
+	gamDao := &mockGamificationDao{}
+	client := &stubPushClient{}
+	tokens := &fakePushTokenDAO{tokens: []dbs.PushToken{{Token: "ExponentPushToken[abc]"}}}
+	svc := newAchievementsTestService(dao, gamDao, &fakeStreakView{}, tokens, client)
+
+	err := svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 6, StrictBest: 6})
+	require.Error(t, err, "el fallo de una fila se reporta al caller")
+	assert.Contains(t, err.Error(), "desbloqueo de logros")
+
+	assert.Equal(t, []string{"first_session", "sessions_5"}, dao.unlocks,
+		"las filas guardables sobreviven aunque el batch y una fila fallen")
+	require.Len(t, gamDao.insertedUnseen, 1)
+	assert.Len(t, gamDao.insertedUnseen[0], 2)
+	assert.Len(t, client.calls, 2)
+
+	// Reintento posterior: solo se inserta lo que había fallado, sin duplicar.
+	dao.batchErr = nil
+	dao.rowErrFor = nil
+	gamDao.insertedUnseen = nil
+	client.calls = nil
+	require.NoError(t, svc.EvaluateEventWithSnapshot(nil, 7, AchievementTriggerRunnerSession,
+		&StreakSnapshot{StrictCurrent: 6, StrictBest: 6}))
+	assert.Equal(t, []string{"first_session", "sessions_5", "streak_3"}, dao.unlocks)
+	assert.Len(t, gamDao.insertedUnseen[0], 1)
+	assert.Len(t, client.calls, 1)
 }
 
 func TestAchievementsService_TriggersAislados(t *testing.T) {

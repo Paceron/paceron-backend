@@ -61,6 +61,47 @@ func TestAchievementDAO_InsertUnlock_Idempotente(t *testing.T) {
 	assert.True(t, inserted)
 }
 
+func TestAchievementDAO_InsertUnlocks_BatchIdempotenteYOrden(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runner := setupAchievementsRunner(t, db, "18")
+
+	when := time.Now()
+	inserted, err := dao.InsertUnlocks(nil, runner.ID, []string{"sessions_5", "early_5", "gps_first"}, when)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sessions_5", "early_5", "gps_first"}, inserted, "solo nuevos y en orden recibido")
+
+	var first dbs.UserAchievementProgress
+	require.NoError(t, db.Where("user_id = ? AND achievement_id = ?", runner.ID, "sessions_5").First(&first).Error)
+	assert.WithinDuration(t, when, first.UnlockedAt, time.Second)
+	assert.False(t, first.CreatedAt.IsZero(), "el insert batch completa created_at")
+
+	// Re-evaluación: solo lo que faltaba, sin duplicar ni tocar unlocked_at.
+	inserted, err = dao.InsertUnlocks(nil, runner.ID, []string{"sessions_5", "streak_7", "early_5"}, when.Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"streak_7"}, inserted)
+
+	var unchanged dbs.UserAchievementProgress
+	require.NoError(t, db.Where("user_id = ? AND achievement_id = ?", runner.ID, "sessions_5").First(&unchanged).Error)
+	assert.WithinDuration(t, when, unchanged.UnlockedAt, time.Second)
+
+	var count int64
+	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", runner.ID).Count(&count).Error)
+	assert.Equal(t, int64(4), count)
+
+	inserted, err = dao.InsertUnlocks(nil, runner.ID, nil, when)
+	require.NoError(t, err)
+	assert.Empty(t, inserted)
+
+	// Otro usuario y otro logro del mismo usuario sí insertan.
+	inserted, err = dao.InsertUnlocks(nil, runner.ID+1, []string{"sessions_5"}, when)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sessions_5"}, inserted)
+	inserted, err = dao.InsertUnlocks(nil, runner.ID, []string{"distance_10k"}, when)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"distance_10k"}, inserted)
+}
+
 func TestAchievementDAO_ListProgress(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
@@ -210,6 +251,79 @@ func TestAchievementDAO_CountEarlyFinishedSessions_UnaSolaQueryAgregada(t *testi
 	assert.NotContains(t, sql, "SELECT START_DATE")
 }
 
+func TestAchievementDAO_CountFinishedSessionStats_Paridad(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runner := setupAchievementsRunner(t, db, "14")
+
+	stats, err := dao.CountFinishedSessionStats(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Zero(t, stats.Finished)
+	assert.Zero(t, stats.Early)
+
+	early := time.Date(2026, 10, 4, 10, 59, 0, 0, time.UTC)   // 07:59 Córdoba
+	exact := time.Date(2026, 10, 4, 11, 0, 0, 0, time.UTC)    // 08:00 Córdoba
+	late := time.Date(2026, 10, 4, 14, 0, 0, 0, time.UTC)     // 11:00 Córdoba
+	midnight := time.Date(2026, 10, 4, 3, 30, 0, 0, time.UTC) // 00:30 Córdoba
+	tokyoEarly := time.Date(2026, 10, 5, 18, 30, 0, 0, time.FixedZone("JST", 9*3600))
+
+	mkSession := func(instanceID int64, athleteID int64, status string, start time.Time) {
+		t.Helper()
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: instanceID, AthleteUserID: athleteID, Status: status, StartDate: start,
+		}).Error)
+	}
+	mkSession(800, runner.ID, "finished", early)
+	mkSession(801, runner.ID, "finished", exact)
+	mkSession(802, runner.ID, "finished", late)
+	mkSession(803, runner.ID, "finished", midnight)
+	mkSession(804, runner.ID, "finished", tokyoEarly)
+	mkSession(805, runner.ID, "wip", early)
+	mkSession(806, runner.ID, "interrupted", early)
+	mkSession(807, runner.ID+1, "finished", early)
+
+	stats, err = dao.CountFinishedSessionStats(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), stats.Finished, "solo las 5 finished del runner")
+	assert.Equal(t, int64(3), stats.Early, "07:59, 00:30 y el instante de otra TZ; 08:00 exacto no")
+
+	// Paridad con los agregados separados que ya consumía el evaluador.
+	finished, err := dao.CountFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	earlyCount, err := dao.CountEarlyFinishedSessions(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, finished, stats.Finished)
+	assert.Equal(t, earlyCount, stats.Early)
+}
+
+func TestAchievementDAO_CountFinishedSessionStats_UnaSolaQuery(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	runner := setupAchievementsRunner(t, db, "15")
+
+	for i := int64(0); i < 20; i++ {
+		start := time.Date(2026, 10, 4, 10, 0, 0, 0, time.UTC)
+		if i%2 == 0 {
+			start = time.Date(2026, 10, 4, 14, 0, 0, 0, time.UTC)
+		}
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: 900 + i, AthleteUserID: runner.ID, Status: "finished", StartDate: start,
+		}).Error)
+	}
+
+	rec := &sqlRecorderLogger{}
+	dao := NewAchievementDao(db.Session(&gorm.Session{Logger: rec}))
+
+	stats, err := dao.CountFinishedSessionStats(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(20), stats.Finished)
+	assert.Equal(t, int64(10), stats.Early)
+	require.Len(t, rec.statements, 1, "finished y early salen de una sola lectura")
+	sql := strings.ToUpper(rec.statements[0])
+	assert.Contains(t, sql, "COUNT(*) FILTER")
+	assert.Contains(t, sql, "AT TIME ZONE")
+	assert.NotContains(t, sql, "SELECT START_DATE")
+}
+
 func seedFeedbackDistance(t *testing.T, db *gorm.DB, runnerID int64, sessionID, exerciseID int64, setNumber int, meters *float64, deletedAt *time.Time) {
 	t.Helper()
 	var media pgtype.TextArray
@@ -255,6 +369,62 @@ func TestAchievementDAO_SumAndMaxDistance(t *testing.T) {
 	total, err = dao.SumDistanceMeters(nil, runner.ID)
 	require.NoError(t, err)
 	assert.InEpsilon(t, 50000.0, total, 0.0001)
+}
+
+func TestAchievementDAO_SumAndMaxDistance_Paridad(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runner := setupAchievementsRunner(t, db, "16")
+
+	stats, err := dao.SumAndMaxDistance(nil, runner.ID)
+	require.NoError(t, err)
+	assert.Zero(t, stats.Total)
+	assert.Zero(t, stats.MaxSingle)
+
+	d35 := 35000.0
+	d15 := 15000.0
+	d20 := 20000.0
+	seedFeedbackDistance(t, db, runner.ID, 21, 111, 1, &d35, nil)
+	seedFeedbackDistance(t, db, runner.ID, 21, 111, 2, nil, nil)
+	seedFeedbackDistance(t, db, runner.ID, 22, 112, 1, &d15, nil)
+	seedFeedbackDistance(t, db, runner.ID, 22, 112, 2, &d20, nil) // misma sesión: 35k
+	deleted := time.Now()
+	seedFeedbackDistance(t, db, runner.ID, 23, 113, 1, &d35, &deleted)
+	seedFeedbackDistance(t, db, runner.ID+1, 21, 111, 1, &d35, nil)
+
+	stats, err = dao.SumAndMaxDistance(nil, runner.ID)
+	require.NoError(t, err)
+	assert.InEpsilon(t, 70000.0, stats.Total, 0.0001)
+	assert.InEpsilon(t, 35000.0, stats.MaxSingle, 0.0001)
+
+	total, err := dao.SumDistanceMeters(nil, runner.ID)
+	require.NoError(t, err)
+	maxSingle, err := dao.MaxDistanceSingleSession(nil, runner.ID)
+	require.NoError(t, err)
+	assert.InEpsilon(t, total, stats.Total, 0.0001)
+	assert.InEpsilon(t, maxSingle, stats.MaxSingle, 0.0001)
+}
+
+func TestAchievementDAO_SumAndMaxDistance_UnaSolaQuery(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	runner := setupAchievementsRunner(t, db, "17")
+
+	d := 12000.0
+	for i := int64(0); i < 10; i++ {
+		seedFeedbackDistance(t, db, runner.ID, 30+i, 1, 1, &d, nil)
+	}
+
+	rec := &sqlRecorderLogger{}
+	dao := NewAchievementDao(db.Session(&gorm.Session{Logger: rec}))
+
+	stats, err := dao.SumAndMaxDistance(nil, runner.ID)
+	require.NoError(t, err)
+	assert.InEpsilon(t, 120000.0, stats.Total, 0.0001)
+	assert.InEpsilon(t, 12000.0, stats.MaxSingle, 0.0001)
+	require.Len(t, rec.statements, 1, "total y máximo por sesión salen de una sola lectura")
+	sql := strings.ToUpper(rec.statements[0])
+	assert.Contains(t, sql, "GROUP BY ASSIGNED_SESSION_ID")
+	assert.Contains(t, sql, "MAX(")
 }
 
 func seedGPSFeedback(t *testing.T, db *gorm.DB, athleteID, key int64, deletedAt *time.Time) int64 {
@@ -424,4 +594,40 @@ func TestAchievementDAO_CountEarlyFinishedSessions_DBError(t *testing.T) {
 	require.Error(t, err)
 	assert.Zero(t, n)
 	assert.Contains(t, err.Error(), "error counting early finished runner sessions")
+}
+
+func TestAchievementDAO_CountFinishedSessionStats_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao := NewAchievementDao(failing)
+
+	stats, err := dao.CountFinishedSessionStats(nil, 1)
+
+	require.Error(t, err)
+	assert.Zero(t, stats)
+	assert.Contains(t, err.Error(), "error counting finished session stats")
+}
+
+func TestAchievementDAO_SumAndMaxDistance_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao := NewAchievementDao(failing)
+
+	stats, err := dao.SumAndMaxDistance(nil, 1)
+
+	require.Error(t, err)
+	assert.Zero(t, stats)
+	assert.Contains(t, err.Error(), "error computing distance stats")
+}
+
+func TestAchievementDAO_InsertUnlocks_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("insert", 1))
+	dao := NewAchievementDao(failing)
+
+	inserted, err := dao.InsertUnlocks(nil, 1, []string{"sessions_5"}, time.Now())
+
+	require.Error(t, err)
+	assert.Empty(t, inserted)
+	assert.Contains(t, err.Error(), "error inserting achievement unlocks")
 }

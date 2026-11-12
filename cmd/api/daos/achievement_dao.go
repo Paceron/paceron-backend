@@ -2,6 +2,7 @@ package daos
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,18 @@ import (
 	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
+// FinishedSessionStats es el histórico finished y su subconjunto early_N.
+type FinishedSessionStats struct {
+	Finished int64
+	Early    int64
+}
+
+// DistanceStats es la distancia acumulada y el máximo por sesión asignada.
+type DistanceStats struct {
+	Total     float64
+	MaxSingle float64
+}
+
 // AchievementDAOInterface reúne el acceso a datos de logros (gamificacion-core
 // D5): lectura/escritura idempotente del progreso, la vitrina de estampas y
 // las queries de agregación por criterio de los evaluadores.
@@ -23,6 +36,9 @@ type AchievementDAOInterface interface {
 	// existía (ON CONFLICT DO NOTHING); reporta si la fila es NUEVA (el push
 	// y las unseen solo aplican al primer desbloqueo).
 	InsertUnlock(ctx *gin.Context, userID int64, achievementID string, unlockedAt time.Time) (bool, error)
+	// InsertUnlocks inserta en batch los desbloqueos nuevos y devuelve SOLO
+	// los IDs realmente insertados, en el orden recibido.
+	InsertUnlocks(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error)
 	// ListStamps devuelve las estampas del usuario (vitrina; vacía hasta E4).
 	ListStamps(ctx *gin.Context, userID int64) ([]dbs.GamificationStamp, error)
 
@@ -31,10 +47,14 @@ type AchievementDAOInterface interface {
 	// CountEarlyFinishedSessions: sesiones finished con start_date local
 	// (Córdoba) antes de las 08:00, agregadas en SQL.
 	CountEarlyFinishedSessions(ctx *gin.Context, userID int64) (int64, error)
+	// CountFinishedSessionStats combina finished y early_N en una lectura.
+	CountFinishedSessionStats(ctx *gin.Context, userID int64) (FinishedSessionStats, error)
 	// SumDistanceMeters: suma de distance_meters de feedbacks activos.
 	SumDistanceMeters(ctx *gin.Context, userID int64) (float64, error)
 	// MaxDistanceSingleSession: MAX del SUM por sesión asignada.
 	MaxDistanceSingleSession(ctx *gin.Context, userID int64) (float64, error)
+	// SumAndMaxDistance combina total y máximo por sesión en una lectura.
+	SumAndMaxDistance(ctx *gin.Context, userID int64) (DistanceStats, error)
 	// CountGPSFinishedSessions: sesiones finished con puntos GPS subidos.
 	CountGPSFinishedSessions(ctx *gin.Context, userID int64) (int64, error)
 	// ListFinishedSessionStarts: start_date de sesiones finished (early_N
@@ -72,6 +92,46 @@ func (d *achievementDao) InsertUnlock(ctx *gin.Context, userID int64, achievemen
 		return false, fmt.Errorf("error inserting achievement unlock: %w", res.Error)
 	}
 	return res.RowsAffected > 0, nil
+}
+
+func (d *achievementDao) InsertUnlocks(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error) {
+	if len(achievementIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(achievementIDs))
+	args := make([]interface{}, 0, len(achievementIDs)*4)
+	for i, id := range achievementIDs {
+		placeholders[i] = "(?, ?, ?, ?)"
+		args = append(args, userID, id, unlockedAt, unlockedAt)
+	}
+	query := fmt.Sprintf(`
+		INSERT INTO user_achievement_progress (user_id, achievement_id, unlocked_at, created_at)
+		VALUES %s
+		ON CONFLICT (user_id, achievement_id) DO NOTHING
+		RETURNING achievement_id`, strings.Join(placeholders, ", "))
+
+	var returned []string
+	if err := d.DB.Raw(query, args...).Scan(&returned).Error; err != nil {
+		return nil, fmt.Errorf("error inserting achievement unlocks: %w", err)
+	}
+
+	inserted := make(map[string]struct{}, len(returned))
+	for _, id := range returned {
+		inserted[id] = struct{}{}
+	}
+	ordered := make([]string, 0, len(returned))
+	seen := make(map[string]struct{}, len(returned))
+	for _, id := range achievementIDs {
+		if _, ok := inserted[id]; !ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		ordered = append(ordered, id)
+	}
+	return ordered, nil
 }
 
 func (d *achievementDao) ListStamps(ctx *gin.Context, userID int64) ([]dbs.GamificationStamp, error) {
@@ -114,6 +174,24 @@ func (d *achievementDao) CountEarlyFinishedSessions(ctx *gin.Context, userID int
 	return n, nil
 }
 
+func (d *achievementDao) CountFinishedSessionStats(ctx *gin.Context, userID int64) (FinishedSessionStats, error) {
+	var stats FinishedSessionStats
+	err := d.DB.Raw(`
+		SELECT
+			COUNT(*) AS finished,
+			COUNT(*) FILTER (
+				WHERE EXTRACT(HOUR FROM start_date AT TIME ZONE ?) < ?
+			) AS early
+		FROM runner_session
+		WHERE athlete_user_id = ? AND status = ?
+		`, gametime.Location.String(), earlySessionStartHour, userID,
+		runnersession.RunnerSessionStatusFinished).Scan(&stats).Error
+	if err != nil {
+		return FinishedSessionStats{}, fmt.Errorf("error counting finished session stats: %w", err)
+	}
+	return stats, nil
+}
+
 func (d *achievementDao) SumDistanceMeters(ctx *gin.Context, userID int64) (float64, error) {
 	var total float64
 	err := d.DB.Model(&dbs.WorkoutFeedback{}).
@@ -139,6 +217,24 @@ func (d *achievementDao) MaxDistanceSingleSession(ctx *gin.Context, userID int64
 		return 0, fmt.Errorf("error computing max single-session distance: %w", err)
 	}
 	return max, nil
+}
+
+func (d *achievementDao) SumAndMaxDistance(ctx *gin.Context, userID int64) (DistanceStats, error) {
+	var stats DistanceStats
+	err := d.DB.Raw(`
+		SELECT
+			COALESCE(SUM(per_session.total), 0) AS total,
+			COALESCE(MAX(per_session.total), 0) AS max_single
+		FROM (
+			SELECT SUM(distance_meters) AS total
+			FROM workout_feedback
+			WHERE athlete_user_id = ? AND deleted_at IS NULL AND distance_meters IS NOT NULL
+			GROUP BY assigned_session_id
+		) per_session`, userID).Scan(&stats).Error
+	if err != nil {
+		return DistanceStats{}, fmt.Errorf("error computing distance stats: %w", err)
+	}
+	return stats, nil
 }
 
 func (d *achievementDao) CountGPSFinishedSessions(ctx *gin.Context, userID int64) (int64, error) {
