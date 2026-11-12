@@ -134,21 +134,18 @@ func validQualityRow(timeMs int64) ScopedSeries {
 	return qualityRow(kindRitmoContinuo, ptrInt64(timeMs), ptrInt64(timeMs), ptrFloat(1000), ptrString("completa"), true, false)
 }
 
-// BuildDataQuality es la versión ligera del bloque: no puede divergir de lo que
-// devuelve el resumen completo para el mismo result set.
-func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
+// BuildDataQuality cuenta los seis campos con las mismas reglas que el resumen,
+// pero sin construirlo: cada caso fija el bloque esperado completo.
+func TestBuildDataQuality_ContadoresExplicitos(t *testing.T) {
 	cases := []struct {
-		name        string
-		rows        []ScopedSeries
-		open        int
-		wantInvalid int
-		wantLegacy  int
-		wantInsuff  bool
+		name string
+		rows []ScopedSeries
+		open int
+		want DataQuality
 	}{
 		{
-			name:       "sin datos",
-			rows:       nil,
-			wantInsuff: true,
+			name: "sin datos",
+			want: DataQuality{InsufficientData: true},
 		},
 		{
 			name: "invalidos",
@@ -158,8 +155,7 @@ func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
 				// legacy no calculable: inválida y no cuenta como legacy.
 				qualityRow(kindLegacyWalking, ptrInt64(1800000), ptrInt64(1800000), ptrFloat(3000), ptrString("completa"), true, false),
 			},
-			wantInvalid: 2,
-			wantInsuff:  true,
+			want: DataQuality{InvalidSeries: 2, InsufficientData: true},
 		},
 		{
 			name: "legacy",
@@ -167,8 +163,26 @@ func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
 				qualityRow(kindRitmoContinuo, ptrInt64(240000), ptrInt64(240000), ptrFloat(1000), ptrString("completa"), false, false),
 				qualityRow(kindRitmoContinuo, ptrInt64(250000), ptrInt64(250000), ptrFloat(1000), ptrString("partial"), true, true),
 			},
-			wantLegacy: 2,
-			wantInsuff: true,
+			want: DataQuality{LegacySessions: 2, InsufficientData: true},
+		},
+		{
+			name: "tiempo degradado",
+			rows: []ScopedSeries{
+				// Sin tiempo activo cae al duration: válida pero degradada.
+				qualityRow(kindRitmoContinuo, nil, ptrInt64(240000), ptrFloat(1000), ptrString("completa"), true, false),
+				qualityRow(kindRitmoContinuo, ptrInt64(0), ptrInt64(250000), ptrFloat(1000), ptrString("completa"), true, false),
+				validQualityRow(260000),
+			},
+			want: DataQuality{DegradedTime: 2},
+		},
+		{
+			name: "estado desconocido",
+			rows: []ScopedSeries{
+				qualityRow(kindRitmoContinuo, ptrInt64(240000), ptrInt64(240000), ptrFloat(1000), nil, true, false),
+				qualityRow(kindRitmoContinuo, ptrInt64(250000), ptrInt64(250000), ptrFloat(1000), ptrString("otro"), true, false),
+				validQualityRow(260000),
+			},
+			want: DataQuality{UnknownStatus: 2},
 		},
 		{
 			name: "series insuficientes",
@@ -177,7 +191,7 @@ func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
 				qualityRow(kindElongacion, ptrInt64(620000), ptrInt64(620000), nil, ptrString("completa"), true, false),
 				validQualityRow(240000),
 			},
-			wantInsuff: true,
+			want: DataQuality{InsufficientData: true},
 		},
 		{
 			name: "velocidades",
@@ -186,7 +200,7 @@ func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
 				validQualityRow(250000),
 				validQualityRow(260000),
 			},
-			wantInsuff: false,
+			want: DataQuality{},
 		},
 		{
 			name: "sesiones abiertas",
@@ -195,21 +209,14 @@ func TestBuildDataQuality_ParidadConBuildSummary(t *testing.T) {
 				validQualityRow(250000),
 				validQualityRow(260000),
 			},
-			open:       3,
-			wantInsuff: false,
+			open: 3,
+			want: DataQuality{OpenSessions: 3},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			expected := BuildSummary(tc.rows, DefaultTolerance, tc.open).DataQuality
-			actual := BuildDataQuality(tc.rows, tc.open)
-
-			assert.Equal(t, expected, actual, "la versión ligera tiene que dar el mismo bloque que el resumen")
-			assert.Equal(t, tc.open, actual.OpenSessions)
-			assert.Equal(t, tc.wantInvalid, actual.InvalidSeries)
-			assert.Equal(t, tc.wantLegacy, actual.LegacySessions)
-			assert.Equal(t, tc.wantInsuff, actual.InsufficientData)
+			assert.Equal(t, tc.want, BuildDataQuality(tc.rows, tc.open))
 		})
 	}
 }
