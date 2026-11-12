@@ -383,15 +383,18 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 	excludedGroup := testGroup(db, "grupo_scope_excluded_"+tag, team.ID)
 
 	active := persistUser(db, "scope-active-"+tag+"@test.com", "6"+tag+"01")
-	closed := persistUser(db, "scope-closed-"+tag+"@test.com", "6"+tag+"02")
-	future := persistUser(db, "scope-future-"+tag+"@test.com", "6"+tag+"03")
-	orphan := persistUser(db, "scope-orphan-"+tag+"@test.com", "6"+tag+"04")
-	softMembership := persistUser(db, "scope-soft-"+tag+"@test.com", "6"+tag+"05")
+	edgeMin := persistUser(db, "scope-edge-min-"+tag+"@test.com", "6"+tag+"02")
+	edgeMax := persistUser(db, "scope-edge-max-"+tag+"@test.com", "6"+tag+"03")
+	futureOnly := persistUser(db, "scope-future-"+tag+"@test.com", "6"+tag+"04")
+	closedOnly := persistUser(db, "scope-closed-"+tag+"@test.com", "6"+tag+"05")
+	noMembership := persistUser(db, "scope-no-membership-"+tag+"@test.com", "6"+tag+"06")
 
 	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
 	membershipStart := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	closedEnd := day(8)
-	futureStart := day(7)
+	edgeMinEnd := day(10)
+	edgeMaxStart := day(20)
+	futureStart := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	closedEnd := day(2)
 	deletedAt := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 
 	addMembership := func(groupID, userID int64, start time.Time, end, deleted *time.Time) {
@@ -400,10 +403,12 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 		}).Error)
 	}
 	addMembership(group.ID, active.ID, membershipStart, nil, nil)
-	addMembership(group.ID, closed.ID, membershipStart, &closedEnd, nil)
-	addMembership(group.ID, future.ID, futureStart, nil, nil)
-	addMembership(group.ID, orphan.ID, membershipStart, nil, nil)
-	addMembership(group.ID, softMembership.ID, membershipStart, nil, &deletedAt)
+	// Termina exactamente el 9/10 y está soft-deleted: la regla vigente la conserva.
+	addMembership(group.ID, edgeMin.ID, membershipStart, &edgeMinEnd, &deletedAt)
+	// Arranca exactamente el 9/20: borde inclusivo del máximo.
+	addMembership(group.ID, edgeMax.ID, edgeMaxStart, nil, nil)
+	addMembership(group.ID, futureOnly.ID, futureStart, nil, nil)
+	addMembership(group.ID, closedOnly.ID, membershipStart, &closedEnd, nil)
 	addMembership(otherGroup.ID, active.ID, membershipStart, nil, nil)
 	addMembership(excludedGroup.ID, active.ID, membershipStart, nil, nil)
 
@@ -441,71 +446,69 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 		}).Error)
 	}
 
-	// 2026-09-01: finished + main + membresía activa -> mínimo esperado.
-	si, mainEx, _, _ := addSession(group.ID, day(1), "scope-"+tag+"-01")
-	addFeedback(si, mainEx, active.ID, day(1), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(1))
+	// 2026-09-10: mínimo esperado. La membresía termina e incluye el día de la
+	// sesión, está soft-deleted (la regla vigente la conserva) y el runner está
+	// interrupted (status permitido).
+	si, mainEx, _, _ := addSession(group.ID, day(10), "scope-"+tag+"-10")
+	addFeedback(si, mainEx, edgeMin.ID, day(10), false)
+	addRunner(si, edgeMin.ID, runnersession.RunnerSessionStatusInterrupted, day(10))
 
-	// 2026-09-02: interrupted también es un status permitido.
-	si, mainEx, _, _ = addSession(group.ID, day(2), "scope-"+tag+"-02")
-	addFeedback(si, mainEx, active.ID, day(2), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusInterrupted, day(2))
-
-	// 2026-09-03: wip no entra al rango.
-	si, mainEx, _, _ = addSession(group.ID, day(3), "scope-"+tag+"-03")
-	addFeedback(si, mainEx, active.ID, day(3), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, day(3))
-
-	// 2026-09-04: feedback huérfano (sin runner_session) entra por rs.status IS NULL.
-	si, mainEx, _, _ = addSession(group.ID, day(4), "scope-"+tag+"-04")
-	addFeedback(si, mainEx, orphan.ID, day(4), false)
-
-	// 2026-09-05: solo roles no main, aunque el runner esté finished.
-	si, _, warmupEx, cooldownEx := addSession(group.ID, day(5), "scope-"+tag+"-05")
-	addFeedback(si, warmupEx, active.ID, day(5), false)
-	addFeedback(si, cooldownEx, active.ID, day(5), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(5))
-
-	// 2026-09-06: feedback borrado y feedback de una membresía que empieza al día siguiente.
-	si, mainEx, _, _ = addSession(group.ID, day(6), "scope-"+tag+"-06")
-	addFeedback(si, mainEx, active.ID, day(6), true)
-	addFeedback(si, mainEx, future.ID, day(6), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(6))
-	addRunner(si, future.ID, runnersession.RunnerSessionStatusFinished, day(6))
-
-	// 2026-09-07: la membresía arranca el mismo día -> entra (borde inclusivo).
-	si, mainEx, _, _ = addSession(group.ID, day(7), "scope-"+tag+"-07")
-	addFeedback(si, mainEx, future.ID, day(7), false)
-	addRunner(si, future.ID, runnersession.RunnerSessionStatusFinished, day(7))
-
-	// 2026-09-08: la membresía termina el mismo día -> entra (borde inclusivo).
-	si, mainEx, _, _ = addSession(group.ID, day(8), "scope-"+tag+"-08")
-	addFeedback(si, mainEx, closed.ID, day(8), false)
-	addRunner(si, closed.ID, runnersession.RunnerSessionStatusFinished, day(8))
-
-	// 2026-09-09: membresía terminada -> no entra.
-	si, mainEx, _, _ = addSession(group.ID, day(9), "scope-"+tag+"-09")
-	addFeedback(si, mainEx, closed.ID, day(9), false)
-	addRunner(si, closed.ID, runnersession.RunnerSessionStatusFinished, day(9))
-
-	// 2026-09-11: group_users.deleted_at no filtra el histórico (misma regla que series).
+	// 2026-09-11 y 2026-09-19: válidos de fallback para detectar si se rompe
+	// alguno de los bordes de membresía.
 	si, mainEx, _, _ = addSession(group.ID, day(11), "scope-"+tag+"-11")
-	addFeedback(si, mainEx, softMembership.ID, day(11), false)
-	addRunner(si, softMembership.ID, runnersession.RunnerSessionStatusFinished, day(11))
+	addFeedback(si, mainEx, active.ID, day(11), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(11))
 
-	// 2026-09-13: semijoin a exercise_instances conserva el feedback sin instancia.
-	si, _, _, _ = addSession(group.ID, day(13), "scope-"+tag+"-13")
+	si, mainEx, _, _ = addSession(group.ID, day(19), "scope-"+tag+"-19")
+	addFeedback(si, mainEx, active.ID, day(19), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(19))
+
+	// 2026-09-20: máximo esperado. Feedback huérfano (sin runner_session) y
+	// membresía que empieza exactamente el día de la sesión.
+	si, mainEx, _, _ = addSession(group.ID, day(20), "scope-"+tag+"-20")
+	addFeedback(si, mainEx, edgeMax.ID, day(20), false)
+
+	// Todos los casos inválidos quedan después del máximo: si un filtro se rompe,
+	// MAX se corre a la fecha del caso correspondiente.
+	// 2026-09-21: status wip no permitido.
+	si, mainEx, _, _ = addSession(group.ID, day(21), "scope-"+tag+"-21")
+	addFeedback(si, mainEx, active.ID, day(21), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, day(21))
+
+	// 2026-09-22: roles no main.
+	si, _, warmupEx, cooldownEx := addSession(group.ID, day(22), "scope-"+tag+"-22")
+	addFeedback(si, warmupEx, active.ID, day(22), false)
+	addFeedback(si, cooldownEx, active.ID, day(22), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(22))
+
+	// 2026-09-23: feedback soft-deleted.
+	si, mainEx, _, _ = addSession(group.ID, day(23), "scope-"+tag+"-23")
+	addFeedback(si, mainEx, active.ID, day(23), true)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(23))
+
+	// 2026-09-24: membresía futura.
+	si, mainEx, _, _ = addSession(group.ID, day(24), "scope-"+tag+"-24")
+	addFeedback(si, mainEx, futureOnly.ID, day(24), false)
+	addRunner(si, futureOnly.ID, runnersession.RunnerSessionStatusFinished, day(24))
+
+	// 2026-09-25: membresía cerrada.
+	si, mainEx, _, _ = addSession(group.ID, day(25), "scope-"+tag+"-25")
+	addFeedback(si, mainEx, closedOnly.ID, day(25), false)
+	addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, day(25))
+
+	// 2026-09-26: feedback sin membresía.
+	si, mainEx, _, _ = addSession(group.ID, day(26), "scope-"+tag+"-26")
+	addFeedback(si, mainEx, noMembership.ID, day(26), false)
+	addRunner(si, noMembership.ID, runnersession.RunnerSessionStatusFinished, day(26))
+
+	// 2026-09-27: feedback con exercise_instance inexistente.
+	si, _, _, _ = addSession(group.ID, day(27), "scope-"+tag+"-27")
 	const missingExerciseID int64 = 9000000001
 	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
 		SessionInstanceID: si, ExerciseInstanceID: missingExerciseID, Role: string(constants.SessionExerciseRoleMain),
 	}).Error)
-	addFeedback(si, missingExerciseID, active.ID, day(13), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(13))
-
-	// 2026-09-30: máximo esperado.
-	si, mainEx, _, _ = addSession(group.ID, day(30), "scope-"+tag+"-30")
-	addFeedback(si, mainEx, active.ID, day(30), false)
-	addRunner(si, active.ID, runnersession.RunnerSessionStatusInterrupted, day(30))
+	addFeedback(si, missingExerciseID, active.ID, day(27), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(27))
 
 	otherDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	si, mainEx, _, _ = addSession(otherGroup.ID, otherDate, "scope-"+tag+"-other")
@@ -518,7 +521,7 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 
 	return &scopeDateRangeFilterFixture{
 		db: db, dao: NewDashboardDao(db), groupID: group.ID, otherGroupID: otherGroup.ID,
-		excludedGroupID: excludedGroup.ID, expectedMin: day(1), expectedMax: day(30), otherGroupDate: otherDate,
+		excludedGroupID: excludedGroup.ID, expectedMin: day(10), expectedMax: day(20), otherGroupDate: otherDate,
 	}
 }
 
@@ -540,8 +543,11 @@ func assertSameRange(t *testing.T, wantMin, wantMax, gotMin, gotMax *time.Time) 
 	}
 }
 
-// D4: la prueba de referencia fija el rango con todos los filtros de series,
-// incluidos feedback huérfano y nulos cuando el scope no tiene filas válidas.
+// D4: la prueba de referencia fija el rango con todos los filtros de series.
+// Cada caso inválido queda después del máximo válido, así que si un filtro se
+// rompe MAX cambia y el test falla. El mínimo cubre membresía soft-deleted,
+// borde de fin y runner interrupted; el máximo cubre feedback huérfano y borde
+// de inicio de membresía.
 func TestDashboardDao_ScopeDateRangeFiltros(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	fixture := newScopeDateRangeFilterFixture(t, db, "filtros")
