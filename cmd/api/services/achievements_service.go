@@ -341,8 +341,10 @@ func (s *achievementsService) evaluateValues(ctx *gin.Context, userID int64, ids
 	if len(newlyUnlocked) > 0 {
 		// El unseen ya quedó durable junto con cada unlock en el DAO. El push
 		// sigue siendo best-effort: un fallo del proveedor no deshace nada.
+		// Contexto HTTP propio: evaluateValues corre en el hook async y el
+		// Request.Context del *gin.Context copiado ya está cancelado.
 		for _, row := range newlyUnlocked {
-			sendPushToUser(ctx, s.pushTokenDao, s.pushClient, userID,
+			sendPushToUserWithContext(nil, ctx, s.pushTokenDao, s.pushClient, userID,
 				"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
 		}
 	}
