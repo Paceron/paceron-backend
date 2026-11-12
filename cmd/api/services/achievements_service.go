@@ -35,18 +35,24 @@ type AchievementsServiceInterface interface {
 	GetUserAchievements(ctx *gin.Context, targetUserID int64) (*gamification.UserAchievementsResponse, error)
 	GetUserStamps(ctx *gin.Context, targetUserID int64) (*gamification.StampsResponse, error)
 	EvaluateEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger) error
+	// EvaluateEventBatch re-evalúa varios usuarios con una sola agregación
+	// cuando el trigger la soporta (asistencia).
+	EvaluateEventBatch(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger) error
 	// EvaluateEventWithSnapshot re-evalúa con el snapshot de rachas ya
 	// calculado por el finish (D7); nil cae al cálculo propio.
 	EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error
 	// OnEvent encola la evaluación async: mismo hook que ejerce
 	// AchievementsTriggerInterface (la instancia se comparte).
 	OnEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger)
+	// OnEventBatch encola una sola evaluación async por lote.
+	OnEventBatch(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger)
 }
 
 // AchievementsTriggerInterface es el contrato de hook nil-safe que llevan los
 // controllers (mismo patrón que StreakTriggerServiceInterface en E1).
 type AchievementsTriggerInterface interface {
 	OnEvent(ctx *gin.Context, userID int64, trigger AchievementTrigger)
+	OnEventBatch(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger)
 	EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) error
 }
 
@@ -168,10 +174,11 @@ func (s *achievementsService) GetUserStamps(ctx *gin.Context, targetUserID int64
 func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger AchievementTrigger, snapshot *StreakSnapshot) (map[string]float64, error) {
 	switch trigger {
 	case AchievementTriggerRunnerSession:
-		finished, err := s.achievementDao.CountFinishedSessions(ctx, userID)
+		counts, err := s.achievementDao.CountFinishedSessionStats(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
+		finished, early := counts.Finished, counts.Early
 		var bestStrict int
 		if snapshot != nil {
 			bestStrict = snapshot.StrictCurrent
@@ -188,10 +195,6 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 				bestStrict = streaks.Strict.Best
 			}
 		}
-		early, err := s.achievementDao.CountEarlyFinishedSessions(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
 		return map[string]float64{
 			"first_session": float64(finished), "sessions_5": float64(finished),
 			"sessions_25": float64(finished), "sessions_50": float64(finished),
@@ -202,14 +205,11 @@ func (s *achievementsService) valuesFor(ctx *gin.Context, userID int64, trigger 
 			"early_5":   float64(early),
 		}, nil
 	case AchievementTriggerFeedback:
-		totalMeters, err := s.achievementDao.SumDistanceMeters(ctx, userID)
+		distances, err := s.achievementDao.SumAndMaxDistance(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
-		maxMeters, err := s.achievementDao.MaxDistanceSingleSession(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
+		totalMeters, maxMeters := distances.Total, distances.MaxSingle
 		return map[string]float64{
 			"distance_10k": totalMeters / 1000, "distance_50k": totalMeters / 1000,
 			"distance_100k": totalMeters / 1000, "distance_42k_single": maxMeters / 1000,
@@ -258,11 +258,53 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 	if err != nil {
 		return fmt.Errorf("agregados de logros: %w", err)
 	}
+	return s.evaluateValues(ctx, userID, ids, values)
+}
 
+// EvaluateEventBatch re-evalúa varios usuarios sin multiplicar lecturas: para
+// asistencia calcula los días distintos de todo el roster en una sola query.
+func (s *achievementsService) EvaluateEventBatch(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger) error {
+	ids, ok := triggerAchievements[trigger]
+	if !ok || len(userIDs) == 0 {
+		return nil
+	}
+	if trigger != AchievementTriggerAttendance {
+		return s.evaluateEventSequential(ctx, userIDs, trigger)
+	}
+
+	days, err := s.achievementDao.CountAttendanceDaysByUsers(ctx, userIDs)
+	if err != nil {
+		return fmt.Errorf("agregados de logros: %w", err)
+	}
+
+	var firstErr error
+	for _, userID := range userIDs {
+		n := days[userID]
+		values := map[string]float64{"team_first": float64(n), "team_10": float64(n)}
+		if err := s.evaluateValues(ctx, userID, ids, values); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// evaluateEventSequential preserva la semántica para triggers que todavía no
+// tienen un agregado por lote.
+func (s *achievementsService) evaluateEventSequential(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger) error {
+	var firstErr error
+	for _, userID := range userIDs {
+		if err := s.evaluateEvent(ctx, userID, trigger, nil); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (s *achievementsService) evaluateValues(ctx *gin.Context, userID int64, ids []string, values map[string]float64) error {
 	// ON CONFLICT DO NOTHING: re-evaluar lo ya desbloqueado no inserta ni
 	// cambia unlocked_at; solo la primera inserción genera unseen y push.
 	now := time.Now()
-	var newlyUnlocked []appconstants.AchievementRow
+	eligible := make([]string, 0, len(ids))
 	for _, id := range ids {
 		row, ok := catalogByID[id]
 		if !ok {
@@ -272,32 +314,66 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 		if !ok || value < row.Threshold {
 			continue
 		}
-		inserted, err := s.achievementDao.InsertUnlock(ctx, userID, id, now)
-		if err != nil {
-			return fmt.Errorf("desbloqueo de logros: %w", err)
-		}
-		if inserted {
-			newlyUnlocked = append(newlyUnlocked, row)
-		}
+		eligible = append(eligible, id)
 	}
-	if len(newlyUnlocked) == 0 {
+	if len(eligible) == 0 {
 		return nil
 	}
 
-	// El fallo de unseen/push no deshace el desbloqueo (best-effort): la
-	// vitrina es exacta; el punto rojo y el push son avisos derivables.
-	unseen := make([]dbs.GamificationUnseen, 0, len(newlyUnlocked))
-	for range newlyUnlocked {
-		unseen = append(unseen, dbs.GamificationUnseen{UserID: userID, Section: constants.GamificationSectionAchievements})
+	inserted, err := s.achievementDao.InsertUnlocksWithUnseen(ctx, userID, eligible, now)
+	if err != nil {
+		customlogger.Error(ctx, "batch de unlocks falló; reintentando por logro", err, customlogger.TagMethod("EvaluateEvent"))
+		inserted, err = s.insertUnlocksFallback(ctx, userID, eligible, now)
 	}
-	if err := s.gamificationDao.InsertUnseen(ctx, unseen); err != nil {
-		customlogger.Error(ctx, "error insertando unseen de logros", err, customlogger.TagMethod("EvaluateEvent"))
+
+	// El orden del catálogo se impone acá: la inserción batch no garantiza
+	// el orden de RETURNING y push debe salir en el orden original.
+	insertedSet := make(map[string]struct{}, len(inserted))
+	for _, id := range inserted {
+		insertedSet[id] = struct{}{}
 	}
-	for _, row := range newlyUnlocked {
-		sendPushToUser(ctx, s.pushTokenDao, s.pushClient, userID,
-			"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
+	newlyUnlocked := make([]appconstants.AchievementRow, 0, len(insertedSet))
+	for _, id := range eligible {
+		if _, ok := insertedSet[id]; ok {
+			newlyUnlocked = append(newlyUnlocked, catalogByID[id])
+		}
+	}
+	if len(newlyUnlocked) > 0 {
+		// El unseen ya quedó durable junto con cada unlock en el DAO. El push
+		// sigue siendo best-effort: un fallo del proveedor no deshace nada.
+		// Contexto HTTP propio: evaluateValues corre en el hook async y el
+		// Request.Context del *gin.Context copiado ya está cancelado.
+		for _, row := range newlyUnlocked {
+			sendPushToUserWithContext(nil, ctx, s.pushTokenDao, s.pushClient, userID,
+				"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("desbloqueo de logros: %w", err)
 	}
 	return nil
+}
+
+// insertUnlocksFallback conserva el mejor esfuerzo cuando el batch falla:
+// reintenta logro por logro (idempotente, también atómico con su unseen) para
+// no perder los que sí se pueden guardar, y devuelve solo los insertados junto
+// con el primer error.
+func (s *achievementsService) insertUnlocksFallback(ctx *gin.Context, userID int64, ids []string, unlockedAt time.Time) ([]string, error) {
+	inserted := make([]string, 0, len(ids))
+	var firstErr error
+	for _, id := range ids {
+		ok, err := s.achievementDao.InsertUnlockWithUnseen(ctx, userID, id, unlockedAt)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if ok {
+			inserted = append(inserted, id)
+		}
+	}
+	return inserted, firstErr
 }
 
 // run es la unidad que el goroutine ejecuta: panic-guard + log y nada más.
@@ -326,5 +402,34 @@ func (s *achievementsService) OnEvent(ctx *gin.Context, userID int64, trigger Ac
 	}
 	go func() {
 		s.run(hookCtx, userID, trigger)
+	}()
+}
+
+// runBatch es la unidad del goroutine de lote: un solo trabajo async por
+// request, panic-guard y sin concurrencia interna (limita presión al pool).
+func (s *achievementsService) runBatch(hookCtx *gin.Context, userIDs []int64, trigger AchievementTrigger) {
+	defer func() {
+		if r := recover(); r != nil {
+			customlogger.Error(hookCtx, "panic en trigger de logros en lote", fmt.Errorf("%v", r), customlogger.TagMethod("AchievementsTriggerBatch"))
+		}
+	}()
+	if err := s.EvaluateEventBatch(hookCtx, userIDs, trigger); err != nil {
+		customlogger.Error(hookCtx, "trigger de logros en lote falló", err, customlogger.TagMethod("AchievementsTriggerBatch"))
+	}
+}
+
+// OnEventBatch encola una sola evaluación por lote, con copia del contexto y
+// copia defensiva de los IDs (nil-safe como OnEvent).
+func (s *achievementsService) OnEventBatch(ctx *gin.Context, userIDs []int64, trigger AchievementTrigger) {
+	if s == nil || s.achievementDao == nil || len(userIDs) == 0 {
+		return
+	}
+	hookCtx := ctx
+	if ctx != nil {
+		hookCtx = ctx.Copy()
+	}
+	users := append([]int64(nil), userIDs...)
+	go func() {
+		s.runBatch(hookCtx, users, trigger)
 	}()
 }

@@ -38,12 +38,36 @@ func sendPushToUser(
 	userID int64,
 	title, body, notifType, route string,
 ) {
+	var sendCtx context.Context
+	if ctx != nil {
+		sendCtx = ctx
+	}
+	sendPushToUserWithContext(sendCtx, ctx, pushTokenDao, pushClient, userID, title, body, notifType, route)
+}
+
+// sendPushToUserWithContext separa el contexto HTTP del push (sendCtx) del
+// *gin.Context usado solo para DAO/logging. sendCtx nil crea un contexto
+// independiente con pushSendTimeout: los hooks async no pueden heredar el
+// Request.Context de un request que ya respondió (se cancela con él).
+func sendPushToUserWithContext(
+	sendCtx context.Context,
+	logCtx *gin.Context,
+	pushTokenDao daos.PushTokenDaoInterface,
+	pushClient expopushclient.ExpoPushClientInterface,
+	userID int64,
+	title, body, notifType, route string,
+) {
 	if pushClient == nil {
 		return
 	}
-	tokens, err := pushTokenDao.FindByUserID(ctx, userID)
+	if sendCtx == nil {
+		var cancel context.CancelFunc
+		sendCtx, cancel = context.WithTimeout(context.Background(), pushSendTimeout)
+		defer cancel()
+	}
+	tokens, err := pushTokenDao.FindByUserID(logCtx, userID)
 	if err != nil {
-		customlogger.Error(ctx, "error finding push tokens for notification", err,
+		customlogger.Error(logCtx, "error finding push tokens for notification", err,
 			customlogger.Tag("user_id", fmt.Sprintf("%d", userID)))
 		return
 	}
@@ -61,16 +85,7 @@ func sendPushToUser(
 		return
 	}
 
-	sendCtx := context.Background()
-	var cancel context.CancelFunc
-	if ctx != nil {
-		sendCtx = ctx
-	} else {
-		sendCtx, cancel = context.WithTimeout(sendCtx, pushSendTimeout)
-		defer cancel()
-	}
-
-	sendPushTokenChunks(sendCtx, ctx, pushClient, tokenStrings, title, body, data,
+	sendPushTokenChunks(sendCtx, logCtx, pushClient, tokenStrings, title, body, data,
 		customlogger.Tag("user_id", fmt.Sprintf("%d", userID)),
 		customlogger.Tag("notif_type", notifType))
 }

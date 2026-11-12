@@ -28,16 +28,26 @@ type achEvent struct {
 	trigger services.AchievementTrigger
 }
 
+type achBatch struct {
+	userIDs []int64
+	trigger services.AchievementTrigger
+}
+
 // stubAchievementsTrigger graba las invocaciones del hook de logros y el
 // snapshot recibido en el path del finish.
 type stubAchievementsTrigger struct {
 	events           []achEvent
+	batches          []achBatch
 	receivedSnapshot *services.StreakSnapshot
 	receivedUserID   int64
 }
 
 func (s *stubAchievementsTrigger) OnEvent(ctx *gin.Context, userID int64, trigger services.AchievementTrigger) {
 	s.events = append(s.events, achEvent{userID: userID, trigger: trigger})
+}
+
+func (s *stubAchievementsTrigger) OnEventBatch(ctx *gin.Context, userIDs []int64, trigger services.AchievementTrigger) {
+	s.batches = append(s.batches, achBatch{userIDs: append([]int64(nil), userIDs...), trigger: trigger})
 }
 
 func (s *stubAchievementsTrigger) EvaluateEventWithSnapshot(ctx *gin.Context, userID int64, trigger services.AchievementTrigger, snapshot *services.StreakSnapshot) error {
@@ -295,7 +305,7 @@ func TestAttendanceController_Register_IdempotenteNoDispara(t *testing.T) {
 	assert.Empty(t, achievementEventsOf(&trigger), "la idempotencia no registra un hecho nuevo")
 }
 
-func TestAttendanceController_BulkSave_DisparaLogrosPorAsistente(t *testing.T) {
+func TestAttendanceController_BulkSave_DisparaLogrosPorLote(t *testing.T) {
 	var trigger stubAchievementsTrigger
 	mock := &mockAttendanceService{
 		bulkSaveFn: func(ctx *gin.Context, authUserID, teamID, sessionInstanceID int64, userIDs []int64) (*attendance.BulkSaveResult, []services.AttendanceEventRow, error) {
@@ -303,7 +313,7 @@ func TestAttendanceController_BulkSave_DisparaLogrosPorAsistente(t *testing.T) {
 				{UserID: 11, TrainingSessionID: sessionInstanceID},
 				{UserID: 22, TrainingSessionID: sessionInstanceID},
 			}
-			return &attendance.BulkSaveResult{Created: 2}, rows, nil
+			return &attendance.BulkSaveResult{Created: 1, Updated: 1}, rows, nil
 		},
 	}
 	controller := NewAttendanceController(mock, nil, &trigger)
@@ -317,11 +327,9 @@ func TestAttendanceController_BulkSave_DisparaLogrosPorAsistente(t *testing.T) {
 	controller.BulkSaveAttendance(c)
 
 	require.Equal(t, http.StatusOK, response.Code)
-	events := achievementEventsOf(&trigger)
-	require.Len(t, events, 2)
-	assert.Equal(t, int64(11), events[0].userID)
-	assert.Equal(t, int64(22), events[1].userID)
-	for _, event := range events {
-		assert.Equal(t, services.AchievementTriggerAttendance, event.trigger)
-	}
+	assert.Empty(t, achievementEventsOf(&trigger), "el lote no evalúa usuario por usuario")
+	require.Len(t, trigger.batches, 1, "una sola evaluación batch por request")
+	assert.Equal(t, []int64{11, 22}, trigger.batches[0].userIDs,
+		"incluye inserted y updated, sin descartar filas")
+	assert.Equal(t, services.AchievementTriggerAttendance, trigger.batches[0].trigger)
 }

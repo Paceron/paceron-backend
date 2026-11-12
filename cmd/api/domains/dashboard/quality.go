@@ -16,6 +16,16 @@ type DataQuality struct {
 	InsufficientData bool `json:"insufficient_data"`
 }
 
+// BuildDataQuality arma el bloque de calidad sin construir el resumen completo:
+// los contadores de serie salen del mismo result set que BuildSummary y
+// open_sessions lo aporta el service desde su segunda query. Es equivalente a
+// BuildSummary(rows, tolerance, openSessions).DataQuality.
+func BuildDataQuality(rows []ScopedSeries, openSessions int) DataQuality {
+	quality := dataQualityFromSeries(seriesOf(rows))
+	quality.OpenSessions = openSessions
+	return quality
+}
+
 // dataQualityFromSeries cuenta los cinco contadores que salen del mismo result
 // set de series.
 func dataQualityFromSeries(series []Series) DataQuality {

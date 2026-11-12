@@ -360,6 +360,396 @@ func TestDashboardDao_ScopeDateRange(t *testing.T) {
 	assert.Equal(t, "2026-09-20", maxDate.Format("2006-01-02"))
 }
 
+// scopeDateRangeIsolatedCase fija una expectativa directa para un único filtro:
+// si su predicado desaparece, el rango deja de ser nil/nil (caso de exclusión) o
+// deja de existir (caso permitido).
+type scopeDateRangeIsolatedCase struct {
+	name    string
+	groupID int64
+	wantMin *time.Time
+	wantMax *time.Time
+}
+
+// scopeDateRangeFilterFixture cubre los filtros de ScopeDateRange: rol main,
+// runner status permitidos, membresía por ventana y feedback sin runner_session.
+// expectedMin/Max son las fechas que sí cumplen todos los filtros en groupID.
+type scopeDateRangeFilterFixture struct {
+	db              *gorm.DB
+	dao             DashboardDaoInterface
+	groupID         int64
+	otherGroupID    int64
+	excludedGroupID int64
+	expectedMin     time.Time
+	expectedMax     time.Time
+	otherGroupDate  time.Time
+	isolated        []scopeDateRangeIsolatedCase
+}
+
+func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scopeDateRangeFilterFixture {
+	t.Helper()
+	owner := persistUser(db, "scope-owner-"+tag+"@test.com", "5"+tag)
+	team := testTeam(db, "equipo_scope_"+tag, owner.ID)
+	group := testGroup(db, "grupo_scope_"+tag, team.ID)
+	otherGroup := testGroup(db, "grupo_scope_other_"+tag, team.ID)
+	excludedGroup := testGroup(db, "grupo_scope_excluded_"+tag, team.ID)
+
+	active := persistUser(db, "scope-active-"+tag+"@test.com", "6"+tag+"01")
+	edgeMin := persistUser(db, "scope-edge-min-"+tag+"@test.com", "6"+tag+"02")
+	edgeMax := persistUser(db, "scope-edge-max-"+tag+"@test.com", "6"+tag+"03")
+	futureOnly := persistUser(db, "scope-future-"+tag+"@test.com", "6"+tag+"04")
+	closedOnly := persistUser(db, "scope-closed-"+tag+"@test.com", "6"+tag+"05")
+	noMembership := persistUser(db, "scope-no-membership-"+tag+"@test.com", "6"+tag+"06")
+
+	day := func(d int) time.Time { return time.Date(2026, 9, d, 0, 0, 0, 0, time.UTC) }
+	membershipStart := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	edgeMinEnd := day(10)
+	edgeMaxStart := day(20)
+	futureStart := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	closedEnd := day(2)
+	deletedAt := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	addMembership := func(groupID, userID int64, start time.Time, end, deleted *time.Time) {
+		require.NoError(t, db.Create(&dbs.GroupUser{
+			GroupID: groupID, UserID: userID, DateStart: start, DateEnd: end, DeletedAt: deleted,
+		}).Error)
+	}
+	addMembership(group.ID, active.ID, membershipStart, nil, nil)
+	// Termina exactamente el 9/10 y está soft-deleted: la regla vigente la conserva.
+	addMembership(group.ID, edgeMin.ID, membershipStart, &edgeMinEnd, &deletedAt)
+	// Arranca exactamente el 9/20: borde inclusivo del máximo.
+	addMembership(group.ID, edgeMax.ID, edgeMaxStart, nil, nil)
+	addMembership(group.ID, futureOnly.ID, futureStart, nil, nil)
+	addMembership(group.ID, closedOnly.ID, membershipStart, &closedEnd, nil)
+	addMembership(otherGroup.ID, active.ID, membershipStart, nil, nil)
+	addMembership(excludedGroup.ID, active.ID, membershipStart, nil, nil)
+
+	addSession := func(groupID int64, date time.Time, name string) (siID, mainEx, warmupEx, cooldownEx int64) {
+		siID = testSessionInstance(db, name)
+		require.NoError(t, db.Create(&dbs.GroupCalendarDay{
+			GroupID: groupID, Date: date, Kind: "training", SessionInstanceID: &siID,
+		}).Error)
+		mainEx = persistExerciseInstance(t, db, siID, "Distancia", string(constants.ExerciseKindRitmoContinuo),
+			intPtrDAO(30), intPtrDAO(4000), nil, string(constants.SessionExerciseRoleMain))
+		warmupEx = persistExerciseInstance(t, db, siID, "Sparring", string(constants.ExerciseKindLiviano),
+			intPtrDAO(10), nil, nil, string(constants.SessionExerciseRoleWarmup))
+		cooldownEx = persistExerciseInstance(t, db, siID, "Vuelta", string(constants.ExerciseKindLiviano),
+			intPtrDAO(5), nil, nil, string(constants.SessionExerciseRoleCooldown))
+		return siID, mainEx, warmupEx, cooldownEx
+	}
+
+	addFeedback := func(siID, exerciseID, athleteID int64, date time.Time, deleted bool) {
+		var deletedAt *time.Time
+		if deleted {
+			at := date.Add(time.Hour)
+			deletedAt = &at
+		}
+		require.NoError(t, db.Create(&dbs.WorkoutFeedback{
+			TeamID: &team.ID, AssignedSessionID: siID, AssignedExerciseID: exerciseID,
+			AthleteUserID: athleteID, FeedbackOwnerUserID: athleteID, ReportSource: "atleta",
+			SessionDate: date, SetNumber: 1, DurationMs: intPtr64(240000),
+			ActiveDurationMs: intPtr64(240000), DistanceMeters: floatPtrDAO(4000),
+			CompletionStatus: strPtrDAO("completa"), MediaURLs: emptyMediaURLs(t), DeletedAt: deletedAt,
+		}).Error)
+	}
+	addRunner := func(siID, athleteID int64, status string, date time.Time) {
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: siID, AthleteUserID: athleteID, Status: status, StartDate: date,
+		}).Error)
+	}
+
+	// 2026-09-10: mínimo esperado. La membresía termina e incluye el día de la
+	// sesión, está soft-deleted (la regla vigente la conserva) y el runner está
+	// interrupted (status permitido).
+	si, mainEx, _, _ := addSession(group.ID, day(10), "scope-"+tag+"-10")
+	addFeedback(si, mainEx, edgeMin.ID, day(10), false)
+	addRunner(si, edgeMin.ID, runnersession.RunnerSessionStatusInterrupted, day(10))
+
+	// 2026-09-11 y 2026-09-19: válidos de fallback para detectar si se rompe
+	// alguno de los bordes de membresía.
+	si, mainEx, _, _ = addSession(group.ID, day(11), "scope-"+tag+"-11")
+	addFeedback(si, mainEx, active.ID, day(11), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(11))
+
+	si, mainEx, _, _ = addSession(group.ID, day(19), "scope-"+tag+"-19")
+	addFeedback(si, mainEx, active.ID, day(19), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(19))
+
+	// 2026-09-20: máximo esperado. Feedback huérfano (sin runner_session) y
+	// membresía que empieza exactamente el día de la sesión.
+	si, mainEx, _, _ = addSession(group.ID, day(20), "scope-"+tag+"-20")
+	addFeedback(si, mainEx, edgeMax.ID, day(20), false)
+
+	// Todos los casos inválidos quedan después del máximo: si un filtro se rompe,
+	// MAX se corre a la fecha del caso correspondiente.
+	// 2026-09-21: status wip no permitido.
+	si, mainEx, _, _ = addSession(group.ID, day(21), "scope-"+tag+"-21")
+	addFeedback(si, mainEx, active.ID, day(21), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, day(21))
+
+	// 2026-09-22: roles no main.
+	si, _, warmupEx, cooldownEx := addSession(group.ID, day(22), "scope-"+tag+"-22")
+	addFeedback(si, warmupEx, active.ID, day(22), false)
+	addFeedback(si, cooldownEx, active.ID, day(22), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(22))
+
+	// 2026-09-23: feedback soft-deleted.
+	si, mainEx, _, _ = addSession(group.ID, day(23), "scope-"+tag+"-23")
+	addFeedback(si, mainEx, active.ID, day(23), true)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(23))
+
+	// 2026-09-24: membresía futura.
+	si, mainEx, _, _ = addSession(group.ID, day(24), "scope-"+tag+"-24")
+	addFeedback(si, mainEx, futureOnly.ID, day(24), false)
+	addRunner(si, futureOnly.ID, runnersession.RunnerSessionStatusFinished, day(24))
+
+	// 2026-09-25: membresía cerrada.
+	si, mainEx, _, _ = addSession(group.ID, day(25), "scope-"+tag+"-25")
+	addFeedback(si, mainEx, closedOnly.ID, day(25), false)
+	addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, day(25))
+
+	// 2026-09-26: feedback sin membresía.
+	si, mainEx, _, _ = addSession(group.ID, day(26), "scope-"+tag+"-26")
+	addFeedback(si, mainEx, noMembership.ID, day(26), false)
+	addRunner(si, noMembership.ID, runnersession.RunnerSessionStatusFinished, day(26))
+
+	// 2026-09-27: feedback con exercise_instance inexistente.
+	si, _, _, _ = addSession(group.ID, day(27), "scope-"+tag+"-27")
+	const missingExerciseID int64 = 9000000001
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: si, ExerciseInstanceID: missingExerciseID, Role: string(constants.SessionExerciseRoleMain),
+	}).Error)
+	addFeedback(si, missingExerciseID, active.ID, day(27), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(27))
+
+	// Casos aislados: cada uno tiene un único grupo y una expectativa directa,
+	// así una regresión en un predicado puntual no queda tapada por otro caso.
+	wantDate := day(10)
+	isolated := []scopeDateRangeIsolatedCase{}
+	addCase := func(name string, wantMin, wantMax *time.Time, build func(groupID int64)) {
+		caseGroup := testGroup(db, "grupo_scope_case_"+name+"_"+tag, team.ID)
+		build(caseGroup.ID)
+		isolated = append(isolated, scopeDateRangeIsolatedCase{
+			name: name, groupID: caseGroup.ID, wantMin: wantMin, wantMax: wantMax,
+		})
+	}
+
+	addCase("rol_main", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-main")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("rol_no_main", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, _, warmupEx, cooldownEx := addSession(groupID, wantDate, "scope-"+tag+"-case-role")
+		addFeedback(si, warmupEx, active.ID, wantDate, false)
+		addFeedback(si, cooldownEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("status_finished", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-finished")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("status_interrupted", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-interrupted")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusInterrupted, wantDate)
+	})
+	addCase("status_wip", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-wip")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, wantDate)
+	})
+	addCase("membership_future", nil, nil, func(groupID int64) {
+		addMembership(groupID, futureOnly.ID, futureStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-future")
+		addFeedback(si, mainEx, futureOnly.ID, wantDate, false)
+		addRunner(si, futureOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_closed", nil, nil, func(groupID int64) {
+		addMembership(groupID, closedOnly.ID, membershipStart, &closedEnd, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-closed")
+		addFeedback(si, mainEx, closedOnly.ID, wantDate, false)
+		addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_none", nil, nil, func(groupID int64) {
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-none")
+		addFeedback(si, mainEx, noMembership.ID, wantDate, false)
+		addRunner(si, noMembership.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_soft_deleted", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, edgeMin.ID, membershipStart, nil, &deletedAt)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-soft")
+		addFeedback(si, mainEx, edgeMin.ID, wantDate, false)
+		addRunner(si, edgeMin.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_start_boundary", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, edgeMax.ID, wantDate, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-start")
+		addFeedback(si, mainEx, edgeMax.ID, wantDate, false)
+		addRunner(si, edgeMax.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_end_boundary", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, closedOnly.ID, membershipStart, &wantDate, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-end")
+		addFeedback(si, mainEx, closedOnly.ID, wantDate, false)
+		addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("feedback_deleted", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-deleted")
+		addFeedback(si, mainEx, active.ID, wantDate, true)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("exercise_missing", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, _, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-missing-ex")
+		const missingID int64 = 9000000002
+		require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+			SessionInstanceID: si, ExerciseInstanceID: missingID, Role: string(constants.SessionExerciseRoleMain),
+		}).Error)
+		addFeedback(si, missingID, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("runner_orphan", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-orphan")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+	})
+
+	otherDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	si, mainEx, _, _ = addSession(otherGroup.ID, otherDate, "scope-"+tag+"-other")
+	addFeedback(si, mainEx, active.ID, otherDate, false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, otherDate)
+
+	si, mainEx, _, _ = addSession(excludedGroup.ID, day(15), "scope-"+tag+"-excluded")
+	addFeedback(si, mainEx, active.ID, day(15), false)
+	addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, day(15))
+
+	return &scopeDateRangeFilterFixture{
+		db: db, dao: NewDashboardDao(db), groupID: group.ID, otherGroupID: otherGroup.ID,
+		excludedGroupID: excludedGroup.ID, expectedMin: day(10), expectedMax: day(20), otherGroupDate: otherDate,
+		isolated: isolated,
+	}
+}
+
+func intPtr64(v int64) *int64 { return &v }
+
+func assertSameRange(t *testing.T, wantMin, wantMax, gotMin, gotMax *time.Time) {
+	t.Helper()
+	if wantMin == nil {
+		require.Nil(t, gotMin)
+	} else {
+		require.NotNil(t, gotMin)
+		assert.Equal(t, wantMin.Format("2006-01-02"), gotMin.Format("2006-01-02"))
+	}
+	if wantMax == nil {
+		require.Nil(t, gotMax)
+	} else {
+		require.NotNil(t, gotMax)
+		assert.Equal(t, wantMax.Format("2006-01-02"), gotMax.Format("2006-01-02"))
+	}
+}
+
+// D4: la prueba de referencia fija el rango con todos los filtros de series.
+// Cada caso inválido queda después del máximo válido, así que si un filtro se
+// rompe MAX cambia; además, los casos aislados fijan una expectativa directa por
+// predicado (exclusión -> nil, permitido -> la fecha). El mínimo cubre membresía
+// soft-deleted, borde de fin y runner interrupted; el máximo cubre feedback
+// huérfano y borde de inicio de membresía.
+func TestDashboardDao_ScopeDateRangeFiltros(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newScopeDateRangeFilterFixture(t, db, "filtros")
+
+	minDate, maxDate, err := fixture.dao.ScopeDateRange(nil, []int64{fixture.groupID})
+	require.NoError(t, err)
+	require.NotNil(t, minDate)
+	require.NotNil(t, maxDate)
+	assert.Equal(t, fixture.expectedMin.Format("2006-01-02"), minDate.Format("2006-01-02"))
+	assert.Equal(t, fixture.expectedMax.Format("2006-01-02"), maxDate.Format("2006-01-02"))
+
+	for _, tc := range fixture.isolated {
+		t.Run(tc.name, func(t *testing.T) {
+			minDate, maxDate, err := fixture.dao.ScopeDateRange(nil, []int64{tc.groupID})
+			require.NoError(t, err)
+			assertSameRange(t, tc.wantMin, tc.wantMax, minDate, maxDate)
+		})
+	}
+
+	minDate, maxDate, err = fixture.dao.ScopeDateRange(nil, []int64{fixture.otherGroupID})
+	require.NoError(t, err)
+	require.NotNil(t, minDate)
+	require.NotNil(t, maxDate)
+	assert.Equal(t, fixture.otherGroupDate.Format("2006-01-02"), minDate.Format("2006-01-02"))
+	assert.Equal(t, fixture.otherGroupDate.Format("2006-01-02"), maxDate.Format("2006-01-02"))
+
+	minDate, maxDate, err = fixture.dao.ScopeDateRange(nil, []int64{fixture.excludedGroupID})
+	require.NoError(t, err)
+	assert.Nil(t, minDate)
+	assert.Nil(t, maxDate)
+
+	minDate, maxDate, err = fixture.dao.ScopeDateRange(nil, []int64{fixture.groupID, fixture.otherGroupID})
+	require.NoError(t, err)
+	require.NotNil(t, minDate)
+	require.NotNil(t, maxDate)
+	assert.Equal(t, fixture.otherGroupDate.Format("2006-01-02"), minDate.Format("2006-01-02"))
+	assert.Equal(t, fixture.expectedMax.Format("2006-01-02"), maxDate.Format("2006-01-02"))
+
+	minDate, maxDate, err = fixture.dao.ScopeDateRange(nil, nil)
+	require.NoError(t, err)
+	assert.Nil(t, minDate)
+	assert.Nil(t, maxDate)
+}
+
+const legacyScopeDateRangeSQL = `
+SELECT MIN(wf.session_date) AS min_date, MAX(wf.session_date) AS max_date
+FROM group_calendar_days gcd
+JOIN workout_feedback wf
+	ON wf.assigned_session_id = gcd.session_instance_id
+JOIN exercise_instances ei
+	ON ei.id = wf.assigned_exercise_id
+JOIN session_exercise_instances sei
+	ON sei.session_instance_id = wf.assigned_session_id
+	AND sei.exercise_instance_id = wf.assigned_exercise_id
+LEFT JOIN runner_session rs
+	ON rs.session_instance_id = wf.assigned_session_id
+	AND rs.athlete_user_id = wf.athlete_user_id
+WHERE gcd.group_id IN ?
+  AND sei.role = 'main'
+  AND wf.deleted_at IS NULL
+  AND (rs.status IN (?, ?) OR rs.status IS NULL)` + membershipWindowEXISTS
+
+// D4: la reescritura con semijoins solo se adoptó con paridad exacta contra la
+// consulta anterior sobre el mismo fixture.
+func TestDashboardDao_ScopeDateRangeParidad(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	fixture := newScopeDateRangeFilterFixture(t, db, "paridad")
+
+	for _, groupIDs := range [][]int64{
+		{fixture.groupID},
+		{fixture.otherGroupID},
+		{fixture.excludedGroupID},
+		{fixture.groupID, fixture.otherGroupID},
+		{fixture.groupID, fixture.excludedGroupID},
+	} {
+		gotMin, gotMax, err := fixture.dao.ScopeDateRange(nil, groupIDs)
+		require.NoError(t, err)
+
+		var legacy struct {
+			MinDate *time.Time `gorm:"column:min_date"`
+			MaxDate *time.Time `gorm:"column:max_date"`
+		}
+		require.NoError(t, db.Raw(legacyScopeDateRangeSQL, groupIDs,
+			runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted).Scan(&legacy).Error)
+
+		assertSameRange(t, legacy.MinDate, legacy.MaxDate, gotMin, gotMax)
+	}
+}
+
 // 4.1b: las instancias sin source_exercise_id del scope llegan con el dueño de su
 // equipo, que es lo que acota el fallback por nombre.
 func TestDashboardDao_UnlinkedExerciseInstances(t *testing.T) {

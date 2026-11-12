@@ -115,3 +115,108 @@ func TestDataQuality_LegacySessionsDoesNotCountInvalidSeries(t *testing.T) {
 }
 
 func ptrFloat64x(v float64) *float64 { return &v }
+
+// qualityRow arma la serie del scope con las piezas que mira dataQuality, sin
+// pasar por las agregaciones.
+func qualityRow(kind string, active, duration *int64, distance *float64, status *string, hasRunner, resolvedByName bool) ScopedSeries {
+	return ScopedSeries{Series: Series{
+		Kind:             kind,
+		ActiveDurationMs: active,
+		DurationMs:       duration,
+		DistanceMeters:   distance,
+		CompletionStatus: status,
+		HasRunnerSession: hasRunner,
+		ResolvedByName:   resolvedByName,
+	}}
+}
+
+func validQualityRow(timeMs int64) ScopedSeries {
+	return qualityRow(kindRitmoContinuo, ptrInt64(timeMs), ptrInt64(timeMs), ptrFloat(1000), ptrString("completa"), true, false)
+}
+
+// BuildDataQuality cuenta los seis campos con las mismas reglas que el resumen,
+// pero sin construirlo: cada caso fija el bloque esperado completo.
+func TestBuildDataQuality_ContadoresExplicitos(t *testing.T) {
+	cases := []struct {
+		name string
+		rows []ScopedSeries
+		open int
+		want DataQuality
+	}{
+		{
+			name: "sin datos",
+			want: DataQuality{InsufficientData: true},
+		},
+		{
+			name: "invalidos",
+			rows: []ScopedSeries{
+				// ritmo_continuo sin distancia: inválida.
+				qualityRow(kindRitmoContinuo, ptrInt64(240000), ptrInt64(240000), nil, ptrString("completa"), true, false),
+				// legacy no calculable: inválida y no cuenta como legacy.
+				qualityRow(kindLegacyWalking, ptrInt64(1800000), ptrInt64(1800000), ptrFloat(3000), ptrString("completa"), true, false),
+			},
+			want: DataQuality{InvalidSeries: 2, InsufficientData: true},
+		},
+		{
+			name: "legacy",
+			rows: []ScopedSeries{
+				qualityRow(kindRitmoContinuo, ptrInt64(240000), ptrInt64(240000), ptrFloat(1000), ptrString("completa"), false, false),
+				qualityRow(kindRitmoContinuo, ptrInt64(250000), ptrInt64(250000), ptrFloat(1000), ptrString("partial"), true, true),
+			},
+			want: DataQuality{LegacySessions: 2, InsufficientData: true},
+		},
+		{
+			name: "tiempo degradado",
+			rows: []ScopedSeries{
+				// Sin tiempo activo cae al duration: válida pero degradada.
+				qualityRow(kindRitmoContinuo, nil, ptrInt64(240000), ptrFloat(1000), ptrString("completa"), true, false),
+				qualityRow(kindRitmoContinuo, ptrInt64(0), ptrInt64(250000), ptrFloat(1000), ptrString("completa"), true, false),
+				validQualityRow(260000),
+			},
+			want: DataQuality{DegradedTime: 2},
+		},
+		{
+			name: "estado desconocido",
+			rows: []ScopedSeries{
+				qualityRow(kindRitmoContinuo, ptrInt64(240000), ptrInt64(240000), ptrFloat(1000), nil, true, false),
+				qualityRow(kindRitmoContinuo, ptrInt64(250000), ptrInt64(250000), ptrFloat(1000), ptrString("otro"), true, false),
+				validQualityRow(260000),
+			},
+			want: DataQuality{UnknownStatus: 2},
+		},
+		{
+			name: "series insuficientes",
+			rows: []ScopedSeries{
+				qualityRow(kindElongacion, ptrInt64(600000), ptrInt64(600000), nil, ptrString("completa"), true, false),
+				qualityRow(kindElongacion, ptrInt64(620000), ptrInt64(620000), nil, ptrString("completa"), true, false),
+				validQualityRow(240000),
+			},
+			want: DataQuality{InsufficientData: true},
+		},
+		{
+			name: "velocidades",
+			rows: []ScopedSeries{
+				validQualityRow(240000),
+				validQualityRow(250000),
+				validQualityRow(260000),
+			},
+			want: DataQuality{},
+		},
+		{
+			name: "sesiones abiertas",
+			rows: []ScopedSeries{
+				validQualityRow(240000),
+				validQualityRow(250000),
+				validQualityRow(260000),
+			},
+			open: 3,
+			want: DataQuality{OpenSessions: 3},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, BuildDataQuality(tc.rows, tc.open))
+		})
+	}
+}

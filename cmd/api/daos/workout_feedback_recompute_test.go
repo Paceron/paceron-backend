@@ -181,6 +181,79 @@ func TestWorkoutFeedbackDao_Recompute_SobrescribeNULLsPrevios(t *testing.T) {
 	assert.InDelta(t, 0.0, *updated.PeakSpeedKPH, 0.0001)
 }
 
+// La proyección del recompute limita la lectura a order/recorded_at/latitude/
+// longitude: las subidas parciales, los reintentos y los puntos insertados
+// fuera de orden deben dejar exactamente el mismo pace/peak que el recorrido
+// completo.
+func TestWorkoutFeedbackDao_Recompute_ProyeccionParidadPacePeak(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+	feedback := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+	require.NoError(t, db.Model(feedback).Updates(map[string]interface{}{
+		"duration_ms":     int64(600000),
+		"distance_meters": 2000.0,
+	}).Error)
+
+	base := time.Date(2026, 9, 24, 14, 0, 0, 0, time.UTC)
+	full := []dbs.WorkoutFeedbackPoint{
+		{FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 0, Latitude: -34.60, Longitude: -58.40, RecordedAt: base},
+		{FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 1, Latitude: -34.61, Longitude: -58.40, RecordedAt: base.Add(time.Minute)},
+		{FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 2, Latitude: -34.62, Longitude: -58.41, RecordedAt: base.Add(90 * time.Second)},
+		{FeedbackID: feedback.ID, SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 3, Latitude: -34.63, Longitude: -58.42, RecordedAt: base.Add(150 * time.Second)},
+	}
+	refFirstTwo := computePeakSpeedKPH(full[:2])
+	refFull := computePeakSpeedKPH(full)
+	require.NotNil(t, refFirstTwo)
+	require.NotNil(t, refFull)
+
+	peakAfter := func() (*float64, *float64) {
+		updated, err := dao.GetByID(nil, feedback.ID)
+		require.NoError(t, err)
+		return updated.PaceSecPerKM, updated.PeakSpeedKPH
+	}
+
+	// Subida parcial de un solo punto: peak no computable.
+	_, err := dao.BulkCreatePointsRecompute(nil, feedback.ID, []dbs.WorkoutFeedbackPoint{full[0]})
+	require.NoError(t, err)
+	pace, peak := peakAfter()
+	require.NotNil(t, pace)
+	assert.InDelta(t, 300.0, *pace, 0.0001)
+	assert.Nil(t, peak)
+
+	// Segundo parcial completa los dos primeros orders → peak de ese prefijo.
+	_, err = dao.BulkCreatePointsRecompute(nil, feedback.ID, []dbs.WorkoutFeedbackPoint{full[1]})
+	require.NoError(t, err)
+	pace, peak = peakAfter()
+	require.NotNil(t, pace)
+	assert.InDelta(t, 300.0, *pace, 0.0001)
+	require.NotNil(t, peak)
+	assert.InDelta(t, *refFirstTwo, *peak, 0.0001)
+
+	// Resto insertado fuera de orden (3 antes que 2): el recompute ordena por
+	// "order" y computa sobre TODO el recorrido.
+	_, err = dao.BulkCreatePointsRecompute(nil, feedback.ID, []dbs.WorkoutFeedbackPoint{full[3], full[2]})
+	require.NoError(t, err)
+	pace, peak = peakAfter()
+	require.NotNil(t, pace)
+	assert.InDelta(t, 300.0, *pace, 0.0001)
+	require.NotNil(t, peak)
+	assert.InDelta(t, *refFull, *peak, 0.0001)
+
+	// Reintento del batch completo: created = 0, mismos valores.
+	batch := append([]dbs.WorkoutFeedbackPoint(nil), full...)
+	for i := range batch {
+		batch[i].ID = 0
+	}
+	created, err := dao.BulkCreatePointsRecompute(nil, feedback.ID, batch)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), created)
+	pace, peak = peakAfter()
+	require.NotNil(t, pace)
+	assert.InDelta(t, 300.0, *pace, 0.0001)
+	require.NotNil(t, peak)
+	assert.InDelta(t, *refFull, *peak, 0.0001)
+}
+
 // Atomicidad D6: si el recompute falla, el insert de points también se
 // revierte (misma transacción).
 func TestWorkoutFeedbackDao_Recompute_FalloAtomaTransaccion(t *testing.T) {

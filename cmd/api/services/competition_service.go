@@ -310,6 +310,21 @@ type competitionBundle struct {
 	comp         *dbs.Competition
 	participants []int64
 	winners      []int64
+
+	// Reutilización request-local del Close (D5): las lecturas que calculan
+	// winners alimentan también la respuesta. El flag distingue "no leído" de
+	// "leído vacío"; Finish solo escribe gamificación, así que el snapshot de
+	// feedback/runner sessions no cambia entre ambos usos.
+	metricAgg       []dbs.CompetitionMetricAgg
+	metricAggLoaded bool
+	routeReads      *routeAttemptsRead
+}
+
+// routeAttemptsRead es el resultado ya leído de los intentos route: intentos
+// matcheados para winners/progress e instancias registradas para los canales.
+type routeAttemptsRead struct {
+	attempts              []competitionRouteAttempt
+	registeredInstanceIDs []int64
 }
 
 func (s *competitionService) loadBundle(ctx *gin.Context, id int64) (*competitionBundle, error) {
@@ -728,10 +743,25 @@ func (s *competitionService) fillAttemptFieldsBatch(ctx *gin.Context, items []co
 	return nil
 }
 
-// computeMetricProgress arma el acumulado in-ventana por participante
-// (detalle on-demand; sin broadcast). El progreso de route corre su matcher.
-func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgress {
+// metricAggregate lee el acumulado in-ventana una sola vez por request: los
+// winners del Close y su progress comparten la misma lectura (D5).
+func (s *competitionService) metricAggregate(ctx *gin.Context, bundle *competitionBundle) ([]dbs.CompetitionMetricAgg, error) {
+	if bundle.metricAggLoaded {
+		return bundle.metricAgg, nil
+	}
 	agg, err := s.dao.AggregateFeedbackWindow(ctx, bundle.comp.TeamID, bundle.participants, gametime.DateOnly(bundle.comp.StartAt), gametime.DateOnly(windowEnd(bundle.comp)))
+	if err != nil {
+		return nil, err
+	}
+	bundle.metricAgg = agg
+	bundle.metricAggLoaded = true
+	return agg, nil
+}
+
+// computeMetricProgress arma el acumulado in-ventana por participante
+// (detalle on-demand; sin broadcast).
+func (s *competitionService) computeMetricProgress(ctx *gin.Context, bundle *competitionBundle) []competition.CompetitionProgress {
+	agg, err := s.metricAggregate(ctx, bundle)
 	if err != nil {
 		customlogger.Error(ctx, "error computing competition progress", err, customlogger.TagMethod("CompetitionGet"))
 		return nil
@@ -781,11 +811,25 @@ func bestAttemptByAthlete(attempts []competitionRouteAttempt) map[int64]*competi
 	return best
 }
 
-// routeAttempts arma los intentos de la competencia a partir de los runner
+// routeAttempts devuelve las lecturas de intentos reutilizando lo ya cargado
+// en el request (Close D5): winners y progress comparten el mismo snapshot.
+func (s *competitionService) routeAttempts(ctx *gin.Context, bundle *competitionBundle) (attempts []competitionRouteAttempt, registeredInstanceIDs []int64, err error) {
+	if bundle.routeReads != nil {
+		return bundle.routeReads.attempts, bundle.routeReads.registeredInstanceIDs, nil
+	}
+	attempts, registeredInstanceIDs, err = s.loadRouteAttempts(ctx, bundle)
+	if err != nil {
+		return nil, nil, err
+	}
+	bundle.routeReads = &routeAttemptsRead{attempts: attempts, registeredInstanceIDs: registeredInstanceIDs}
+	return attempts, registeredInstanceIDs, nil
+}
+
+// loadRouteAttempts arma los intentos de la competencia a partir de los runner
 // sessions tagueados: 1 batch de sesiones + 1 batch de puntos, sin N+1.
 // Devuelve también los instance_ids de TODOS los intentos registrados (canales
 // WS del cierre). Solo los intentos finished de participantes computan match.
-func (s *competitionService) routeAttempts(ctx *gin.Context, bundle *competitionBundle) (attempts []competitionRouteAttempt, registeredInstanceIDs []int64, err error) {
+func (s *competitionService) loadRouteAttempts(ctx *gin.Context, bundle *competitionBundle) (attempts []competitionRouteAttempt, registeredInstanceIDs []int64, err error) {
 	sessions, err := s.dao.ListAttemptSessions(ctx, bundle.comp.ID)
 	if err != nil {
 		return nil, nil, err
@@ -944,26 +988,17 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 		return nil, nil, fmt.Errorf("%w: competencia no puede cerrarse todavía", ErrCompetitionInvalid)
 	}
 
-	// Intentos registrados: canales WS del cierre (solo si hay).
-	attemptSessions, err := s.dao.ListAttemptSessions(ctx, competitionID)
-	if err != nil {
-		customlogger.Error(ctx, "error listing competition attempts", err, customlogger.TagMethod("CompetitionClose"))
-		return nil, nil, fmt.Errorf("error al cerrar la competencia")
-	}
-	registeredInstanceIDs := make([]int64, 0, len(attemptSessions))
-	seen := make(map[int64]bool, len(attemptSessions))
-	for _, rs := range attemptSessions {
-		if !seen[rs.SessionInstanceID] {
-			seen[rs.SessionInstanceID] = true
-			registeredInstanceIDs = append(registeredInstanceIDs, rs.SessionInstanceID)
-		}
-	}
-
 	// Winners: metric por ventana / route por matching. Fallo aquí (ex. ruta
 	// mal cargada) sube: cerrar sin matching confiable mentiría el resultado.
 	winners, err := s.computeWinners(ctx, bundle)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error al cerrar la competencia")
+	}
+	// Canales WS: los intentos route ya leídos para winners (metric no tiene
+	// intentos: CreateAttempt solo admite route).
+	var registeredInstanceIDs []int64
+	if bundle.routeReads != nil {
+		registeredInstanceIDs = bundle.routeReads.registeredInstanceIDs
 	}
 	finishedAt := gametime.Now()
 	// Efectos en la MISMA transacción del finish: winners, stamps (solo con
@@ -1001,7 +1036,7 @@ func (s *competitionService) Close(ctx *gin.Context, callerID, competitionID int
 func (s *competitionService) computeWinners(ctx *gin.Context, bundle *competitionBundle) ([]int64, error) {
 	switch bundle.comp.Type {
 	case competition.TypeMetric:
-		agg, err := s.dao.AggregateFeedbackWindow(ctx, bundle.comp.TeamID, bundle.participants, gametime.DateOnly(bundle.comp.StartAt), gametime.DateOnly(windowEnd(bundle.comp)))
+		agg, err := s.metricAggregate(ctx, bundle)
 		if err != nil {
 			return nil, err
 		}

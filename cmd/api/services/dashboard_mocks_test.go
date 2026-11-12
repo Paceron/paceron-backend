@@ -106,6 +106,9 @@ type mockDashboardScopeService struct {
 	scope   *DashboardScope
 	resolve int
 	findErr error
+	// findGroupCalls cuenta las lecturas del DAO de grupos: los grupos que ya
+	// están en el scope no deberían consultarlo.
+	findGroupCalls int
 	// foreignGroupID modela un grupo que EXISTE pero es de otro scope: tiene que
 	// responder 403, no 404 (spec "Recurso inexistente versus recurso ajeno").
 	foreignGroupID int64
@@ -126,6 +129,7 @@ func (m *mockDashboardScopeService) Resolve(ctx *gin.Context, callerID int64) (*
 }
 
 func (m *mockDashboardScopeService) FindGroup(ctx *gin.Context, id int64) (*dbs.Group, error) {
+	m.findGroupCalls++
 	if m.findErr != nil {
 		return nil, m.findErr
 	}
