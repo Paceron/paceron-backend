@@ -221,23 +221,28 @@ WHERE gcd.group_id IN ?
 // scopeDateRangeSQL trae MIN/MAX de session_date dentro del scope. Aplica los
 // mismos filtros que las series —role main y estado de runner_session— para que
 // el rango no prometa datos que ninguna métrica puede mostrar.
+//
+// Los joins a exercise_instances y session_exercise_instances son semijoins: el
+// rango solo necesita su existencia, y como los filtros son idénticos el planner
+// evita las búsquedas por fila de feedback (medido con EXPLAIN ANALYZE/BUFFERS).
 const scopeDateRangeSQL = `
 SELECT MIN(wf.session_date) AS min_date, MAX(wf.session_date) AS max_date
 FROM group_calendar_days gcd
 JOIN workout_feedback wf
 	ON wf.assigned_session_id = gcd.session_instance_id
-JOIN exercise_instances ei
-	ON ei.id = wf.assigned_exercise_id
-JOIN session_exercise_instances sei
-	ON sei.session_instance_id = wf.assigned_session_id
-	AND sei.exercise_instance_id = wf.assigned_exercise_id
 LEFT JOIN runner_session rs
 	ON rs.session_instance_id = wf.assigned_session_id
 	AND rs.athlete_user_id = wf.athlete_user_id
 WHERE gcd.group_id IN ?
-  AND sei.role = 'main'
   AND wf.deleted_at IS NULL
-  AND (rs.status IN (?, ?) OR rs.status IS NULL)` + membershipWindowEXISTS
+  AND (rs.status IN (?, ?) OR rs.status IS NULL)
+  AND EXISTS (SELECT 1 FROM exercise_instances ei WHERE ei.id = wf.assigned_exercise_id)
+  AND EXISTS (
+	SELECT 1 FROM session_exercise_instances sei
+	WHERE sei.session_instance_id = wf.assigned_session_id
+	  AND sei.exercise_instance_id = wf.assigned_exercise_id
+	  AND sei.role = 'main'
+  )` + membershipWindowEXISTS
 
 // unlinkedExerciseInstancesSQL lista las ExerciseInstance del scope sin
 // source_exercise_id, con el dueño del equipo al que pertenecen. Es la entrada
