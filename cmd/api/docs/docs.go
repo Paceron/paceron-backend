@@ -12113,6 +12113,14 @@ const docTemplate = `{
                 "achieved_speed_kph": {
                     "type": "number"
                 },
+                "achieved_target_distance_m": {
+                    "description": "AchievedTargetDistanceM suma solo la distancia lograda positiva de esas\nfilas válidas. Null junto a TargetDistanceM; 0 cuando hay objetivo pero\nningún logrado positivo.",
+                    "type": "number"
+                },
+                "best_time_met_ms": {
+                    "description": "BestTimeMetMs es el menor tiempo de las series que cumplieron su objetivo,\ncon la tolerancia de la consulta. Null cuando ninguna serie cumplidora\nregistró un tiempo positivo.",
+                    "type": "integer"
+                },
                 "best_time_ms": {
                     "type": "integer"
                 },
@@ -12131,6 +12139,10 @@ const docTemplate = `{
                 },
                 "sessions": {
                     "type": "integer"
+                },
+                "target_distance_m": {
+                    "description": "TargetDistanceM suma los objetivos de distancia de las filas cuyo kind\ndeclara ese eje, válidas o no. Null cuando no hay ninguno.",
+                    "type": "number"
                 },
                 "target_speed_kph": {
                     "type": "number"

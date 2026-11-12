@@ -260,6 +260,28 @@ func seriesOf(rows []ScopedSeries) []Series {
 	return out
 }
 
+// bestMetTimeMs es el menor tiempo logrado entre las series que cumplen su
+// objetivo con la tolerancia de la consulta. Cumplir por distancia sin tiempo
+// positivo no aporta un tiempo cumplidor, así que ese caso queda fuera.
+func (m *setMetrics) bestMetTimeMs(tolerance float64) *int64 {
+	var best *int64
+	for _, row := range m.validRows {
+		timeMs := row.AchievedTimeMs()
+		if timeMs <= 0 {
+			continue
+		}
+		met := metTarget(row.Kind, row.Targets(), row.Achieved(), tolerance)
+		if met == nil || !*met {
+			continue
+		}
+		if best == nil || timeMs < *best {
+			value := timeMs
+			best = &value
+		}
+	}
+	return best
+}
+
 // ---------- resumen ----------
 
 // BuildSummary arma el resumen del período.
@@ -272,9 +294,11 @@ func BuildSummary(rows []ScopedSeries, tolerance float64, openSessions int) Summ
 		Series:           m.totalSeries,
 		ValidSeries:      m.validSeries,
 		BestTimeMs:       m.bestTimeMs,
+		BestTimeMetMs:    m.bestMetTimeMs(tolerance),
 		AchievedSpeedKph: m.AchievedSpeedKph(),
 		ComplianceRate:   m.complianceRate(tolerance),
 	}
+	totals.TargetDistanceM, totals.AchievedTargetDistanceM = objectiveDistanceTotals(rows)
 	if m.validSeries > 0 {
 		distance := m.totalDistanceM
 		timeMs := int64(m.totalTimeMs)
@@ -300,6 +324,37 @@ func BuildSummary(rows []ScopedSeries, tolerance float64, openSessions int) Summ
 		SeriesCount:      m.validSeries,
 		DataQuality:      m.dataQuality(openSessions),
 	}
+}
+
+// objectiveDistanceTotals suma los objetivos de distancia de las filas cuyo kind
+// declara ese eje y, aparte, lo logrado de las válidas. El objetivo cuenta aunque
+// la fila no sea válida; lo logrado de una inválida no. Los dos punteros son nil
+// solo cuando no hay ninguna fila calificada.
+func objectiveDistanceTotals(rows []ScopedSeries) (*float64, *float64) {
+	var target, achieved float64
+	qualified := false
+	for _, row := range rows {
+		targets := row.Targets()
+		axis := objectiveAxisForKind(row.Kind, targets)
+		if axis != AxisDistance && axis != AxisDistanceAndTime {
+			continue
+		}
+		distance, ok := positiveInt(targets.DistanceM)
+		if !ok {
+			continue
+		}
+		qualified = true
+		target += distance
+		if row.Valid() {
+			if achievedDistance, ok := positiveFloat(row.Achieved().DistanceM); ok {
+				achieved += achievedDistance
+			}
+		}
+	}
+	if !qualified {
+		return nil, nil
+	}
+	return &target, &achieved
 }
 
 // ---------- timeseries ----------

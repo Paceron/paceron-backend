@@ -1552,6 +1552,18 @@ definitions:
     properties:
       achieved_speed_kph:
         type: number
+      achieved_target_distance_m:
+        description: |-
+          AchievedTargetDistanceM suma solo la distancia lograda positiva de esas
+          filas válidas. Null junto a TargetDistanceM; 0 cuando hay objetivo pero
+          ningún logrado positivo.
+        type: number
+      best_time_met_ms:
+        description: |-
+          BestTimeMetMs es el menor tiempo de las series que cumplieron su objetivo,
+          con la tolerancia de la consulta. Null cuando ninguna serie cumplidora
+          registró un tiempo positivo.
+        type: integer
       best_time_ms:
         type: integer
       compliance_rate:
@@ -1567,6 +1579,11 @@ definitions:
         type: integer
       sessions:
         type: integer
+      target_distance_m:
+        description: |-
+          TargetDistanceM suma los objetivos de distancia de las filas cuyo kind
+          declara ese eje, válidas o no. Null cuando no hay ninguno.
+        type: number
       target_speed_kph:
         type: number
       time_ms:
