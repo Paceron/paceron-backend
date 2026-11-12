@@ -4,6 +4,8 @@ package daos
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"gorm.io/gorm"
 	gl "gorm.io/gorm/logger"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
 )
@@ -32,19 +35,19 @@ func TestDaos_AchievementDAO_MigracionAccesible(t *testing.T) {
 	require.NoError(t, db.Table("gamification_stamp").Count(&n).Error)
 }
 
-func TestAchievementDAO_InsertUnlock_Idempotente(t *testing.T) {
+func TestAchievementDAO_InsertUnlockWithUnseen_Idempotente(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
 	runner := setupAchievementsRunner(t, db, "01")
 
 	when := time.Now()
 
-	inserted, err := dao.InsertUnlock(nil, runner.ID, "sessions_5", when)
+	inserted, err := dao.InsertUnlockWithUnseen(nil, runner.ID, "sessions_5", when)
 	require.NoError(t, err)
 	assert.True(t, inserted)
 
 	// Re-evaluación idempotente: no segunda fila ni unlocked_at alterado.
-	inserted, err = dao.InsertUnlock(nil, runner.ID, "sessions_5", when.Add(time.Hour))
+	inserted, err = dao.InsertUnlockWithUnseen(nil, runner.ID, "sessions_5", when.Add(time.Hour))
 	require.NoError(t, err)
 	assert.False(t, inserted, "ON CONFLICT DO NOTHING: ya estaba desbloqueado")
 
@@ -52,22 +55,31 @@ func TestAchievementDAO_InsertUnlock_Idempotente(t *testing.T) {
 	require.NoError(t, db.Where("user_id = ? AND achievement_id = ?", runner.ID, "sessions_5").First(&row).Error)
 	assert.WithinDuration(t, when, row.UnlockedAt, time.Second, "unlocked_at del primer desbloqueo intacto")
 
+	var unseen int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?",
+		runner.ID, constants.GamificationSectionAchievements).Count(&unseen).Error)
+	assert.Equal(t, int64(1), unseen, "el unlock nuevo deja su unseen; la re-evaluación no lo duplica")
+
 	// Otro usuario / otro logro sí insertan.
-	inserted, err = dao.InsertUnlock(nil, runner.ID+1, "sessions_5", when)
+	inserted, err = dao.InsertUnlockWithUnseen(nil, runner.ID+1, "sessions_5", when)
 	require.NoError(t, err)
 	assert.True(t, inserted)
-	inserted, err = dao.InsertUnlock(nil, runner.ID, "gps_first", when)
+	inserted, err = dao.InsertUnlockWithUnseen(nil, runner.ID, "gps_first", when)
 	require.NoError(t, err)
 	assert.True(t, inserted)
+
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?",
+		runner.ID, constants.GamificationSectionAchievements).Count(&unseen).Error)
+	assert.Equal(t, int64(2), unseen)
 }
 
-func TestAchievementDAO_InsertUnlocks_BatchIdempotenteYOrden(t *testing.T) {
+func TestAchievementDAO_InsertUnlocksWithUnseen_BatchIdempotenteYOrden(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
 	runner := setupAchievementsRunner(t, db, "18")
 
 	when := time.Now()
-	inserted, err := dao.InsertUnlocks(nil, runner.ID, []string{"sessions_5", "early_5", "gps_first"}, when)
+	inserted, err := dao.InsertUnlocksWithUnseen(nil, runner.ID, []string{"sessions_5", "early_5", "gps_first"}, when)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"sessions_5", "early_5", "gps_first"}, inserted, "solo nuevos y en orden recibido")
 
@@ -77,7 +89,7 @@ func TestAchievementDAO_InsertUnlocks_BatchIdempotenteYOrden(t *testing.T) {
 	assert.False(t, first.CreatedAt.IsZero(), "el insert batch completa created_at")
 
 	// Re-evaluación: solo lo que faltaba, sin duplicar ni tocar unlocked_at.
-	inserted, err = dao.InsertUnlocks(nil, runner.ID, []string{"sessions_5", "streak_7", "early_5"}, when.Add(time.Hour))
+	inserted, err = dao.InsertUnlocksWithUnseen(nil, runner.ID, []string{"sessions_5", "streak_7", "early_5"}, when.Add(time.Hour))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"streak_7"}, inserted)
 
@@ -89,17 +101,44 @@ func TestAchievementDAO_InsertUnlocks_BatchIdempotenteYOrden(t *testing.T) {
 	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", runner.ID).Count(&count).Error)
 	assert.Equal(t, int64(4), count)
 
-	inserted, err = dao.InsertUnlocks(nil, runner.ID, nil, when)
+	var unseen int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?",
+		runner.ID, constants.GamificationSectionAchievements).Count(&unseen).Error)
+	assert.Equal(t, int64(4), unseen, "solo los 4 unlocks nuevos dejaron unseen")
+
+	inserted, err = dao.InsertUnlocksWithUnseen(nil, runner.ID, nil, when)
 	require.NoError(t, err)
 	assert.Empty(t, inserted)
 
 	// Otro usuario y otro logro del mismo usuario sí insertan.
-	inserted, err = dao.InsertUnlocks(nil, runner.ID+1, []string{"sessions_5"}, when)
+	inserted, err = dao.InsertUnlocksWithUnseen(nil, runner.ID+1, []string{"sessions_5"}, when)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"sessions_5"}, inserted)
-	inserted, err = dao.InsertUnlocks(nil, runner.ID, []string{"distance_10k"}, when)
+	inserted, err = dao.InsertUnlocksWithUnseen(nil, runner.ID, []string{"distance_10k"}, when)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"distance_10k"}, inserted)
+
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?",
+		runner.ID, constants.GamificationSectionAchievements).Count(&unseen).Error)
+	assert.Equal(t, int64(5), unseen)
+}
+
+func TestAchievementDAO_InsertUnlocksWithUnseen_UnaSolaSentencia(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	runner := setupAchievementsRunner(t, db, "19")
+
+	rec := &sqlRecorderLogger{}
+	dao := NewAchievementDao(db.Session(&gorm.Session{Logger: rec}))
+
+	inserted, err := dao.InsertUnlocksWithUnseen(nil, runner.ID, []string{"sessions_5", "early_5"}, time.Now())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sessions_5", "early_5"}, inserted)
+
+	require.Len(t, rec.statements, 1, "unlock y unseen en una sola sentencia atómica")
+	sql := strings.ToUpper(rec.statements[0])
+	assert.Contains(t, sql, "WITH INSERTED AS")
+	assert.Contains(t, sql, "INSERT INTO USER_ACHIEVEMENT_PROGRESS")
+	assert.Contains(t, sql, "INSERT INTO GAMIFICATION_UNSEEN")
 }
 
 func TestAchievementDAO_ListProgress(t *testing.T) {
@@ -222,6 +261,31 @@ func (r *sqlRecorderLogger) Error(context.Context, string, ...interface{}) {}
 func (r *sqlRecorderLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
 	sql, _ := fc()
 	r.statements = append(r.statements, sql)
+}
+
+// cteErrorPool inyecta un error de transporte sobre la sentencia atómica de
+// unlocks+unseen (empieza con WITH, así que FailingDB no la clasifica).
+type cteErrorPool struct {
+	underlying gorm.ConnPool
+}
+
+func (p *cteErrorPool) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return p.underlying.PrepareContext(ctx, query)
+}
+
+func (p *cteErrorPool) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return p.underlying.ExecContext(ctx, query, args...)
+}
+
+func (p *cteErrorPool) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	if strings.Contains(strings.ToUpper(query), "GAMIFICATION_UNSEEN") {
+		return nil, errors.New("fallo inyectado en el batch")
+	}
+	return p.underlying.QueryContext(ctx, query, args...)
+}
+
+func (p *cteErrorPool) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return p.underlying.QueryRowContext(ctx, query, args...)
 }
 
 func TestAchievementDAO_CountEarlyFinishedSessions_UnaSolaQueryAgregada(t *testing.T) {
@@ -565,7 +629,7 @@ func TestAchievementDAO_CountAttendanceDays(t *testing.T) {
 	assert.Equal(t, int64(2), n)
 }
 
-func TestAchievementDAO_InsertUnlock_ConsistenciaConGetByID(t *testing.T) {
+func TestAchievementDAO_InsertUnlockWithUnseen_ConsistenciaConGetByID(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
 	runner := setupAchievementsRunner(t, db, "09")
@@ -573,13 +637,17 @@ func TestAchievementDAO_InsertUnlock_ConsistenciaConGetByID(t *testing.T) {
 	when := time.Now()
 	require.NoError(t, db.Create(&dbs.UserAchievementProgress{UserID: runner.ID, AchievementID: "team_first", UnlockedAt: when}).Error)
 
-	inserted, err := dao.InsertUnlock(nil, runner.ID, "team_first", when)
+	inserted, err := dao.InsertUnlockWithUnseen(nil, runner.ID, "team_first", when)
 	require.NoError(t, err)
 	assert.False(t, inserted)
 
 	var count int64
 	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", runner.ID).Count(&count).Error)
 	assert.Equal(t, int64(1), count, "la PK compuesta impide la segunda fila")
+
+	var unseen int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ?", runner.ID).Count(&unseen).Error)
+	assert.Zero(t, unseen, "un unlock viejo no genera unseen nuevo")
 }
 
 // El conteo agregado de early_N propaga el error de DB sin tragarlo (el caller
@@ -620,12 +688,13 @@ func TestAchievementDAO_SumAndMaxDistance_DBError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error computing distance stats")
 }
 
-func TestAchievementDAO_InsertUnlocks_DBError(t *testing.T) {
+func TestAchievementDAO_InsertUnlocksWithUnseen_DBError(t *testing.T) {
 	db := testutils.SetupTestDB(t)
-	failing := testutils.FailingDB(t, db, nthFail("insert", 1))
+	failing := db.Session(&gorm.Session{Context: db.Statement.Context, NewDB: true})
+	failing.Statement.ConnPool = &cteErrorPool{underlying: db.Statement.ConnPool}
 	dao := NewAchievementDao(failing)
 
-	inserted, err := dao.InsertUnlocks(nil, 1, []string{"sessions_5"}, time.Now())
+	inserted, err := dao.InsertUnlocksWithUnseen(nil, 1, []string{"sessions_5"}, time.Now())
 
 	require.Error(t, err)
 	assert.Empty(t, inserted)

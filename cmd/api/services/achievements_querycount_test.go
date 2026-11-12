@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/testutils"
 )
@@ -66,4 +67,9 @@ func TestAchievementsService_EvaluateEvent_QueryCount(t *testing.T) {
 	var progress int64
 	require.NoError(t, db.Model(&dbs.UserAchievementProgress{}).Where("user_id = ?", athleteID).Count(&progress).Error)
 	assert.Equal(t, int64(5), progress, "first_session, sessions_5, early_5 y los 3 de distancia")
+
+	var unseen int64
+	require.NoError(t, db.Model(&dbs.GamificationUnseen{}).Where("user_id = ? AND section = ?",
+		athleteID, constants.GamificationSectionAchievements).Count(&unseen).Error)
+	assert.Equal(t, progress, unseen, "cada unlock nuevo persiste su unseen en la misma sentencia")
 }

@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 	"simple-arq-golang/cmd/api/utils/gametime"
@@ -32,13 +32,15 @@ type DistanceStats struct {
 type AchievementDAOInterface interface {
 	// ListProgress devuelve todas las filas de progreso del usuario.
 	ListProgress(ctx *gin.Context, userID int64) ([]dbs.UserAchievementProgress, error)
-	// InsertUnlock inserta el desbloqueo si (user_id, achievement_id) no
-	// existía (ON CONFLICT DO NOTHING); reporta si la fila es NUEVA (el push
-	// y las unseen solo aplican al primer desbloqueo).
-	InsertUnlock(ctx *gin.Context, userID int64, achievementID string, unlockedAt time.Time) (bool, error)
-	// InsertUnlocks inserta en batch los desbloqueos nuevos y devuelve SOLO
-	// los IDs realmente insertados, en el orden recibido.
-	InsertUnlocks(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error)
+	// InsertUnlockWithUnseen inserta el desbloqueo si (user_id, achievement_id)
+	// no existía y, solo si es nuevo, su fila de gamification_unseen en la
+	// MISMA sentencia atómica. Reporta si la fila es NUEVA.
+	InsertUnlockWithUnseen(ctx *gin.Context, userID int64, achievementID string, unlockedAt time.Time) (bool, error)
+	// InsertUnlocksWithUnseen hace el alta batch idempotente y registra el
+	// unseen de cada fila realmente insertada en la MISMA sentencia atómica:
+	// si la DB confirma el unlock, el unseen quedó durable aunque el caller
+	// reciba error. Devuelve SOLO los IDs insertados, en el orden recibido.
+	InsertUnlocksWithUnseen(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error)
 	// ListStamps devuelve las estampas del usuario (vitrina; vacía hasta E4).
 	ListStamps(ctx *gin.Context, userID int64) ([]dbs.GamificationStamp, error)
 
@@ -81,34 +83,38 @@ func (d *achievementDao) ListProgress(ctx *gin.Context, userID int64) ([]dbs.Use
 	return rows, nil
 }
 
-func (d *achievementDao) InsertUnlock(ctx *gin.Context, userID int64, achievementID string, unlockedAt time.Time) (bool, error) {
-	row := dbs.UserAchievementProgress{
-		UserID:        userID,
-		AchievementID: achievementID,
-		UnlockedAt:    unlockedAt,
+func (d *achievementDao) InsertUnlockWithUnseen(ctx *gin.Context, userID int64, achievementID string, unlockedAt time.Time) (bool, error) {
+	inserted, err := d.InsertUnlocksWithUnseen(ctx, userID, []string{achievementID}, unlockedAt)
+	if err != nil {
+		return false, err
 	}
-	res := d.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
-	if res.Error != nil {
-		return false, fmt.Errorf("error inserting achievement unlock: %w", res.Error)
-	}
-	return res.RowsAffected > 0, nil
+	return len(inserted) == 1, nil
 }
 
-func (d *achievementDao) InsertUnlocks(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error) {
+func (d *achievementDao) InsertUnlocksWithUnseen(ctx *gin.Context, userID int64, achievementIDs []string, unlockedAt time.Time) ([]string, error) {
 	if len(achievementIDs) == 0 {
 		return nil, nil
 	}
 	placeholders := make([]string, len(achievementIDs))
-	args := make([]interface{}, 0, len(achievementIDs)*4)
+	args := make([]interface{}, 0, len(achievementIDs)*4+3)
 	for i, id := range achievementIDs {
 		placeholders[i] = "(?, ?, ?, ?)"
 		args = append(args, userID, id, unlockedAt, unlockedAt)
 	}
+	// Unlock y unseen viajan en una sola sentencia: si Postgres la confirma,
+	// ambos quedan durables aunque la respuesta se pierda en el camino.
+	args = append(args, userID, constants.GamificationSectionAchievements, unlockedAt)
 	query := fmt.Sprintf(`
-		INSERT INTO user_achievement_progress (user_id, achievement_id, unlocked_at, created_at)
-		VALUES %s
-		ON CONFLICT (user_id, achievement_id) DO NOTHING
-		RETURNING achievement_id`, strings.Join(placeholders, ", "))
+		WITH inserted AS (
+			INSERT INTO user_achievement_progress (user_id, achievement_id, unlocked_at, created_at)
+			VALUES %s
+			ON CONFLICT (user_id, achievement_id) DO NOTHING
+			RETURNING achievement_id
+		), unseen AS (
+			INSERT INTO gamification_unseen (user_id, section, created_at)
+			SELECT ?, ?, ? FROM inserted
+		)
+		SELECT achievement_id FROM inserted`, strings.Join(placeholders, ", "))
 
 	var returned []string
 	if err := d.DB.Raw(query, args...).Scan(&returned).Error; err != nil {

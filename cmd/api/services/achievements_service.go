@@ -272,14 +272,14 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 		return nil
 	}
 
-	inserted, err := s.achievementDao.InsertUnlocks(ctx, userID, eligible, now)
+	inserted, err := s.achievementDao.InsertUnlocksWithUnseen(ctx, userID, eligible, now)
 	if err != nil {
 		customlogger.Error(ctx, "batch de unlocks falló; reintentando por logro", err, customlogger.TagMethod("EvaluateEvent"))
 		inserted, err = s.insertUnlocksFallback(ctx, userID, eligible, now)
 	}
 
 	// El orden del catálogo se impone acá: la inserción batch no garantiza
-	// el orden de RETURNING y unseen/push deben salir en el orden original.
+	// el orden de RETURNING y push debe salir en el orden original.
 	insertedSet := make(map[string]struct{}, len(inserted))
 	for _, id := range inserted {
 		insertedSet[id] = struct{}{}
@@ -291,15 +291,8 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 		}
 	}
 	if len(newlyUnlocked) > 0 {
-		// El fallo de unseen/push no deshace el desbloqueo (best-effort): la
-		// vitrina es exacta; el punto rojo y el push son avisos derivables.
-		unseen := make([]dbs.GamificationUnseen, 0, len(newlyUnlocked))
-		for range newlyUnlocked {
-			unseen = append(unseen, dbs.GamificationUnseen{UserID: userID, Section: constants.GamificationSectionAchievements})
-		}
-		if err := s.gamificationDao.InsertUnseen(ctx, unseen); err != nil {
-			customlogger.Error(ctx, "error insertando unseen de logros", err, customlogger.TagMethod("EvaluateEvent"))
-		}
+		// El unseen ya quedó durable junto con cada unlock en el DAO. El push
+		// sigue siendo best-effort: un fallo del proveedor no deshace nada.
 		for _, row := range newlyUnlocked {
 			sendPushToUser(ctx, s.pushTokenDao, s.pushClient, userID,
 				"¡Logro desbloqueado!", row.Name, "achievement_unlocked", "/achievements")
@@ -312,13 +305,14 @@ func (s *achievementsService) evaluateEvent(ctx *gin.Context, userID int64, trig
 }
 
 // insertUnlocksFallback conserva el mejor esfuerzo cuando el batch falla:
-// reintenta logro por logro (idempotente) para no perder los que sí se pueden
-// guardar, y devuelve solo los insertados junto con el primer error.
+// reintenta logro por logro (idempotente, también atómico con su unseen) para
+// no perder los que sí se pueden guardar, y devuelve solo los insertados junto
+// con el primer error.
 func (s *achievementsService) insertUnlocksFallback(ctx *gin.Context, userID int64, ids []string, unlockedAt time.Time) ([]string, error) {
 	inserted := make([]string, 0, len(ids))
 	var firstErr error
 	for _, id := range ids {
-		ok, err := s.achievementDao.InsertUnlock(ctx, userID, id, unlockedAt)
+		ok, err := s.achievementDao.InsertUnlockWithUnseen(ctx, userID, id, unlockedAt)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
