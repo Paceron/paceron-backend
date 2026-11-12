@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -241,6 +242,154 @@ func TestBuildSummary_KindsAgregaPonderadoPorDistancia(t *testing.T) {
 	// Con media simple daría 10 km/h: el resultado del volumen, no el promedio de
 	// las dos velocidades, es el que importa.
 	assert.NotEqual(t, 10.0, *summary.Totals.AchievedSpeedKph)
+}
+
+// totalsJSON serializa SummaryResponse y devuelve el bloque totals como mapa
+// JSON: el contrato que ve el cliente, no la struct de Go.
+func totalsJSON(t *testing.T, summary SummaryResponse) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(summary)
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	totals, ok := payload["totals"].(map[string]any)
+	require.True(t, ok)
+	return totals
+}
+
+// La serie más rápida no cumple el objetivo de distancia (900 m contra 1000 m) y
+// la más lenta sí (1500 m): el mejor tiempo global sigue siendo 180000, pero el
+// mejor tiempo cumplidor es el de la segunda, 220000.
+func TestBuildSummary_BestTimeMet_SerieMasRapidaNoCumpleYMasLentaSi(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 180000, ptrFloat(900), day(1)),
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 220000, ptrFloat(1500), day(2)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Equal(t, float64(180000), totals["best_time_ms"])
+	assert.Contains(t, totals, "best_time_met_ms")
+	assert.Equal(t, float64(220000), totals["best_time_met_ms"])
+}
+
+// 250 s contra un objetivo de 4 min (240 s) cumple con 5 % (umbral 252 s) y no
+// con 1 % (umbral 242,4 s): el tiempo cumplidor depende de la tolerancia de la
+// consulta, igual que compliance_rate.
+func TestBuildSummary_BestTimeMet_UsaLaToleranciaDeLaConsulta(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadTiempo, ptrInt(4), nil, 250000, nil, day(1)),
+	}
+
+	within := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+	assert.Contains(t, within, "best_time_met_ms")
+	assert.Equal(t, float64(250000), within["best_time_met_ms"], "250 s contra 240 s cumple con 5 %")
+
+	strict := totalsJSON(t, BuildSummary(rows, 0.01, 0))
+	assert.Contains(t, strict, "best_time_met_ms")
+	assert.Nil(t, strict["best_time_met_ms"], "250 s contra 240 s no cumple con 1 %")
+}
+
+// Una serie que cumple el objetivo de distancia pero no registra tiempo positivo
+// no aporta un tiempo cumplidor: best_time_met_ms es null, no 0.
+func TestBuildSummary_BestTimeMet_NullSinTiempoCumplidor(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 0, ptrFloat(1200), day(1)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Nil(t, totals["best_time_ms"])
+	assert.Contains(t, totals, "best_time_met_ms")
+	assert.Nil(t, totals["best_time_met_ms"])
+}
+
+// target_distance_m suma el objetivo de TODAS las filas de distancia con objetivo
+// positivo, válidas o no; achieved_target_distance_m solo suma lo logrado de las
+// válidas. 1000 + 500 de objetivo, 900 logrados.
+func TestBuildSummary_ObjectiveDistance_IncluyeObjetivosDeFilasValidasEInvalidas(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 180000, ptrFloat(900), day(1)),
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(500), 0, nil, day(2)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Contains(t, totals, "target_distance_m")
+	assert.Equal(t, float64(1500), totals["target_distance_m"])
+	assert.Contains(t, totals, "achieved_target_distance_m")
+	assert.Equal(t, float64(900), totals["achieved_target_distance_m"])
+}
+
+// Sin series no hay total calculable: las tres claves nuevas se serializan como
+// null, no se omiten. El cliente distingue "sin dato" de 0.
+func TestBuildSummary_NuevosTotalesNullSeSerializan(t *testing.T) {
+	totals := totalsJSON(t, BuildSummary(nil, DefaultTolerance, 0))
+
+	for _, key := range []string{"best_time_met_ms", "target_distance_m", "achieved_target_distance_m"} {
+		assert.Contains(t, totals, key)
+		assert.Nil(t, totals[key], key)
+	}
+}
+
+// Con objetivo de distancia positivo y 0 m logrados, el objetivo se conserva y el
+// logrado es 0, no null: hay un total calculado.
+func TestBuildSummary_ObjectiveDistance_ObjetivoSinLogradoValeCero(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 240000, ptrFloat(0), day(1)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Contains(t, totals, "target_distance_m")
+	assert.Equal(t, float64(1000), totals["target_distance_m"])
+	assert.Contains(t, totals, "achieved_target_distance_m")
+	assert.Equal(t, float64(0), totals["achieved_target_distance_m"])
+}
+
+// Una fila inválida con distancia lograda positiva no aporta a lo logrado:
+// ritmo_continuo exige tiempo y distancia, así que sin tiempo la serie no entra,
+// aunque su objetivo de distancia sí sume.
+func TestBuildSummary_ObjectiveDistance_InvalidaConLogradoPositivoNoSuma(t *testing.T) {
+	row := scopedRow(kindRitmoContinuo, nil, ptrInt(500), 0, ptrFloat(400), day(1))
+	require.False(t, isValidSeries(row.Kind, row.Series), "sin tiempo no es válida")
+
+	totals := totalsJSON(t, BuildSummary([]ScopedSeries{row}, DefaultTolerance, 0))
+
+	assert.Contains(t, totals, "target_distance_m")
+	assert.Equal(t, float64(500), totals["target_distance_m"], "el objetivo de una inválida sí suma")
+	assert.Contains(t, totals, "achieved_target_distance_m")
+	assert.Equal(t, float64(0), totals["achieved_target_distance_m"], "la distancia lograda de una inválida no suma")
+}
+
+// Un tipo temporal no declara eje de distancia: su TargetDistanceM positivo no
+// crea un objetivo de distancia, aunque el campo venga cargado.
+func TestBuildSummary_NoObjectiveDistance_TemporalNoDeclaraDistancia(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadTiempo, ptrInt(4), ptrInt(1000), 240000, nil, day(1)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Contains(t, totals, "target_distance_m")
+	assert.Nil(t, totals["target_distance_m"])
+	assert.Contains(t, totals, "achieved_target_distance_m")
+	assert.Nil(t, totals["achieved_target_distance_m"])
+}
+
+// Sin ningún objetivo positivo de distancia en el scope, ambos campos son null;
+// la clave tiene que existir igual, para que el cliente distinga null de ausente.
+func TestBuildSummary_NoObjectiveDistance_SinObjetivosVieneNull(t *testing.T) {
+	rows := []ScopedSeries{
+		scopedRow(kindVelocidadDistancia, nil, nil, 15000, ptrFloat(100), day(1)),
+	}
+
+	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
+
+	assert.Contains(t, totals, "target_distance_m")
+	assert.Nil(t, totals["target_distance_m"])
+	assert.Contains(t, totals, "achieved_target_distance_m")
+	assert.Nil(t, totals["achieved_target_distance_m"])
 }
 
 // ---------- timeseries ----------

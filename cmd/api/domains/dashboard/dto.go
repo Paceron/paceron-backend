@@ -138,6 +138,17 @@ type SummaryTotals struct {
 	// con delta_pct.
 	ComplianceRate *float64 `json:"compliance_rate"`
 	BestTimeMs     *int64   `json:"best_time_ms"`
+	// BestTimeMetMs es el menor tiempo de las series que cumplieron su objetivo,
+	// con la tolerancia de la consulta. Null cuando ninguna serie cumplidora
+	// registró un tiempo positivo.
+	BestTimeMetMs *int64 `json:"best_time_met_ms"`
+	// TargetDistanceM suma los objetivos de distancia de las filas cuyo kind
+	// declara ese eje, válidas o no. Null cuando no hay ninguno.
+	TargetDistanceM *float64 `json:"target_distance_m"`
+	// AchievedTargetDistanceM suma solo la distancia lograda positiva de esas
+	// filas válidas. Null junto a TargetDistanceM; 0 cuando hay objetivo pero
+	// ningún logrado positivo.
+	AchievedTargetDistanceM *float64 `json:"achieved_target_distance_m"`
 }
 
 type SummaryResponse struct {
