@@ -64,6 +64,9 @@ type AchievementDAOInterface interface {
 	ListFinishedSessionStarts(ctx *gin.Context, userID int64) ([]time.Time, error)
 	// CountAttendanceDays: días distintos de calendario con asistencia.
 	CountAttendanceDays(ctx *gin.Context, userID int64) (int64, error)
+	// CountAttendanceDaysByUsers agrupa en una sola lectura los días distintos
+	// con asistencia de varios usuarios (solo aparecen los que tienen filas).
+	CountAttendanceDaysByUsers(ctx *gin.Context, userIDs []int64) (map[int64]int64, error)
 }
 
 type achievementDao struct {
@@ -285,4 +288,29 @@ func (d *achievementDao) CountAttendanceDays(ctx *gin.Context, userID int64) (in
 		return 0, fmt.Errorf("error counting attendance days: %w", err)
 	}
 	return n, nil
+}
+
+func (d *achievementDao) CountAttendanceDaysByUsers(ctx *gin.Context, userIDs []int64) (map[int64]int64, error) {
+	counts := make(map[int64]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+	var rows []struct {
+		UserID int64
+		Days   int64
+	}
+	err := d.DB.Raw(`
+		SELECT att.user_id AS user_id, COUNT(DISTINCT gcd.date) AS days
+		FROM attendances att
+		INNER JOIN group_calendar_days gcd
+			ON gcd.session_instance_id = att.training_session_id
+		WHERE att.user_id IN ?
+		GROUP BY att.user_id`, userIDs).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("error counting attendance days by users: %w", err)
+	}
+	for _, row := range rows {
+		counts[row.UserID] = row.Days
+	}
+	return counts, nil
 }

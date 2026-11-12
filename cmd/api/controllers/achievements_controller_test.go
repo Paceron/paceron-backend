@@ -60,7 +60,14 @@ func (m *mockAchievementsService) EvaluateEventWithSnapshot(ctx *gin.Context, us
 	return nil
 }
 
+func (m *mockAchievementsService) EvaluateEventBatch(ctx *gin.Context, userIDs []int64, trigger services.AchievementTrigger) error {
+	return nil
+}
+
 func (m *mockAchievementsService) OnEvent(ctx *gin.Context, userID int64, trigger services.AchievementTrigger) {
+}
+
+func (m *mockAchievementsService) OnEventBatch(ctx *gin.Context, userIDs []int64, trigger services.AchievementTrigger) {
 }
 
 func setupAchievementsRouter(t *testing.T, svc services.AchievementsServiceInterface, authUserID int64) *gin.Engine {

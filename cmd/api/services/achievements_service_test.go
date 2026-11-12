@@ -243,6 +243,17 @@ func (f *fakeAchievementDao) CountAttendanceDays(ctx *gin.Context, userID int64)
 	return f.attendanceDays, nil
 }
 
+func (f *fakeAchievementDao) CountAttendanceDaysByUsers(ctx *gin.Context, userIDs []int64) (map[int64]int64, error) {
+	if f.queriesErr != nil {
+		return nil, f.queriesErr
+	}
+	counts := make(map[int64]int64, len(userIDs))
+	for _, userID := range userIDs {
+		counts[userID] = f.attendanceDays
+	}
+	return counts, nil
+}
+
 func newAchievementsTestService(dao *fakeAchievementDao, gamDao *mockGamificationDao, streaks StreakServiceInterface, tokens *fakePushTokenDAO, client *stubPushClient) AchievementsServiceInterface {
 	return NewAchievementsService(dao, gamDao, streaks, tokens, client)
 }

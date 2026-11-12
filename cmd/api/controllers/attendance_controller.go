@@ -613,6 +613,7 @@ func (ac *attendanceController) BulkSaveAttendance(c *gin.Context) {
 
 	// Un evento por corredor afectado (created o updated, D13): cada uno
 	// patchea su fila del roster en el canal de la sesión.
+	achievementUserIDs := make([]int64, 0, len(rows))
 	for i := range rows {
 		ac.emitAttendanceEvent(rows[i].TrainingSessionID, &attendanceEvent{
 			UserID:       rows[i].UserID,
@@ -621,10 +622,12 @@ func (ac *attendanceController) BulkSaveAttendance(c *gin.Context) {
 			RegisteredAt: &rows[i].CreatedAt,
 			AttendanceID: &rows[i].AttendanceID,
 		})
-		// Hook de logros (D5): misma carga masiva, por asistente.
-		if ac.achievementsTrigger != nil {
-			ac.achievementsTrigger.OnEvent(c, rows[i].UserID, services.AchievementTriggerAttendance)
-		}
+		achievementUserIDs = append(achievementUserIDs, rows[i].UserID)
+	}
+	// Hook de logros (D7): una sola evaluación batch por lote, con las filas
+	// insertadas y actualizadas; los frames WS por fila no cambian.
+	if ac.achievementsTrigger != nil && len(achievementUserIDs) > 0 {
+		ac.achievementsTrigger.OnEventBatch(c, achievementUserIDs, services.AchievementTriggerAttendance)
 	}
 
 	c.JSON(http.StatusOK, result)

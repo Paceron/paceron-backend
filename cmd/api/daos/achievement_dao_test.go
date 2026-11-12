@@ -629,6 +629,71 @@ func TestAchievementDAO_CountAttendanceDays(t *testing.T) {
 	assert.Equal(t, int64(2), n)
 }
 
+func TestAchievementDAO_CountAttendanceDaysByUsers(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewAchievementDao(db)
+	runnerA := setupAchievementsRunner(t, db, "08a")
+	runnerB := setupAchievementsRunner(t, db, "08b")
+	runnerC := setupAchievementsRunner(t, db, "08c")
+
+	empty, err := dao.CountAttendanceDaysByUsers(nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+
+	d1 := time.Date(2026, 10, 5, 15, 0, 0, 0, time.UTC)
+	d2 := time.Date(2026, 10, 6, 15, 0, 0, 0, time.UTC)
+	require.NoError(t, db.Create(&dbs.GroupCalendarDay{GroupID: 1, Date: d1, Kind: "training", SessionInstanceID: achievementsInstanceID(510)}).Error)
+	require.NoError(t, db.Create(&dbs.GroupCalendarDay{GroupID: 1, Date: d2, Kind: "training", SessionInstanceID: achievementsInstanceID(511)}).Error)
+	require.NoError(t, db.Create(&dbs.GroupCalendarDay{GroupID: 2, Date: d2, Kind: "training", SessionInstanceID: achievementsInstanceID(512)}).Error)
+
+	// A: dos días distintos, incluso desde equipos distintos. B y C: un día,
+	// compartido entre dos grupos para probar el COUNT(DISTINCT date).
+	require.NoError(t, db.Create(&dbs.Attendance{TeamID: 1, TrainingSessionID: 510, UserID: runnerA.ID, Source: "qr"}).Error)
+	require.NoError(t, db.Create(&dbs.Attendance{TeamID: 2, TrainingSessionID: 511, UserID: runnerA.ID, Source: "manual"}).Error)
+	require.NoError(t, db.Create(&dbs.Attendance{TeamID: 2, TrainingSessionID: 512, UserID: runnerA.ID, Source: "qr"}).Error)
+	require.NoError(t, db.Create(&dbs.Attendance{TeamID: 1, TrainingSessionID: 511, UserID: runnerB.ID, Source: "qr"}).Error)
+	require.NoError(t, db.Create(&dbs.Attendance{TeamID: 1, TrainingSessionID: 512, UserID: runnerC.ID, Source: "qr"}).Error)
+
+	counts, err := dao.CountAttendanceDaysByUsers(nil, []int64{runnerA.ID, runnerB.ID, runnerC.ID, runnerA.ID + 999})
+	require.NoError(t, err)
+	assert.Equal(t, map[int64]int64{
+		runnerA.ID: 2,
+		runnerB.ID: 1,
+		runnerC.ID: 1,
+	}, counts, "solo los usuarios con filas aparecen; los días se agrupan por usuario")
+}
+
+func TestAchievementDAO_CountAttendanceDaysByUsers_QueryCountConstante(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	counting, counter := countingDB(db)
+	dao := NewAchievementDao(counting)
+
+	_, err := dao.CountAttendanceDaysByUsers(nil, []int64{1})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), *counter, "la agregación es una sola lectura")
+
+	*counter = 0
+	users := make([]int64, 50)
+	for i := range users {
+		users[i] = int64(i + 1)
+	}
+	_, err = dao.CountAttendanceDaysByUsers(nil, users)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), *counter, "el roster grande no multiplica queries")
+}
+
+func TestAchievementDAO_CountAttendanceDaysByUsers_DBError(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	failing := testutils.FailingDB(t, db, nthFail("select", 1))
+	dao := NewAchievementDao(failing)
+
+	counts, err := dao.CountAttendanceDaysByUsers(nil, []int64{1, 2})
+
+	require.Error(t, err)
+	assert.Nil(t, counts)
+	assert.Contains(t, err.Error(), "error counting attendance days by users")
+}
+
 func TestAchievementDAO_InsertUnlockWithUnseen_ConsistenciaConGetByID(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewAchievementDao(db)
