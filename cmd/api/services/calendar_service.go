@@ -1152,10 +1152,11 @@ func (s *calendarService) DeleteDay(ctx *gin.Context, groupID, callerID int64, d
 		if err := txCalendarDao.Delete(ctx, groupID, date); err != nil {
 			return err
 		}
+		superseded := make([]int64, 0, 1)
 		if txExisting.SessionInstanceID != nil {
-			return s.deleteSupersededInstance(ctx, tx, *txExisting.SessionInstanceID)
+			superseded = append(superseded, *txExisting.SessionInstanceID)
 		}
-		return nil
+		return s.deleteSupersededInstances(ctx, tx, superseded)
 	})
 	if err != nil {
 		if errors.Is(err, ErrCalendarDayClosed) {
