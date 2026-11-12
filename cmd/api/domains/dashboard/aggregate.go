@@ -249,9 +249,7 @@ func (m *setMetrics) targetedSeriesRows() []ScopedSeries {
 // agrega el service desde una SEGUNDA query: el WHERE de las series ya sacó las
 // sesiones wip del set, así que contarlas ahí daría siempre cero.
 func (m *setMetrics) dataQuality(openSessions int) DataQuality {
-	quality := dataQualityFromSeries(seriesOf(m.rows))
-	quality.OpenSessions = openSessions
-	return quality
+	return BuildDataQuality(m.rows, openSessions)
 }
 
 func seriesOf(rows []ScopedSeries) []Series {
@@ -368,7 +366,7 @@ func BuildTimeSeries(rows []ScopedSeries, granularity string, tolerance float64,
 		Granularity: granularity,
 		Units:       UnitsBlock,
 		Buckets:     buckets,
-		DataQuality: newSetMetrics(rows).dataQuality(openSessions),
+		DataQuality: BuildDataQuality(rows, openSessions),
 	}
 }
 

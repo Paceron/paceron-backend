@@ -327,7 +327,7 @@ func (s *dashboardService) Leaderboard(ctx *gin.Context, callerID int64, query M
 			byAthlete[athleteID], prepared.Tolerance))
 	}
 
-	quality := dashboard.BuildSummary(rows, prepared.Tolerance, openSessions).DataQuality
+	quality := dashboard.BuildDataQuality(rows, openSessions)
 	response := dashboard.BuildLeaderboard(entries, prepared.Sort, prepared.Order,
 		prepared.Page, prepared.PageSize, callerID, quality)
 	return &response, nil
@@ -353,7 +353,7 @@ func (s *dashboardService) ExerciseSeries(ctx *gin.Context, callerID, catalogExe
 	if err != nil {
 		return nil, err
 	}
-	quality := dashboard.BuildSummary(rows, prepared.Tolerance, openSessions).DataQuality
+	quality := dashboard.BuildDataQuality(rows, openSessions)
 	response := dashboard.BuildSeriesDetail(rows, prepared.Tolerance, prepared.Page, prepared.PageSize, quality)
 	return &response, nil
 }
@@ -389,9 +389,6 @@ func (s *dashboardService) Comparisons(ctx *gin.Context, callerID int64, request
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateAthletes(ctx, scope, query.GroupIDs, query.AthleteUserIDs); err != nil {
-		return nil, err
-	}
 	if len(query.AthleteUserIDs) == 0 {
 		query.AthleteUserIDs, err = s.dashboardDao.ScopeAthletes(ctx, query.GroupIDs)
 		if err != nil {
@@ -405,7 +402,7 @@ func (s *dashboardService) Comparisons(ctx *gin.Context, callerID int64, request
 	if err != nil {
 		return nil, err
 	}
-	quality := dashboard.BuildSummary(rows, query.Tolerance, openSessions).DataQuality
+	quality := dashboard.BuildDataQuality(rows, openSessions)
 	response := dashboard.BuildComparisons(rows, query.Tolerance, quality)
 	names, err := s.athleteNames(ctx, query.AthleteUserIDs)
 	if err != nil {
@@ -468,7 +465,7 @@ func (s *dashboardService) Periods(ctx *gin.Context, callerID int64, request das
 
 	// El data_quality de la respuesta es el del período actual: es el que la
 	// pantalla muestra junto a los KPIs que está mirando.
-	quality := dashboard.BuildSummary(currentRows, base.Tolerance, openSessions).DataQuality
+	quality := dashboard.BuildDataQuality(currentRows, openSessions)
 	response := dashboard.BuildPeriods(currentFrom, currentTo, previousFrom, previousTo,
 		currentRows, previousRows, base.Tolerance, quality)
 	return &response, nil
@@ -1268,6 +1265,11 @@ func (s *dashboardService) resolveTeamGroup(ctx *gin.Context, scope *DashboardSc
 	groupIDs := scope.GroupsForTeam(*teamID)
 	if groupID == nil {
 		return groupIDs, nil
+	}
+	// El scope ya trae los grupos legibles: consultar el DAO solo hace falta para
+	// distinguir 404 de 403 cuando el grupo no está en el scope.
+	if _, inScope := scope.Groups[*groupID]; inScope {
+		return []int64{*groupID}, nil
 	}
 	group, err := s.scopeService.FindGroup(ctx, *groupID)
 	if err != nil {
