@@ -360,6 +360,16 @@ func TestDashboardDao_ScopeDateRange(t *testing.T) {
 	assert.Equal(t, "2026-09-20", maxDate.Format("2006-01-02"))
 }
 
+// scopeDateRangeIsolatedCase fija una expectativa directa para un único filtro:
+// si su predicado desaparece, el rango deja de ser nil/nil (caso de exclusión) o
+// deja de existir (caso permitido).
+type scopeDateRangeIsolatedCase struct {
+	name    string
+	groupID int64
+	wantMin *time.Time
+	wantMax *time.Time
+}
+
 // scopeDateRangeFilterFixture cubre los filtros de ScopeDateRange: rol main,
 // runner status permitidos, membresía por ventana y feedback sin runner_session.
 // expectedMin/Max son las fechas que sí cumplen todos los filtros en groupID.
@@ -372,6 +382,7 @@ type scopeDateRangeFilterFixture struct {
 	expectedMin     time.Time
 	expectedMax     time.Time
 	otherGroupDate  time.Time
+	isolated        []scopeDateRangeIsolatedCase
 }
 
 func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scopeDateRangeFilterFixture {
@@ -510,6 +521,106 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 	addFeedback(si, missingExerciseID, active.ID, day(27), false)
 	addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, day(27))
 
+	// Casos aislados: cada uno tiene un único grupo y una expectativa directa,
+	// así una regresión en un predicado puntual no queda tapada por otro caso.
+	wantDate := day(10)
+	isolated := []scopeDateRangeIsolatedCase{}
+	addCase := func(name string, wantMin, wantMax *time.Time, build func(groupID int64)) {
+		caseGroup := testGroup(db, "grupo_scope_case_"+name+"_"+tag, team.ID)
+		build(caseGroup.ID)
+		isolated = append(isolated, scopeDateRangeIsolatedCase{
+			name: name, groupID: caseGroup.ID, wantMin: wantMin, wantMax: wantMax,
+		})
+	}
+
+	addCase("rol_main", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-main")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("rol_no_main", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, _, warmupEx, cooldownEx := addSession(groupID, wantDate, "scope-"+tag+"-case-role")
+		addFeedback(si, warmupEx, active.ID, wantDate, false)
+		addFeedback(si, cooldownEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("status_finished", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-finished")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("status_interrupted", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-interrupted")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusInterrupted, wantDate)
+	})
+	addCase("status_wip", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-wip")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusWip, wantDate)
+	})
+	addCase("membership_future", nil, nil, func(groupID int64) {
+		addMembership(groupID, futureOnly.ID, futureStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-future")
+		addFeedback(si, mainEx, futureOnly.ID, wantDate, false)
+		addRunner(si, futureOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_closed", nil, nil, func(groupID int64) {
+		addMembership(groupID, closedOnly.ID, membershipStart, &closedEnd, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-closed")
+		addFeedback(si, mainEx, closedOnly.ID, wantDate, false)
+		addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_none", nil, nil, func(groupID int64) {
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-none")
+		addFeedback(si, mainEx, noMembership.ID, wantDate, false)
+		addRunner(si, noMembership.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_soft_deleted", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, edgeMin.ID, membershipStart, nil, &deletedAt)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-soft")
+		addFeedback(si, mainEx, edgeMin.ID, wantDate, false)
+		addRunner(si, edgeMin.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_start_boundary", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, edgeMax.ID, wantDate, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-start")
+		addFeedback(si, mainEx, edgeMax.ID, wantDate, false)
+		addRunner(si, edgeMax.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("membership_end_boundary", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, closedOnly.ID, membershipStart, &wantDate, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-end")
+		addFeedback(si, mainEx, closedOnly.ID, wantDate, false)
+		addRunner(si, closedOnly.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("feedback_deleted", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-deleted")
+		addFeedback(si, mainEx, active.ID, wantDate, true)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("exercise_missing", nil, nil, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, _, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-missing-ex")
+		const missingID int64 = 9000000002
+		require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+			SessionInstanceID: si, ExerciseInstanceID: missingID, Role: string(constants.SessionExerciseRoleMain),
+		}).Error)
+		addFeedback(si, missingID, active.ID, wantDate, false)
+		addRunner(si, active.ID, runnersession.RunnerSessionStatusFinished, wantDate)
+	})
+	addCase("runner_orphan", &wantDate, &wantDate, func(groupID int64) {
+		addMembership(groupID, active.ID, membershipStart, nil, nil)
+		si, mainEx, _, _ := addSession(groupID, wantDate, "scope-"+tag+"-case-orphan")
+		addFeedback(si, mainEx, active.ID, wantDate, false)
+	})
+
 	otherDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	si, mainEx, _, _ = addSession(otherGroup.ID, otherDate, "scope-"+tag+"-other")
 	addFeedback(si, mainEx, active.ID, otherDate, false)
@@ -522,6 +633,7 @@ func newScopeDateRangeFilterFixture(t *testing.T, db *gorm.DB, tag string) *scop
 	return &scopeDateRangeFilterFixture{
 		db: db, dao: NewDashboardDao(db), groupID: group.ID, otherGroupID: otherGroup.ID,
 		excludedGroupID: excludedGroup.ID, expectedMin: day(10), expectedMax: day(20), otherGroupDate: otherDate,
+		isolated: isolated,
 	}
 }
 
@@ -545,9 +657,10 @@ func assertSameRange(t *testing.T, wantMin, wantMax, gotMin, gotMax *time.Time) 
 
 // D4: la prueba de referencia fija el rango con todos los filtros de series.
 // Cada caso inválido queda después del máximo válido, así que si un filtro se
-// rompe MAX cambia y el test falla. El mínimo cubre membresía soft-deleted,
-// borde de fin y runner interrupted; el máximo cubre feedback huérfano y borde
-// de inicio de membresía.
+// rompe MAX cambia; además, los casos aislados fijan una expectativa directa por
+// predicado (exclusión -> nil, permitido -> la fecha). El mínimo cubre membresía
+// soft-deleted, borde de fin y runner interrupted; el máximo cubre feedback
+// huérfano y borde de inicio de membresía.
 func TestDashboardDao_ScopeDateRangeFiltros(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	fixture := newScopeDateRangeFilterFixture(t, db, "filtros")
@@ -558,6 +671,14 @@ func TestDashboardDao_ScopeDateRangeFiltros(t *testing.T) {
 	require.NotNil(t, maxDate)
 	assert.Equal(t, fixture.expectedMin.Format("2006-01-02"), minDate.Format("2006-01-02"))
 	assert.Equal(t, fixture.expectedMax.Format("2006-01-02"), maxDate.Format("2006-01-02"))
+
+	for _, tc := range fixture.isolated {
+		t.Run(tc.name, func(t *testing.T) {
+			minDate, maxDate, err := fixture.dao.ScopeDateRange(nil, []int64{tc.groupID})
+			require.NoError(t, err)
+			assertSameRange(t, tc.wantMin, tc.wantMax, minDate, maxDate)
+		})
+	}
 
 	minDate, maxDate, err = fixture.dao.ScopeDateRange(nil, []int64{fixture.otherGroupID})
 	require.NoError(t, err)
