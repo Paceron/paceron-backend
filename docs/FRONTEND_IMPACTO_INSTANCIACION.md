@@ -579,13 +579,15 @@ Self-only. Body: `{"section": "streaks|achievements|competitions", "team_id": 1}
 
 ### 16.3 NUEVOS — logros (catálogo, vitrina, estampas)
 
-- **`GET /achievements/catalog`** — cualquier usuario autenticado (sin ownership). `200` con las 21 filas del catálogo (`{"data": [...]}`), cada fila `{id, family, name, description, icon_key, threshold, unit}`:
+- **`GET /achievements/catalog`** — cualquier usuario autenticado (sin ownership). `200` con las 21 filas del catálogo (`{"data": [...]}`), cada fila `{id, family, name, description, icon_key, icon_name, threshold, unit}`:
 
   ```json
   {"data": [
-    {"id": "streak_7", "family": "consistency", "name": "Racha de 7", "description": "7 días seguidos con entrenamiento completo", "icon_key": "streak_7", "threshold": 7, "unit": "days"}
+    {"id": "streak_7", "family": "consistency", "name": "Racha de 7", "description": "7 días seguidos con entrenamiento completo", "icon_key": "streak_7", "icon_name": "fire", "threshold": 7, "unit": "days"}
   ]}
   ```
+
+  `icon_key` es la clave semántica del logro (igual a `id`); `icon_name` es el nombre exacto de un glyph de `MaterialCommunityIcons` disponible en `@expo/vector-icons` `^15.0.3`, listo para pasar a la prop `name` (ej. `streak_7` → `fire`).
 
 - **`GET /users/{id}/achievements`** — self-only. Merge catálogo + progreso: las 21 filas **siempre presentes**, con `unlocked_at: null` si no desbloqueado. `200`:
 

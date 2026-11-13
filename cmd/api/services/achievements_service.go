@@ -118,6 +118,7 @@ func toAchievementResponse(row appconstants.AchievementRow) gamification.Achieve
 	return gamification.AchievementResponse{
 		ID: row.ID, Family: row.Family, Name: row.Name,
 		Description: row.Description, IconKey: row.IconKey,
+		IconName:  row.IconName,
 		Threshold: row.Threshold, Unit: row.Unit,
 	}
 }

@@ -10,6 +10,7 @@ type AchievementResponse struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	IconKey     string  `json:"icon_key"`
+	IconName    string  `json:"icon_name"`
 	Threshold   float64 `json:"threshold"`
 	Unit        string  `json:"unit"`
 }
