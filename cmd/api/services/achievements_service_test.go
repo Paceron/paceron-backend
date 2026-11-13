@@ -5,6 +5,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -580,6 +581,54 @@ func TestAchievementsService_GetCatalog(t *testing.T) {
 	for _, row := range catalog {
 		assert.NotEmpty(t, row.ID)
 		assert.NotEmpty(t, row.Unit)
+	}
+
+	// El contrato se afirma sobre el JSON serializado para no depender de un
+	// campo DTO que todavía no existe.
+	raw, err := json.Marshal(catalog)
+	require.NoError(t, err)
+	var rows []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &rows))
+	require.Len(t, rows, 21)
+
+	expectedIconNames := map[string]string{
+		"first_session":       "run",
+		"streak_3":            "fire",
+		"streak_7":            "fire",
+		"streak_14":           "fire",
+		"streak_30":           "fire",
+		"streak_60":           "fire",
+		"distance_10k":        "map-marker-distance",
+		"distance_50k":        "map-marker-distance",
+		"distance_100k":       "map-marker-distance",
+		"distance_42k_single": "run-fast",
+		"sessions_5":          "calendar-check",
+		"sessions_25":         "calendar-check",
+		"sessions_50":         "calendar-check",
+		"sessions_100":        "calendar-check",
+		"sessions_200":        "calendar-check",
+		"gps_first":           "map-marker-path",
+		"gps_10":              "map-marker-path",
+		"gps_50":              "map-marker-path",
+		"early_5":             "weather-sunset-up",
+		"team_first":          "account-group",
+		"team_10":             "account-multiple-check",
+	}
+
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		id, ok := row["id"].(string)
+		require.True(t, ok, "cada fila del catálogo debe exponer id string")
+		_, duplicate := seen[id]
+		assert.False(t, duplicate, "id duplicado en el catálogo: %s", id)
+		seen[id] = struct{}{}
+
+		assert.Equal(t, id, row["icon_key"], "icon_key debe seguir igual a id para %s", id)
+		assert.Equal(t, expectedIconNames[id], row["icon_name"], "icon_name de %s", id)
+	}
+	assert.Len(t, seen, len(expectedIconNames))
+	for id := range expectedIconNames {
+		assert.Contains(t, seen, id, "falta el logro %s en el catálogo", id)
 	}
 }
 

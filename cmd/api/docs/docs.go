@@ -12473,6 +12473,9 @@ const docTemplate = `{
                 "icon_key": {
                     "type": "string"
                 },
+                "icon_name": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },

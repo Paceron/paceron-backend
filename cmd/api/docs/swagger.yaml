@@ -1802,6 +1802,8 @@ definitions:
         type: string
       icon_key:
         type: string
+      icon_name:
+        type: string
       id:
         type: string
       name:
