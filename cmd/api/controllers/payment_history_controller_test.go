@@ -16,7 +16,7 @@ import (
 )
 
 type mockPaymentHistoryService struct {
-	listReceivedFn       func(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
+	listReceivedFn       func(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error)
 	listHistoryFn        func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	getReceivedSummaryFn func(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
 	getUpcomingFn        func(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
@@ -26,8 +26,8 @@ func (m *mockPaymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64) 
 	return m.getUpcomingFn(ctx, userID)
 }
 
-func (m *mockPaymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
-	return m.listReceivedFn(ctx, sellerID, teamID, statusGroup, page)
+func (m *mockPaymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
+	return m.listReceivedFn(ctx, sellerID, filter, page)
 }
 
 func (m *mockPaymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
@@ -52,16 +52,26 @@ func paymentHistoryRequest(target string, authenticated bool) (*gin.Context, *ht
 // --- ListReceived ---
 
 func TestPaymentHistoryController_ListReceived_Success(t *testing.T) {
-	svc := &mockPaymentHistoryService{listReceivedFn: func(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
+	svc := &mockPaymentHistoryService{listReceivedFn: func(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
 		assert.Equal(t, int64(7), sellerID)
-		if assert.NotNil(t, teamID) {
-			assert.Equal(t, int64(12), *teamID)
+		if assert.NotNil(t, filter.TeamID) {
+			assert.Equal(t, int64(12), *filter.TeamID)
 		}
-		assert.Equal(t, "rejected", statusGroup)
+		if assert.NotNil(t, filter.PayerID) {
+			assert.Equal(t, int64(24), *filter.PayerID)
+		}
+		assert.Equal(t, "rejected", filter.StatusGroup)
 		assert.Equal(t, 2, page)
+		if assert.NotNil(t, filter.From) {
+			assert.Equal(t, "2026-10-01", filter.From.Format("2006-01-02"))
+		}
+		if assert.NotNil(t, filter.To) {
+			// `to` inclusivo en la API: el 31/10 se convierte en el 01/11 exclusivo.
+			assert.Equal(t, "2026-11-01", filter.To.Format("2006-01-02"))
+		}
 		return &payment.ReceivedPaymentsResponse{Payments: []payment.ReceivedPaymentItem{{ID: 1}}, HasMore: true}, nil
 	}}
-	c, w := paymentHistoryRequest("/api/v1/payments/received?page=2&team_id=12&status=rejected", true)
+	c, w := paymentHistoryRequest("/api/v1/payments/received?page=2&team_id=12&payer_id=24&from=2026-10-01&to=2026-10-31&status=rejected", true)
 
 	NewPaymentHistoryController(svc).ListReceived(c)
 
@@ -70,9 +80,12 @@ func TestPaymentHistoryController_ListReceived_Success(t *testing.T) {
 }
 
 func TestPaymentHistoryController_ListReceived_Defaults(t *testing.T) {
-	svc := &mockPaymentHistoryService{listReceivedFn: func(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
-		assert.Nil(t, teamID)
-		assert.Equal(t, "", statusGroup)
+	svc := &mockPaymentHistoryService{listReceivedFn: func(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
+		assert.Nil(t, filter.TeamID)
+		assert.Nil(t, filter.PayerID)
+		assert.Nil(t, filter.From)
+		assert.Nil(t, filter.To)
+		assert.Equal(t, "", filter.StatusGroup)
 		assert.Equal(t, 1, page)
 		return &payment.ReceivedPaymentsResponse{Payments: []payment.ReceivedPaymentItem{}}, nil
 	}}
@@ -84,12 +97,32 @@ func TestPaymentHistoryController_ListReceived_Defaults(t *testing.T) {
 }
 
 func TestPaymentHistoryController_ListReceived_BadQuery(t *testing.T) {
-	for _, target := range []string{"/api/v1/payments/received?page=abc", "/api/v1/payments/received?team_id=x"} {
+	for _, target := range []string{
+		"/api/v1/payments/received?page=abc",
+		"/api/v1/payments/received?team_id=x",
+		"/api/v1/payments/received?payer_id=x",
+		"/api/v1/payments/received?from=2026-13-01",
+		"/api/v1/payments/received?to=31/10/2026",
+		"/api/v1/payments/received?from=2026-10-10&to=2026-10-01",
+	} {
 		c, w := paymentHistoryRequest(target, true)
 		NewPaymentHistoryController(&mockPaymentHistoryService{}).ListReceived(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code, target)
 		assert.Contains(t, w.Body.String(), "INVALID_QUERY", target)
 	}
+}
+
+func TestPaymentHistoryController_ListReceived_OnlyFrom(t *testing.T) {
+	svc := &mockPaymentHistoryService{listReceivedFn: func(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
+		if assert.NotNil(t, filter.From) {
+			assert.Equal(t, "2026-10-01", filter.From.Format("2006-01-02"))
+		}
+		assert.Nil(t, filter.To)
+		return &payment.ReceivedPaymentsResponse{Payments: []payment.ReceivedPaymentItem{}}, nil
+	}}
+	c, w := paymentHistoryRequest("/api/v1/payments/received?from=2026-10-01", true)
+	NewPaymentHistoryController(svc).ListReceived(c)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestPaymentHistoryController_ListReceived_ServiceErrors(t *testing.T) {
@@ -98,7 +131,7 @@ func TestPaymentHistoryController_ListReceived_ServiceErrors(t *testing.T) {
 		errors.New("db caída"): http.StatusInternalServerError,
 	}
 	for svcErr, want := range cases {
-		svc := &mockPaymentHistoryService{listReceivedFn: func(*gin.Context, int64, *int64, string, int) (*payment.ReceivedPaymentsResponse, error) {
+		svc := &mockPaymentHistoryService{listReceivedFn: func(*gin.Context, int64, payment.ReceivedFilter, int) (*payment.ReceivedPaymentsResponse, error) {
 			return nil, svcErr
 		}}
 		c, w := paymentHistoryRequest("/api/v1/payments/received?page=0", true)

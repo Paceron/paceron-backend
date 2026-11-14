@@ -31,9 +31,13 @@ var netAmountExpr = "CASE WHEN p.status = 'approved' THEN (p.amount - " + feeAmo
 const withMercadoPagoPaymentID = "COALESCE(p.payment_id, '') <> ''"
 
 // ReceivedPaymentFilters son los filtros opcionales del listado de cobros.
+// From es inclusivo y To es exclusivo.
 type ReceivedPaymentFilters struct {
 	TeamID   *int64
+	PayerID  *int64
 	Statuses []string
+	From     *time.Time
+	To       *time.Time
 }
 
 // ReceivedPaymentRow es un cobro de membresía de equipo con su cuota, equipo y
@@ -127,6 +131,10 @@ type TierSubscriptionRow struct {
 type PaymentHistoryDaoInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, filters ReceivedPaymentFilters, page, pageSize int) ([]ReceivedPaymentRow, bool, error)
 	ListReceivedBetween(ctx *gin.Context, sellerID int64, from, to time.Time) ([]ReceivedPaymentRow, error)
+	// ListReceivedAll es el historial completo del vendedor. Se usa para los
+	// KPIs de rechazadas y el selector de corredores, que no dependen de la
+	// ventana de 6 meses del gráfico.
+	ListReceivedAll(ctx *gin.Context, sellerID int64) ([]ReceivedPaymentRow, error)
 	EarliestReceivedAt(ctx *gin.Context, sellerID int64) (*time.Time, error)
 	ListHistory(ctx *gin.Context, userID int64, filters HistoryPaymentFilters, page, pageSize int) ([]HistoryPaymentRow, bool, error)
 	ListTrainerFeeMemberships(ctx *gin.Context, ownerID int64) ([]FeeMembershipRow, error)
@@ -164,6 +172,15 @@ func (d *paymentHistoryDao) ListReceived(ctx *gin.Context, sellerID int64, filte
 	if filters.TeamID != nil {
 		query = query.Where("i.team_id = ?", *filters.TeamID)
 	}
+	if filters.PayerID != nil {
+		query = query.Where("i.user_id = ?", *filters.PayerID)
+	}
+	if filters.From != nil {
+		query = query.Where("p.created_at >= ?", *filters.From)
+	}
+	if filters.To != nil {
+		query = query.Where("p.created_at < ?", *filters.To)
+	}
 	if len(filters.Statuses) > 0 {
 		query = query.Where("p.status IN ?", filters.Statuses)
 	}
@@ -186,6 +203,17 @@ func (d *paymentHistoryDao) ListReceivedBetween(ctx *gin.Context, sellerID int64
 		Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("error listing received payments between dates: %w", err)
+	}
+	return rows, nil
+}
+
+// ListReceivedAll es el historial completo, sin filtro de fechas.
+func (d *paymentHistoryDao) ListReceivedAll(ctx *gin.Context, sellerID int64) ([]ReceivedPaymentRow, error) {
+	var rows []ReceivedPaymentRow
+	if err := d.receivedBaseQuery(sellerID).
+		Order("p.created_at DESC, p.id DESC").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("error listing all received payments: %w", err)
 	}
 	return rows, nil
 }

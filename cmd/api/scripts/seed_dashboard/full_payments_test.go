@@ -87,7 +87,7 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	require.NoError(t, db.First(&r3Pending, s.ids.subscriptions["r3_premium_pending"]).Error)
 	assert.Equal(t, "first_payment_pending", r3Pending.Status)
 
-	trainerReceipts, err := history.ListReceived(nil, s.ids.users["trainer_1"], int64Ptr(s.ids.teams["team_f"]), "approved", 1)
+	trainerReceipts, err := history.ListReceived(nil, s.ids.users["trainer_1"], payment.ReceivedFilter{TeamID: int64Ptr(s.ids.teams["team_f"]), StatusGroup: "approved"}, 1)
 	require.NoError(t, err)
 	require.Len(t, trainerReceipts.Payments, 1)
 	receipt := trainerReceipts.Payments[0]

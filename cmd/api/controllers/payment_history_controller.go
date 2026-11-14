@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,6 +13,10 @@ import (
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils"
 )
+
+// artZone es la zona fija de Argentina, la misma que usa el resumen para cortar
+// los meses (no hay horario de verano desde 2009).
+var artZone = time.FixedZone("ART", -3*3600)
 
 // PaymentHistoryController expone el historial de pagos y cobros del usuario
 // autenticado (change historial-pagos-cobros-entrenador). La identidad sale
@@ -47,6 +52,9 @@ func NewPaymentHistoryController(service services.PaymentHistoryServiceInterface
 // @Produce      json
 // @Param        page     query     int     false  "Página (default 1)"
 // @Param        team_id  query     int     false  "Filtrar por equipo"
+// @Param        payer_id query     int     false  "Filtrar por corredor (payer)"
+// @Param        from     query     string  false  "Desde (YYYY-MM-DD, hora argentina, inclusivo)"
+// @Param        to       query     string  false  "Hasta (YYYY-MM-DD, hora argentina, inclusivo)"
 // @Param        status   query     string  false  "Filtrar por grupo de estado"  Enums(approved, pending, rejected, refunded)
 // @Success      200  {object}  payment.ReceivedPaymentsResponse
 // @Failure      400  {object}  apierror.APIError
@@ -63,17 +71,41 @@ func (pc *paymentHistoryController) ListReceived(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var teamID *int64
-	if raw := c.Query("team_id"); raw != "" {
-		parsed, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			respondInvalidQuery(c, "team_id debe ser un número válido")
-			return
-		}
-		teamID = &parsed
+	teamID, ok := parseOptionalIntQuery(c, "team_id")
+	if !ok {
+		return
+	}
+	payerID, ok := parseOptionalIntQuery(c, "payer_id")
+	if !ok {
+		return
+	}
+	from, ok := parseOptionalDateQuery(c, "from")
+	if !ok {
+		return
+	}
+	to, ok := parseOptionalDateQuery(c, "to")
+	if !ok {
+		return
+	}
+	if from != nil && to != nil && to.Before(*from) {
+		respondInvalidQuery(c, "el rango de fechas está invertido")
+		return
+	}
+	// `to` es inclusivo en la API y exclusivo en la consulta: se suma un día.
+	var toExclusive *time.Time
+	if to != nil {
+		next := to.AddDate(0, 0, 1)
+		toExclusive = &next
 	}
 
-	resp, err := pc.service.ListReceived(c, userID, teamID, c.Query("status"), page)
+	filter := payment.ReceivedFilter{
+		TeamID:      teamID,
+		PayerID:     payerID,
+		StatusGroup: c.Query("status"),
+		From:        from,
+		To:          toExclusive,
+	}
+	resp, err := pc.service.ListReceived(c, userID, filter, page)
 	if err != nil {
 		respondPaymentHistoryError(c, err)
 		return
@@ -81,9 +113,39 @@ func (pc *paymentHistoryController) ListReceived(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// parseOptionalIntQuery parsea un entero opcional. Devuelve (nil, true) cuando
+// el parámetro no vino.
+func parseOptionalIntQuery(c *gin.Context, key string) (*int64, bool) {
+	raw := c.Query(key)
+	if raw == "" {
+		return nil, true
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		respondInvalidQuery(c, key+" debe ser un número válido")
+		return nil, false
+	}
+	return &parsed, true
+}
+
+// parseOptionalDateQuery parsea una fecha YYYY-MM-DD en hora argentina. El
+// listado de cobros usa el mismo día calendario que ve el entrenador.
+func parseOptionalDateQuery(c *gin.Context, key string) (*time.Time, bool) {
+	raw := c.Query(key)
+	if raw == "" {
+		return nil, true
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", raw, artZone)
+	if err != nil {
+		respondInvalidQuery(c, key+" debe tener formato YYYY-MM-DD")
+		return nil, false
+	}
+	return &parsed, true
+}
+
 // GetReceivedSummary godoc
 // @Summary      Resumen de cobros recibidos
-// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores.
+// @Description  Totales mensuales (hora argentina; el último es `until` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. `earliest_month` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de este mes o de meses anteriores. `pending_periods` (obligaciones sin pagar) y `rejected_periods` (intentos rechazados) traen monto bruto, neto y cantidad de cuotas para los períodos `all` (vencidas + mes en curso), `current`, `last` y `quarter`; `payers` lista los corredores con cobros para el filtro del listado.
 // @Tags         payments
 // @Produce      json
 // @Param        months  query     int     false  "Meses de la ventana, entre 2 y 12 (default 6)"

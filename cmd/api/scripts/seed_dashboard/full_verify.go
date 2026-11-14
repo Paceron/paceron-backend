@@ -14,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/daos"
 	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/dbs"
+	"simple-arq-golang/cmd/api/domains/payment"
 	"simple-arq-golang/cmd/api/services"
 	"simple-arq-golang/cmd/api/utils/gametime"
 )
@@ -398,7 +399,7 @@ func (s *fullSeeder) verifyFullPayments() error {
 	if len(r3History.Payments) != 2 {
 		return fmt.Errorf("historial de pagos de R3: se esperaban 2 y hay %d", len(r3History.Payments))
 	}
-	received, err := history.ListReceived(nil, s.ids.users["trainer_1"], int64Pointer(s.ids.teams["team_f"]), "approved", 1)
+	received, err := history.ListReceived(nil, s.ids.users["trainer_1"], payment.ReceivedFilter{TeamID: int64Pointer(s.ids.teams["team_f"]), StatusGroup: "approved"}, 1)
 	if err != nil {
 		return fmt.Errorf("historial de cobros de Team F: %w", err)
 	}

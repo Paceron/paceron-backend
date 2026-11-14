@@ -1,5 +1,7 @@
 package payment
 
+import "time"
+
 // DTOs del historial de pagos y cobros del entrenador
 // (change historial-pagos-cobros-entrenador).
 
@@ -16,6 +18,37 @@ type PaymentPayerRef struct {
 	Name    string `json:"name"`
 	Surname string `json:"surname"`
 	Email   string `json:"email"`
+}
+
+// AmountPeriod es el monto y la cantidad de cuotas de un período. Amount es
+// bruto y NetAmount es el neto (bruto menos la comisión de Paceron).
+type AmountPeriod struct {
+	Count     int     `json:"count"`
+	Amount    float64 `json:"amount"`
+	NetAmount float64 `json:"net_amount"`
+}
+
+// PeriodAmounts agrupa los períodos que ofrece el selector de los KPIs.
+//
+//   - all: cuotas vencidas + las que vencen en el mes en curso.
+//   - current: cuotas que vencen en el mes en curso.
+//   - last: cuotas que vencen en el mes anterior.
+//   - quarter: cuotas que vencen en el mes en curso y los dos anteriores.
+type PeriodAmounts struct {
+	All     AmountPeriod `json:"all"`
+	Current AmountPeriod `json:"current"`
+	Last    AmountPeriod `json:"last"`
+	Quarter AmountPeriod `json:"quarter"`
+}
+
+// ReceivedFilter agrupa los filtros del listado de cobros. From es inclusivo y
+// To es exclusivo, ambos en hora argentina.
+type ReceivedFilter struct {
+	TeamID      *int64
+	PayerID     *int64
+	StatusGroup string
+	From        *time.Time
+	To          *time.Time
 }
 
 // ReceivedPaymentItem es un cobro de membresía de equipo. NetAmount es el bruto
@@ -146,6 +179,15 @@ type ReceivedSummaryResponse struct {
 	PendingNetAmount  float64 `json:"pending_net_amount"`
 	RejectedAmount    float64 `json:"rejected_amount"`
 	RejectedNetAmount float64 `json:"rejected_net_amount"`
+	// PendingPeriods y RejectedPeriods son los montos y cantidades de cuotas
+	// para el selector de los KPIs. PendingPeriods sale de las obligaciones
+	// esperadas (cuotas sin pagar), no de los intentos de pago; RejectedPeriods
+	// sí sale de los intentos rechazados.
+	PendingPeriods  PeriodAmounts `json:"pending_periods"`
+	RejectedPeriods PeriodAmounts `json:"rejected_periods"`
+	// Payers son los corredores con cobros en el historial, para el filtro por
+	// corredor del listado. Se ordenan por nombre y apellido.
+	Payers []PaymentPayerRef `json:"payers"`
 	// EarliestMonth es el primer mes con cobros del vendedor (YYYY-MM, hora
 	// argentina), o null si no tiene ninguno (design D14).
 	EarliestMonth *string `json:"earliest_month"`

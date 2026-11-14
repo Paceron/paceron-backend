@@ -37,7 +37,7 @@ var argentinaTZ = time.FixedZone("ART", -3*3600)
 // PaymentHistoryServiceInterface expone el historial de pagos y cobros del
 // usuario autenticado (change historial-pagos-cobros-entrenador).
 type PaymentHistoryServiceInterface interface {
-	ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error)
+	ListReceived(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error)
 	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
 	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
 	GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
@@ -58,15 +58,20 @@ func NewPaymentHistoryService(dao daos.PaymentHistoryDaoInterface, settingDao da
 	return &paymentHistoryService{dao: dao, settingDao: settingDao, now: time.Now}
 }
 
-func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, teamID *int64, statusGroup string, page int) (*payment.ReceivedPaymentsResponse, error) {
+func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
 	if page < 1 {
 		return nil, fmt.Errorf("%w: page debe ser mayor o igual a 1", ErrInvalidPaymentHistoryQuery)
 	}
-	filters := daos.ReceivedPaymentFilters{TeamID: teamID}
-	if statusGroup != "" {
-		statuses, ok := constants.StatusesForGroup(statusGroup)
+	filters := daos.ReceivedPaymentFilters{
+		TeamID:  filter.TeamID,
+		PayerID: filter.PayerID,
+		From:    filter.From,
+		To:      filter.To,
+	}
+	if filter.StatusGroup != "" {
+		statuses, ok := constants.StatusesForGroup(filter.StatusGroup)
 		if !ok {
-			return nil, fmt.Errorf("%w: status desconocido %q", ErrInvalidPaymentHistoryQuery, statusGroup)
+			return nil, fmt.Errorf("%w: status desconocido %q", ErrInvalidPaymentHistoryQuery, filter.StatusGroup)
 		}
 		filters.Statuses = statuses
 	}
@@ -142,6 +147,13 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 	rows, err := s.dao.ListReceivedBetween(ctx, sellerID, start, end.AddDate(0, 1, 0))
 	if err != nil {
 		customlogger.Error(ctx, "error listing received payments for summary", err, customlogger.TagMethod("GetReceivedSummary"))
+		return nil, fmt.Errorf("error al obtener el resumen de cobros: %w", err)
+	}
+	// Los KPIs de rechazadas y el selector de corredores no dependen de la
+	// ventana del gráfico: miran el historial completo.
+	allRows, err := s.dao.ListReceivedAll(ctx, sellerID)
+	if err != nil {
+		customlogger.Error(ctx, "error listing all received payments for summary", err, customlogger.TagMethod("GetReceivedSummary"))
 		return nil, fmt.Errorf("error al obtener el resumen de cobros: %w", err)
 	}
 	earliest, err := s.dao.EarliestReceivedAt(ctx, sellerID)
@@ -248,7 +260,7 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		return byTeam[i].TeamID < byTeam[j].TeamID
 	})
 
-	due, overdue, err := s.addPendingObligations(ctx, sellerID, now, monthly, monthIndex, end)
+	due, overdue, pendingPeriods, err := s.addPendingObligations(ctx, sellerID, now, monthly, monthIndex, end)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +276,9 @@ func (s *paymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID in
 		PendingNetAmount:  round2(pendingNet),
 		RejectedAmount:    round2(rejectedAmt),
 		RejectedNetAmount: round2(rejectedNet),
+		PendingPeriods:    pendingPeriods,
+		RejectedPeriods:   rejectedPeriodsFromRows(allRows, now),
+		Payers:            payersFromRows(allRows),
 		EarliestMonth:     earliestMonth,
 		DueThisMonth:      due,
 		Overdue:           overdue,
