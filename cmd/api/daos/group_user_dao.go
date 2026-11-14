@@ -30,6 +30,7 @@ type GroupUserDaoInterface interface {
 	FindActiveWithGroupByUserID(ctx *gin.Context, userID int64) ([]GroupMembershipGroup, error)
 	SoftDelete(ctx *gin.Context, id int64) error
 	SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error
+	EndActiveByTeamAndUser(ctx *gin.Context, teamID, userID int64) error
 	IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, sessionDate time.Time) (bool, error)
 	MissingGroupMembers(ctx *gin.Context, groupID int64, userIDs []int64, sessionDate time.Time) ([]int64, error)
 }
@@ -53,7 +54,7 @@ func (d *groupUserDao) Create(ctx *gin.Context, groupUser *dbs.GroupUser) error 
 // FindByGroupAndUser busca una asociación por grupo y usuario, excluyendo las eliminadas lógicamente.
 func (d *groupUserDao) FindByGroupAndUser(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error) {
 	var groupUser dbs.GroupUser
-	err := d.DB.Where("group_id = ? AND user_id = ? AND deleted_at IS NULL", groupID, userID).First(&groupUser).Error
+	err := d.DB.Where("group_id = ? AND user_id = ? AND deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())", groupID, userID).First(&groupUser).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -66,7 +67,7 @@ func (d *groupUserDao) FindByGroupAndUser(ctx *gin.Context, groupID, userID int6
 // FindByGroupID devuelve todas las asociaciones activas de un grupo.
 func (d *groupUserDao) FindByGroupID(ctx *gin.Context, groupID int64) ([]dbs.GroupUser, error) {
 	var groupUsers []dbs.GroupUser
-	err := d.DB.Where("group_id = ? AND deleted_at IS NULL", groupID).Find(&groupUsers).Error
+	err := d.DB.Where("group_id = ? AND deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())", groupID).Find(&groupUsers).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding group users: %w", err)
 	}
@@ -80,7 +81,7 @@ func (d *groupUserDao) FindByGroupIDs(ctx *gin.Context, groupIDs []int64) ([]dbs
 		return nil, nil
 	}
 	var groupUsers []dbs.GroupUser
-	err := d.DB.Where("group_id IN ? AND deleted_at IS NULL", groupIDs).Find(&groupUsers).Error
+	err := d.DB.Where("group_id IN ? AND deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())", groupIDs).Find(&groupUsers).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding group users by group ids: %w", err)
 	}
@@ -129,6 +130,16 @@ func (d *groupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error 
 	return d.DB.Model(&dbs.GroupUser{}).
 		Where("deleted_at IS NULL AND group_id IN (SELECT id FROM groups WHERE team_id = ?)", teamID).
 		Update("deleted_at", gorm.Expr("NOW()")).Error
+}
+
+// EndActiveByTeamAndUser cierra las membresías activas de un usuario en todos
+// los grupos de un equipo. Usa date_end (no deleted_at) para que el calendario
+// deje de mostrarlas sin perder el histórico de asistencia/entrenamientos.
+func (d *groupUserDao) EndActiveByTeamAndUser(ctx *gin.Context, teamID, userID int64) error {
+	return d.DB.Model(&dbs.GroupUser{}).
+		Where("user_id = ? AND deleted_at IS NULL AND (date_end IS NULL OR date_end > NOW())", userID).
+		Where("group_id IN (SELECT id FROM groups WHERE team_id = ?)", teamID).
+		Update("date_end", gorm.Expr("NOW()")).Error
 }
 
 // activeGroupMemberWhere es el criterio de "miembro activo" de la asistencia

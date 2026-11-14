@@ -381,6 +381,7 @@ func TestTeamUserService_AddUser_MaxMembersReached(t *testing.T) {
 
 func TestTeamUserService_RemoveUser_Self(t *testing.T) {
 	softDeleteCalled := false
+	groupMembershipsEnded := false
 	mockTeamUserDao := &mockTeamUserDao{
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{ID: 1, RoleInTeam: "corredor"}, nil
@@ -395,16 +396,24 @@ func TestTeamUserService_RemoveUser_Self(t *testing.T) {
 			return &dbs.Team{ID: 1}, nil
 		},
 	}
+	groupUserDao := &mockGroupUserDao{
+		endActiveByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) error {
+			groupMembershipsEnded = true
+			return nil
+		},
+	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, groupUserDao, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	err := svc.RemoveUser(nil, 1, 1, 1)
 
 	assert.NoError(t, err)
 	assert.True(t, softDeleteCalled)
+	assert.True(t, groupMembershipsEnded)
 }
 
 func TestTeamUserService_RemoveUser_EntrenadorRemovesOther(t *testing.T) {
 	softDeleteCalled := false
+	groupMembershipsEnded := false
 	mockTeamUserDao := &mockTeamUserDao{
 		findByTeamAndUserFn: entrenadorCallerFindByTeamAndUser(func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
 			return &dbs.TeamUser{ID: 1, RoleInTeam: "corredor"}, nil
@@ -419,12 +428,48 @@ func TestTeamUserService_RemoveUser_EntrenadorRemovesOther(t *testing.T) {
 			return &dbs.Team{ID: 1}, nil
 		},
 	}
+	groupUserDao := &mockGroupUserDao{
+		endActiveByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) error {
+			groupMembershipsEnded = true
+			return nil
+		},
+	}
 
-	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, groupUserDao, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
 	err := svc.RemoveUser(nil, 1, testEntrenadorCallerID, 1)
 
 	assert.NoError(t, err)
 	assert.True(t, softDeleteCalled)
+	assert.True(t, groupMembershipsEnded)
+}
+
+func TestTeamUserService_RemoveUser_EndGroupMembershipsError(t *testing.T) {
+	softDeleteCalled := false
+	mockTeamUserDao := &mockTeamUserDao{
+		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
+			return &dbs.TeamUser{ID: 1, RoleInTeam: "corredor"}, nil
+		},
+		softDeleteFn: func(ctx *gin.Context, id int64) error {
+			softDeleteCalled = true
+			return nil
+		},
+	}
+	mockTeamDao := &mockTeamDao{
+		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
+			return &dbs.Team{ID: 1}, nil
+		},
+	}
+	groupUserDao := &mockGroupUserDao{
+		endActiveByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) error {
+			return errors.New("db error")
+		},
+	}
+
+	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, groupUserDao, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
+	err := svc.RemoveUser(nil, 1, 1, 1)
+
+	assert.Error(t, err)
+	assert.False(t, softDeleteCalled)
 }
 
 // TestTeamUserService_RemoveUser_NotifiesRemovedUser cubre el trigger de expulsión:

@@ -22,6 +22,7 @@ type mockGroupUserDao struct {
 	findActiveWithGroupByUserIDFn func(ctx *gin.Context, userID int64) ([]daos.GroupMembershipGroup, error)
 	softDeleteFn                  func(ctx *gin.Context, id int64) error
 	softDeleteByTeamIDFn          func(ctx *gin.Context, teamID int64) error
+	endActiveByTeamAndUserFn      func(ctx *gin.Context, teamID, userID int64) error
 }
 
 func (m *mockGroupUserDao) Create(ctx *gin.Context, gu *dbs.GroupUser) error {
@@ -76,6 +77,13 @@ func (m *mockGroupUserDao) SoftDelete(ctx *gin.Context, id int64) error {
 func (m *mockGroupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
 	if m.softDeleteByTeamIDFn != nil {
 		return m.softDeleteByTeamIDFn(ctx, teamID)
+	}
+	return nil
+}
+
+func (m *mockGroupUserDao) EndActiveByTeamAndUser(ctx *gin.Context, teamID, userID int64) error {
+	if m.endActiveByTeamAndUserFn != nil {
+		return m.endActiveByTeamAndUserFn(ctx, teamID, userID)
 	}
 	return nil
 }

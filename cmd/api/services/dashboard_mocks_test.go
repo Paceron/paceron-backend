@@ -263,6 +263,9 @@ func (m *mockDashboardGroupUserDao) SoftDelete(ctx *gin.Context, id int64) error
 func (m *mockDashboardGroupUserDao) SoftDeleteByTeamID(ctx *gin.Context, teamID int64) error {
 	return nil
 }
+func (m *mockDashboardGroupUserDao) EndActiveByTeamAndUser(ctx *gin.Context, teamID, userID int64) error {
+	return nil
+}
 func (m *mockDashboardGroupUserDao) IsActiveGroupMember(ctx *gin.Context, groupID, userID int64, date time.Time) (bool, error) {
 	return false, nil
 }

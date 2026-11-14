@@ -322,6 +322,77 @@ func TestGroupUserDao_FindByGroupIDs_Batch(t *testing.T) {
 	assert.Empty(t, empty)
 }
 
+func TestGroupUserDao_EndActiveByTeamAndUser_PreservesHistory(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupUserDao(db)
+	owner := persistUser(db, "gu-endteam-owner@test.com", "50000920")
+	target := persistUser(db, "gu-endteam-target@test.com", "50000921")
+	other := persistUser(db, "gu-endteam-other@test.com", "50000922")
+	team := testTeam(db, "equipo_gu_endteam", owner.ID)
+	groupA := testGroup(db, "grupo_gu_endteam_a", team.ID)
+	groupB := testGroup(db, "grupo_gu_endteam_b", team.ID)
+	otherTeam := testTeam(db, "equipo_gu_endteam_other", owner.ID)
+	otherGroup := testGroup(db, "grupo_gu_endteam_other", otherTeam.ID)
+
+	start := time.Now().AddDate(0, 0, -30)
+	membership := func(groupID, userID int64, end *time.Time) *dbs.GroupUser {
+		gu := &dbs.GroupUser{GroupID: groupID, UserID: userID, DateStart: start, DateEnd: end}
+		require.NoError(t, dao.Create(nil, gu))
+		return gu
+	}
+	memberA := membership(groupA.ID, target.ID, nil)
+	memberB := membership(groupB.ID, target.ID, nil)
+	memberOtherTeam := membership(otherGroup.ID, target.ID, nil)
+	memberOtherUser := membership(groupA.ID, other.ID, nil)
+	expiredEnd := time.Now().AddDate(0, 0, -5)
+	expired := membership(groupA.ID, target.ID, &expiredEnd)
+
+	require.NoError(t, dao.EndActiveByTeamAndUser(nil, team.ID, target.ID))
+
+	var rows []dbs.GroupUser
+	require.NoError(t, db.Where("id IN ?", []int64{memberA.ID, memberB.ID, memberOtherTeam.ID, memberOtherUser.ID, expired.ID}).Find(&rows).Error)
+	byID := make(map[int64]dbs.GroupUser, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+
+	for _, id := range []int64{memberA.ID, memberB.ID} {
+		require.NotNil(t, byID[id].DateEnd, "la membresía del equipo debe quedar cerrada")
+		assert.Nil(t, byID[id].DeletedAt, "no debe borrarse lógicamente para conservar historial")
+	}
+	assert.Nil(t, byID[memberOtherTeam.ID].DateEnd, "no debe tocar membresías de otros equipos")
+	assert.Nil(t, byID[memberOtherUser.ID].DateEnd, "no debe tocar membresías de otros usuarios")
+	require.NotNil(t, byID[expired.ID].DateEnd)
+	assert.Equal(t, expiredEnd.Unix(), byID[expired.ID].DateEnd.Unix(), "no debe reescribir una membresía ya vencida")
+
+	pastActive, err := dao.IsActiveGroupMember(nil, groupA.ID, target.ID, time.Now().AddDate(0, 0, -1))
+	require.NoError(t, err)
+	assert.True(t, pastActive, "el histórico de asistencia debe seguir viendo al corredor")
+
+	futureActive, err := dao.IsActiveGroupMember(nil, groupA.ID, target.ID, time.Now().AddDate(0, 0, 1))
+	require.NoError(t, err)
+	assert.False(t, futureActive, "el calendario futuro ya no debe incluir al corredor")
+
+	activeMemberships, err := dao.FindByUserID(nil, target.ID)
+	require.NoError(t, err)
+	require.Len(t, activeMemberships, 1)
+	assert.Equal(t, memberOtherTeam.ID, activeMemberships[0].ID)
+
+	found, err := dao.FindByGroupAndUser(nil, groupA.ID, target.ID)
+	require.NoError(t, err)
+	assert.Nil(t, found, "una membresía cerrada no debe seguir contando como activa")
+
+	roster, err := dao.FindByGroupID(nil, groupA.ID)
+	require.NoError(t, err)
+	var rosterIDs []int64
+	for _, gu := range roster {
+		rosterIDs = append(rosterIDs, gu.ID)
+	}
+	assert.NotContains(t, rosterIDs, memberA.ID)
+	assert.NotContains(t, rosterIDs, expired.ID)
+	assert.Contains(t, rosterIDs, memberOtherUser.ID)
+}
+
 func TestGroupUserDao_FindActiveWithGroupByUserID_OrderAndFilters(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupUserDao(db)
