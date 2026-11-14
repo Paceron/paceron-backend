@@ -61,6 +61,8 @@ func TestGetReceivedSummary_PendingObligations(t *testing.T) {
 	assert.Equal(t, "2026-10-06T15:00:00Z", resp.Overdue.Items[0].DueDate)
 	assert.Equal(t, int64(5), resp.Overdue.Items[1].Payer.ID)
 	assert.Equal(t, 2, resp.Overdue.Items[1].InstallmentNumber)
+	assert.Equal(t, 1425.0, resp.Overdue.Items[0].NetAmount, "neto por cuota con el 5% por defecto")
+	assert.Equal(t, 1900.0, resp.Overdue.Items[1].NetAmount)
 
 	assert.Equal(t, 2, resp.DueThisMonth.Count, "vence hoy y vence el 6/11")
 	assert.Equal(t, 4500.0, resp.DueThisMonth.Amount)
