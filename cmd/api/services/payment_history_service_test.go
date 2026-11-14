@@ -10,17 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"simple-arq-golang/cmd/api/daos"
+	"simple-arq-golang/cmd/api/domains/payment"
 )
 
 type mockPaymentHistoryDao struct {
-	listReceivedFn       func(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error)
+	listReceivedFn        func(ctx *gin.Context, sellerID int64, filters daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error)
 	listReceivedBetweenFn func(ctx *gin.Context, sellerID int64, from, to time.Time) ([]daos.ReceivedPaymentRow, error)
+	listReceivedAllFn     func(ctx *gin.Context, sellerID int64) ([]daos.ReceivedPaymentRow, error)
 	earliestReceivedAtFn  func(ctx *gin.Context, sellerID int64) (*time.Time, error)
-	listHistoryFn        func(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error)
-	trainerMemberships   []daos.FeeMembershipRow
-	userMemberships      []daos.FeeMembershipRow
-	tierSubscriptions    []daos.TierSubscriptionRow
-	obligationsErr       error
+	listHistoryFn         func(ctx *gin.Context, userID int64, filters daos.HistoryPaymentFilters, page, pageSize int) ([]daos.HistoryPaymentRow, bool, error)
+	trainerMemberships    []daos.FeeMembershipRow
+	userMemberships       []daos.FeeMembershipRow
+	tierSubscriptions     []daos.TierSubscriptionRow
+	obligationsErr        error
 }
 
 func (m *mockPaymentHistoryDao) ListTrainerFeeMemberships(*gin.Context, int64) ([]daos.FeeMembershipRow, error) {
@@ -49,6 +51,13 @@ func (m *mockPaymentHistoryDao) ListReceivedBetween(ctx *gin.Context, sellerID i
 	return nil, nil
 }
 
+func (m *mockPaymentHistoryDao) ListReceivedAll(ctx *gin.Context, sellerID int64) ([]daos.ReceivedPaymentRow, error) {
+	if m.listReceivedAllFn != nil {
+		return m.listReceivedAllFn(ctx, sellerID)
+	}
+	return nil, nil
+}
+
 func (m *mockPaymentHistoryDao) EarliestReceivedAt(ctx *gin.Context, sellerID int64) (*time.Time, error) {
 	if m.earliestReceivedAtFn != nil {
 		return m.earliestReceivedAtFn(ctx, sellerID)
@@ -73,22 +82,28 @@ func TestNewPaymentHistoryService(t *testing.T) {
 
 func TestPaymentHistoryService_ListReceived_InvalidPage(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
-	_, err := svc.ListReceived(nil, 7, nil, "", 0)
+	_, err := svc.ListReceived(nil, 7, payment.ReceivedFilter{}, 0)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 func TestPaymentHistoryService_ListReceived_InvalidStatus(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
-	_, err := svc.ListReceived(nil, 7, nil, "other", 1)
+	_, err := svc.ListReceived(nil, 7, payment.ReceivedFilter{StatusGroup: "other"}, 1)
 	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 	teamID := int64(12)
+	payerID := int64(24)
+	from := time.Date(2026, 9, 1, 3, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC)
 	created := time.Date(2026, 9, 14, 13, 22, 5, 0, time.FixedZone("ART", -3*3600))
 	dao := &mockPaymentHistoryDao{listReceivedFn: func(ctx *gin.Context, sellerID int64, f daos.ReceivedPaymentFilters, page, pageSize int) ([]daos.ReceivedPaymentRow, bool, error) {
 		assert.Equal(t, int64(7), sellerID)
 		assert.Equal(t, &teamID, f.TeamID)
+		assert.Equal(t, &payerID, f.PayerID)
+		assert.Equal(t, &from, f.From)
+		assert.Equal(t, &to, f.To)
 		assert.ElementsMatch(t, []string{"rejected", "cancelled"}, f.Statuses)
 		assert.Equal(t, 2, page)
 		assert.Equal(t, 20, pageSize)
@@ -101,7 +116,13 @@ func TestPaymentHistoryService_ListReceived_MapsRowsAndFilters(t *testing.T) {
 	}}
 	svc := NewPaymentHistoryService(dao, nil)
 
-	resp, err := svc.ListReceived(nil, 7, &teamID, "rejected", 2)
+	resp, err := svc.ListReceived(nil, 7, payment.ReceivedFilter{
+		TeamID:      &teamID,
+		PayerID:     &payerID,
+		StatusGroup: "rejected",
+		From:        &from,
+		To:          &to,
+	}, 2)
 
 	require.NoError(t, err)
 	assert.True(t, resp.HasMore)
@@ -129,7 +150,7 @@ func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
 			{ID: 2, Status: "approved", GrossAmount: 0, FeeAmount: 0},
 		}, false, nil
 	}}
-	resp, err := NewPaymentHistoryService(dao, nil).ListReceived(nil, 7, nil, "", 1)
+	resp, err := NewPaymentHistoryService(dao, nil).ListReceived(nil, 7, payment.ReceivedFilter{}, 1)
 
 	require.NoError(t, err)
 	assert.Equal(t, 1000.0, resp.Payments[0].FeeAmount)
@@ -139,7 +160,7 @@ func TestPaymentHistoryService_ListReceived_ExposesFee(t *testing.T) {
 
 func TestPaymentHistoryService_ListReceived_EmptyIsNotNil(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
-	resp, err := svc.ListReceived(nil, 7, nil, "", 1)
+	resp, err := svc.ListReceived(nil, 7, payment.ReceivedFilter{}, 1)
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Payments)
 	assert.Empty(t, resp.Payments)
@@ -149,13 +170,12 @@ func TestPaymentHistoryService_ListReceived_DaoError(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{listReceivedFn: func(*gin.Context, int64, daos.ReceivedPaymentFilters, int, int) ([]daos.ReceivedPaymentRow, bool, error) {
 		return nil, false, errors.New("db caída")
 	}}, nil)
-	_, err := svc.ListReceived(nil, 7, nil, "", 1)
+	_, err := svc.ListReceived(nil, 7, payment.ReceivedFilter{}, 1)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
 }
 
 // --- ListHistory ---
-
 
 func TestPaymentHistoryService_ListHistory_InvalidParams(t *testing.T) {
 	svc := NewPaymentHistoryService(&mockPaymentHistoryDao{}, nil)
@@ -458,4 +478,84 @@ func TestPaymentHistoryService_GetReceivedSummary_EarliestError(t *testing.T) {
 	_, err := svc.GetReceivedSummary(nil, 7, 6, "")
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_PendingPeriods(t *testing.T) {
+	svc := newSummaryService(&mockPaymentHistoryDao{trainerMemberships: []daos.FeeMembershipRow{{
+		TeamID: 12, TeamName: strPtr("Runners"), UserID: 45, UserName: strPtr("Lucía"),
+		UserSurname: strPtr("Gómez"), UserEmail: strPtr("l@g.com"),
+		// Alta 10/08; cuotas 10/08, 10/09 y 10/10. La ventana termina en septiembre.
+		AssignmentDate:   time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+		InitAmount:       1000,
+		PaidInstallments: 0,
+	}}})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6, "")
+
+	require.NoError(t, err)
+	// "Todas" = vencidas + mes en curso: agosto y septiembre.
+	assert.Equal(t, 2, resp.PendingPeriods.All.Count)
+	assert.Equal(t, 2000.0, resp.PendingPeriods.All.Amount)
+	assert.Equal(t, 1900.0, resp.PendingPeriods.All.NetAmount)
+	assert.Equal(t, 1, resp.PendingPeriods.Current.Count)
+	assert.Equal(t, 950.0, resp.PendingPeriods.Current.NetAmount)
+	assert.Equal(t, 1, resp.PendingPeriods.Last.Count)
+	assert.Equal(t, 950.0, resp.PendingPeriods.Last.NetAmount)
+	assert.Equal(t, 2, resp.PendingPeriods.Quarter.Count)
+	assert.Equal(t, 1900.0, resp.PendingPeriods.Quarter.NetAmount)
+	// La cuota de octubre no está vencida ni es del mes en curso.
+	assert.Equal(t, 1, resp.PendingPeriods.Current.Count)
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_RejectedPeriods(t *testing.T) {
+	sep := time.Date(2026, 9, 10, 15, 0, 0, 0, time.UTC)
+	aug := time.Date(2026, 8, 10, 15, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 10, 15, 0, 0, 0, time.UTC)
+	rows := []daos.ReceivedPaymentRow{
+		receivedRow(1, 501, 12, "Runners", "rejected", 1000, nil, sep),
+		receivedRow(2, 502, 12, "Runners", "rejected", 1000, nil, aug),
+		receivedRow(3, 503, 12, "Runners", "rejected", 1000, nil, feb),
+		// Rechazo seguido de aprobado: no cuenta como rechazada.
+		receivedRow(4, 504, 12, "Runners", "rejected", 1000, nil, sep),
+		receivedRow(5, 504, 12, "Runners", "approved", 1000, nil, sep.Add(time.Hour)),
+	}
+	rows[0].FeeAmount = 50
+	svc := newSummaryService(&mockPaymentHistoryDao{
+		listReceivedBetweenFn: func(*gin.Context, int64, time.Time, time.Time) ([]daos.ReceivedPaymentRow, error) {
+			return rows, nil
+		},
+		listReceivedAllFn: func(*gin.Context, int64) ([]daos.ReceivedPaymentRow, error) {
+			return rows, nil
+		},
+	})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6, "")
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, resp.RejectedPeriods.All.Count)
+	assert.Equal(t, 3000.0, resp.RejectedPeriods.All.Amount)
+	assert.Equal(t, 2950.0, resp.RejectedPeriods.All.NetAmount, "el neto descuenta la comisión del intento")
+	assert.Equal(t, 1, resp.RejectedPeriods.Current.Count)
+	assert.Equal(t, 1, resp.RejectedPeriods.Last.Count)
+	assert.Equal(t, 2, resp.RejectedPeriods.Quarter.Count)
+	assert.Equal(t, 2, resp.RejectedPeriods.Quarter.Count, "febrero queda fuera del trimestre")
+}
+
+func TestPaymentHistoryService_GetReceivedSummary_Payers(t *testing.T) {
+	rows := []daos.ReceivedPaymentRow{
+		{ID: 1, InstallmentID: 1, PayerID: 25, PayerName: strPtr("Andres"), PayerSurname: strPtr("Paez"), PayerEmail: strPtr("a@p.com")},
+		{ID: 2, InstallmentID: 2, PayerID: 24, PayerName: strPtr("SINTEX"), PayerSurname: strPtr("DEV"), PayerEmail: strPtr("s@d.com")},
+		{ID: 3, InstallmentID: 3, PayerID: 24, PayerName: strPtr("SINTEX"), PayerSurname: strPtr("DEV"), PayerEmail: strPtr("s@d.com")},
+	}
+	svc := newSummaryService(&mockPaymentHistoryDao{
+		listReceivedAllFn: func(*gin.Context, int64) ([]daos.ReceivedPaymentRow, error) { return rows, nil },
+	})
+
+	resp, err := svc.GetReceivedSummary(nil, 7, 6, "")
+
+	require.NoError(t, err)
+	require.Len(t, resp.Payers, 2)
+	assert.Equal(t, int64(24), resp.Payers[0].ID)
+	assert.Equal(t, "DEV", resp.Payers[0].Surname)
+	assert.Equal(t, int64(25), resp.Payers[1].ID)
 }
