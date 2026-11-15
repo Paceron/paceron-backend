@@ -260,12 +260,15 @@ func seriesOf(rows []ScopedSeries) []Series {
 	return out
 }
 
-// bestMetTimeMs es el menor tiempo logrado entre las series que cumplen su
-// objetivo con la tolerancia de la consulta. Cumplir por distancia sin tiempo
-// positivo no aporta un tiempo cumplidor, así que ese caso queda fuera.
-func (m *setMetrics) bestMetTimeMs(tolerance float64) *int64 {
+// bestMet devuelve el menor tiempo logrado y la fila que lo produjo, entre las
+// series que cumplen su objetivo con la tolerancia de la consulta. Cumplir por
+// distancia sin tiempo positivo no aporta un tiempo cumplidor, así que ese caso
+// queda fuera. La fila vuelve para exponer ejercicio y fecha en el resumen.
+func (m *setMetrics) bestMet(tolerance float64) (*int64, *ScopedSeries) {
 	var best *int64
-	for _, row := range m.validRows {
+	var bestRow *ScopedSeries
+	for i := range m.validRows {
+		row := &m.validRows[i]
 		timeMs := row.AchievedTimeMs()
 		if timeMs <= 0 {
 			continue
@@ -277,9 +280,10 @@ func (m *setMetrics) bestMetTimeMs(tolerance float64) *int64 {
 		if best == nil || timeMs < *best {
 			value := timeMs
 			best = &value
+			bestRow = row
 		}
 	}
-	return best
+	return best, bestRow
 }
 
 // ---------- resumen ----------
@@ -288,15 +292,22 @@ func (m *setMetrics) bestMetTimeMs(tolerance float64) *int64 {
 func BuildSummary(rows []ScopedSeries, tolerance float64, openSessions int) SummaryResponse {
 	m := newSetMetrics(rows)
 	axis, hasTarget := m.axisAndHasTarget()
+	bestMetTime, bestMetRow := m.bestMet(tolerance)
 
 	totals := SummaryTotals{
 		Sessions:         m.sessions,
 		Series:           m.totalSeries,
 		ValidSeries:      m.validSeries,
 		BestTimeMs:       m.bestTimeMs,
-		BestTimeMetMs:    m.bestMetTimeMs(tolerance),
+		BestTimeMetMs:    bestMetTime,
 		AchievedSpeedKph: m.AchievedSpeedKph(),
 		ComplianceRate:   m.complianceRate(tolerance),
+	}
+	if bestMetRow != nil {
+		totals.BestTimeMetSource = &BestTimeMetSource{
+			ExerciseName: bestMetRow.ExerciseName,
+			SessionDate:  FormatDate(bestMetRow.SessionDate),
+		}
 	}
 	totals.TargetDistanceM, totals.AchievedTargetDistanceM = objectiveDistanceTotals(rows)
 	if m.validSeries > 0 {
