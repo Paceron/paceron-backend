@@ -28,51 +28,51 @@ func fixturePresencialDay(dayID int64, opened, closed *time.Time) *dbs.GroupCale
 	}
 }
 
-// presencialTracker acumula los efectos observados del gateway (owner lookups
-// y writes) para afirmar no-op completos.
+// presencialTracker acumula las lecturas combinadas día+owner y los writes
+// para afirmar no-ops y cantidad de round trips.
 type presencialTracker struct {
-	ownerLookups int
-	setCalls     []string
+	dayLookups int
+	setCalls   []string
 }
 
-func (pt *presencialTracker) noop() bool {
-	return pt.ownerLookups == 0 && len(pt.setCalls) == 0
+func (pt *presencialTracker) noWrites() bool {
+	return len(pt.setCalls) == 0
 }
 
-func presencialSvcWith(day *dbs.GroupCalendarDay, ownerOfGroup int64) (*presencialSessionService, *dbs.GroupCalendarDay, *presencialTracker) {
-	dayDao := &mockGroupCalendarDao{findBySessionInstanceIDFn: func(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error) {
-		return day, nil
-	}}
+func presencialSvcWith(day *dbs.GroupCalendarDay, ownerID int64) (*presencialSessionService, *dbs.GroupCalendarDay, *presencialTracker) {
 	track := &presencialTracker{}
-	dayDao.setPresencialOpenedAtFn = func(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	dayDao := &mockGroupCalendarDao{findWithTeamOwnerFn: func(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, *int64, error) {
+		track.dayLookups++
+		if day == nil {
+			return nil, nil, nil
+		}
+		owner := ownerID
+		return day, &owner, nil
+	}}
+	dayDao.setPresencialOpenedAtFn = func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
 		track.setCalls = append(track.setCalls, "opened")
 		day.PresencialOpenedAt = &at
-		return true, nil
+		return day, true, nil
 	}
-	dayDao.setPresencialClosedAtFn = func(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
+	dayDao.setPresencialClosedAtFn = func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
 		track.setCalls = append(track.setCalls, "closed")
 		day.PresencialClosedAt = &at
-		return true, nil
+		return day, true, nil
 	}
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		track.ownerLookups++
-		return &dbs.Group{ID: id, TeamID: 77}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-		return &dbs.Team{ID: id, OwnerID: ownerOfGroup}, nil
-	}}
-	svc := &presencialSessionService{calendarDayDao: dayDao, groupDao: groupDao, teamDao: teamDao}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
 	return svc, day, track
 }
 
 func TestPresencial_CheckAthleteEntry_NoDay_NoGate(t *testing.T) {
-	// Instancia sin día (huérfana): sin gate y sin lookup de owner.
+	// Instancia sin día (huérfana): sin gate. Una sola lectura combinada.
 	svc, _, track := presencialSvcWith(nil, 7)
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	day, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
 	require.NoError(t, err)
-	assert.True(t, track.noop())
+	assert.Nil(t, day)
+	assert.Equal(t, 1, track.dayLookups)
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_CheckAthleteEntry_NonPresencial_NoGate(t *testing.T) {
@@ -80,28 +80,29 @@ func TestPresencial_CheckAthleteEntry_NonPresencial_NoGate(t *testing.T) {
 	rest.IsPresencial = false
 	svc, _, track := presencialSvcWith(rest, 0)
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
 	require.NoError(t, err)
-	assert.True(t, track.noop())
+	assert.Equal(t, 1, track.dayLookups)
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_CheckAthleteEntry_OwnerExempt(t *testing.T) {
 	own := fixturePresencialDay(5, nil, nil)
 	svc, _, track := presencialSvcWith(own, 7)
 
-	day, err := svc.CheckAthleteEntry(nil, 42, 7)
+	day, _, err := svc.CheckAthleteEntry(nil, 42, 7)
 
 	require.NoError(t, err)
 	require.NotNil(t, day, "el día cargado por el gate sale por el passthrough")
-	assert.Empty(t, track.setCalls)
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_CheckAthleteEntry_NotOpen(t *testing.T) {
 	own := fixturePresencialDay(5, nil, nil)
 	svc, _, _ := presencialSvcWith(own, 7)
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
 	require.ErrorIs(t, err, ErrRunnerSessionNotOpen)
 }
@@ -112,7 +113,7 @@ func TestPresencial_CheckAthleteEntry_ClosedWins(t *testing.T) {
 	own := fixturePresencialDay(5, &opened, &closed)
 	svc, _, _ := presencialSvcWith(own, 7)
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
 	require.ErrorIs(t, err, ErrRunnerSessionClosed)
 }
@@ -122,82 +123,174 @@ func TestPresencial_CheckAthleteEntry_OpenAndRunning_OK(t *testing.T) {
 	own := fixturePresencialDay(5, &opened, nil)
 	svc, _, _ := presencialSvcWith(own, 7)
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
 	require.NoError(t, err)
 }
 
-func TestPresencial_CheckAthleteEntry_DayLookupError(t *testing.T) {
-	svc, _, _ := presencialSvcWith(nil, 7)
-	boom := errors.New("boom")
-	dayDao := &mockGroupCalendarDao{findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-		return nil, boom
-	}}
-	svc.calendarDayDao = dayDao
+func TestPresencial_CheckAthleteEntry_BothLookupsFail_PropagatesDayReadError(t *testing.T) {
+	combinedErr := errors.New("combined boom")
+	dayErr := errors.New("day boom")
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			return nil, nil, combinedErr
+		},
+		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
+			return nil, dayErr
+		},
+	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
 
-	_, err := svc.CheckAthleteEntry(nil, 42, 99)
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
 
-	require.ErrorIs(t, err, boom)
+	require.ErrorIs(t, err, dayErr, "si ambos lookups fallan se conserva el error del día")
+}
+
+// Fallback de paridad: el owner lookup combinado falla pero el día se
+// recupera por la lectura sola → el owner queda ausente y el gate sigue su
+// curso (409 de sesión sin abrir), no un error de infraestructura.
+func TestPresencial_CheckAthleteEntry_CombinedLookupError_DayReadSucceeds(t *testing.T) {
+	own := fixturePresencialDay(5, nil, nil)
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			return nil, nil, errors.New("combined boom")
+		},
+		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
+			return own, nil
+		},
+	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
+
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 99)
+
+	require.ErrorIs(t, err, ErrRunnerSessionNotOpen)
+}
+
+// El gate no encadena lecturas de group/team: una sola consulta resuelve
+// día + owner.
+func TestPresencial_CheckAthleteEntry_UnaSolaLecturaDiaYOwner(t *testing.T) {
+	own := fixturePresencialDay(5, nil, nil)
+	combined := 0
+	single := 0
+	dayDao := &mockGroupCalendarDao{
+		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
+			single++
+			return own, nil
+		},
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			combined++
+			owner := int64(7)
+			return own, &owner, nil
+		},
+	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
+
+	_, _, err := svc.CheckAthleteEntry(nil, 42, 7)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, combined)
+	assert.Zero(t, single, "no se usa el lookup de día separado")
 }
 
 func TestPresencial_OnRunnerCreated_OwnerOpens(t *testing.T) {
 	own := fixturePresencialDay(5, nil, nil)
 	svc, _, track := presencialSvcWith(own, 7)
 
-	day, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil)
+	day, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil, nil)
 
 	require.NoError(t, err)
 	assert.True(t, mutated)
 	require.NotNil(t, day)
 	require.NotNil(t, day.PresencialOpenedAt)
+	assert.WithinDuration(t, time.Now(), *day.PresencialOpenedAt, 2*time.Second)
 	assert.Equal(t, int64(5), day.ID)
 	assert.Equal(t, []string{"opened"}, track.setCalls)
 }
 
-// El día que trae el gate (mismo POST, FK 1:1) se consume sin re-consulta:
-// la única lectura extra es el re-read post-write del evento.
-func TestPresencial_OnRunnerCreated_GateDay_SinReconsulta(t *testing.T) {
+// El hook reutiliza día y owner resueltos por el gate (D3): no repite la
+// lectura combinada.
+func TestPresencial_OnRunnerCreated_GateDayAndOwner_SinLecturaCombinada(t *testing.T) {
 	own := fixturePresencialDay(5, nil, nil)
 	svc, _, track := presencialSvcWith(own, 7)
-	dayLookups := 0
-	svc.calendarDayDao.(*mockGroupCalendarDao).findBySessionInstanceIDFn = func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-		dayLookups++
-		return own, nil
-	}
+	owner := int64(7)
 
-	_, mutated, err := svc.OnRunnerCreated(nil, 42, 7, own)
+	_, mutated, err := svc.OnRunnerCreated(nil, 42, 7, own, &owner)
 
 	require.NoError(t, err)
 	assert.True(t, mutated)
 	assert.Equal(t, []string{"opened"}, track.setCalls)
-	assert.Equal(t, 1, dayLookups, "solo el re-read post-write")
+	assert.Zero(t, track.dayLookups, "día y owner vienen del gate")
 
-	// Sin mutación (no-owner) no hay ninguna lectura del día.
+	// Sin mutación (no-owner) no hay writes ni lecturas extra.
 	svcNotOwner, _, trackNotOwner := presencialSvcWith(own, 7)
-	lookupsNotOwner := 0
-	svcNotOwner.calendarDayDao.(*mockGroupCalendarDao).findBySessionInstanceIDFn = func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-		lookupsNotOwner++
-		return own, nil
-	}
 
-	_, mutated, err = svcNotOwner.OnRunnerCreated(nil, 42, 99, own)
+	_, mutated, err = svcNotOwner.OnRunnerCreated(nil, 42, 99, own, &owner)
 
 	require.NoError(t, err)
 	assert.False(t, mutated)
-	assert.Empty(t, trackNotOwner.setCalls)
-	assert.Zero(t, lookupsNotOwner)
+	assert.True(t, trackNotOwner.noWrites())
+	assert.Zero(t, trackNotOwner.dayLookups)
+}
+
+// Fallback seguro del hook: la lectura combinada falla pero la lectura de día
+// sola funciona → owner ausente y no-op exitoso (no 500 después del write).
+func TestPresencial_OnRunnerCreated_CombinedLookupError_DayReadSucceeds_Noop(t *testing.T) {
+	own := fixturePresencialDay(5, nil, nil)
+	combined, dayOnly := 0, 0
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			combined++
+			return nil, nil, errors.New("combined boom")
+		},
+		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
+			dayOnly++
+			return own, nil
+		},
+		setPresencialOpenedAtFn: func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+			t.Fatal("un owner ausente no debe escribir")
+			return nil, false, nil
+		},
+	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
+
+	day, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil, nil)
+
+	require.NoError(t, err)
+	assert.False(t, mutated)
+	assert.Nil(t, day)
+	assert.Equal(t, 1, combined)
+	assert.Equal(t, 1, dayOnly)
+}
+
+// Si el fallback tampoco puede leer el día, se propaga ese error (paridad con
+// la lectura de día previa).
+func TestPresencial_OnRunnerCreated_BothLookupsFail_PropagatesDayReadError(t *testing.T) {
+	dayErr := errors.New("day boom")
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			return nil, nil, errors.New("combined boom")
+		},
+		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
+			return nil, dayErr
+		},
+	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
+
+	_, _, err := svc.OnRunnerCreated(nil, 42, 7, nil, nil)
+
+	require.ErrorIs(t, err, dayErr)
 }
 
 func TestPresencial_OnRunnerCreated_NotOwner_Noop(t *testing.T) {
 	own := fixturePresencialDay(5, nil, nil)
 	svc, _, track := presencialSvcWith(own, 7)
 
-	day, mutated, err := svc.OnRunnerCreated(nil, 42, 99, nil)
+	day, mutated, err := svc.OnRunnerCreated(nil, 42, 99, nil, nil)
 
 	require.NoError(t, err)
 	assert.False(t, mutated)
 	assert.Nil(t, day)
-	assert.Empty(t, track.setCalls)
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_OnRunnerCreated_NonPresencial_Noop(t *testing.T) {
@@ -205,32 +298,30 @@ func TestPresencial_OnRunnerCreated_NonPresencial_Noop(t *testing.T) {
 	rest.IsPresencial = false
 	svc, _, track := presencialSvcWith(rest, 7)
 
-	day, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil)
+	day, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil, nil)
 
 	require.NoError(t, err)
 	assert.False(t, mutated)
 	assert.Nil(t, day)
-	assert.True(t, track.noop())
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_OnRunnerCreated_AlreadyOpen_NoMutation(t *testing.T) {
 	opened := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
 	own := fixturePresencialDay(5, &opened, nil)
-	// Sin fn en setPresencialOpenedAt → default (false, no write): simula el
-	// guard SQL sin mutación.
-	dayDao := &mockGroupCalendarDao{findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-		return own, nil
-	}}
-	svc := &presencialSessionService{calendarDayDao: dayDao,
-		groupDao: &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 77}, nil
-		}},
-		teamDao: &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 7}, nil
-		}},
+	// Set fn devuelve nil,false: simula el guard SQL sin mutación.
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			owner := int64(7)
+			return own, &owner, nil
+		},
+		setPresencialOpenedAtFn: func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+			return nil, false, nil
+		},
 	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
 
-	got, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil)
+	got, mutated, err := svc.OnRunnerCreated(nil, 42, 7, nil, nil)
 
 	require.NoError(t, err)
 	assert.False(t, mutated, "re-Play del owner no vuelve a abrir")
@@ -248,6 +339,7 @@ func TestPresencial_OnRunnerFinished_OwnerCloses(t *testing.T) {
 	assert.True(t, mutated)
 	require.NotNil(t, day)
 	require.NotNil(t, day.PresencialClosedAt)
+	assert.WithinDuration(t, time.Now(), *day.PresencialClosedAt, 2*time.Second)
 	assert.Equal(t, []string{"closed"}, track.setCalls)
 }
 
@@ -261,25 +353,23 @@ func TestPresencial_OnRunnerFinished_NotOwner_Noop(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, mutated)
 	assert.Nil(t, day)
-	assert.Empty(t, track.setCalls)
+	assert.True(t, track.noWrites())
 }
 
 func TestPresencial_OnRunnerFinished_AlreadyClosed_NoMutation(t *testing.T) {
 	opened := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
 	closed := opened.Add(time.Hour)
 	own := fixturePresencialDay(5, &opened, &closed)
-	// Sin fn en setPresencialClosedAt → default (false, no write): guarda SQL.
-	dayDao := &mockGroupCalendarDao{findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-		return own, nil
-	}}
-	svc := &presencialSessionService{calendarDayDao: dayDao,
-		groupDao: &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 77}, nil
-		}},
-		teamDao: &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 7}, nil
-		}},
+	dayDao := &mockGroupCalendarDao{
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			owner := int64(7)
+			return own, &owner, nil
+		},
+		setPresencialClosedAtFn: func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+			return nil, false, nil
+		},
 	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
 
 	got, mutated, err := svc.OnRunnerFinished(nil, 42, 7)
 
@@ -293,19 +383,15 @@ func TestPresencial_SetWriteError_Surfaces(t *testing.T) {
 	own := fixturePresencialDay(5, &opened, nil)
 	boom := errors.New("boom")
 	dayDao := &mockGroupCalendarDao{
-		findBySessionInstanceIDFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, error) {
-			return own, nil
+		findWithTeamOwnerFn: func(ctx *gin.Context, id int64) (*dbs.GroupCalendarDay, *int64, error) {
+			owner := int64(7)
+			return own, &owner, nil
 		},
-		setPresencialClosedAtFn: func(ctx *gin.Context, dayID int64, at time.Time) (bool, error) { return false, boom },
+		setPresencialClosedAtFn: func(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+			return nil, false, boom
+		},
 	}
-	svc := &presencialSessionService{calendarDayDao: dayDao,
-		groupDao: &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 77}, nil
-		}},
-		teamDao: &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return &dbs.Team{ID: id, OwnerID: 7}, nil
-		}},
-	}
+	svc := &presencialSessionService{calendarDayDao: dayDao}
 
 	day, mutated, err := svc.OnRunnerFinished(nil, 42, 7)
 
@@ -329,10 +415,10 @@ func TestPresencial_ReactivarPresencial_ArrancaSinEstado(t *testing.T) {
 	on := &dbs.GroupCalendarDay{GroupID: day.GroupID, Date: day.Date, Kind: day.Kind, SessionInstanceID: day.SessionInstanceID, IsPresencial: true}
 	require.NoError(t, dao.Upsert(nil, on))
 
-	gateway := &presencialSessionService{calendarDayDao: dao, groupDao: daos.NewGroupDao(db), teamDao: daos.NewTeamDao(db)}
-	_, err := gateway.CheckAthleteEntry(nil, f.instDay.ID, f.athlete.ID)
+	gateway := &presencialSessionService{calendarDayDao: dao}
+	_, _, err := gateway.CheckAthleteEntry(nil, f.instDay.ID, f.athlete.ID)
 	require.ErrorIs(t, err, ErrRunnerSessionNotOpen, "re-activada y sin abrir: el gate rechaza")
-	_, err = gateway.CheckAthleteEntry(nil, f.instDay.ID, f.owner.ID)
+	_, _, err = gateway.CheckAthleteEntry(nil, f.instDay.ID, f.owner.ID)
 	require.NoError(t, err, "el owner sigue exento")
 
 	resp, err := detailSvc(db).SessionInstanceDetail(nil, f.instDay.ID, f.owner.ID)

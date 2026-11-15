@@ -61,8 +61,8 @@ func runnerSessionPatchFinish(c *gin.Context, body string) {
 func TestRunnerSessionController_Create_WipNoDisparaStreakTrigger(t *testing.T) {
 	var trigger mockStreakTrigger
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return fixtureRunnerSessionResponse(), nil, true, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, nil, true, nil
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, &trigger, nil)

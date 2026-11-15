@@ -569,3 +569,159 @@ func TestWorkoutFeedbackDao_SoftDelete_DBError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error soft-deleting workout feedback")
 }
+
+// Update devuelve la fila completa vía UPDATE ... RETURNING: una sola query y
+// el mismo shape que el GetByID posterior que se eliminó.
+func TestWorkoutFeedbackDao_Update_ReturnsFullRowWithoutReread(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	feedback := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+
+	var media pgtype.TextArray
+	require.NoError(t, media.Set([]string{"https://media.foo/b.jpg"}))
+	annotations := "post-serie"
+
+	counting, counter := countingDB(db)
+	countingDao := NewWorkoutFeedbackDao(counting)
+
+	updated, err := countingDao.Update(nil, feedback.ID, map[string]interface{}{
+		"weight_kg": 80.5, "annotations": annotations, "media_urls": media,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, int64(1), *counter, "UPDATE ... RETURNING no relee con GetByID")
+	assert.Equal(t, feedback.ID, updated.ID)
+	assert.Equal(t, 80.5, *updated.WeightKg)
+	require.NotNil(t, updated.Annotations)
+	assert.Equal(t, annotations, *updated.Annotations)
+	assert.Equal(t, feedback.ReportSource, updated.ReportSource)
+	var urls []string
+	for _, e := range updated.MediaURLs.Elements {
+		if e.Status == pgtype.Present {
+			urls = append(urls, e.String)
+		}
+	}
+	assert.Equal(t, []string{"https://media.foo/b.jpg"}, urls)
+	assert.False(t, updated.UpdatedAt.Before(feedback.UpdatedAt))
+}
+
+// GetBySession ya es batch: 1 lectura de feedbacks + 1 COUNT agrupado, sin
+// escalar con la cantidad de filas, y llena PointsCount por serie.
+func TestWorkoutFeedbackDao_GetBySession_PointsCountBatch(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewWorkoutFeedbackDao(db)
+
+	withPoints := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+	noPoints := testFeedback(t, db, 1, 1, 1, 1, nil, 1)
+	otherExercise := testFeedback(t, db, 1, 1, 1, 2, nil, 0)
+
+	_, err := dao.BulkCreatePoints(nil, withPoints.ID, []dbs.WorkoutFeedbackPoint{
+		{SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 0, Latitude: -34.6, Longitude: -58.4, RecordedAt: time.Date(2026, 9, 24, 14, 0, 0, 0, time.UTC)},
+		{SessionInstanceID: 3, ExerciseInstanceID: 4, Order: 1, Latitude: -34.61, Longitude: -58.41, RecordedAt: time.Date(2026, 9, 24, 14, 0, 1, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+	_, err = dao.BulkCreatePoints(nil, otherExercise.ID, []dbs.WorkoutFeedbackPoint{
+		{SessionInstanceID: 3, ExerciseInstanceID: 5, Order: 0, Latitude: -34.62, Longitude: -58.42, RecordedAt: time.Date(2026, 9, 24, 14, 0, 2, 0, time.UTC)},
+	})
+	require.NoError(t, err)
+
+	counting, counter := countingDB(db)
+	countingDao := NewWorkoutFeedbackDao(counting)
+	feedbacks, err := countingDao.GetBySession(nil, 1, nil)
+
+	require.NoError(t, err)
+	require.Len(t, feedbacks, 3)
+	assert.Equal(t, int64(2), *counter, "feedbacks + COUNT: 2 queries constantes")
+	counts := map[int64]int64{}
+	for _, fb := range feedbacks {
+		counts[fb.ID] = fb.PointsCount
+	}
+	assert.Equal(t, int64(2), counts[withPoints.ID])
+	assert.Equal(t, int64(0), counts[noPoints.ID])
+	assert.Equal(t, int64(1), counts[otherExercise.ID])
+}
+
+// BulkCreatePoints inserta todo el recorrido en una sola sentencia, sin N+1 por
+// punto (la idempotencia la resuelve ON CONFLICT).
+func TestWorkoutFeedbackDao_CreatePoints_SingleStatement(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	feedback := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+
+	points := make([]dbs.WorkoutFeedbackPoint, 0, 40)
+	for i := 0; i < 40; i++ {
+		points = append(points, dbs.WorkoutFeedbackPoint{
+			SessionInstanceID: 3, ExerciseInstanceID: 4, Order: i,
+			Latitude: -34.6, Longitude: -58.4,
+			RecordedAt: time.Date(2026, 9, 24, 14, 0, i, 0, time.UTC),
+		})
+	}
+
+	counting, counter := countingDB(db)
+	countingDao := NewWorkoutFeedbackDao(counting)
+	created, err := countingDao.BulkCreatePoints(nil, feedback.ID, points)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(40), created)
+	assert.Equal(t, int64(1), *counter, "un INSERT batch, no uno por punto")
+}
+
+// countingTxConnPool agrega TxCommitter al contador existente para que
+// Transaction use el camino de savepoints del handle de test y siga contando.
+type countingTxConnPool struct {
+	*countingConnPool
+}
+
+func (p *countingTxConnPool) Commit() error {
+	if c, ok := p.underlying.(gorm.TxCommitter); ok {
+		return c.Commit()
+	}
+	return gorm.ErrInvalidTransaction
+}
+
+func (p *countingTxConnPool) Rollback() error {
+	if c, ok := p.underlying.(gorm.TxCommitter); ok {
+		return c.Rollback()
+	}
+	return gorm.ErrInvalidTransaction
+}
+
+func recomputeCountingDB(db *gorm.DB) (*gorm.DB, *int64) {
+	pool := &countingTxConnPool{countingConnPool: &countingConnPool{underlying: db.Statement.ConnPool}}
+	sess := db.Session(&gorm.Session{Context: db.Statement.Context, NewDB: true})
+	sess.Statement.ConnPool = pool
+	return sess, &pool.queries
+}
+
+// El service usa BulkCreatePointsRecompute: INSERT + recompute no escalan con
+// la cantidad de puntos (mismo número de queries para 1 y para 40).
+func TestWorkoutFeedbackDao_CreatePointsRecompute_QueryCountConstant(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	feedback := testFeedback(t, db, 1, 1, 1, 1, nil, 0)
+
+	buildPoints := func(count, offset int) []dbs.WorkoutFeedbackPoint {
+		points := make([]dbs.WorkoutFeedbackPoint, 0, count)
+		for i := 0; i < count; i++ {
+			points = append(points, dbs.WorkoutFeedbackPoint{
+				SessionInstanceID: 3, ExerciseInstanceID: 4, Order: offset + i,
+				Latitude: -34.6, Longitude: -58.4,
+				RecordedAt: time.Date(2026, 9, 24, 14, 0, offset+i, 0, time.UTC),
+			})
+		}
+		return points
+	}
+
+	countingOne, counterOne := recomputeCountingDB(db)
+	created, err := NewWorkoutFeedbackDao(countingOne).BulkCreatePointsRecompute(nil, feedback.ID, buildPoints(1, 0))
+	require.NoError(t, err)
+	require.Equal(t, int64(1), created)
+	onePointQueries := *counterOne
+
+	countingMany, counterMany := recomputeCountingDB(db)
+	created, err = NewWorkoutFeedbackDao(countingMany).BulkCreatePointsRecompute(nil, feedback.ID, buildPoints(40, 1))
+	require.NoError(t, err)
+	require.Equal(t, int64(40), created)
+	manyPointQueries := *counterMany
+
+	assert.Equal(t, onePointQueries, manyPointQueries, "el bulk no escala con la cantidad de puntos")
+	assert.GreaterOrEqual(t, onePointQueries, int64(4), "INSERT + SELECT feedback + SELECT points + UPDATE")
+}

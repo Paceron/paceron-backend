@@ -29,10 +29,11 @@ var (
 type RunnerSessionServiceInterface interface {
 	// Create crea el estado en wip (start_date provista por el cliente) o, si
 	// ya existía la fila (idempotencia), devuelve la actual. created es true
-	// solo si se creó. calendarDay es el día cargado por el gate presencial
-	// (nil si no hay gate, día inexistente o no presencial): el controller lo
-	// pasa al hook de apertura para evitar re-consultarlo.
-	Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error)
+	// solo si se creó. calendarDay y calendarDayOwnerID son el día y el owner
+	// resueltos por el gate presencial (nil si no hay gate, día inexistente o
+	// no presencial): el controller los pasa al hook de apertura para evitar
+	// repetir la lectura combinada (D3).
+	Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error)
 	// Finish aplica la transición de status pedida (finished|interrupted) con
 	// end_date = now() del servidor. Idempotente si la fila ya está en el
 	// status destino; finished→interrupted es rechazada (400).
@@ -81,32 +82,27 @@ func NewRunnerSessionService(runnerSessionDao daos.RunnerSessionDAOInterface, pr
 // puede comprobar el acceso y el guard falla cerrado (500 en el controller).
 var errInstanceAccessUnavailable = errors.New("no se puede validar el acceso a la sesión: sessionInstanceDao no configurado")
 
-// requireInstanceAccess exige que el atleta efectivo tenga acceso a la
-// instancia (miembro del grupo/equipo, atleta con feedback o participante de
-// una competencia route). 403 si no.
-func (s *runnerSessionService) requireInstanceAccess(ctx *gin.Context, sessionInstanceID, athleteUserID int64) error {
+// requireInstanceAccessForCaller valida al atleta efectivo y, cuando el caller
+// es un coach, también al caller: un entrenador solo opera sobre un atleta en
+// una instancia a la que él mismo tiene acceso. Ambos se resuelven en una sola
+// consulta batch (D4); el caso self no duplica el usuario.
+func (s *runnerSessionService) requireInstanceAccessForCaller(ctx *gin.Context, sessionInstanceID, authUserID, athleteUserID int64) error {
 	if s.sessionInstanceDao == nil {
 		return errInstanceAccessUnavailable
 	}
-	hasAccess, err := s.sessionInstanceDao.HasInstanceAccess(ctx, sessionInstanceID, athleteUserID)
+	userIDs := []int64{athleteUserID}
+	if authUserID != athleteUserID {
+		userIDs = append(userIDs, authUserID)
+	}
+	access, err := s.sessionInstanceDao.HasInstanceAccessBatch(ctx, sessionInstanceID, userIDs)
 	if err != nil {
 		return err
 	}
-	if !hasAccess {
+	if !access[athleteUserID] {
 		return ErrRunnerSessionForbidden
 	}
-	return nil
-}
-
-// requireInstanceAccessForCaller valida al atleta efectivo y, cuando el caller
-// es un coach, también al caller: un entrenador solo opera sobre un atleta en
-// una instancia a la que él mismo tiene acceso.
-func (s *runnerSessionService) requireInstanceAccessForCaller(ctx *gin.Context, sessionInstanceID, authUserID, athleteUserID int64) error {
-	if err := s.requireInstanceAccess(ctx, sessionInstanceID, athleteUserID); err != nil {
-		return err
-	}
-	if authUserID != athleteUserID {
-		return s.requireInstanceAccess(ctx, sessionInstanceID, authUserID)
+	if authUserID != athleteUserID && !access[authUserID] {
+		return ErrRunnerSessionForbidden
 	}
 	return nil
 }
@@ -169,40 +165,43 @@ func (s *runnerSessionService) validateCompetitionIntent(ctx *gin.Context, sessi
 
 // Create valida la sesión, resuelve el atleta y crea el estado en wip de forma
 // idempotente: si la fila ya existía devuelve la actual (created=false), sin
-// pisar start_date ni bajar de finished a wip. Devuelve además el día cargado
-// por el gate presencial (nil si no se cargó) para el hook de apertura.
-func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
+// pisar start_date ni bajar de finished a wip. Devuelve además el día y el
+// owner resueltos por el gate presencial (nil si no se cargaron) para que el
+// hook de apertura no repita la lectura combinada (D3).
+func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
 	exists, err := s.runnerSessionDao.SessionInstanceExists(ctx, sessionInstanceID)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, false, err
 	}
 	if !exists {
-		return nil, nil, false, ErrSessionInstanceNotFound
+		return nil, nil, nil, false, ErrSessionInstanceNotFound
 	}
 	if req.StartDate.IsZero() {
-		return nil, nil, false, fmt.Errorf("%w: start_date es obligatorio", ErrRunnerSessionInvalid)
+		return nil, nil, nil, false, fmt.Errorf("%w: start_date es obligatorio", ErrRunnerSessionInvalid)
 	}
 
 	athleteUserID, err := s.resolveAthlete(ctx, authUserID, req.AthleteUserID)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, false, err
 	}
 
 	// Acceso del atleta efectivo (y del caller coach si aplica) a la
 	// instancia, después del 403 de resolveAthlete y antes del gate/WRITE.
 	if err := s.requireInstanceAccessForCaller(ctx, sessionInstanceID, authUserID, athleteUserID); err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, false, err
 	}
 
 	// Gate presencial D9: después de resolveAthlete (403 precede al 409) y
 	// antes del write — un día cerrado/sin abrir no acepta entrada del
-	// corredor. Owner exento (CheckAthleteEntry lo resuelve). El día cargado
-	// viaja hacia arriba: el hook de apertura del controller lo reutiliza.
+	// corredor. Owner exento (CheckAthleteEntry lo resuelve). El día y su
+	// owner viajan hacia arriba: el hook de apertura del controller los
+	// reutiliza sin otra lectura combinada (D3).
 	var calendarDay *dbs.GroupCalendarDay
+	var calendarDayOwnerID *int64
 	if s.presencial != nil {
-		calendarDay, err = s.presencial.CheckAthleteEntry(ctx, sessionInstanceID, authUserID)
+		calendarDay, calendarDayOwnerID, err = s.presencial.CheckAthleteEntry(ctx, sessionInstanceID, authUserID)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, nil, false, err
 		}
 	}
 
@@ -210,7 +209,7 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 	// flujo es byte-idéntico al de siempre.
 	if req.CompetitionID != nil {
 		if err := s.validateCompetitionIntent(ctx, sessionInstanceID, athleteUserID, req.CompetitionID); err != nil {
-			return nil, nil, false, err
+			return nil, nil, nil, false, err
 		}
 	}
 
@@ -223,16 +222,16 @@ func (s *runnerSessionService) Create(ctx *gin.Context, authUserID, sessionInsta
 	}
 	created, err := s.runnerSessionDao.Create(ctx, rs)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, false, err
 	}
 	if !created {
 		current, err := s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, nil, false, err
 		}
-		return current, calendarDay, false, nil
+		return current, calendarDay, calendarDayOwnerID, false, nil
 	}
-	return rs, calendarDay, true, nil
+	return rs, calendarDay, calendarDayOwnerID, true, nil
 }
 
 // Finish aplica la transición de status pedida (finished|interrupted) con
@@ -277,9 +276,15 @@ func (s *runnerSessionService) Finish(ctx *gin.Context, authUserID, sessionInsta
 	}
 
 	now := time.Now()
-	if err := s.runnerSessionDao.UpdateStatus(ctx, current.ID, req.Status, []string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, now); err != nil {
+	updated, err := s.runnerSessionDao.UpdateStatus(ctx, current.ID, req.Status, []string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, now)
+	if err != nil {
 		return nil, err
 	}
+	if updated != nil {
+		return updated, nil
+	}
+	// El guard SQL no matcheó (carrera con otra transición): conservar la
+	// relectura de antes solo para ese caso.
 	return s.runnerSessionDao.GetBySessionAndAthlete(ctx, sessionInstanceID, athleteUserID)
 }
 

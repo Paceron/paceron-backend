@@ -148,9 +148,14 @@ func TestRunnerSessionDao_UpdateStatus_FromWip_ToFinished(t *testing.T) {
 	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "", nil)
 	end := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
 
-	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, end)
+	updated, err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, end)
 
 	require.NoError(t, err)
+	require.NotNil(t, updated, "RETURNING entrega la fila post-write")
+	assert.Equal(t, "finished", updated.Status)
+	require.NotNil(t, updated.EndDate)
+	assert.Equal(t, end.UTC(), updated.EndDate.UTC())
+
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
@@ -166,9 +171,14 @@ func TestRunnerSessionDao_UpdateStatus_FromWip_ToInterrupted(t *testing.T) {
 	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "", nil)
 	end := time.Date(2026, 9, 24, 10, 30, 0, 0, time.UTC)
 
-	err := dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, end)
+	updated, err := dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, end)
 
 	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "interrupted", updated.Status)
+	require.NotNil(t, updated.EndDate)
+	assert.Equal(t, end.UTC(), updated.EndDate.UTC())
+
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
 	require.NoError(t, err)
 	assert.Equal(t, "interrupted", got.Status)
@@ -183,9 +193,14 @@ func TestRunnerSessionDao_UpdateStatus_FromInterrupted_ToFinished(t *testing.T) 
 	rs := testRunnerSessionSeed(t, db, 1, 7, time.Date(2026, 9, 24, 9, 0, 0, 0, time.UTC), "interrupted", &interruptedEnd)
 	newEnd := interruptedEnd.Add(time.Hour)
 
-	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, newEnd)
+	updated, err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, newEnd)
 
 	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "finished", updated.Status)
+	require.NotNil(t, updated.EndDate)
+	assert.Equal(t, newEnd.UTC(), updated.EndDate.UTC())
+
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
 	require.NoError(t, err)
 	assert.Equal(t, "finished", got.Status)
@@ -201,10 +216,12 @@ func TestRunnerSessionDao_UpdateStatus_Finished_IsUntouchable(t *testing.T) {
 
 	// El WHERE status IN (...) no contiene 'finished': la fila finished no
 	// matchea y no se reescribe (ni con destino finished ni interrupted).
-	err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
+	updated, err := dao.UpdateStatus(nil, rs.ID, "finished", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
 	require.NoError(t, err)
-	err = dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
+	assert.Nil(t, updated, "transición inválida no matchea el guard")
+	updated, err = dao.UpdateStatus(nil, rs.ID, "interrupted", []string{"wip", "interrupted"}, originalEnd.Add(time.Hour))
 	require.NoError(t, err)
+	assert.Nil(t, updated)
 
 	got, err := dao.GetBySessionAndAthlete(nil, 1, 7)
 	require.NoError(t, err)

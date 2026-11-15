@@ -83,7 +83,17 @@ func (m *mockSessionInstanceDao) HasInstanceAccessBatch(ctx *gin.Context, instan
 	if m.hasInstanceAccessBatchFn != nil {
 		return m.hasInstanceAccessBatchFn(ctx, instanceID, userIDs)
 	}
-	return map[int64]bool{}, nil
+	// Sin batch explícito, delega en la expectativa single por usuario para
+	// conservar las aserciones de autorización existentes.
+	access := make(map[int64]bool, len(userIDs))
+	for _, userID := range userIDs {
+		ok, err := m.HasInstanceAccess(ctx, instanceID, userID)
+		if err != nil {
+			return nil, err
+		}
+		access[userID] = ok
+	}
+	return access, nil
 }
 
 func (m *mockSessionInstanceDao) TeamIDForSessionInstance(ctx *gin.Context, instanceID int64) (*int64, error) {

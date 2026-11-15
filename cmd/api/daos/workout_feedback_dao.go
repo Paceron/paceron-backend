@@ -3,6 +3,7 @@ package daos
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -182,12 +183,32 @@ func (d *workoutFeedbackDao) GetByID(ctx *gin.Context, id int64) (*dbs.WorkoutFe
 }
 
 // Update aplica los cambios del map sobre el feedback activo, refresca updated_at
-// y devuelve el registro persistido. Sin feedback activo → ErrWorkoutFeedbackNotFound.
+// y devuelve la fila persistida en la misma sentencia (UPDATE ... RETURNING), sin
+// releer con GetByID. Sin feedback activo → ErrWorkoutFeedbackNotFound.
 func (d *workoutFeedbackDao) Update(ctx *gin.Context, id int64, updates map[string]interface{}) (*dbs.WorkoutFeedback, error) {
 	updates["updated_at"] = time.Now()
-	res := d.DB.Model(&dbs.WorkoutFeedback{}).
-		Where("id = ? AND deleted_at IS NULL", id).
-		Updates(updates)
+
+	// Las columnas son claves internas de buildUpdates (nunca input del cliente);
+	// los valores viajan como placeholders. Orden alfabético para SQL determinista.
+	columns := make([]string, 0, len(updates))
+	for column := range updates {
+		columns = append(columns, column)
+	}
+	sort.Strings(columns)
+	assignments := make([]string, 0, len(columns))
+	args := make([]interface{}, 0, len(columns)+1)
+	for _, column := range columns {
+		assignments = append(assignments, column+" = ?")
+		args = append(args, updates[column])
+	}
+	args = append(args, id)
+
+	var updated dbs.WorkoutFeedback
+	res := d.DB.Raw(
+		"UPDATE workout_feedback SET "+strings.Join(assignments, ", ")+
+			" WHERE id = ? AND deleted_at IS NULL RETURNING *",
+		args...,
+	).Scan(&updated)
 	if res.Error != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(res.Error, &pgErr) && pgErr.Code == postgresUniqueViolation {
@@ -198,7 +219,7 @@ func (d *workoutFeedbackDao) Update(ctx *gin.Context, id int64, updates map[stri
 	if res.RowsAffected == 0 {
 		return nil, ErrWorkoutFeedbackNotFound
 	}
-	return d.GetByID(ctx, id)
+	return &updated, nil
 }
 
 // SoftDelete setea deleted_at = now sobre el feedback activo. Sin feedback activo

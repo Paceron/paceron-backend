@@ -161,8 +161,9 @@ func TestCompetitionService_CloseRoute_QueryCountYParidad(t *testing.T) {
 	for _, athlete := range []*dbs.User{fx.runnerA, fx.runnerB} {
 		rs, err := compDao.CreateAttemptSession(nil, comp, athlete.ID)
 		require.NoError(t, err)
-		require.NoError(t, runnerDao.UpdateStatus(nil, rs.ID, runnersession.RunnerSessionStatusFinished,
-			[]string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, time.Now()))
+		_, err = runnerDao.UpdateStatus(nil, rs.ID, runnersession.RunnerSessionStatusFinished,
+			[]string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, time.Now())
+		require.NoError(t, err)
 		pinAttemptSpan(t, db, rs.ID, base, base.Add(5*time.Minute))
 		attachAttemptEvidence(t, db, athlete.ID, rs.SessionInstanceID, &fx.team.ID, 400, 11)
 	}

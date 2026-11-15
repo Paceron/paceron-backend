@@ -95,8 +95,8 @@ func TestRunnerSessionController_Finish_DisparaLogros(t *testing.T) {
 func TestRunnerSessionController_Create_WipNoDisparaLogros(t *testing.T) {
 	var trigger stubAchievementsTrigger
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return fixtureRunnerSessionResponse(), nil, true, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, nil, true, nil
 		},
 	}
 	controller := NewRunnerSessionController(mockSvc, nil, nil, nil, &trigger)

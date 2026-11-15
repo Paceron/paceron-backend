@@ -24,24 +24,24 @@ import (
 // con fns opcionales (nil → no-op) para probar hooks y gate desde el
 // controller sin DB.
 type mockPresencialGateway struct {
-	checkEntryFn        func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error)
-	onCreatedFn         func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error)
+	checkEntryFn        func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, *int64, error)
+	onCreatedFn         func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay, gateOwnerID *int64) (*dbs.GroupCalendarDay, bool, error)
 	onFinishedFn        func(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, bool, error)
 	createdInvocations  int
 	finishedInvocations int
 }
 
-func (m *mockPresencialGateway) CheckAthleteEntry(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, error) {
+func (m *mockPresencialGateway) CheckAthleteEntry(ctx *gin.Context, sessionInstanceID, authUserID int64) (*dbs.GroupCalendarDay, *int64, error) {
 	if m.checkEntryFn != nil {
 		return m.checkEntryFn(ctx, sessionInstanceID, authUserID)
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
-func (m *mockPresencialGateway) OnRunnerCreated(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
+func (m *mockPresencialGateway) OnRunnerCreated(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay, gateOwnerID *int64) (*dbs.GroupCalendarDay, bool, error) {
 	m.createdInvocations++
 	if m.onCreatedFn != nil {
-		return m.onCreatedFn(ctx, sessionInstanceID, authUserID, gateDay)
+		return m.onCreatedFn(ctx, sessionInstanceID, authUserID, gateDay, gateOwnerID)
 	}
 	return nil, false, nil
 }
@@ -77,8 +77,8 @@ func runnerSessionPATCH(c *gin.Context, body string) {
 // prueba solo el mapping a 409 + Code slug.
 func TestRunnerSessionController_Create_GateClosed_409WithSlug(t *testing.T) {
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return nil, nil, false, services.ErrRunnerSessionClosed
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return nil, nil, nil, false, services.ErrRunnerSessionClosed
 		},
 	}
 	controller := newRunnerCtrl(mockSvc, &mockPresencialGateway{}, nil)
@@ -96,8 +96,8 @@ func TestRunnerSessionController_Create_GateClosed_409WithSlug(t *testing.T) {
 
 func TestRunnerSessionController_Create_GateNotOpen_409WithSlug(t *testing.T) {
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return nil, nil, false, services.ErrRunnerSessionNotOpen
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return nil, nil, nil, false, services.ErrRunnerSessionNotOpen
 		},
 	}
 	controller := newRunnerCtrl(mockSvc, &mockPresencialGateway{}, nil)
@@ -115,18 +115,21 @@ func TestRunnerSessionController_Create_GateNotOpen_409WithSlug(t *testing.T) {
 
 func TestRunnerSessionController_Create_HookInvokedAfterSuccess(t *testing.T) {
 	gateDay := &dbs.GroupCalendarDay{ID: 9}
+	gateOwner := int64(7)
 	var gotDay *dbs.GroupCalendarDay
+	var gotOwner *int64
 	called := false
-	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
+	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, day *dbs.GroupCalendarDay, ownerID *int64) (*dbs.GroupCalendarDay, bool, error) {
 		called = true
-		gotDay = gateDay
+		gotDay = day
+		gotOwner = ownerID
 		require.Equal(t, int64(10), sessionInstanceID)
 		require.Equal(t, int64(7), authUserID)
 		return nil, false, nil
 	}}
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return fixtureRunnerSessionResponse(), gateDay, true, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return fixtureRunnerSessionResponse(), gateDay, &gateOwner, true, nil
 		},
 	}
 	controller := newRunnerCtrl(mockSvc, presencial, nil)
@@ -139,13 +142,15 @@ func TestRunnerSessionController_Create_HookInvokedAfterSuccess(t *testing.T) {
 	require.Equal(t, http.StatusCreated, response.Code)
 	assert.True(t, called)
 	assert.Same(t, gateDay, gotDay, "el día cargado por el gate viaja al hook sin re-consultar")
+	require.NotNil(t, gotOwner)
+	assert.Equal(t, int64(7), *gotOwner, "el owner resuelto por el gate viaja al hook (D3)")
 }
 
 func TestRunnerSessionController_Create_HookNotInvokedOnServiceError(t *testing.T) {
 	presencial := &mockPresencialGateway{}
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return nil, nil, false, daos.ErrRunnerSessionNotFound
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return nil, nil, nil, false, daos.ErrRunnerSessionNotFound
 		},
 	}
 	controller := newRunnerCtrl(mockSvc, presencial, nil)
@@ -161,12 +166,12 @@ func TestRunnerSessionController_Create_HookNotInvokedOnServiceError(t *testing.
 
 func TestRunnerSessionController_Create_HookErrorSurfaces(t *testing.T) {
 	boom := assert.AnError
-	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay) (*dbs.GroupCalendarDay, bool, error) {
+	presencial := &mockPresencialGateway{onCreatedFn: func(ctx *gin.Context, sessionInstanceID, authUserID int64, gateDay *dbs.GroupCalendarDay, gateOwnerID *int64) (*dbs.GroupCalendarDay, bool, error) {
 		return nil, false, boom
 	}}
 	mockSvc := &mockRunnerSessionControllerService{
-		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, bool, error) {
-			return fixtureRunnerSessionResponse(), nil, true, nil
+		createFn: func(ctx *gin.Context, authUserID, sessionInstanceID int64, req runnersession.CreateRunnerSessionRequest) (*dbs.RunnerSession, *dbs.GroupCalendarDay, *int64, bool, error) {
+			return fixtureRunnerSessionResponse(), nil, nil, true, nil
 		},
 	}
 	controller := newRunnerCtrl(mockSvc, presencial, nil)

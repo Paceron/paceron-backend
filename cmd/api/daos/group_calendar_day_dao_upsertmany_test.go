@@ -72,7 +72,7 @@ func TestGroupCalendarDayDao_UpsertMany_MismaInstanciaConservaEstado(t *testing.
 	dao := NewGroupCalendarDayDao(db)
 	inst, day := presencialDaySeed(t, db, "umn3", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
 
 	sameInst := &dbs.GroupCalendarDay{
@@ -93,7 +93,7 @@ func TestGroupCalendarDayDao_UpsertMany_CambioInstanciaLimpiaEstado(t *testing.T
 	dao := NewGroupCalendarDayDao(db)
 	_, day := presencialDaySeed(t, db, "umn4", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
 
 	newInst := &dbs.SessionInstance{Name: "otra instancia"}
@@ -117,9 +117,9 @@ func TestGroupCalendarDayDao_UpsertMany_ApagaPresencialLimpiaEstado(t *testing.T
 	inst, day := presencialDaySeed(t, db, "umn5", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 	closed := opened.Add(2 * time.Hour)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
-	_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+	_, _, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
 	require.NoError(t, err)
 
 	off := &dbs.GroupCalendarDay{
@@ -166,9 +166,9 @@ func TestGroupCalendarDayDao_UpsertMany_TransicionesEstadoPresencial(t *testing.
 		inst, day := presencialDaySeed(t, db, "umn7", true)
 		opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 		closed := opened.Add(2 * time.Hour)
-		_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+		_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 		require.NoError(t, err)
-		_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+		_, _, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
 		require.NoError(t, err)
 
 		_, err = dao.UpsertMany(nil, []*dbs.GroupCalendarDay{{
@@ -190,9 +190,9 @@ func TestGroupCalendarDayDao_UpsertMany_TransicionesEstadoPresencial(t *testing.
 		_, day := presencialDaySeed(t, db, "umn8", true)
 		opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 		closed := opened.Add(2 * time.Hour)
-		_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+		_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 		require.NoError(t, err)
-		_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+		_, _, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
 		require.NoError(t, err)
 		newInst := &dbs.SessionInstance{Name: "otra instancia distinta"}
 		require.NoError(t, db.Create(newInst).Error)

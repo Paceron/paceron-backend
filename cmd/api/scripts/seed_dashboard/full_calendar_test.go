@@ -383,7 +383,7 @@ func assertRunnerSessionStatus(t *testing.T, db *gorm.DB, instanceID, userID int
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(oldMode) })
-	presencial := services.NewPresencialSessionService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db))
+	presencial := services.NewPresencialSessionService(daos.NewGroupCalendarDayDao(db))
 	runnerService := services.NewRunnerSessionServiceWithAccess(daos.NewRunnerSessionDao(db), daos.NewSessionInstanceDao(db), presencial)
 	controller := controllers.NewRunnerSessionController(runnerService, presencial, nil, nil, nil)
 	body, err := json.Marshal(runnersession.CreateRunnerSessionRequest{StartDate: now})
