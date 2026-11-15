@@ -1162,6 +1162,7 @@ func mapSeriesRows(rows []daos.DashboardSeriesRow) []dashboard.ScopedSeries {
 			AthleteUserID:       row.AthleteUserID,
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 		})

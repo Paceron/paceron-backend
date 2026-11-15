@@ -1073,3 +1073,13 @@ func TestDashboardService_ErroresDeLectura(t *testing.T) {
 		assert.Contains(t, err.Error(), "error al resolver el rango de fechas del dashboard")
 	})
 }
+
+// El nombre del ejercicio es parte de la procedencia del mejor tiempo cumplido.
+// Si mapSeriesRows lo pierde, el resumen devuelve exercise_name vacío aunque el
+// DAO lo haya traído: el KPI muestra la fecha pero no el ejercicio.
+func TestMapSeriesRows_MapeaExerciseName(t *testing.T) {
+	rows := mapSeriesRows([]daos.DashboardSeriesRow{{ExerciseName: "100 mts planos"}})
+
+	require.Len(t, rows, 1)
+	assert.Equal(t, "100 mts planos", rows[0].ExerciseName)
+}
