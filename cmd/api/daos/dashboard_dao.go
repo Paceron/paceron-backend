@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
 
@@ -131,9 +132,10 @@ WHERE gcd.group_id IN ?
 
 // runnerSeriesFromClause es la query del Home del corredor (kpis-home-corredor
 // D1). No usa group_calendar_days ni session_exercise_instances a propósito: el
-// dato es del corredor, no de un grupo, y sumar todos los roles es el pedido
-// explícito. El LEFT JOIN a runner_session preserva el feedback previo al
-// feature de registro de sesión; el WHERE excluye solo las sesiones wip.
+// dato es del corredor, no de un grupo, y suma todos los roles. El LEFT JOIN a
+// runner_session preserva el feedback previo al feature de registro de sesión;
+// el WHERE excluye solo las sesiones wip. Los KPIs solo consideran los TRES
+// tipos con métrica, igual que el dashboard de rendimiento.
 const runnerSeriesFromClause = `
 FROM workout_feedback wf
 JOIN exercise_instances ei
@@ -143,6 +145,7 @@ LEFT JOIN runner_session rs
 	AND rs.athlete_user_id = wf.athlete_user_id
 WHERE wf.athlete_user_id = ?
   AND wf.session_date BETWEEN ? AND ?
+  AND ei.kind IN (?)
   AND wf.deleted_at IS NULL
   AND (rs.status IN (?, ?) OR rs.status IS NULL)`
 
@@ -343,6 +346,12 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 	args := []interface{}{filter.GroupIDs, filter.From, filter.To,
 		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
 	conditions := []string{}
+	// Todo KPI/métrica del dashboard se calcula solo con los TRES tipos con
+	// métrica. `liviano` y `elongacion` quedan afuera también cuando son rol
+	// `main`: sus series no son comparables con ritmo/velocidad y ensucian
+	// mejores tiempos, promedios y cumplimiento.
+	conditions = append(conditions, "ei.kind IN ?")
+	args = append(args, constants.DashboardMetricKinds())
 	if filter.SessionInstanceID != nil {
 		conditions = append(conditions, "wf.assigned_session_id = ?")
 		args = append(args, *filter.SessionInstanceID)
@@ -478,7 +487,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		HasRunnerSession    bool      `gorm:"column:has_runner_session"`
 		ResolvedByName      bool      `gorm:"column:resolved_by_name"`
 	}
-	args := []interface{}{athleteUserID, from, to,
+	args := []interface{}{athleteUserID, from, to, constants.DashboardMetricKinds(),
 		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
 	if err := d.DB.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("error finding runner series: %w", err)

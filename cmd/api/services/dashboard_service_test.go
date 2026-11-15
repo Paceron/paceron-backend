@@ -591,8 +591,8 @@ func TestDashboardService_FiltersRecortaPorRol(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, trainerResponse.Athletes, 3)
-	assert.Equal(t, constants.CurrentExerciseKinds(), trainerResponse.ExerciseTypes,
-		"los tipos del tablist son los cinco vigentes, no los diez valores válidos de escritura")
+	assert.Equal(t, constants.DashboardMetricKinds(), trainerResponse.ExerciseTypes,
+		"los tipos del tablist son los tres con métrica, no los cinco vigentes ni los diez de escritura")
 	assert.Equal(t, "owner", trainerResponse.Groups[0].Role)
 
 	runner, runnerDao, _ := dashboardFixtureAs(t, 77, false)
