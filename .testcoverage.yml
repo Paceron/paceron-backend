@@ -28,3 +28,4 @@ exclude:
     - ^cmd/api/domains/auth/
     - ^cmd/api/domains/exampleweather/
     - ^cmd/api/domains/workoutfeedback/
+    - ^cmd/api/scripts/seed_runner1/
