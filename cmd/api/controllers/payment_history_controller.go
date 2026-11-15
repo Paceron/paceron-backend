@@ -182,6 +182,7 @@ func (pc *paymentHistoryController) GetReceivedSummary(c *gin.Context) {
 // @Param        page    query     int     false  "Página (default 1)"
 // @Param        type    query     string  false  "Filtrar por tipo"  Enums(subscription, trainer_payment)
 // @Param        status  query     string  false  "Filtrar por grupo de estado"  Enums(approved, pending, rejected, refunded)
+// @Param        profile query     string  false  "Perfil activo: recorta los tiers a ese rol"  Enums(corredor, entrenador)
 // @Success      200  {object}  payment.HistoryPaymentsResponse
 // @Failure      400  {object}  apierror.APIError
 // @Failure      401  {object}  apierror.APIError
@@ -198,7 +199,7 @@ func (pc *paymentHistoryController) ListHistory(c *gin.Context) {
 		return
 	}
 
-	resp, err := pc.service.ListHistory(c, userID, c.Query("type"), c.Query("status"), page)
+	resp, err := pc.service.ListHistory(c, userID, c.Query("type"), c.Query("status"), c.Query("profile"), page)
 	if err != nil {
 		respondPaymentHistoryError(c, err)
 		return
@@ -241,9 +242,10 @@ func respondPaymentHistoryError(c *gin.Context, err error) {
 
 // GetUpcoming godoc
 // @Summary      Próximos vencimientos del usuario
-// @Description  Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`) y de cada suscripción de tier (`type=subscription`) del usuario autenticado, ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que ya vencieron.
+// @Description  Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`) y de cada suscripción de tier (`type=subscription`) del usuario autenticado, ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que ya vencieron. Con `profile`, las suscripciones de tier se recortan al rol activo.
 // @Tags         payments
 // @Produce      json
+// @Param        profile query     string  false  "Perfil activo: recorta los tiers a ese rol"  Enums(corredor, entrenador)
 // @Success      200  {object}  payment.UpcomingPaymentsResponse
 // @Failure      401  {object}  apierror.APIError
 // @Failure      500  {object}  apierror.APIError
@@ -254,7 +256,7 @@ func (pc *paymentHistoryController) GetUpcoming(c *gin.Context) {
 		respondUnauthorized(c)
 		return
 	}
-	resp, err := pc.service.GetUpcoming(c, userID)
+	resp, err := pc.service.GetUpcoming(c, userID, c.Query("profile"))
 	if err != nil {
 		respondPaymentHistoryError(c, err)
 		return

@@ -4060,6 +4060,16 @@ const docTemplate = `{
                         "description": "Filtrar por grupo de estado",
                         "name": "status",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "corredor",
+                            "entrenador"
+                        ],
+                        "type": "string",
+                        "description": "Perfil activo: recorta los tiers a ese rol",
+                        "name": "profile",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4377,7 +4387,7 @@ const docTemplate = `{
         },
         "/api/v1/payments/upcoming": {
             "get": {
-                "description": "Próxima cuota sin pagar de cada membresía de equipo con cuota (` + "`" + `type=trainer_payment` + "`" + `) y de cada suscripción de tier (` + "`" + `type=subscription` + "`" + `) del usuario autenticado, ordenadas por vencimiento. ` + "`" + `overdue_count` + "`" + ` cuenta las cuotas sin pagar que ya vencieron.",
+                "description": "Próxima cuota sin pagar de cada membresía de equipo con cuota (` + "`" + `type=trainer_payment` + "`" + `) y de cada suscripción de tier (` + "`" + `type=subscription` + "`" + `) del usuario autenticado, ordenadas por vencimiento. ` + "`" + `overdue_count` + "`" + ` cuenta las cuotas sin pagar que ya vencieron. Con ` + "`" + `profile` + "`" + `, las suscripciones de tier se recortan al rol activo.",
                 "produces": [
                     "application/json"
                 ],
@@ -4385,6 +4395,18 @@ const docTemplate = `{
                     "payments"
                 ],
                 "summary": "Próximos vencimientos del usuario",
+                "parameters": [
+                    {
+                        "enum": [
+                            "corredor",
+                            "entrenador"
+                        ],
+                        "type": "string",
+                        "description": "Perfil activo: recorta los tiers a ese rol",
+                        "name": "profile",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",

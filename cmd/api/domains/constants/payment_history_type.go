@@ -15,3 +15,18 @@ const (
 func IsValidPaymentHistoryType(t string) bool {
 	return t == string(PaymentHistoryTypeSubscription) || t == string(PaymentHistoryTypeTrainerPayment)
 }
+
+// PaymentHistoryProfile es el perfil activo del usuario. El historial y los
+// próximos vencimientos se recortan a ese perfil: el corredor no ve las
+// suscripciones de tier del entrenador, y el entrenador no ve las de corredor.
+type PaymentHistoryProfile string
+
+const (
+	PaymentProfileCorredor   PaymentHistoryProfile = "corredor"
+	PaymentProfileEntrenador PaymentHistoryProfile = "entrenador"
+)
+
+// IsValidPaymentProfile valida el query param `profile`.
+func IsValidPaymentProfile(p string) bool {
+	return p == string(PaymentProfileCorredor) || p == string(PaymentProfileEntrenador)
+}

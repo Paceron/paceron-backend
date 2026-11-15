@@ -195,7 +195,10 @@ func payersFromRows(rows []daos.ReceivedPaymentRow) []payment.PaymentPayerRef {
 
 // GetUpcoming devuelve la próxima cuota sin pagar de cada membresía con cuota y
 // de cada suscripción de tier del usuario, ordenadas por vencimiento.
-func (s *paymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error) {
+func (s *paymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64, profile string) (*payment.UpcomingPaymentsResponse, error) {
+	if profile != "" && !constants.IsValidPaymentProfile(profile) {
+		return nil, fmt.Errorf("%w: profile desconocido %q", ErrInvalidPaymentHistoryQuery, profile)
+	}
 	memberships, err := s.dao.ListUserFeeMemberships(ctx, userID)
 	if err != nil {
 		customlogger.Error(ctx, "error listing user fee memberships", err, customlogger.TagMethod("GetUpcoming"))
@@ -206,6 +209,7 @@ func (s *paymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64) (*pa
 		customlogger.Error(ctx, "error listing user tier subscriptions", err, customlogger.TagMethod("GetUpcoming"))
 		return nil, fmt.Errorf("error al obtener los próximos vencimientos: %w", err)
 	}
+	subscriptions = filterSubscriptionsByProfile(subscriptions, profile)
 
 	today := s.now()
 	items := make([]payment.UpcomingPaymentItem, 0, len(memberships)+len(subscriptions))
@@ -258,4 +262,25 @@ func (s *paymentHistoryService) currentFeePercent(ctx *gin.Context) float64 {
 // netOfFee es el monto menos la comisión, redondeada igual que al cobrar.
 func netOfFee(amount, feePercent float64) float64 {
 	return round2(amount - round2(amount*feePercent/100))
+}
+
+// filterSubscriptionsByProfile recorta las suscripciones de tier al perfil
+// activo. El corredor no tiene tiers (su monetización es por equipos), así que
+// no ve ninguna; el entrenador ve solo los tiers de entrenador. Sin perfil se
+// mantiene el comportamiento histórico (todas).
+func filterSubscriptionsByProfile(subs []daos.TierSubscriptionRow, profile string) []daos.TierSubscriptionRow {
+	switch constants.PaymentHistoryProfile(profile) {
+	case constants.PaymentProfileCorredor:
+		return nil
+	case constants.PaymentProfileEntrenador:
+		out := make([]daos.TierSubscriptionRow, 0, len(subs))
+		for _, sub := range subs {
+			if deref(sub.TierRoleName) == string(constants.TeamUserRoleEntrenador) {
+				out = append(out, sub)
+			}
+		}
+		return out
+	default:
+		return subs
+	}
 }

@@ -27,7 +27,6 @@ func membership(teamID, userID int64, start time.Time, amount float64, paid int)
 		AssignmentDate: start, InitAmount: amount, PaidInstallments: paid}
 }
 
-
 func TestGetReceivedSummary_PendingObligations(t *testing.T) {
 	dao := &mockPaymentHistoryDao{trainerMemberships: []daos.FeeMembershipRow{
 		// Dejó de pagar: la 2 venció el 6/10 (octubre) y la 3 vence el 6/11.
@@ -107,7 +106,7 @@ func TestGetUpcoming(t *testing.T) {
 			{ID: 55, TierID: 4, TierName: strPtr("premium_corredor"), TierRoleName: strPtr("corredor"), StartDate: artDate(2026, 10, 20), InitAmount: 50000, PaidInstallments: 1},
 		},
 	}
-	resp, err := obligationsService(dao, nil).GetUpcoming(nil, 12)
+	resp, err := obligationsService(dao, nil).GetUpcoming(nil, 12, "")
 
 	require.NoError(t, err)
 	require.Len(t, resp.Items, 2, "la membresía sin cuota no aparece")
@@ -128,8 +127,39 @@ func TestGetUpcoming(t *testing.T) {
 	assert.Equal(t, 0, tier.OverdueCount)
 }
 
+func TestGetUpcoming_FiltersTiersByProfile(t *testing.T) {
+	dao := &mockPaymentHistoryDao{
+		userMemberships: []daos.FeeMembershipRow{membership(32, 12, artDate(2026, 8, 10), 1000, 1)},
+		tierSubscriptions: []daos.TierSubscriptionRow{
+			{ID: 55, TierID: 4, TierName: strPtr("premium_corredor"), TierRoleName: strPtr("corredor"), StartDate: artDate(2026, 10, 20), InitAmount: 50000, PaidInstallments: 1},
+			{ID: 56, TierID: 5, TierName: strPtr("premium_entrenador"), TierRoleName: strPtr("entrenador"), StartDate: artDate(2026, 10, 20), InitAmount: 60000, PaidInstallments: 0},
+		},
+	}
+	svc := obligationsService(dao, nil)
+
+	corredor, err := svc.GetUpcoming(nil, 12, "corredor")
+	require.NoError(t, err)
+	require.Len(t, corredor.Items, 1, "el corredor no ve suscripciones de tier")
+	assert.Equal(t, "trainer_payment", corredor.Items[0].Type)
+
+	entrenador, err := svc.GetUpcoming(nil, 12, "entrenador")
+	require.NoError(t, err)
+	require.Len(t, entrenador.Items, 2, "membresía + tier de entrenador")
+	types := []string{entrenador.Items[0].Type, entrenador.Items[1].Type}
+	assert.ElementsMatch(t, []string{"trainer_payment", "subscription"}, types)
+	for _, item := range entrenador.Items {
+		if item.Type == "subscription" {
+			require.NotNil(t, item.Tier)
+			assert.Equal(t, "entrenador", item.Tier.RoleName)
+		}
+	}
+
+	_, err = svc.GetUpcoming(nil, 12, "otro")
+	assert.ErrorIs(t, err, ErrInvalidPaymentHistoryQuery)
+}
+
 func TestGetUpcoming_Errors(t *testing.T) {
-	_, err := obligationsService(&mockPaymentHistoryDao{obligationsErr: errors.New("db down")}, nil).GetUpcoming(nil, 12)
+	_, err := obligationsService(&mockPaymentHistoryDao{obligationsErr: errors.New("db down")}, nil).GetUpcoming(nil, 12, "")
 	assert.Error(t, err)
 }
 

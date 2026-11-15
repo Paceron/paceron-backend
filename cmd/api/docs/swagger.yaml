@@ -7124,6 +7124,13 @@ paths:
         in: query
         name: status
         type: string
+      - description: 'Perfil activo: recorta los tiers a ese rol'
+        enum:
+        - corredor
+        - entrenador
+        in: query
+        name: profile
+        type: string
       produces:
       - application/json
       responses:
@@ -7352,7 +7359,16 @@ paths:
       description: Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`)
         y de cada suscripción de tier (`type=subscription`) del usuario autenticado,
         ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que
-        ya vencieron.
+        ya vencieron. Con `profile`, las suscripciones de tier se recortan al rol
+        activo.
+      parameters:
+      - description: 'Perfil activo: recorta los tiers a ese rol'
+        enum:
+        - corredor
+        - entrenador
+        in: query
+        name: profile
+        type: string
       produces:
       - application/json
       responses:

@@ -385,14 +385,14 @@ func (s *fullSeeder) verifyFullPayments() error {
 	history := services.NewPaymentHistoryService(
 		daos.NewPaymentHistoryDao(s.db), daos.NewPlatformSettingDao(s.db),
 	)
-	response, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", 1)
+	response, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", "", 1)
 	if err != nil {
 		return fmt.Errorf("historial de pagos de R1: %w", err)
 	}
 	if len(response.Payments) != 3 {
 		return fmt.Errorf("historial de pagos de R1: se esperaban 3 y hay %d", len(response.Payments))
 	}
-	r3History, err := history.ListHistory(nil, s.ids.users["r3"], string(constants.PaymentHistoryTypeSubscription), "", 1)
+	r3History, err := history.ListHistory(nil, s.ids.users["r3"], string(constants.PaymentHistoryTypeSubscription), "", "", 1)
 	if err != nil {
 		return fmt.Errorf("historial de pagos de R3: %w", err)
 	}
