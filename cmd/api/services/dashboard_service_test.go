@@ -1078,7 +1078,10 @@ func TestDashboardService_ErroresDeLectura(t *testing.T) {
 // Si mapSeriesRows lo pierde, el resumen devuelve exercise_name vacío aunque el
 // DAO lo haya traído: el KPI muestra la fecha pero no el ejercicio.
 func TestMapSeriesRows_MapeaExerciseName(t *testing.T) {
-	rows := mapSeriesRows([]daos.DashboardSeriesRow{{ExerciseName: "100 mts planos"}})
+	rows := mapSeriesRows([]daos.DashboardSeriesRow{{
+		Kind:         string(constants.ExerciseKindRitmoContinuo),
+		ExerciseName: "100 mts planos",
+	}})
 
 	require.Len(t, rows, 1)
 	assert.Equal(t, "100 mts planos", rows[0].ExerciseName)
