@@ -60,14 +60,17 @@ type DashboardSeriesRow struct {
 	FeedbackOwnerUserID int64
 	SetNumber           int
 	Kind                string
-	TargetMinutes       *int
-	TargetDistanceM     *int
-	DurationMs          *int64
-	ActiveDurationMs    *int64
-	DistanceMeters      *float64
-	RPE                 *int16
-	CompletionStatus    *string
-	HasRunnerSession    bool
+	// ExerciseName es el nombre congelado de la ExerciseInstance. Se usa para
+	// decir de dónde salió el mejor tiempo cumplido (summary.totals).
+	ExerciseName     string
+	TargetMinutes    *int
+	TargetDistanceM  *int
+	DurationMs       *int64
+	ActiveDurationMs *int64
+	DistanceMeters   *float64
+	RPE              *int16
+	CompletionStatus *string
+	HasRunnerSession bool
 	// ResolvedByName marca las instancias que entraron por el fallback de nombre
 	// normalizado, o sea las que el backfill de source_exercise_id no pudo
 	// resolver. Es lo que las separa en data_quality.legacy_sessions.
@@ -325,6 +328,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		"wf.feedback_owner_user_id AS feedback_owner_user_id",
 		"wf.set_number AS set_number",
 		"ei.kind AS kind",
+		"ei.name AS exercise_name",
 		"ei.minutes AS target_minutes",
 		"ei.distance_m AS target_distance_m",
 		"wf.duration_ms AS duration_ms",
@@ -383,6 +387,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		FeedbackOwnerUserID int64     `gorm:"column:feedback_owner_user_id"`
 		SetNumber           int       `gorm:"column:set_number"`
 		Kind                string    `gorm:"column:kind"`
+		ExerciseName        string    `gorm:"column:exercise_name"`
 		TargetMinutes       *int      `gorm:"column:target_minutes"`
 		TargetDistanceM     *int      `gorm:"column:target_distance_m"`
 		DurationMs          *int64    `gorm:"column:duration_ms"`
@@ -409,6 +414,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
 			Kind:                row.Kind,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 			DurationMs:          row.DurationMs,
@@ -437,6 +443,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		"wf.feedback_owner_user_id AS feedback_owner_user_id",
 		"wf.set_number AS set_number",
 		"ei.kind AS kind",
+		"ei.name AS exercise_name",
 		"ei.minutes AS target_minutes",
 		"ei.distance_m AS target_distance_m",
 		"wf.duration_ms AS duration_ms",
@@ -460,6 +467,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		FeedbackOwnerUserID int64     `gorm:"column:feedback_owner_user_id"`
 		SetNumber           int       `gorm:"column:set_number"`
 		Kind                string    `gorm:"column:kind"`
+		ExerciseName        string    `gorm:"column:exercise_name"`
 		TargetMinutes       *int      `gorm:"column:target_minutes"`
 		TargetDistanceM     *int      `gorm:"column:target_distance_m"`
 		DurationMs          *int64    `gorm:"column:duration_ms"`
@@ -488,6 +496,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
 			Kind:                row.Kind,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 			DurationMs:          row.DurationMs,

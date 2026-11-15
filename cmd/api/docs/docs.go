@@ -4219,6 +4219,24 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "integer",
+                        "description": "Filtrar por corredor (payer)",
+                        "name": "payer_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Desde (YYYY-MM-DD, hora argentina, inclusivo)",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Hasta (YYYY-MM-DD, hora argentina, inclusivo)",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
                         "enum": [
                             "approved",
                             "pending",
@@ -4261,7 +4279,7 @@ const docTemplate = `{
         },
         "/api/v1/payments/received/summary": {
             "get": {
-                "description": "Totales mensuales (hora argentina; el último es ` + "`" + `until` + "`" + ` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. ` + "`" + `earliest_month` + "`" + ` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (` + "`" + `pending_*` + "`" + `), y ` + "`" + `due_this_month` + "`" + ` trae lo que vence desde hoy hasta fin de mes y ` + "`" + `overdue` + "`" + `, todo lo que ya venció sin pagar, de este mes o de meses anteriores.",
+                "description": "Totales mensuales (hora argentina; el último es ` + "`" + `until` + "`" + ` o, sin él, el mes actual), totales por equipo y cantidad de cuotas pendientes o rechazadas según su último intento, dentro de la ventana. ` + "`" + `earliest_month` + "`" + ` es el primer mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin pagar que vencen en él (` + "`" + `pending_*` + "`" + `), y ` + "`" + `due_this_month` + "`" + ` trae lo que vence desde hoy hasta fin de mes y ` + "`" + `overdue` + "`" + `, todo lo que ya venció sin pagar, de este mes o de meses anteriores. ` + "`" + `pending_periods` + "`" + ` (obligaciones sin pagar) y ` + "`" + `rejected_periods` + "`" + ` (intentos rechazados) traen monto bruto, neto y cantidad de cuotas para los períodos ` + "`" + `all` + "`" + ` (vencidas + mes en curso), ` + "`" + `current` + "`" + `, ` + "`" + `last` + "`" + ` y ` + "`" + `quarter` + "`" + `; ` + "`" + `payers` + "`" + ` lista los corredores con cobros para el filtro del listado.",
                 "produces": [
                     "application/json"
                 ],
@@ -11237,6 +11255,17 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_dashboard.BestTimeMetSource": {
+            "type": "object",
+            "properties": {
+                "exercise_name": {
+                    "type": "string"
+                },
+                "session_date": {
+                    "type": "string"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow": {
             "type": "object",
             "properties": {
@@ -12120,6 +12149,14 @@ const docTemplate = `{
                 "best_time_met_ms": {
                     "description": "BestTimeMetMs es el menor tiempo de las series que cumplieron su objetivo,\ncon la tolerancia de la consulta. Null cuando ninguna serie cumplidora\nregistró un tiempo positivo.",
                     "type": "integer"
+                },
+                "best_time_met_source": {
+                    "description": "BestTimeMetSource dice de qué ejercicio y fecha salió BestTimeMetMs. Null\ncuando no hay tiempo cumplidor.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_dashboard.BestTimeMetSource"
+                        }
+                    ]
                 },
                 "best_time_ms": {
                     "type": "integer"
@@ -13078,6 +13115,20 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.AmountPeriod": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "net_amount": {
+                    "type": "number"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.CreatePreferenceRequest": {
             "type": "object",
             "required": [
@@ -13542,6 +13593,23 @@ const docTemplate = `{
                 }
             }
         },
+        "simple-arq-golang_cmd_api_domains_payment.PeriodAmounts": {
+            "type": "object",
+            "properties": {
+                "all": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod"
+                },
+                "current": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod"
+                },
+                "last": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod"
+                },
+                "quarter": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod"
+                }
+            }
+        },
         "simple-arq-golang_cmd_api_domains_payment.PreferenceItem": {
             "type": "object",
             "required": [
@@ -13712,6 +13780,13 @@ const docTemplate = `{
                 "overdue": {
                     "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock"
                 },
+                "payers": {
+                    "description": "Payers son los corredores con cobros en el historial, para el filtro por\ncorredor del listado. Se ordenan por nombre y apellido.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef"
+                    }
+                },
                 "pending_amount": {
                     "description": "Montos de esas mismas cuotas (el último intento de cada una), en bruto y\nen neto (bruto menos la comisión del intento).",
                     "type": "number"
@@ -13722,6 +13797,14 @@ const docTemplate = `{
                 "pending_net_amount": {
                     "type": "number"
                 },
+                "pending_periods": {
+                    "description": "PendingPeriods y RejectedPeriods son los montos y cantidades de cuotas\npara el selector de los KPIs. PendingPeriods sale de las obligaciones\nesperadas (cuotas sin pagar), no de los intentos de pago; RejectedPeriods\nsí sale de los intentos rechazados.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PeriodAmounts"
+                        }
+                    ]
+                },
                 "rejected_amount": {
                     "type": "number"
                 },
@@ -13730,6 +13813,9 @@ const docTemplate = `{
                 },
                 "rejected_net_amount": {
                     "type": "number"
+                },
+                "rejected_periods": {
+                    "$ref": "#/definitions/simple-arq-golang_cmd_api_domains_payment.PeriodAmounts"
                 }
             }
         },
