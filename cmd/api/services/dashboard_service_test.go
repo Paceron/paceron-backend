@@ -591,8 +591,8 @@ func TestDashboardService_FiltersRecortaPorRol(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, trainerResponse.Athletes, 3)
-	assert.Equal(t, constants.CurrentExerciseKinds(), trainerResponse.ExerciseTypes,
-		"los tipos del tablist son los cinco vigentes, no los diez valores válidos de escritura")
+	assert.Equal(t, constants.DashboardMetricKinds(), trainerResponse.ExerciseTypes,
+		"los tipos del tablist son los tres con métrica, no los cinco vigentes ni los diez de escritura")
 	assert.Equal(t, "owner", trainerResponse.Groups[0].Role)
 
 	runner, runnerDao, _ := dashboardFixtureAs(t, 77, false)
@@ -1072,4 +1072,17 @@ func TestDashboardService_ErroresDeLectura(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "error al resolver el rango de fechas del dashboard")
 	})
+}
+
+// El nombre del ejercicio es parte de la procedencia del mejor tiempo cumplido.
+// Si mapSeriesRows lo pierde, el resumen devuelve exercise_name vacío aunque el
+// DAO lo haya traído: el KPI muestra la fecha pero no el ejercicio.
+func TestMapSeriesRows_MapeaExerciseName(t *testing.T) {
+	rows := mapSeriesRows([]daos.DashboardSeriesRow{{
+		Kind:         string(constants.ExerciseKindRitmoContinuo),
+		ExerciseName: "100 mts planos",
+	}})
+
+	require.Len(t, rows, 1)
+	assert.Equal(t, "100 mts planos", rows[0].ExerciseName)
 }

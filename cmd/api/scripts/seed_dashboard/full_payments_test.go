@@ -75,12 +75,12 @@ func TestFullSeederSeedPaymentsAndMessages_SeedsRealServiceContractsIdempotently
 	history := services.NewPaymentHistoryService(
 		daos.NewPaymentHistoryDao(db), daos.NewPlatformSettingDao(db),
 	)
-	r1History, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", 1)
+	r1History, err := history.ListHistory(nil, s.ids.users["r1"], string(constants.PaymentHistoryTypeSubscription), "", "", 1)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pending", "approved", "approved"}, fullPaymentStatuses(r1History.Payments))
 	assert.Equal(t, []int{3, 2, 1}, fullPaymentInstallmentNumbers(r1History.Payments))
 
-	r3History, err := history.ListHistory(nil, s.ids.users["r3"], string(constants.PaymentHistoryTypeSubscription), "", 1)
+	r3History, err := history.ListHistory(nil, s.ids.users["r3"], string(constants.PaymentHistoryTypeSubscription), "", "", 1)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"approved", "rejected"}, fullPaymentStatuses(r3History.Payments))
 	var r3Pending dbs.UserRoleTierSubscription

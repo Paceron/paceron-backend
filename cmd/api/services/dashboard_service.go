@@ -199,7 +199,7 @@ func (s *dashboardService) Filters(ctx *gin.Context, callerID, teamID int64) (*d
 		Teams:         []dashboard.FiltersTeam{},
 		Groups:        []dashboard.FiltersGroup{},
 		Athletes:      []dashboard.FiltersAthlete{},
-		ExerciseTypes: constants.CurrentExerciseKinds(),
+		ExerciseTypes: constants.DashboardMetricKinds(),
 		Exercises:     []dashboard.FiltersExercise{},
 	}
 
@@ -1143,6 +1143,12 @@ func (s *dashboardService) seriesAndQuality(ctx *gin.Context, prepared *validate
 func mapSeriesRows(rows []daos.DashboardSeriesRow) []dashboard.ScopedSeries {
 	out := make([]dashboard.ScopedSeries, 0, len(rows))
 	for _, row := range rows {
+		// Los KPIs y métricas del dashboard solo consideran los TRES tipos con
+		// métrica. El DAO ya lo filtra en SQL; esto cubre cualquier caller que
+		// arme filas por otro camino y deja la regla en un solo lugar.
+		if !constants.IsDashboardMetricKind(row.Kind) {
+			continue
+		}
 		out = append(out, dashboard.ScopedSeries{
 			Series: dashboard.Series{
 				Kind:             row.Kind,
@@ -1162,6 +1168,7 @@ func mapSeriesRows(rows []daos.DashboardSeriesRow) []dashboard.ScopedSeries {
 			AthleteUserID:       row.AthleteUserID,
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 		})
@@ -1193,7 +1200,7 @@ func (s *dashboardService) catalogExercisesOfTeamOwners(ctx *gin.Context, scope 
 	exercises := []dashboard.FiltersExercise{}
 	seen := map[int64]struct{}{}
 	for _, ownerID := range s.teamOwnerIDs(scope, teamID) {
-		found, err := s.dashboardDao.FindCatalogExercisesByOwner(ctx, ownerID, constants.CurrentExerciseKinds())
+		found, err := s.dashboardDao.FindCatalogExercisesByOwner(ctx, ownerID, constants.DashboardMetricKinds())
 		if err != nil {
 			customlogger.Error(ctx, "error listing dashboard catalog exercises", err,
 				customlogger.TagMethod("Dashboard.Filters"))

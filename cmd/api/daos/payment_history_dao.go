@@ -68,6 +68,11 @@ type ReceivedPaymentRow struct {
 type HistoryPaymentFilters struct {
 	Type     string
 	Statuses []string
+	// Profile recorta las suscripciones de tier al perfil activo. Vacío = sin
+	// filtro (compatibilidad); `corredor` excluye todo tier y `entrenador` deja
+	// solo los tiers de ese rol. Las membresías de equipo (trainer_payment) no
+	// dependen del perfil.
+	Profile string
 }
 
 // HistoryPaymentRow es un pago que hizo el usuario, con su cuota resuelta hacia
@@ -256,6 +261,16 @@ func (d *paymentHistoryDao) ListHistory(ctx *gin.Context, userID int64, filters 
 		query = query.Where("i.subscription_id IS NOT NULL")
 	case string(constants.PaymentHistoryTypeTrainerPayment):
 		query = query.Where("i.team_id IS NOT NULL")
+	}
+	switch constants.PaymentHistoryProfile(filters.Profile) {
+	case constants.PaymentProfileCorredor:
+		// El corredor no tiene tiers: su historial es solo lo que les pagó a
+		// sus entrenadores.
+		query = query.Where("i.subscription_id IS NULL")
+	case constants.PaymentProfileEntrenador:
+		// Entrenador: membresías que paga + sus tiers de entrenador. Los tiers
+		// de corredor (histórico) quedan fuera.
+		query = query.Where("(i.subscription_id IS NULL OR tr.role_name = ?)", string(constants.TeamUserRoleEntrenador))
 	}
 	if len(filters.Statuses) > 0 {
 		query = query.Where("p.status IN ?", filters.Statuses)

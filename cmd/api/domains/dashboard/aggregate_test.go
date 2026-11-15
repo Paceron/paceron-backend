@@ -265,12 +265,18 @@ func TestBuildSummary_BestTimeMet_SerieMasRapidaNoCumpleYMasLentaSi(t *testing.T
 		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 180000, ptrFloat(900), day(1)),
 		scopedRow(kindVelocidadDistancia, nil, ptrInt(1000), 220000, ptrFloat(1500), day(2)),
 	}
+	rows[0].ExerciseName = "Pasadas rápidas"
+	rows[1].ExerciseName = "1000 m"
 
 	totals := totalsJSON(t, BuildSummary(rows, DefaultTolerance, 0))
 
 	assert.Equal(t, float64(180000), totals["best_time_ms"])
 	assert.Contains(t, totals, "best_time_met_ms")
 	assert.Equal(t, float64(220000), totals["best_time_met_ms"])
+	source, ok := totals["best_time_met_source"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "1000 m", source["exercise_name"], "la fuente es la serie que cumplió, no la más rápida")
+	assert.Equal(t, "2026-09-02", source["session_date"])
 }
 
 // 250 s contra un objetivo de 4 min (240 s) cumple con 5 % (umbral 252 s) y no
@@ -302,6 +308,8 @@ func TestBuildSummary_BestTimeMet_NullSinTiempoCumplidor(t *testing.T) {
 	assert.Nil(t, totals["best_time_ms"])
 	assert.Contains(t, totals, "best_time_met_ms")
 	assert.Nil(t, totals["best_time_met_ms"])
+	assert.Contains(t, totals, "best_time_met_source")
+	assert.Nil(t, totals["best_time_met_source"])
 }
 
 // target_distance_m suma el objetivo de TODAS las filas de distancia con objetivo

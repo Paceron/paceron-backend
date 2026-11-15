@@ -956,6 +956,13 @@ definitions:
       unknown:
         type: integer
     type: object
+  simple-arq-golang_cmd_api_domains_dashboard.BestTimeMetSource:
+    properties:
+      exercise_name:
+        type: string
+      session_date:
+        type: string
+    type: object
   simple-arq-golang_cmd_api_domains_dashboard.ComparisonRow:
     properties:
       athlete_user_id:
@@ -1564,6 +1571,12 @@ definitions:
           con la tolerancia de la consulta. Null cuando ninguna serie cumplidora
           registró un tiempo positivo.
         type: integer
+      best_time_met_source:
+        allOf:
+        - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_dashboard.BestTimeMetSource'
+        description: |-
+          BestTimeMetSource dice de qué ejercicio y fecha salió BestTimeMetMs. Null
+          cuando no hay tiempo cumplidor.
       best_time_ms:
         type: integer
       compliance_rate:
@@ -2216,6 +2229,15 @@ definitions:
           nada lo renueva: pasada esa fecha hay que volver a conectar la cuenta.
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_payment.AmountPeriod:
+    properties:
+      amount:
+        type: number
+      count:
+        type: integer
+      net_amount:
+        type: number
+    type: object
   simple-arq-golang_cmd_api_domains_payment.CreatePreferenceRequest:
     properties:
       concept:
@@ -2522,6 +2544,17 @@ definitions:
       surname:
         type: string
     type: object
+  simple-arq-golang_cmd_api_domains_payment.PeriodAmounts:
+    properties:
+      all:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod'
+      current:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod'
+      last:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod'
+      quarter:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.AmountPeriod'
+    type: object
   simple-arq-golang_cmd_api_domains_payment.PreferenceItem:
     properties:
       quantity:
@@ -2642,6 +2675,13 @@ definitions:
         type: integer
       overdue:
         $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.ObligationsBlock'
+      payers:
+        description: |-
+          Payers son los corredores con cobros en el historial, para el filtro por
+          corredor del listado. Se ordenan por nombre y apellido.
+        items:
+          $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PaymentPayerRef'
+        type: array
       pending_amount:
         description: |-
           Montos de esas mismas cuotas (el último intento de cada una), en bruto y
@@ -2651,12 +2691,22 @@ definitions:
         type: integer
       pending_net_amount:
         type: number
+      pending_periods:
+        allOf:
+        - $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PeriodAmounts'
+        description: |-
+          PendingPeriods y RejectedPeriods son los montos y cantidades de cuotas
+          para el selector de los KPIs. PendingPeriods sale de las obligaciones
+          esperadas (cuotas sin pagar), no de los intentos de pago; RejectedPeriods
+          sí sale de los intentos rechazados.
       rejected_amount:
         type: number
       rejected_count:
         type: integer
       rejected_net_amount:
         type: number
+      rejected_periods:
+        $ref: '#/definitions/simple-arq-golang_cmd_api_domains_payment.PeriodAmounts'
     type: object
   simple-arq-golang_cmd_api_domains_payment.TeamAmount:
     properties:
@@ -7074,6 +7124,13 @@ paths:
         in: query
         name: status
         type: string
+      - description: 'Perfil activo: recorta los tiers a ese rol'
+        enum:
+        - corredor
+        - entrenador
+        in: query
+        name: profile
+        type: string
       produces:
       - application/json
       responses:
@@ -7180,6 +7237,18 @@ paths:
         in: query
         name: team_id
         type: integer
+      - description: Filtrar por corredor (payer)
+        in: query
+        name: payer_id
+        type: integer
+      - description: Desde (YYYY-MM-DD, hora argentina, inclusivo)
+        in: query
+        name: from
+        type: string
+      - description: Hasta (YYYY-MM-DD, hora argentina, inclusivo)
+        in: query
+        name: to
+        type: string
       - description: Filtrar por grupo de estado
         enum:
         - approved
@@ -7219,7 +7288,10 @@ paths:
         mes con cobros del vendedor. Cada mes suma además las cuotas esperadas sin
         pagar que vencen en él (`pending_*`), y `due_this_month` trae lo que vence
         desde hoy hasta fin de mes y `overdue`, todo lo que ya venció sin pagar, de
-        este mes o de meses anteriores.
+        este mes o de meses anteriores. `pending_periods` (obligaciones sin pagar)
+        y `rejected_periods` (intentos rechazados) traen monto bruto, neto y cantidad
+        de cuotas para los períodos `all` (vencidas + mes en curso), `current`, `last`
+        y `quarter`; `payers` lista los corredores con cobros para el filtro del listado.
       parameters:
       - description: Meses de la ventana, entre 2 y 12 (default 6)
         in: query
@@ -7287,7 +7359,16 @@ paths:
       description: Próxima cuota sin pagar de cada membresía de equipo con cuota (`type=trainer_payment`)
         y de cada suscripción de tier (`type=subscription`) del usuario autenticado,
         ordenadas por vencimiento. `overdue_count` cuenta las cuotas sin pagar que
-        ya vencieron.
+        ya vencieron. Con `profile`, las suscripciones de tier se recortan al rol
+        activo.
+      parameters:
+      - description: 'Perfil activo: recorta los tiers a ese rol'
+        enum:
+        - corredor
+        - entrenador
+        in: query
+        name: profile
+        type: string
       produces:
       - application/json
       responses:

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"simple-arq-golang/cmd/api/domains/constants"
 	"simple-arq-golang/cmd/api/domains/runnersession"
 )
 
@@ -60,14 +61,17 @@ type DashboardSeriesRow struct {
 	FeedbackOwnerUserID int64
 	SetNumber           int
 	Kind                string
-	TargetMinutes       *int
-	TargetDistanceM     *int
-	DurationMs          *int64
-	ActiveDurationMs    *int64
-	DistanceMeters      *float64
-	RPE                 *int16
-	CompletionStatus    *string
-	HasRunnerSession    bool
+	// ExerciseName es el nombre congelado de la ExerciseInstance. Se usa para
+	// decir de dónde salió el mejor tiempo cumplido (summary.totals).
+	ExerciseName     string
+	TargetMinutes    *int
+	TargetDistanceM  *int
+	DurationMs       *int64
+	ActiveDurationMs *int64
+	DistanceMeters   *float64
+	RPE              *int16
+	CompletionStatus *string
+	HasRunnerSession bool
 	// ResolvedByName marca las instancias que entraron por el fallback de nombre
 	// normalizado, o sea las que el backfill de source_exercise_id no pudo
 	// resolver. Es lo que las separa en data_quality.legacy_sessions.
@@ -128,9 +132,10 @@ WHERE gcd.group_id IN ?
 
 // runnerSeriesFromClause es la query del Home del corredor (kpis-home-corredor
 // D1). No usa group_calendar_days ni session_exercise_instances a propósito: el
-// dato es del corredor, no de un grupo, y sumar todos los roles es el pedido
-// explícito. El LEFT JOIN a runner_session preserva el feedback previo al
-// feature de registro de sesión; el WHERE excluye solo las sesiones wip.
+// dato es del corredor, no de un grupo, y suma todos los roles. El LEFT JOIN a
+// runner_session preserva el feedback previo al feature de registro de sesión;
+// el WHERE excluye solo las sesiones wip. Los KPIs solo consideran los TRES
+// tipos con métrica, igual que el dashboard de rendimiento.
 const runnerSeriesFromClause = `
 FROM workout_feedback wf
 JOIN exercise_instances ei
@@ -140,6 +145,7 @@ LEFT JOIN runner_session rs
 	AND rs.athlete_user_id = wf.athlete_user_id
 WHERE wf.athlete_user_id = ?
   AND wf.session_date BETWEEN ? AND ?
+  AND ei.kind IN (?)
   AND wf.deleted_at IS NULL
   AND (rs.status IN (?, ?) OR rs.status IS NULL)`
 
@@ -325,6 +331,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		"wf.feedback_owner_user_id AS feedback_owner_user_id",
 		"wf.set_number AS set_number",
 		"ei.kind AS kind",
+		"ei.name AS exercise_name",
 		"ei.minutes AS target_minutes",
 		"ei.distance_m AS target_distance_m",
 		"wf.duration_ms AS duration_ms",
@@ -339,6 +346,12 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 	args := []interface{}{filter.GroupIDs, filter.From, filter.To,
 		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
 	conditions := []string{}
+	// Todo KPI/métrica del dashboard se calcula solo con los TRES tipos con
+	// métrica. `liviano` y `elongacion` quedan afuera también cuando son rol
+	// `main`: sus series no son comparables con ritmo/velocidad y ensucian
+	// mejores tiempos, promedios y cumplimiento.
+	conditions = append(conditions, "ei.kind IN ?")
+	args = append(args, constants.DashboardMetricKinds())
 	if filter.SessionInstanceID != nil {
 		conditions = append(conditions, "wf.assigned_session_id = ?")
 		args = append(args, *filter.SessionInstanceID)
@@ -383,6 +396,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 		FeedbackOwnerUserID int64     `gorm:"column:feedback_owner_user_id"`
 		SetNumber           int       `gorm:"column:set_number"`
 		Kind                string    `gorm:"column:kind"`
+		ExerciseName        string    `gorm:"column:exercise_name"`
 		TargetMinutes       *int      `gorm:"column:target_minutes"`
 		TargetDistanceM     *int      `gorm:"column:target_distance_m"`
 		DurationMs          *int64    `gorm:"column:duration_ms"`
@@ -409,6 +423,7 @@ func (d *dashboardDao) FindSeries(ctx *gin.Context, filter DashboardScopeFilter)
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
 			Kind:                row.Kind,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 			DurationMs:          row.DurationMs,
@@ -437,6 +452,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		"wf.feedback_owner_user_id AS feedback_owner_user_id",
 		"wf.set_number AS set_number",
 		"ei.kind AS kind",
+		"ei.name AS exercise_name",
 		"ei.minutes AS target_minutes",
 		"ei.distance_m AS target_distance_m",
 		"wf.duration_ms AS duration_ms",
@@ -460,6 +476,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		FeedbackOwnerUserID int64     `gorm:"column:feedback_owner_user_id"`
 		SetNumber           int       `gorm:"column:set_number"`
 		Kind                string    `gorm:"column:kind"`
+		ExerciseName        string    `gorm:"column:exercise_name"`
 		TargetMinutes       *int      `gorm:"column:target_minutes"`
 		TargetDistanceM     *int      `gorm:"column:target_distance_m"`
 		DurationMs          *int64    `gorm:"column:duration_ms"`
@@ -470,7 +487,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 		HasRunnerSession    bool      `gorm:"column:has_runner_session"`
 		ResolvedByName      bool      `gorm:"column:resolved_by_name"`
 	}
-	args := []interface{}{athleteUserID, from, to,
+	args := []interface{}{athleteUserID, from, to, constants.DashboardMetricKinds(),
 		runnersession.RunnerSessionStatusFinished, runnersession.RunnerSessionStatusInterrupted}
 	if err := d.DB.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("error finding runner series: %w", err)
@@ -488,6 +505,7 @@ func (d *dashboardDao) FindRunnerSeries(ctx *gin.Context, athleteUserID int64, f
 			FeedbackOwnerUserID: row.FeedbackOwnerUserID,
 			SetNumber:           row.SetNumber,
 			Kind:                row.Kind,
+			ExerciseName:        row.ExerciseName,
 			TargetMinutes:       row.TargetMinutes,
 			TargetDistanceM:     row.TargetDistanceM,
 			DurationMs:          row.DurationMs,
