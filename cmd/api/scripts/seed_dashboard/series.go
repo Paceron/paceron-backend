@@ -201,7 +201,7 @@ func (s *seeder) writeRunnerSessions(days []seededDay) error {
 				continue
 			}
 			endDate := day.Date.Add(10 * time.Hour)
-			if err := dao.UpdateStatus(nil, current.ID, status, []string{current.Status}, endDate); err != nil {
+			if _, err := dao.UpdateStatus(nil, current.ID, status, []string{current.Status}, endDate); err != nil {
 				return fmt.Errorf("error actualizando el runner_session del corredor %d a %s: %w",
 					athlete.UserID, status, err)
 			}

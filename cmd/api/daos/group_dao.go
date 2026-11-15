@@ -19,6 +19,16 @@ type GroupWithTeamName struct {
 	TeamName string `gorm:"column:team_name"`
 }
 
+// GroupWithTeamOwner resuelve en una sola consulta el grupo y el owner de su
+// equipo activo. OwnerID queda nil si el equipo no existe o está soft-deleted,
+// igual que el FindByID de teams anterior.
+type GroupWithTeamOwner struct {
+	ID      int64  `gorm:"column:id"`
+	Name    string `gorm:"column:name"`
+	TeamID  int64  `gorm:"column:team_id"`
+	OwnerID *int64 `gorm:"column:owner_id"`
+}
+
 // GroupDaoInterface define las operaciones de acceso a datos para grupos.
 type GroupDaoInterface interface {
 	Create(ctx *gin.Context, group *dbs.Group) error
@@ -32,6 +42,10 @@ type GroupDaoInterface interface {
 	// FindByOwnerIDWithTeamName es la variante de FindByOwnerID que resuelve
 	// también el nombre del equipo en la misma consulta.
 	FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]GroupWithTeamName, error)
+	// FindWithTeamOwnerByID resuelve el grupo activo y el owner de su equipo
+	// activo en una sola consulta (auth de calendario). Devuelve (nil, nil) si
+	// el grupo no existe o está soft-deleted.
+	FindWithTeamOwnerByID(ctx *gin.Context, id int64) (*GroupWithTeamOwner, error)
 	// FindByIDs devuelve varios grupos activos en una sola query — batch de
 	// nombres para los banners del home (design.md D6/D8, evita N+1).
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
@@ -167,6 +181,25 @@ func (d *groupDao) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([
 		return nil, fmt.Errorf("error finding groups by owner with team: %w", err)
 	}
 	return rows, nil
+}
+
+// FindWithTeamOwnerByID resuelve en una consulta el grupo activo y el owner de
+// su equipo activo (LEFT JOIN para distinguir grupo inexistente de equipo
+// ausente/soft-deleted).
+func (d *groupDao) FindWithTeamOwnerByID(ctx *gin.Context, id int64) (*GroupWithTeamOwner, error) {
+	var row GroupWithTeamOwner
+	err := d.DB.Model(&dbs.Group{}).
+		Select("groups.id, groups.name, groups.team_id, teams.owner_id").
+		Joins("LEFT JOIN teams ON teams.id = groups.team_id AND teams.deleted_at IS NULL").
+		Where("groups.id = ? AND groups.deleted_at IS NULL", id).
+		Take(&row).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding group with team owner: %w", err)
+	}
+	return &row, nil
 }
 
 // FindWithTeamNameByIDs resuelve en una consulta varios grupos activos con el

@@ -837,6 +837,9 @@ func (m *groupStub) FindNamesByIDs(ctx *gin.Context, ids []int64) ([]dbs.IDName,
 func (m *groupStub) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
 	return nil, errors.New("no usado en asistencia")
 }
+func (m *groupStub) FindWithTeamOwnerByID(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+	return nil, errors.New("no usado en asistencia")
+}
 func (m *groupStub) FindWithTeamNameByIDs(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error) {
 	return nil, errors.New("no usado en asistencia")
 }

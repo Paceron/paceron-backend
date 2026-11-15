@@ -58,14 +58,20 @@ type GroupCalendarDaoInterface interface {
 	// esa session instance (design.md Gap 26 D6, relación 1:1 por diseño):
 	// nil si no hay día — instancia huérfana o id inexistente.
 	FindBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, error)
+	// FindWithTeamOwnerBySessionInstanceID resuelve en una sola consulta el
+	// día de la instancia junto con el owner del team de su grupo (D3). Si el
+	// grupo o el team no existen o están soft-deleted, owner queda nil. Día
+	// nil cuando la instancia no tiene calendario.
+	FindWithTeamOwnerBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, *int64, error)
 	// SetPresencialOpenedAt marca la apertura presencial del día solo si
 	// presencial_opened_at está NULL (guard SQL idempotente, D5 sin reopen).
-	// Devuelve true si esta llamada hizo la apertura real.
-	SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	// Devuelve la fila post-write vía RETURNING y true si esta llamada hizo
+	// la apertura real (nil, false si el guard no matcheó).
+	SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error)
 	// SetPresencialClosedAt marca el cierre presencial del día solo si
-	// presencial_closed_at está NULL (final, sin reopen). true si esta
-	// llamada hizo el cierre real.
-	SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error)
+	// presencial_closed_at está NULL (final, sin reopen). Mismo contrato de
+	// RETURNING que la apertura.
+	SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error)
 	// UpsertMany aplica el mismo upsert (group_id, date) de Upsert sobre un
 	// lote en un solo round trip (design.md D5, write path de stamp/bulk):
 	// misma fila de SETs, misma limpieza presencial Gap-26 (opened/closed a
@@ -468,28 +474,56 @@ func (d *groupCalendarDayDao) FindBySessionInstanceID(ctx *gin.Context, sessionI
 	return &day, nil
 }
 
-// SetPresencialOpenedAt marca la apertura presencial: la query solo impacta
-// si presencial_opened_at está NULL (idempotente a nivel SQL). true = esta
-// llamada hizo la apertura.
-func (d *groupCalendarDayDao) SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
-	res := d.DB.Model(&dbs.GroupCalendarDay{}).
-		Where("id = ? AND presencial_opened_at IS NULL", dayID).
-		Updates(map[string]interface{}{"presencial_opened_at": at})
-	if res.Error != nil {
-		return false, fmt.Errorf("error setting presencial opened at: %w", res.Error)
+// FindWithTeamOwnerBySessionInstanceID resuelve día + owner en una sola
+// lectura (D3). Los joins son LEFT para conservar el día cuando su grupo o
+// team fueron soft-deleted, igual que los FindByID separados anteriores.
+func (d *groupCalendarDayDao) FindWithTeamOwnerBySessionInstanceID(ctx *gin.Context, sessionInstanceID int64) (*dbs.GroupCalendarDay, *int64, error) {
+	var row struct {
+		dbs.GroupCalendarDay
+		TeamOwnerID *int64 `gorm:"column:team_owner_id"`
 	}
-	return res.RowsAffected > 0, nil
+	res := d.DB.Raw(`
+SELECT d.*, t.owner_id AS team_owner_id
+FROM group_calendar_days d
+LEFT JOIN groups g ON g.id = d.group_id AND g.deleted_at IS NULL
+LEFT JOIN teams t ON t.id = g.team_id AND t.deleted_at IS NULL
+WHERE d.session_instance_id = ?
+ORDER BY d.id
+LIMIT 1`, sessionInstanceID).Scan(&row)
+	if res.Error != nil {
+		return nil, nil, fmt.Errorf("error finding calendar day with team owner: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil, nil
+	}
+	return &row.GroupCalendarDay, row.TeamOwnerID, nil
+}
+
+// SetPresencialOpenedAt marca la apertura presencial: la query solo impacta
+// si presencial_opened_at está NULL (idempotente a nivel SQL) y devuelve la
+// fila post-write en el mismo round trip.
+func (d *groupCalendarDayDao) SetPresencialOpenedAt(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+	return d.setPresencialStamp(ctx, "presencial_opened_at", "opened", dayID, at)
 }
 
 // SetPresencialClosedAt marca el cierre presencial: guard sobre
-// presencial_closed_at NULL (el cierre es final, D5). true = esta llamada
-// hizo el cierre.
-func (d *groupCalendarDayDao) SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (bool, error) {
-	res := d.DB.Model(&dbs.GroupCalendarDay{}).
-		Where("id = ? AND presencial_closed_at IS NULL", dayID).
-		Updates(map[string]interface{}{"presencial_closed_at": at})
+// presencial_closed_at NULL (el cierre es final, D5) + RETURNING.
+func (d *groupCalendarDayDao) SetPresencialClosedAt(ctx *gin.Context, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+	return d.setPresencialStamp(ctx, "presencial_closed_at", "closed", dayID, at)
+}
+
+// setPresencialStamp aplica el UPDATE ... RETURNING del timestamp presencial.
+// column/label son constantes internas, nunca input del caller.
+func (d *groupCalendarDayDao) setPresencialStamp(ctx *gin.Context, column, label string, dayID int64, at time.Time) (*dbs.GroupCalendarDay, bool, error) {
+	var day dbs.GroupCalendarDay
+	res := d.DB.Raw(
+		"UPDATE group_calendar_days SET "+column+" = ?, updated_at = NOW() WHERE id = ? AND "+column+" IS NULL RETURNING *",
+		at, dayID).Scan(&day)
 	if res.Error != nil {
-		return false, fmt.Errorf("error setting presencial closed at: %w", res.Error)
+		return nil, false, fmt.Errorf("error setting presencial %s at: %w", label, res.Error)
 	}
-	return res.RowsAffected > 0, nil
+	if res.RowsAffected == 0 {
+		return nil, false, nil
+	}
+	return &day, true, nil
 }

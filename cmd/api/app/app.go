@@ -370,7 +370,7 @@ func NewApplication() *Application {
 	// Runner Session flow (estado de sesión del corredor, wip -> finished).
 	// Gap 26: gateway presencial = gate D9 del corredor + hooks D7 de
 	// apertura/cierre del entrenador; el controller emite update:session_state.
-	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao, groupDao, teamDao)
+	presencialSessionService := services.NewPresencialSessionService(groupCalendarDayDao)
 	// Dashboard analítico (change dashboard-analitico-rendimiento): el scope del
 	// solicitante se resuelve una vez por request (dashboardScopeService) y el
 	// dashboardDao ya lo recibe resuelto — ningún DAO del dashboard acepta un

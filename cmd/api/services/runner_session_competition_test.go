@@ -30,7 +30,7 @@ func TestRunnerSessionService_Create_SinCompetitionId_FlujoIntacto(t *testing.T)
 	}
 	// Sin competitionDAO inyectado: el flujo clásico ni consulta el módulo.
 	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil)
-	_, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	_, _, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 	require.NoError(t, err)
 	assert.True(t, created)
 	assert.Nil(t, received.CompetitionID)
@@ -69,7 +69,7 @@ func TestRunnerSessionService_Create_CompetitionTageada(t *testing.T) {
 	compID := int64(9)
 
 	// Partida dentro del rango por un participante: taguea.
-	_, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+	_, _, _, created, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &compID,
 	})
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestRunnerSessionService_Create_CompetitionTageada(t *testing.T) {
 
 	// Sin el campo: la sesión no lleva marca.
 	captured = nil
-	_, _, _, err = svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
+	_, _, _, _, err = svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{StartDate: sessionDate})
 	require.NoError(t, err)
 	assert.Nil(t, captured)
 }
@@ -130,7 +130,7 @@ func TestRunnerSessionService_Create_CompetitionRechazos(t *testing.T) {
 		}
 		svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, compDAO)
 		compID := int64(9)
-		_, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
+		_, _, _, _, err := svc.Create(nil, 7, 10, runnersession.CreateRunnerSessionRequest{
 			StartDate: sessionDate, CompetitionID: &compID,
 		})
 		require.ErrorIs(t, err, ErrRunnerSessionInvalid, tc.name)
@@ -207,7 +207,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// atleta participante de ambas): 400 y sin fila creada.
 	dao, mock, _, createCalls := newSvc()
 	svc := NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
-	_, _, _, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+	_, _, _, _, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp11,
 	})
 	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
@@ -217,7 +217,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// sintética de una route, misma comparación inversa: 400.
 	dao, mock, _, createCalls = newSvc()
 	svc = NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
-	_, _, _, err = svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+	_, _, _, _, err = svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp5,
 	})
 	require.ErrorIs(t, err, ErrRunnerSessionInvalid)
@@ -227,7 +227,7 @@ func TestRunnerSessionService_Create_CompetenciaRutaAncla(t *testing.T) {
 	// instancia sintética sigue creando el intento.
 	dao, mock, captured, _ := newSvc()
 	svc = NewRunnerSessionServiceWithAccess(mock, allowInstanceAccess(), nil, dao)
-	_, _, created, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
+	_, _, _, created, err := svc.Create(nil, 7, instA, runnersession.CreateRunnerSessionRequest{
 		StartDate: sessionDate, CompetitionID: &comp9,
 	})
 	require.NoError(t, err)

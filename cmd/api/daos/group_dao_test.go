@@ -258,3 +258,60 @@ func TestGroupDao_FindNamesByIDs_EmptyInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, results)
 }
+
+func TestGroupDao_FindWithTeamOwnerByID(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-ownerbyid-owner@test.com", "40000920")
+	team := testTeam(db, "equipo_group_ownerbyid", owner.ID)
+	group := testGroup(db, "grupo_group_ownerbyid", team.ID)
+
+	found, err := dao.FindWithTeamOwnerByID(nil, group.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, group.ID, found.ID)
+	assert.Equal(t, group.Name, found.Name)
+	assert.Equal(t, team.ID, found.TeamID)
+	require.NotNil(t, found.OwnerID)
+	assert.Equal(t, owner.ID, *found.OwnerID)
+}
+
+func TestGroupDao_FindWithTeamOwnerByID_NotFound(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+
+	found, err := dao.FindWithTeamOwnerByID(nil, 999999)
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
+func TestGroupDao_FindWithTeamOwnerByID_SoftDeleted(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-ownerbyid-del-owner@test.com", "40000921")
+	team := testTeam(db, "equipo_group_ownerbyid_del", owner.ID)
+	group := testGroup(db, "grupo_group_ownerbyid_del", team.ID)
+	require.NoError(t, dao.SoftDelete(nil, group.ID))
+
+	found, err := dao.FindWithTeamOwnerByID(nil, group.ID)
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+}
+
+func TestGroupDao_FindWithTeamOwnerByID_DeletedTeamLeavesNilOwner(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupDao(db)
+	owner := persistUser(db, "group-ownerbyid-teamdel-owner@test.com", "40000922")
+	team := testTeam(db, "equipo_group_ownerbyid_teamdel", owner.ID)
+	group := testGroup(db, "grupo_group_ownerbyid_teamdel", team.ID)
+	require.NoError(t, db.Model(&dbs.Team{}).Where("id = ?", team.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+
+	found, err := dao.FindWithTeamOwnerByID(nil, group.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Nil(t, found.OwnerID, "equipo soft-deleted no aporta owner")
+}

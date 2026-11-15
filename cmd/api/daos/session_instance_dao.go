@@ -56,6 +56,11 @@ type SessionInstanceDaoInterface interface {
 	// ExerciseBelongsToSessionInstance reporta si existe un link
 	// session_exercise_instances para el par (instancia, ejercicio).
 	ExerciseBelongsToSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, error)
+	// ExerciseAndTeamForSessionInstance resuelve en una sola query la
+	// pertenencia del ejercicio a la instancia y el team_id efectivo (mismo
+	// fallback que TeamIDForSessionInstance: día → competencia route anclada →
+	// runner_session tagueado). TeamID nil si ninguna de las tres vías aplica.
+	ExerciseAndTeamForSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, *int64, error)
 }
 
 type sessionInstanceDao struct {
@@ -182,6 +187,51 @@ func (d *sessionInstanceDao) ExerciseBelongsToSessionInstance(ctx *gin.Context, 
 		return false, fmt.Errorf("error checking session instance exercise link: %w", err)
 	}
 	return count > 0, nil
+}
+
+// ExerciseAndTeamForSessionInstance combina la pertenencia del ejercicio y la
+// derivación de team en un solo round trip. El COALESCE replica exactamente el
+// orden de fallbacks de TeamIDForSessionInstance: un team_id 0 se normaliza a
+// NULL antes de comparar para que la siguiente vía pueda ganar.
+func (d *sessionInstanceDao) ExerciseAndTeamForSessionInstance(ctx *gin.Context, instanceID, exerciseInstanceID int64) (bool, *int64, error) {
+	var row struct {
+		Belongs bool
+		TeamID  *int64
+	}
+	err := d.DB.Raw(`
+SELECT
+    EXISTS (
+        SELECT 1
+        FROM session_exercise_instances sei
+        WHERE sei.session_instance_id = $1 AND sei.exercise_instance_id = $2
+    ) AS belongs,
+    COALESCE(
+        NULLIF((SELECT g.team_id
+         FROM group_calendar_days gcd
+         JOIN groups g ON g.id = gcd.group_id AND g.deleted_at IS NULL
+         JOIN teams t ON t.id = g.team_id AND t.deleted_at IS NULL
+         WHERE gcd.session_instance_id = $1
+         ORDER BY gcd.id
+         LIMIT 1), 0),
+        NULLIF((SELECT c.team_id
+         FROM competition c
+         WHERE c.route_session_instance_id = $1 AND c.type = $3
+         ORDER BY c.id
+         LIMIT 1), 0),
+        NULLIF((SELECT c.team_id
+         FROM runner_session rs
+         JOIN competition c ON c.id = rs.competition_id AND c.type = $3
+         WHERE rs.session_instance_id = $1
+         ORDER BY rs.id
+         LIMIT 1), 0)
+    ) AS team_id`, instanceID, exerciseInstanceID, competition.TypeRoute).Scan(&row).Error
+	if err != nil {
+		return false, nil, fmt.Errorf("error checking session instance exercise and team: %w", err)
+	}
+	if row.TeamID != nil && *row.TeamID == 0 {
+		row.TeamID = nil
+	}
+	return row.Belongs, row.TeamID, nil
 }
 
 func (d *sessionInstanceDao) HasFeedbackByIDs(ctx *gin.Context, ids []int64) ([]int64, error) {

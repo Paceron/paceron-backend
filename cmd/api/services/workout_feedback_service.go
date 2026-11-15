@@ -133,24 +133,22 @@ func (s *workoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req 
 		athleteUserID = *req.AthleteUserID
 	}
 
-	hasAccess, err := s.sessionInstanceDao.HasInstanceAccess(ctx, req.AssignedSessionID, authUserID)
+	userIDs := []int64{authUserID}
+	if athleteUserID != authUserID {
+		userIDs = append(userIDs, athleteUserID)
+	}
+	access, err := s.sessionInstanceDao.HasInstanceAccessBatch(ctx, req.AssignedSessionID, userIDs)
 	if err != nil {
 		return nil, err
 	}
-	if !hasAccess {
+	if !access[authUserID] {
 		return nil, ErrWorkoutFeedbackForbidden
 	}
-	if athleteUserID != authUserID {
-		hasAccess, err = s.sessionInstanceDao.HasInstanceAccess(ctx, req.AssignedSessionID, athleteUserID)
-		if err != nil {
-			return nil, err
-		}
-		if !hasAccess {
-			return nil, ErrWorkoutFeedbackForbidden
-		}
+	if athleteUserID != authUserID && !access[athleteUserID] {
+		return nil, ErrWorkoutFeedbackForbidden
 	}
 
-	belongs, err := s.sessionInstanceDao.ExerciseBelongsToSessionInstance(ctx, req.AssignedSessionID, req.AssignedExerciseID)
+	belongs, derivedTeamID, err := s.sessionInstanceDao.ExerciseAndTeamForSessionInstance(ctx, req.AssignedSessionID, req.AssignedExerciseID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,10 +156,6 @@ func (s *workoutFeedbackService) Create(ctx *gin.Context, authUserID int64, req 
 		return nil, fmt.Errorf("%w: assigned_exercise_id no pertenece a la sesión asignada", ErrWorkoutFeedbackInvalid)
 	}
 
-	derivedTeamID, err := s.sessionInstanceDao.TeamIDForSessionInstance(ctx, req.AssignedSessionID)
-	if err != nil {
-		return nil, err
-	}
 	if ateamID != nil {
 		if derivedTeamID == nil || *derivedTeamID != *ateamID {
 			return nil, fmt.Errorf("%w: team_id no coincide con el equipo de la sesión asignada", ErrWorkoutFeedbackInvalid)

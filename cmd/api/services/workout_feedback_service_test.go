@@ -1575,3 +1575,177 @@ func TestWorkoutFeedbackService_BuildUpdates_CompletoYValidaciones(t *testing.T)
 		})
 	}
 }
+
+// Create resuelve el acceso con un solo batch y la pertenencia+team con una
+// sola lectura combinada, sin las consultas single que hacía antes.
+func TestWorkoutFeedbackService_Create_UsesBatchAccessAndCombinedRead(t *testing.T) {
+	created := false
+	feedbackDao := &mockWorkoutFeedbackDao{
+		createFn: func(_ *gin.Context, _ *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	batchCalls := 0
+	var batchUsers []int64
+	combinedCalls := 0
+	team := int64(3)
+	instanceDao := &feedbackInstanceDao{
+		mockSessionInstanceDao: &mockSessionInstanceDao{
+			hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) {
+				t.Fatal("el batch debe reemplazar la consulta single")
+				return false, nil
+			},
+			hasInstanceAccessBatchFn: func(_ *gin.Context, _ int64, userIDs []int64) (map[int64]bool, error) {
+				batchCalls++
+				batchUsers = append([]int64(nil), userIDs...)
+				return map[int64]bool{7: true}, nil
+			},
+			exerciseBelongsFn: func(_ *gin.Context, _, _ int64) (bool, error) {
+				t.Fatal("la lectura combinada debe reemplazar el lookup de pertenencia")
+				return false, nil
+			},
+			teamIDForSessionFn: func(_ *gin.Context, _ int64) (*int64, error) {
+				t.Fatal("la lectura combinada debe reemplazar el lookup de team")
+				return nil, nil
+			},
+		},
+		exerciseTeamFn: func(_ *gin.Context, instanceID, exerciseInstanceID int64) (bool, *int64, error) {
+			combinedCalls++
+			assert.Equal(t, int64(1), instanceID)
+			assert.Equal(t, int64(2), exerciseInstanceID)
+			return true, &team, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(feedbackDao, instanceDao)
+
+	fb, err := svc.Create(nil, 7, validCreateRequest())
+
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Equal(t, 1, batchCalls)
+	assert.Equal(t, []int64{7}, batchUsers, "self no duplica al caller")
+	assert.Equal(t, 1, combinedCalls)
+	require.NotNil(t, fb.TeamID)
+	assert.Equal(t, int64(3), *fb.TeamID)
+}
+
+// Coach + atleta comparten un único batch (mismo mapa de autorización) y una
+// única lectura combinada: paridad con las dos HasInstanceAccess secuenciales.
+func TestWorkoutFeedbackService_Create_TrainerAthleteBatchParity(t *testing.T) {
+	created := false
+	feedbackDao := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		createFn: func(_ *gin.Context, _ *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	batchCalls := 0
+	var batchUsers []int64
+	combinedCalls := 0
+	team := int64(21)
+	instanceDao := &feedbackInstanceDao{
+		mockSessionInstanceDao: &mockSessionInstanceDao{
+			hasInstanceAccessFn: func(_ *gin.Context, _, _ int64) (bool, error) {
+				t.Fatal("el batch debe reemplazar las consultas single")
+				return false, nil
+			},
+			hasInstanceAccessBatchFn: func(_ *gin.Context, _ int64, userIDs []int64) (map[int64]bool, error) {
+				batchCalls++
+				batchUsers = append([]int64(nil), userIDs...)
+				return map[int64]bool{7: true, 5: true}, nil
+			},
+		},
+		exerciseTeamFn: func(_ *gin.Context, _, _ int64) (bool, *int64, error) {
+			combinedCalls++
+			return true, &team, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(feedbackDao, instanceDao)
+
+	req := validCreateRequest()
+	athlete := int64(5)
+	req.AthleteUserID = &athlete
+
+	fb, err := svc.Create(nil, 7, req)
+
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Equal(t, 1, batchCalls)
+	assert.Equal(t, []int64{7, 5}, batchUsers)
+	assert.Equal(t, 1, combinedCalls)
+	assert.Equal(t, int64(5), fb.AthleteUserID)
+	assert.Equal(t, int64(7), fb.FeedbackOwnerUserID)
+	require.NotNil(t, fb.TeamID)
+	assert.Equal(t, int64(21), *fb.TeamID)
+}
+
+// El batch conserva la matriz: atleta sin acceso a la instancia → 403 sin crear.
+func TestWorkoutFeedbackService_Create_TrainerAthleteBatchDenied(t *testing.T) {
+	created := false
+	feedbackDao := &mockWorkoutFeedbackDao{
+		userInTeamOwnedByFn: func(_ *gin.Context, _, _ int64) (bool, error) { return true, nil },
+		createFn: func(_ *gin.Context, _ *dbs.WorkoutFeedback) error {
+			created = true
+			return nil
+		},
+	}
+	instanceDao := &feedbackInstanceDao{
+		mockSessionInstanceDao: &mockSessionInstanceDao{
+			hasInstanceAccessBatchFn: func(_ *gin.Context, _ int64, _ []int64) (map[int64]bool, error) {
+				return map[int64]bool{7: true, 5: false}, nil
+			},
+		},
+		exerciseTeamFn: func(_ *gin.Context, _, _ int64) (bool, *int64, error) {
+			t.Fatal("sin acceso no debe resolverse la lectura combinada")
+			return false, nil, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(feedbackDao, instanceDao)
+
+	req := validCreateRequest()
+	athlete := int64(5)
+	req.AthleteUserID = &athlete
+
+	_, err := svc.Create(nil, 7, req)
+
+	require.ErrorIs(t, err, ErrWorkoutFeedbackForbidden)
+	assert.False(t, created)
+}
+
+// CreatePoints ya es un bulk idempotente: N puntos generan un solo INSERT
+// (una sola llamada al DAO), no una por punto.
+func TestWorkoutFeedbackService_CreatePoints_SingleBulkCall(t *testing.T) {
+	fb := &dbs.WorkoutFeedback{ID: 1, AthleteUserID: 7, FeedbackOwnerUserID: 7}
+	bulkCalls := 0
+	mock := &mockWorkoutFeedbackDao{
+		getByIDFn: func(_ *gin.Context, _ int64) (*dbs.WorkoutFeedback, error) { return fb, nil },
+		bulkCreatePointsFn: func(_ *gin.Context, feedbackID int64, points []dbs.WorkoutFeedbackPoint) (int64, error) {
+			bulkCalls++
+			assert.Equal(t, int64(1), feedbackID)
+			assert.Len(t, points, 5)
+			return int64(len(points)), nil
+		},
+		getPointsByFeedbackFn: func(_ *gin.Context, _ int64) ([]dbs.WorkoutFeedbackPoint, error) {
+			t.Fatal("CreatePoints no debe releer los puntos")
+			return nil, nil
+		},
+	}
+	svc := NewWorkoutFeedbackService(mock, fbAccessDao())
+
+	req := workoutfeedback.CreatePointsRequest{Points: make([]workoutfeedback.PointInput, 0, 5)}
+	for i := 0; i < 5; i++ {
+		req.Points = append(req.Points, workoutfeedback.PointInput{
+			Order: i, SessionInstanceID: 3, ExerciseInstanceID: 4,
+			Latitude: -34.6, Longitude: -58.4, RecordedAt: time.Date(2026, 9, 24, 14, 0, i, 0, time.UTC),
+		})
+	}
+
+	result, err := svc.CreatePoints(nil, 7, 1, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, bulkCalls)
+	assert.Equal(t, 5, result.Created)
+	assert.Equal(t, 0, result.Skipped)
+}

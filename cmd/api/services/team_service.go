@@ -519,18 +519,15 @@ func (s *teamService) GetByID(ctx *gin.Context, id int64) (*team.TeamResponse, e
 
 // GetAll obtiene los equipos activos. Sin filtros, devuelve todos. Con owner_id
 // y/o member_id, filtra por equipos administrados y/o equipos donde el usuario
-// es miembro (cualquier rol). Si se pasan ambos, se aplican como AND (caso poco
-// común, se resuelve filtrando en memoria sin agregar una query nueva al DAO).
+// es miembro (cualquier rol). Si se pasan ambos, se aplican como AND en una
+// sola query (EXISTS sobre team_users).
 func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) ([]team.TeamResponse, error) {
 	var teams []dbs.Team
 	var err error
 
 	switch {
 	case ownerID != nil && memberID != nil:
-		teams, err = s.teamDao.GetAllByOwnerID(ctx, *ownerID)
-		if err == nil {
-			teams, err = s.filterByMember(ctx, teams, *memberID)
-		}
+		teams, err = s.teamDao.GetAllByOwnerAndMemberID(ctx, *ownerID, *memberID)
 	case ownerID != nil:
 		teams, err = s.teamDao.GetAllByOwnerID(ctx, *ownerID)
 	case memberID != nil:
@@ -562,27 +559,6 @@ func (s *teamService) GetAll(ctx *gin.Context, ownerID *int64, memberID *int64) 
 	}
 
 	return responses, nil
-}
-
-// filterByMember reduce una lista de equipos a los que el usuario indicado integra,
-// resolviendo sus membresías una sola vez.
-func (s *teamService) filterByMember(ctx *gin.Context, teams []dbs.Team, memberID int64) ([]dbs.Team, error) {
-	memberships, err := s.teamUserDao.FindByUserID(ctx, memberID)
-	if err != nil {
-		return nil, err
-	}
-	memberTeams := make(map[int64]struct{}, len(memberships))
-	for _, m := range memberships {
-		memberTeams[m.TeamID] = struct{}{}
-	}
-
-	filtered := make([]dbs.Team, 0, len(teams))
-	for _, t := range teams {
-		if _, ok := memberTeams[t.ID]; ok {
-			filtered = append(filtered, t)
-		}
-	}
-	return filtered, nil
 }
 
 // UpdateAddress actualiza la dirección de un equipo. Solo el entrenador del equipo puede hacerlo.

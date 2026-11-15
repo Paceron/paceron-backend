@@ -17,6 +17,9 @@ type TeamDaoInterface interface {
 	GetAll(ctx *gin.Context) ([]dbs.Team, error)
 	GetAllByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
 	GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
+	// GetAllByOwnerAndMemberID combina owner y membresía con EXISTS para no
+	// duplicar equipos cuando el usuario tiene más de una fila activa.
+	GetAllByOwnerAndMemberID(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error)
 	// FindByIDs devuelve varios equipos activos en una sola query — batch de
 	// nombres para los banners del home (design.md D6/D8, evita N+1).
 	FindByIDs(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
@@ -98,6 +101,21 @@ func (d *teamDao) GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team
 		Find(&teams).Error
 	if err != nil {
 		return nil, fmt.Errorf("error finding teams by member: %w", err)
+	}
+	return teams, nil
+}
+
+// GetAllByOwnerAndMemberID devuelve los equipos activos administrados por
+// ownerID donde memberID tiene una membresía activa. EXISTS evita duplicados
+// por múltiples filas de team_users.
+func (d *teamDao) GetAllByOwnerAndMemberID(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error) {
+	var teams []dbs.Team
+	err := d.DB.
+		Where("teams.owner_id = ? AND teams.deleted_at IS NULL", ownerID).
+		Where("EXISTS (SELECT 1 FROM team_users tu WHERE tu.team_id = teams.id AND tu.user_id = ? AND tu.deleted_at IS NULL)", memberID).
+		Find(&teams).Error
+	if err != nil {
+		return nil, fmt.Errorf("error finding teams by owner and member: %w", err)
 	}
 	return teams, nil
 }

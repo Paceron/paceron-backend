@@ -89,8 +89,9 @@ func TestCalendarService_GetRange_BatchDetalleQueries(t *testing.T) {
 	calDao := &mockGroupCalendarDao{findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return days, nil
 	}}
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: 7, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(9)
+		return &daos.GroupWithTeamOwner{ID: 7, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: 1, OwnerID: 9}, nil

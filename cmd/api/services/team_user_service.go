@@ -280,7 +280,7 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 		}
 	}
 
-	if err := s.teamUserDao.SoftDelete(ctx, existing.ID); err != nil {
+	if err := s.removeMemberships(ctx, teamID, targetUserID, existing.ID); err != nil {
 		customlogger.Error(ctx, "error removing user from team", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
 			customlogger.Tag("user_id", fmt.Sprintf("%d", targetUserID)),
@@ -300,6 +300,24 @@ func (s *teamUserService) RemoveUser(ctx *gin.Context, teamID, callerID, targetU
 	}
 
 	return nil
+}
+
+// removeMemberships da de baja la membresía del equipo y cierra sus membresías
+// de grupo con date_end (no deleted_at) para que desaparezca del calendario sin
+// perder el histórico de asistencias y entrenamientos.
+func (s *teamUserService) removeMemberships(ctx *gin.Context, teamID, userID, teamUserID int64) error {
+	remove := func(groupUserDao daos.GroupUserDaoInterface, teamUserDao daos.TeamUserDaoInterface) error {
+		if err := groupUserDao.EndActiveByTeamAndUser(ctx, teamID, userID); err != nil {
+			return err
+		}
+		return teamUserDao.SoftDelete(ctx, teamUserID)
+	}
+	if s.db != nil {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			return remove(daos.NewGroupUserDao(tx), daos.NewTeamUserDao(tx))
+		})
+	}
+	return remove(s.groupUserDao, s.teamUserDao)
 }
 
 // checkLeaveDebt devuelve ErrTeamLeaveWithDebt si la membresía tiene cuotas
@@ -414,23 +432,23 @@ func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64, callerI
 		return nil, fmt.Errorf("equipo no encontrado")
 	}
 
-	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
-	if err != nil {
-		customlogger.Error(ctx, "error checking caller membership for listing users", err,
-			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-			customlogger.TagMethod("GetUsersByTeam"))
-		return nil, fmt.Errorf("error al obtener usuarios del equipo")
-	}
-	if caller == nil {
-		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
-	}
-
 	teamUsers, err := s.teamUserDao.FindByTeamID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error listing team users", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
 			customlogger.TagMethod("GetUsersByTeam"))
 		return nil, fmt.Errorf("error al obtener usuarios del equipo")
+	}
+
+	callerIsMember := false
+	for _, tu := range teamUsers {
+		if tu.UserID == callerID {
+			callerIsMember = true
+			break
+		}
+	}
+	if !callerIsMember {
+		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
 	}
 
 	responses := make([]teamuser.TeamUserResponse, len(teamUsers))

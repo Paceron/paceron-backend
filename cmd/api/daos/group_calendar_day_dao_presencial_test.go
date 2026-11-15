@@ -41,6 +41,84 @@ func TestGroupCalendarDayDao_FindBySessionInstanceID_Found(t *testing.T) {
 	assert.Equal(t, day.ID, found.ID)
 }
 
+func TestGroupCalendarDayDao_FindWithTeamOwner_ResuelveDiaYOwner(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+	group := setupCalendarGroup(t, db, "fwo")
+	inst := &dbs.SessionInstance{Name: "con owner"}
+	require.NoError(t, db.Create(inst).Error)
+	day := &dbs.GroupCalendarDay{
+		GroupID:           group.ID,
+		Date:              time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+		Kind:              "training",
+		SessionInstanceID: &inst.ID,
+		IsPresencial:      true,
+	}
+	require.NoError(t, db.Create(day).Error)
+	var team dbs.Team
+	require.NoError(t, db.First(&team, group.TeamID).Error)
+
+	found, ownerID, err := dao.FindWithTeamOwnerBySessionInstanceID(nil, inst.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, day.ID, found.ID)
+	require.NotNil(t, ownerID)
+	assert.Equal(t, team.OwnerID, *ownerID)
+}
+
+func TestGroupCalendarDayDao_FindWithTeamOwner_Orphan(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewGroupCalendarDayDao(db)
+
+	found, ownerID, err := dao.FindWithTeamOwnerBySessionInstanceID(nil, 999999)
+
+	require.NoError(t, err)
+	assert.Nil(t, found)
+	assert.Nil(t, ownerID)
+}
+
+// Grupo o team soft-deleted conservan el día pero sin owner (mismo resultado
+// que los FindByID separados que reemplaza).
+func TestGroupCalendarDayDao_FindWithTeamOwner_SoftDeleted(t *testing.T) {
+	cases := []struct {
+		name      string
+		deleteSQL string
+	}{
+		{"group", "UPDATE groups SET deleted_at = NOW() WHERE id = ?"},
+		{"team", "UPDATE teams SET deleted_at = NOW() WHERE id = ?"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testutils.SetupTestDB(t)
+			dao := NewGroupCalendarDayDao(db)
+			group := setupCalendarGroup(t, db, "fws"+tc.name)
+			inst := &dbs.SessionInstance{Name: "soft " + tc.name}
+			require.NoError(t, db.Create(inst).Error)
+			day := &dbs.GroupCalendarDay{
+				GroupID:           group.ID,
+				Date:              time.Date(2027, 3, 10, 0, 0, 0, 0, time.UTC),
+				Kind:              "training",
+				SessionInstanceID: &inst.ID,
+				IsPresencial:      true,
+			}
+			require.NoError(t, db.Create(day).Error)
+
+			target := group.ID
+			if tc.name == "team" {
+				target = group.TeamID
+			}
+			require.NoError(t, db.Exec(tc.deleteSQL, target).Error)
+
+			found, ownerID, err := dao.FindWithTeamOwnerBySessionInstanceID(nil, inst.ID)
+
+			require.NoError(t, err)
+			require.NotNil(t, found, "el día se conserva")
+			assert.Nil(t, ownerID)
+		})
+	}
+}
+
 func TestGroupCalendarDayDao_FindBySessionInstanceID_Orphan(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewGroupCalendarDayDao(db)
@@ -59,14 +137,18 @@ func TestGroupCalendarDayDao_SetPresencialOpenedAt(t *testing.T) {
 	_, day := presencialDaySeed(t, db, "fbo1", true)
 	at := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 
-	mutated, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
+	updated, mutated, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
 	require.NoError(t, err)
 	assert.True(t, mutated)
+	require.NotNil(t, updated, "RETURNING entrega la fila post-write")
+	require.NotNil(t, updated.PresencialOpenedAt)
+	assert.Equal(t, at.UTC(), updated.PresencialOpenedAt.UTC())
 
 	// Guard: ya abierta → no re-escribe ni marca mutación (idempotente).
-	mutated2, err := dao.SetPresencialOpenedAt(nil, day.ID, at.Add(time.Hour))
+	updated2, mutated2, err := dao.SetPresencialOpenedAt(nil, day.ID, at.Add(time.Hour))
 	require.NoError(t, err)
 	assert.False(t, mutated2)
+	assert.Nil(t, updated2)
 
 	found, findErr := dao.FindBySessionInstanceID(nil, *day.SessionInstanceID)
 	require.NoError(t, findErr)
@@ -81,16 +163,20 @@ func TestGroupCalendarDayDao_SetPresencialClosedAt(t *testing.T) {
 	_, day := presencialDaySeed(t, db, "fbc1", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 	closed := opened.Add(2 * time.Hour)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
 
-	mutated, err := dao.SetPresencialClosedAt(nil, day.ID, closed)
+	updated, mutated, err := dao.SetPresencialClosedAt(nil, day.ID, closed)
 	require.NoError(t, err)
 	assert.True(t, mutated)
+	require.NotNil(t, updated)
+	require.NotNil(t, updated.PresencialClosedAt)
+	assert.Equal(t, closed.UTC(), updated.PresencialClosedAt.UTC())
 
-	mutated2, err := dao.SetPresencialClosedAt(nil, day.ID, closed.Add(time.Hour))
+	updated2, mutated2, err := dao.SetPresencialClosedAt(nil, day.ID, closed.Add(time.Hour))
 	require.NoError(t, err)
 	assert.False(t, mutated2, "cierre final: sin re-escritura")
+	assert.Nil(t, updated2)
 
 	found, findErr := dao.FindBySessionInstanceID(nil, *day.SessionInstanceID)
 	require.NoError(t, findErr)
@@ -103,13 +189,15 @@ func TestGroupCalendarDayDao_SetPresencial_DayInexistente(t *testing.T) {
 	dao := NewGroupCalendarDayDao(db)
 	at := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 
-	mutated, err := dao.SetPresencialOpenedAt(nil, 999999999, at)
+	updated, mutated, err := dao.SetPresencialOpenedAt(nil, 999999999, at)
 	require.NoError(t, err)
 	assert.False(t, mutated)
+	assert.Nil(t, updated)
 
-	mutated, err = dao.SetPresencialClosedAt(nil, 999999999, at)
+	updated, mutated, err = dao.SetPresencialClosedAt(nil, 999999999, at)
 	require.NoError(t, err)
 	assert.False(t, mutated)
+	assert.Nil(t, updated)
 }
 
 // Gap 26 D5: reasignar el día a otra instancia reinicia el estado presencial;
@@ -119,7 +207,7 @@ func TestGroupCalendarDayDao_Upsert_ReasignacionReseteaEstado(t *testing.T) {
 	dao := NewGroupCalendarDayDao(db)
 	_, day := presencialDaySeed(t, db, "fbu1", true)
 	at := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
 	require.NoError(t, err)
 
 	newInst := *day.SessionInstanceID + 500
@@ -143,7 +231,7 @@ func TestGroupCalendarDayDao_Upsert_MismaInstanciaConservaEstado(t *testing.T) {
 	dao := NewGroupCalendarDayDao(db)
 	_, day := presencialDaySeed(t, db, "fbu2", true)
 	at := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, at)
 	require.NoError(t, err)
 
 	// Re-upsert con la misma instancia y el día aún presencial conserva la apertura.
@@ -169,9 +257,9 @@ func TestGroupCalendarDayDao_Upsert_ApagaPresencialLimpiaEstado(t *testing.T) {
 	_, day := presencialDaySeed(t, db, "fbu3", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
 	closed := opened.Add(2 * time.Hour)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
-	_, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
+	_, _, err = dao.SetPresencialClosedAt(nil, day.ID, closed)
 	require.NoError(t, err)
 
 	off := &dbs.GroupCalendarDay{
@@ -198,7 +286,7 @@ func TestGroupCalendarDayDao_Upsert_ReactivarPresencial_ArrancaSinEstado(t *test
 	dao := NewGroupCalendarDayDao(db)
 	_, day := presencialDaySeed(t, db, "fbu4", true)
 	opened := time.Date(2027, 3, 10, 17, 5, 0, 0, time.UTC)
-	_, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
+	_, _, err := dao.SetPresencialOpenedAt(nil, day.ID, opened)
 	require.NoError(t, err)
 
 	off := &dbs.GroupCalendarDay{GroupID: day.GroupID, Date: day.Date, Kind: day.Kind, SessionInstanceID: day.SessionInstanceID}

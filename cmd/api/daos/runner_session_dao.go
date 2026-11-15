@@ -30,8 +30,9 @@ type RunnerSessionDAOInterface interface {
 	// UpdateStatus pasa la fila al status destino con el end_date provisto,
 	// solo si el status actual está en fromStatuses: guard anti-transición
 	// ilegal a nivel SQL (mismo rol que el WHERE status='wip' de Finish). El
-	// service decide con el GET previo; este WHERE es el guard.
-	UpdateStatus(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error
+	// service decide con el GET previo; este WHERE es el guard. Devuelve la
+	// fila post-write vía RETURNING, o nil si el guard no matcheó.
+	UpdateStatus(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) (*dbs.RunnerSession, error)
 	// SessionInstanceExists indica si existe la sesión asignada (id). La FK de
 	// runner_session es opaca; la existencia la valida el service al crear.
 	SessionInstanceExists(ctx *gin.Context, sessionInstanceID int64) (bool, error)
@@ -86,20 +87,22 @@ func (d *runnerSessionDao) GetBySessionAndAthlete(ctx *gin.Context, sessionInsta
 }
 
 // UpdateStatus pasa la fila al status destino con el end_date provisto, solo si
-// el status actual está en fromStatuses. Si no matchea (transición ilegal o fila
-// inexistente) no hay error, el service re-lee y decide.
-func (d *runnerSessionDao) UpdateStatus(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) error {
-	res := d.DB.Model(&dbs.RunnerSession{}).
-		Where("id = ? AND status IN ?", runnerSessionID, fromStatuses).
-		Updates(map[string]interface{}{
-			"status":     to,
-			"end_date":   endDate,
-			"updated_at": endDate,
-		})
+// el status actual está en fromStatuses. RETURNING evita la relectura posterior;
+// nil, nil cuando el guard no matcheó (el service decide).
+func (d *runnerSessionDao) UpdateStatus(ctx *gin.Context, runnerSessionID int64, to string, fromStatuses []string, endDate time.Time) (*dbs.RunnerSession, error) {
+	var rs dbs.RunnerSession
+	res := d.DB.Raw(`
+UPDATE runner_session
+SET status = ?, end_date = ?, updated_at = ?
+WHERE id = ? AND status IN ?
+RETURNING *`, to, endDate, endDate, runnerSessionID, fromStatuses).Scan(&rs)
 	if res.Error != nil {
-		return fmt.Errorf("error updating runner session status: %w", res.Error)
+		return nil, fmt.Errorf("error updating runner session status: %w", res.Error)
 	}
-	return nil
+	if res.RowsAffected == 0 {
+		return nil, nil
+	}
+	return &rs, nil
 }
 
 // SessionInstanceExists valida la existencia de la sesión asignada antes de

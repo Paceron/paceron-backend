@@ -42,8 +42,9 @@ func TestCompetitionService_ListAttempts_QueryCountConstante(t *testing.T) {
 		t.Helper()
 		rs, err := compDao.CreateAttemptSession(nil, comp, fx.runnerA.ID)
 		require.NoError(t, err)
-		require.NoError(t, runnerDao.UpdateStatus(nil, rs.ID, runnersession.RunnerSessionStatusFinished,
-			[]string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, time.Now()))
+		_, err = runnerDao.UpdateStatus(nil, rs.ID, runnersession.RunnerSessionStatusFinished,
+			[]string{runnersession.RunnerSessionStatusWip, runnersession.RunnerSessionStatusInterrupted}, time.Now())
+		require.NoError(t, err)
 	}
 
 	// N=1.

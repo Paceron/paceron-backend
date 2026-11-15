@@ -185,7 +185,7 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 		return
 	}
 
-	rs, gateDay, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
+	rs, gateDay, gateOwnerID, created, err := rc.runnerSessionService.Create(c, authUserID, sessionInstanceID, req)
 	if err != nil {
 		respondRunnerSessionError(c, err)
 		return
@@ -195,9 +195,10 @@ func (rc *runnerSessionController) Create(c *gin.Context) {
 	// update del día falla, el error sube con el estado del corredor ya
 	// persistido — aceptado por diseño). El hook decide si aplica
 	// (día presencial + owner); idempotente y solo muta si estaba NULL.
-	// Reutiliza el día cargado por el gate del service (sin re-consulta).
+	// Reutiliza el día y el owner cargados por el gate del service (D3, sin
+	// repetir la lectura combinada).
 	if rc.presencial != nil {
-		day, mutated, hookErr := rc.presencial.OnRunnerCreated(c, sessionInstanceID, authUserID, gateDay)
+		day, mutated, hookErr := rc.presencial.OnRunnerCreated(c, sessionInstanceID, authUserID, gateDay, gateOwnerID)
 		if hookErr != nil {
 			respondRunnerSessionError(c, hookErr)
 			return

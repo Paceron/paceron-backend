@@ -354,3 +354,127 @@ func TestSessionInstanceDao_ExerciseBelongsToSessionInstance(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+// La lectura combinada resuelve pertenencia y team con la misma semántica que
+// ExerciseBelongsToSessionInstance + TeamIDForSessionInstance, en una query.
+func TestSessionInstanceDao_ExerciseAndTeamForSessionInstance(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := accessFixtureSetup(t, db)
+	dao := NewSessionInstanceDao(db)
+
+	linked := &dbs.ExerciseInstance{Name: "Combinada linkeada", Kind: "running"}
+	require.NoError(t, db.Create(linked).Error)
+	require.NoError(t, db.Create(&dbs.SessionExerciseInstance{
+		SessionInstanceID: f.instDay.ID, ExerciseInstanceID: linked.ID, Role: "main", RepeatCount: 1,
+	}).Error)
+	other := &dbs.ExerciseInstance{Name: "Combinada ajena", Kind: "running"}
+	require.NoError(t, db.Create(other).Error)
+
+	t.Run("linkeado_con_team_del_dia", func(t *testing.T) {
+		belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, f.instDay.ID, linked.ID)
+		require.NoError(t, err)
+		assert.True(t, belongs)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("no_linkeado_igual_deriva_team", func(t *testing.T) {
+		belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, f.instDay.ID, other.ID)
+		require.NoError(t, err)
+		assert.False(t, belongs)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("huerfana_sin_team", func(t *testing.T) {
+		orphan := &dbs.SessionInstance{Name: "Combinada huérfana"}
+		require.NoError(t, db.Create(orphan).Error)
+		belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, orphan.ID, linked.ID)
+		require.NoError(t, err)
+		assert.False(t, belongs)
+		assert.Nil(t, teamID)
+	})
+
+	t.Run("route_anclada_por_competencia", func(t *testing.T) {
+		routeInst := &dbs.SessionInstance{Name: "Combinada route"}
+		require.NoError(t, db.Create(routeInst).Error)
+		comp := newRouteCompetition()
+		comp.TeamID = f.teamA.ID
+		comp.CreatedByUserID = f.owner.ID
+		comp.CreatedByRole = competition.CreatorRoleTrainer
+		comp.Status = competition.StatusActive
+		comp.RouteSessionInstanceID = &routeInst.ID
+		require.NoError(t, db.Create(comp).Error)
+
+		belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, routeInst.ID, linked.ID)
+		require.NoError(t, err)
+		assert.False(t, belongs)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("intento_2_route_por_runner_session", func(t *testing.T) {
+		attempt := &dbs.SessionInstance{Name: "Combinada intento 2"}
+		require.NoError(t, db.Create(attempt).Error)
+		comp := newRouteCompetition()
+		comp.TeamID = f.teamA.ID
+		comp.CreatedByUserID = f.owner.ID
+		comp.CreatedByRole = competition.CreatorRoleTrainer
+		comp.Status = competition.StatusActive
+		require.NoError(t, db.Create(comp).Error)
+		require.NoError(t, db.Create(&dbs.RunnerSession{
+			SessionInstanceID: attempt.ID, AthleteUserID: f.athlete.ID,
+			Status: "wip", StartDate: time.Now(), CompetitionID: &comp.ID,
+		}).Error)
+
+		belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, attempt.ID, linked.ID)
+		require.NoError(t, err)
+		assert.False(t, belongs)
+		require.NotNil(t, teamID)
+		assert.Equal(t, f.teamA.ID, *teamID)
+	})
+
+	t.Run("una_sola_query", func(t *testing.T) {
+		counting, counter := countingDB(db)
+		countingDao := NewSessionInstanceDao(counting)
+		_, _, err := countingDao.ExerciseAndTeamForSessionInstance(nil, f.instDay.ID, linked.ID)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), *counter)
+	})
+}
+
+// Un team_id 0 en la competencia route no corta la cadena: la siguiente vía
+// (runner_session del intento) gana, igual que con el scan int64 anterior.
+func TestSessionInstanceDao_ExerciseAndTeamForSessionInstance_ZeroTeamFallsThrough(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	f := accessFixtureSetup(t, db)
+	dao := NewSessionInstanceDao(db)
+
+	inst := &dbs.SessionInstance{Name: "Combinada route team cero"}
+	require.NoError(t, db.Create(inst).Error)
+
+	zero := newRouteCompetition()
+	zero.TeamID = 0
+	zero.CreatedByUserID = f.owner.ID
+	zero.CreatedByRole = competition.CreatorRoleTrainer
+	zero.Status = competition.StatusActive
+	zero.RouteSessionInstanceID = &inst.ID
+	require.NoError(t, db.Create(zero).Error)
+
+	valid := newRouteCompetition()
+	valid.TeamID = f.teamA.ID
+	valid.CreatedByUserID = f.owner.ID
+	valid.CreatedByRole = competition.CreatorRoleTrainer
+	valid.Status = competition.StatusActive
+	require.NoError(t, db.Create(valid).Error)
+	require.NoError(t, db.Create(&dbs.RunnerSession{
+		SessionInstanceID: inst.ID, AthleteUserID: f.athlete.ID,
+		Status: "wip", StartDate: time.Now(), CompetitionID: &valid.ID,
+	}).Error)
+
+	belongs, teamID, err := dao.ExerciseAndTeamForSessionInstance(nil, inst.ID, 1)
+	require.NoError(t, err)
+	assert.False(t, belongs)
+	require.NotNil(t, teamID)
+	assert.Equal(t, f.teamA.ID, *teamID)
+}

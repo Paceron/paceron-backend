@@ -90,6 +90,10 @@ func (s *channelAuthorizerStubDAO) ExerciseBelongsToSessionInstance(*gin.Context
 	return false, nil
 }
 
+func (s *channelAuthorizerStubDAO) ExerciseAndTeamForSessionInstance(*gin.Context, int64, int64) (bool, *int64, error) {
+	return false, nil, nil
+}
+
 func TestChannelAuthorizer(t *testing.T) {
 	stub := &channelAuthorizerStubDAO{}
 	authorizer := newChannelAuthorizer(stub)
