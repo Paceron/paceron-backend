@@ -244,7 +244,10 @@ func TestStampExcludeDates_SinCampoYArrayVacioIguales(t *testing.T) {
 
 // Cobertura del path mock (s.db == nil): formato inválido también aborta ahí.
 func TestStampExcludeDates_MockFormatoInvalido(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) { return &dbs.Group{ID: id, TeamID: 1}, nil }}
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
+	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return &dbs.Team{ID: id, OwnerID: 7}, nil }}
 	planDao := &mockTrainingPlanDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.TrainingPlan, error) {
 		return &dbs.TrainingPlan{ID: id, OwnerID: 7}, nil

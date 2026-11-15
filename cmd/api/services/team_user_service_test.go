@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/teamuser"
 	"simple-arq-golang/cmd/api/infrastructure/mailer"
+	"simple-arq-golang/cmd/api/testutils"
 )
 
 // callerID usado en los tests de AddUser/RemoveUser cuando el llamante es el entrenador
@@ -853,7 +855,7 @@ func TestTeamUserService_GetUsersByTeam_Success(t *testing.T) {
 	}
 
 	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
-	resp, err := svc.GetUsersByTeam(nil, 1, 1)
+	resp, err := svc.GetUsersByTeam(nil, 1, 10)
 
 	assert.NoError(t, err)
 	assert.Len(t, resp, 2)
@@ -903,23 +905,27 @@ func TestTeamUserService_GetUsersByTeam_NotMember(t *testing.T) {
 	assert.Contains(t, err.Error(), "el usuario no pertenece a este equipo")
 }
 
-func TestTeamUserService_GetUsersByTeam_CallerRoleCheckError(t *testing.T) {
+func TestTeamUserService_GetUsersByTeam_AuthorizesFromRoster(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 			return &dbs.Team{ID: 1}, nil
 		},
 	}
 	mockTeamUserDao := &mockTeamUserDao{
+		findByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error) {
+			return []dbs.TeamUser{{ID: 1, TeamID: teamID, UserID: 1, RoleInTeam: "corredor", Status: "active"}}, nil
+		},
 		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
-			return nil, errors.New("db error")
+			t.Fatal("no debe consultar la membresía del caller por separado")
+			return nil, nil
 		},
 	}
 
 	svc := NewTeamUserService(mockTeamUserDao, mockTeamDao, &mockUserDaoForUserRole{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockMailer{}, mockPushTokenDao{}, &mockExpoPushClient{}, nil, nil)
-	_, err := svc.GetUsersByTeam(nil, 1, 1)
+	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "error al obtener usuarios del equipo")
+	assert.NoError(t, err)
+	assert.Len(t, resp, 1)
 }
 
 func TestTeamUserService_GetUsersByTeam_FindByTeamIDError(t *testing.T) {
@@ -944,13 +950,10 @@ func TestTeamUserService_GetUsersByTeam_FindByTeamIDError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al obtener usuarios del equipo")
 }
 
-func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
+func TestTeamUserService_GetUsersByTeam_CallerOnlyRoster(t *testing.T) {
 	mockTeamUserDao := &mockTeamUserDao{
 		findByTeamIDFn: func(ctx *gin.Context, teamID int64) ([]dbs.TeamUser, error) {
-			return []dbs.TeamUser{}, nil
-		},
-		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
-			return &dbs.TeamUser{TeamID: teamID, UserID: userID}, nil
+			return []dbs.TeamUser{{ID: 1, TeamID: 1, UserID: 1, RoleInTeam: "entrenador", Status: "active"}}, nil
 		},
 	}
 	mockTeamDao := &mockTeamDao{
@@ -963,7 +966,41 @@ func TestTeamUserService_GetUsersByTeam_Empty(t *testing.T) {
 	resp, err := svc.GetUsersByTeam(nil, 1, 1)
 
 	assert.NoError(t, err)
-	assert.Len(t, resp, 0)
+	assert.Len(t, resp, 1)
+}
+
+func TestTeamUserService_GetUsersByTeam_QueryCountConstante(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner := &dbs.User{Name: "Roster", Surname: "Owner", Email: "roster-qc-owner@test.com", DNI: "57000201", BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+	require.NoError(t, db.Create(owner).Error)
+	team := &dbs.Team{Name: "Roster QC team", MaxMembers: 20, OwnerID: owner.ID}
+	require.NoError(t, db.Create(team).Error)
+
+	addMember := func(i int) *dbs.User {
+		user := &dbs.User{Name: "Roster", Surname: fmt.Sprintf("Member %d", i), Email: fmt.Sprintf("roster-qc-%d@test.com", i), DNI: fmt.Sprintf("5700021%d", i), BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed"}
+		require.NoError(t, db.Create(user).Error)
+		require.NoError(t, db.Create(&dbs.TeamUser{TeamID: team.ID, UserID: user.ID, RoleInTeam: "corredor", Status: "active", AssignmentDate: time.Now()}).Error)
+		return user
+	}
+
+	caller := addMember(1)
+	counter := 0
+	cdb := countingDB(t, db, &counter)
+	svc := NewTeamUserService(daos.NewTeamUserDao(cdb), daos.NewTeamDao(cdb), nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.GetUsersByTeam(nil, team.ID, caller.ID)
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+	assert.Equal(t, 2, counter, "equipo + roster")
+
+	for i := 2; i <= 5; i++ {
+		addMember(i)
+	}
+	counter = 0
+	resp, err = svc.GetUsersByTeam(nil, team.ID, caller.ID)
+	require.NoError(t, err)
+	require.Len(t, resp, 5)
+	assert.Equal(t, 2, counter, "el roster no escala el conteo de queries")
 }
 
 // leaveDebtService arma el servicio para los casos de salida con deuda: el

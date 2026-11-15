@@ -280,5 +280,5 @@ func TestCalendarService_BulkClear_QueriesFijas(t *testing.T) {
 	t.Logf("bulk-clear 8 fechas: %d queries", counter)
 
 	assert.Equal(t, queries4, counter, "el conteo no depende de la cantidad de fechas")
-	assert.Equal(t, 11, queries4, "2 owner (grupo+equipo) + 1 FindByGroupAndDates + 1 DeleteByDates + 6 del batch de supersede (fb sesión + links + fb ejercicio + 3 deletes IN) + savepoint + commit")
+	assert.Equal(t, 10, queries4, "1 auth (grupo+owner) + 1 FindByGroupAndDates + 1 DeleteByDates + 6 del batch de supersede (fb sesión + links + fb ejercicio + 3 deletes IN) + savepoint + commit")
 }

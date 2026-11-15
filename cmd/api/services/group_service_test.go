@@ -74,6 +74,7 @@ type mockGroupDao struct {
 	getByTeamIDFn               func(ctx *gin.Context, teamID int64) ([]dbs.Group, error)
 	findByOwnerIDFn             func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error)
 	findByOwnerIDWithTeamNameFn func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error)
+	findWithTeamOwnerByIDFn     func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error)
 	findByIDsFn                 func(ctx *gin.Context, ids []int64) ([]dbs.Group, error)
 	findWithTeamNameByIDsFn     func(ctx *gin.Context, ids []int64) ([]daos.GroupWithTeamName, error)
 	updateFn                    func(ctx *gin.Context, g *dbs.Group) error
@@ -126,6 +127,13 @@ func (m *mockGroupDao) FindByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Gro
 func (m *mockGroupDao) FindByOwnerIDWithTeamName(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
 	if m.findByOwnerIDWithTeamNameFn != nil {
 		return m.findByOwnerIDWithTeamNameFn(ctx, ownerID)
+	}
+	return nil, nil
+}
+
+func (m *mockGroupDao) FindWithTeamOwnerByID(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+	if m.findWithTeamOwnerByIDFn != nil {
+		return m.findWithTeamOwnerByIDFn(ctx, id)
 	}
 	return nil, nil
 }

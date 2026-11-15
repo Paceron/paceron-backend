@@ -172,8 +172,9 @@ func (m *mockGroupCalendarDao) SetPresencialClosedAt(ctx *gin.Context, dayID int
 // functionally identical shape) — reused here, not redeclared.
 
 func TestCalendarService_GetRange_OwnerAllowed(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -187,8 +188,9 @@ func TestCalendarService_GetRange_OwnerAllowed(t *testing.T) {
 }
 
 func TestCalendarService_GetRange_ForbiddenForOutsider(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -202,8 +204,9 @@ func TestCalendarService_GetRange_ForbiddenForOutsider(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_NonOwnerForbidden(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -216,8 +219,9 @@ func TestCalendarService_UpsertDay_NonOwnerForbidden(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_OtherRequiresOtherName(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -230,8 +234,9 @@ func TestCalendarService_UpsertDay_OtherRequiresOtherName(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_CancelFromRestRejected(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -248,8 +253,9 @@ func TestCalendarService_UpsertDay_CancelFromRestRejected(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_CancelFromTrainingAccepted(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -268,8 +274,9 @@ func TestCalendarService_UpsertDay_CancelFromTrainingAccepted(t *testing.T) {
 }
 
 func TestCalendarService_DeleteDay_NonOwnerForbidden(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -327,8 +334,9 @@ func TestCalendarService_Stamp_Success(t *testing.T) {
 }
 
 func TestCalendarService_Stamp_PlanFromOtherOwnerForbidden(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -415,8 +423,9 @@ func TestCalendarService_Bulk_FechasDuplicadasGanaLaUltima(t *testing.T) {
 }
 
 func TestCalendarService_BulkClear_Success(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -472,8 +481,9 @@ func TestCalendarService_Shift_NoCollision(t *testing.T) {
 }
 
 func TestCalendarService_Stamp_ConflictWithoutForce(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -1031,8 +1041,9 @@ func TestCalendarService_CalendarSummary_ListsGroups(t *testing.T) {
 }
 
 func TestCalendarService_DeleteDay_OwnerSuccess(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -1051,8 +1062,9 @@ func TestCalendarService_DeleteDay_OwnerSuccess(t *testing.T) {
 }
 
 func TestCalendarService_DeleteDay_DaoErrorWrapped(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -1069,8 +1081,9 @@ func TestCalendarService_DeleteDay_DaoErrorWrapped(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -1098,8 +1111,9 @@ func TestCalendarService_UpsertDay_PresencialSuccessRoundTrip(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_PresencialInvalidTimeFormat(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -1119,8 +1133,9 @@ func TestCalendarService_UpsertDay_PresencialInvalidTimeFormat(t *testing.T) {
 }
 
 func TestCalendarService_UpsertDay_PresencialTimeToBeforeFrom(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil

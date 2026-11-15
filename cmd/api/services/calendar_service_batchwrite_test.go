@@ -141,10 +141,10 @@ func TestCalendarService_Stamp_BatchWriteQueriesConstantes(t *testing.T) {
 	// guard de todas las fechas es una única SELECT IN dentro de la tx,
 	// evaluada en memoria con el mismo orden/mensajes que el loop por fecha.
 	//
-	// 15 fijo: 2 (owner/plan) + 1 planDays + 1 savepoint + 1 lecturas de
-	// guard batch + 3 catálogo + 3 inserts instancias + 1 UpsertMany +
-	// 2 detalle post-commit + 1 commit.
-	assert.Equal(t, 15, dayQueries, "stamp 4 días: sin lectura guard +1/día")
+	// 14 fijo: 1 auth (grupo+owner) + 1 plan + 1 planDays + 1 savepoint +
+	// 1 lecturas de guard batch + 3 catálogo + 3 inserts instancias +
+	// 1 UpsertMany + 2 detalle post-commit + 1 commit.
+	assert.Equal(t, 14, dayQueries, "stamp 4 días: sin lectura guard +1/día")
 	assert.Equal(t, dayQueries, counter, "stamp de 30 días = exactamente el mismo write path (sin término lineal)")
 
 	// Contenido batch correcto: cada día tiene su propia instancia con links.
@@ -204,8 +204,8 @@ func TestCalendarService_Bulk_BatchWriteQueriesConstantes(t *testing.T) {
 	require.Len(t, resp.Days, 10)
 	t.Logf("bulk 10 días: %d queries", counter)
 	assert.Equal(t, dayQueries, counter, "bulk de 10 días = mismo write path constante (sin término lineal por fecha)")
-	// 5 fijo (el commit del pool de conteo se incrementa aparte): 2 selects
-	// del owner (grupo+equipo) + 1 savepoint + 1 lectura de guard batch +
-	// 1 UpsertMany; días rest sin instancia → el detalle post-commit no agrega.
-	assert.Equal(t, 5, dayQueries, "bulk 3 días: 2 owner + savepoint + guard batch + UpsertMany")
+	// 4 fijo (el commit del pool de conteo se incrementa aparte): 1 auth
+	// (grupo+owner) + 1 savepoint + 1 lectura de guard batch + 1 UpsertMany;
+	// días rest sin instancia → el detalle post-commit no agrega.
+	assert.Equal(t, 4, dayQueries, "bulk 3 días: 1 auth + savepoint + guard batch + UpsertMany")
 }

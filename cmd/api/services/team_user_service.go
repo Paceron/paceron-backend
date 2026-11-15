@@ -432,23 +432,23 @@ func (s *teamUserService) GetUsersByTeam(ctx *gin.Context, teamID int64, callerI
 		return nil, fmt.Errorf("equipo no encontrado")
 	}
 
-	caller, err := s.teamUserDao.FindByTeamAndUser(ctx, teamID, callerID)
-	if err != nil {
-		customlogger.Error(ctx, "error checking caller membership for listing users", err,
-			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
-			customlogger.TagMethod("GetUsersByTeam"))
-		return nil, fmt.Errorf("error al obtener usuarios del equipo")
-	}
-	if caller == nil {
-		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
-	}
-
 	teamUsers, err := s.teamUserDao.FindByTeamID(ctx, teamID)
 	if err != nil {
 		customlogger.Error(ctx, "error listing team users", err,
 			customlogger.Tag("team_id", fmt.Sprintf("%d", teamID)),
 			customlogger.TagMethod("GetUsersByTeam"))
 		return nil, fmt.Errorf("error al obtener usuarios del equipo")
+	}
+
+	callerIsMember := false
+	for _, tu := range teamUsers {
+		if tu.UserID == callerID {
+			callerIsMember = true
+			break
+		}
+	}
+	if !callerIsMember {
+		return nil, fmt.Errorf("el usuario no pertenece a este equipo")
 	}
 
 	responses := make([]teamuser.TeamUserResponse, len(teamUsers))

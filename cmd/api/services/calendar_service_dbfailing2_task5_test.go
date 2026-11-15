@@ -269,7 +269,7 @@ func TestDBError_DeleteDay_TXDeleteFail(t *testing.T) {
 // --- Stamp ----------------------------------------------------------------
 
 func TestDBError_Stamp_OwnerError(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
 		return nil, errors.New("boom owner")
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, nil)

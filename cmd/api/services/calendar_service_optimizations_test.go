@@ -124,16 +124,87 @@ func TestCalendarService_UpsertDay_SingleReadInTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, date.Format("2006-01-02"), resp.Date)
-	// 2 auth (grupo+equipo) + 1 FindByGroupAndDate en tx + 1 select + 1 write
-	// del Upsert + 1 commit. Antes había un FindByGroupAndDate extra pre-tx.
-	assert.Equal(t, 6, counter, "una sola lectura del día, dentro de la transacción")
+	// 1 auth (grupo+owner en una query) + 1 FindByGroupAndDate en tx + 1 select
+	// + 1 write del Upsert + 1 commit. Antes había una query extra de auth.
+	assert.Equal(t, 5, counter, "una sola lectura del día, dentro de la transacción")
 
 	counter = 0
 	resp, err = svc.UpsertDay(nil, group.ID, owner.ID, date, calendar.CalendarDayRequest{Kind: "rest"})
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, 6, counter, "el update tampoco relectura fuera de la tx")
+	assert.Equal(t, 5, counter, "el update tampoco relectura fuera de la tx")
+}
+
+// 1.2: GetRange autoriza con una query al owner (2→1) y dos al miembro (3→2),
+// sin tocar el detalle de instancia ni la respuesta.
+func TestCalendarService_GetRange_AuthQueryCount(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "authcount")
+	member := &dbs.User{
+		Name: "Auth", Surname: "Member", Email: "auth-count-member@test.com", DNI: "57000201",
+		BirthDate: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), Password: "hashed",
+	}
+	require.NoError(t, db.Create(member).Error)
+	require.NoError(t, db.Create(&dbs.GroupUser{GroupID: group.ID, UserID: member.ID, DateStart: time.Now()}).Error)
+
+	inst := &dbs.SessionInstance{Name: "S auth count"}
+	require.NoError(t, daos.NewSessionInstanceDao(db).Create(nil, inst))
+	ex := &dbs.ExerciseInstance{Name: "E auth count", Kind: "running"}
+	require.NoError(t, daos.NewExerciseInstanceDao(db).Create(nil, ex))
+	require.NoError(t, daos.NewSessionExerciseInstanceDao(db).Create(nil, &dbs.SessionExerciseInstance{
+		SessionInstanceID: inst.ID, ExerciseInstanceID: ex.ID, Role: "main",
+	}))
+	date := time.Now().AddDate(0, 0, 30)
+	instID := inst.ID
+	require.NoError(t, daos.NewGroupCalendarDayDao(db).Upsert(nil, &dbs.GroupCalendarDay{
+		GroupID: group.ID, Date: date, Kind: "training", SessionInstanceID: &instID,
+	}))
+
+	counter := 0
+	cdb := countingDB(t, db, &counter)
+	svc := NewCalendarService(
+		daos.NewGroupCalendarDayDao(cdb), daos.NewGroupDao(cdb), daos.NewTeamDao(cdb),
+		daos.NewGroupUserDao(cdb), nil, nil, nil, nil, cdb,
+	)
+
+	resp, err := svc.GetRange(nil, group.ID, owner.ID, date, date)
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+	require.NotNil(t, resp[0].SessionInstance)
+	assert.Equal(t, inst.Name, resp[0].SessionInstance.Name)
+	assert.Equal(t, 4, counter, "owner: 1 auth + 1 rango + 2 detalle")
+
+	counter = 0
+	resp, err = svc.GetRange(nil, group.ID, member.ID, date, date)
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+	require.NotNil(t, resp[0].SessionInstance)
+	assert.Equal(t, inst.Name, resp[0].SessionInstance.Name)
+	assert.Equal(t, 5, counter, "miembro: 2 auth + 1 rango + 2 detalle")
+}
+
+// 3.1: grupos y nombres de equipo salen de una sola query, más los días
+// presenciales: 3→2 round trips por lote.
+func TestCalendarService_FindPresencialCollisions_QueryCount(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "prescount")
+	date := time.Now().AddDate(0, 0, 30)
+
+	counter := 0
+	cdb := countingDB(t, db, &counter)
+	svc := NewCalendarService(
+		nil, daos.NewGroupDao(cdb), daos.NewTeamDao(cdb), nil, nil, nil, nil, nil, cdb,
+	)
+
+	cross, same, err := svc.(*calendarService).findPresencialCollisions(
+		nil, cdb, owner.ID, &group.ID, nil, []time.Time{date}, nil,
+	)
+
+	require.NoError(t, err)
+	assert.Empty(t, cross)
+	assert.Empty(t, same)
+	assert.Equal(t, 2, counter, "1 query grupos+equipo + 1 query días presenciales")
 }
 
 // DB path: la validación corre antes de buildRow, así que IsPresencial sin

@@ -160,6 +160,71 @@ func TestTeamDao_GetAllByMemberID_ExcludesSoftDeletedMembership(t *testing.T) {
 	assert.Empty(t, found)
 }
 
+func TestTeamDao_GetAllByOwnerAndMemberID_FiltersBoth(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-owner-member-owner@test.com", "20000015")
+	member := persistUser(db, "team-owner-member-user@test.com", "20000016")
+	other := persistUser(db, "team-owner-member-other@test.com", "20000017")
+	match := testTeam(db, "equipo_owner_y_member", owner.ID)
+	notMember := testTeam(db, "equipo_solo_owner", owner.ID)
+	otherOwner := testTeam(db, "equipo_otro_owner", other.ID)
+
+	require.NoError(t, db.Create(&dbs.TeamUser{TeamID: match.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}).Error)
+	require.NoError(t, db.Create(&dbs.TeamUser{TeamID: otherOwner.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}).Error)
+
+	found, err := dao.GetAllByOwnerAndMemberID(nil, owner.ID, member.ID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, match.ID, found[0].ID)
+	assert.NotEqual(t, notMember.ID, found[0].ID)
+	assert.NotEqual(t, otherOwner.ID, found[0].ID)
+}
+
+func TestTeamDao_GetAllByOwnerAndMemberID_NoDuplicatesWithTwoActiveMemberships(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-dup-owner@test.com", "20000018")
+	member := persistUser(db, "team-dup-user@test.com", "20000019")
+	team := testTeam(db, "equipo_dup_memberships", owner.ID)
+
+	for i := 0; i < 2; i++ {
+		require.NoError(t, db.Create(&dbs.TeamUser{TeamID: team.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}).Error)
+	}
+
+	found, err := dao.GetAllByOwnerAndMemberID(nil, owner.ID, member.ID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, team.ID, found[0].ID)
+}
+
+func TestTeamDao_GetAllByOwnerAndMemberID_ExcludesSoftDeleted(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewTeamDao(db)
+	owner := persistUser(db, "team-soft-owner-member@test.com", "20000020")
+	member := persistUser(db, "team-soft-member@test.com", "20000021")
+	active := testTeam(db, "equipo_soft_activo", owner.ID)
+	deletedTeam := testTeam(db, "equipo_soft_borrado", owner.ID)
+	require.NoError(t, dao.SoftDelete(nil, deletedTeam.ID))
+	deletedMembershipTeam := testTeam(db, "equipo_membresia_borrada", owner.ID)
+
+	require.NoError(t, db.Create(&dbs.TeamUser{TeamID: active.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}).Error)
+	require.NoError(t, db.Create(&dbs.TeamUser{TeamID: deletedTeam.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}).Error)
+	deletedMembership := &dbs.TeamUser{TeamID: deletedMembershipTeam.ID, UserID: member.ID, RoleInTeam: "corredor", AssignmentDate: time.Now()}
+	require.NoError(t, db.Create(deletedMembership).Error)
+	require.NoError(t, db.Model(&dbs.TeamUser{}).Where("id = ?", deletedMembership.ID).Update("deleted_at", gorm.Expr("NOW()")).Error)
+
+	found, err := dao.GetAllByOwnerAndMemberID(nil, owner.ID, member.ID)
+
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, active.ID, found[0].ID)
+	assert.NotEqual(t, deletedTeam.ID, found[0].ID)
+	assert.NotEqual(t, deletedMembershipTeam.ID, found[0].ID)
+}
+
 func TestTeamDao_Update_Success(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	dao := NewTeamDao(db)

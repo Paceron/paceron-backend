@@ -170,7 +170,7 @@ func TestDeleteDayBatch_QueriesFijasPorEjercicio(t *testing.T) {
 
 	t.Logf("DeleteDay: 1 ejercicio=%d queries, 5 ejercicios=%d queries", queries1, queries5)
 	assert.Equal(t, queries1, queries5, "el conteo no depende de la cantidad de ejercicios")
-	assert.Equal(t, 12, queries1, "2 owner (grupo+equipo) + 1 FindByGroupAndDate pre-tx + 1 FindByGroupAndDate en tx + 1 delete del día + 6 del batch (fb sesión + links + fb ejercicio + 3 deletes IN) + cierre de tx")
+	assert.Equal(t, 11, queries1, "1 auth (grupo+owner) + 1 FindByGroupAndDate pre-tx + 1 FindByGroupAndDate en tx + 1 delete del día + 6 del batch (fb sesión + links + fb ejercicio + 3 deletes IN) + cierre de tx")
 	assertInstanceDeleted(t, db, inst1)
 	assertInstanceDeleted(t, db, inst5)
 }

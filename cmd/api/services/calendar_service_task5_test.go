@@ -18,8 +18,9 @@ import (
 )
 
 func task5BaseAuthDaos() (daos.GroupDaoInterface, daos.TeamDaoInterface) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(7)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
@@ -50,21 +51,17 @@ func TestCalendarService_Task5_NewDayOnClosedDateRejected(t *testing.T) {
 }
 
 func TestCalendarService_Task5_IsGroupOwner_FailureVariants(t *testing.T) {
-	baseGroupDao := func() daos.GroupDaoInterface {
-		return &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 1}, nil
-		}}
-	}
-
 	t.Run("grupo no encontrado", func(t *testing.T) {
-		groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) { return nil, nil }}
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) { return nil, nil }}
 		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 		_, err := svc.UpsertDay(nil, 1, 7, time.Now(), calendar.CalendarDayRequest{Kind: "rest"})
 		assert.ErrorIs(t, err, ErrCalendarGroupNotFound)
 	})
 
 	t.Run("dao de grupo rompe", func(t *testing.T) {
-		groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) { return nil, errors.New("boom") }}
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+			return nil, errors.New("boom")
+		}}
 		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 		_, err := svc.UpsertDay(nil, 1, 7, time.Now(), calendar.CalendarDayRequest{Kind: "rest"})
 		require.Error(t, err)
@@ -73,32 +70,33 @@ func TestCalendarService_Task5_IsGroupOwner_FailureVariants(t *testing.T) {
 	})
 
 	t.Run("equipo inexistente queda prohibido", func(t *testing.T) {
-		groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 999}, nil
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+			return &daos.GroupWithTeamOwner{ID: id, TeamID: 999}, nil
 		}}
 		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 		_, err := svc.UpsertDay(nil, 1, 7, time.Now(), calendar.CalendarDayRequest{Kind: "rest"})
 		assert.ErrorIs(t, err, ErrCalendarForbidden)
 	})
 
-	t.Run("dao de equipo rompe", func(t *testing.T) {
-		svc := NewCalendarService(&mockGroupCalendarDao{}, baseGroupDao(), &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-			return nil, errors.New("boom")
-		}}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
+	t.Run("owner distinto queda prohibido", func(t *testing.T) {
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+			ownerID := int64(8)
+			return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
+		}}
+		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, &mockGroupUserDao{}, nil, nil, nil, nil, nil)
 		err := svc.(*calendarService).isGroupOwner(nil, 1, 7)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "error al buscar equipo")
+		assert.ErrorIs(t, err, ErrCalendarForbidden)
 	})
 
 	t.Run("miembro del grupo puede leer", func(t *testing.T) {
 		groupUserDao := &mockGroupUserDao{findByGroupAndUserFn: func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error) {
 			return &dbs.GroupUser{GroupID: groupID, UserID: userID}, nil
 		}}
-		groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 1}, nil
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+			ownerID := int64(8)
+			return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 		}}
-		teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return nil, nil }}
-		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 		_, err := svc.GetRange(nil, 1, 42, time.Now(), time.Now())
 		require.NoError(t, err)
 	})
@@ -107,11 +105,11 @@ func TestCalendarService_Task5_IsGroupOwner_FailureVariants(t *testing.T) {
 		groupUserDao := &mockGroupUserDao{findByGroupAndUserFn: func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error) {
 			return nil, errors.New("boom")
 		}}
-		groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-			return &dbs.Group{ID: id, TeamID: 1}, nil
+		groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+			ownerID := int64(8)
+			return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 		}}
-		teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return nil, nil }}
-		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+		svc := NewCalendarService(&mockGroupCalendarDao{}, groupDao, &mockTeamDao{}, groupUserDao, nil, nil, nil, nil, nil)
 		_, err := svc.GetRange(nil, 1, 42, time.Now(), time.Now())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "error al validar membresía")

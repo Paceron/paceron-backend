@@ -29,17 +29,18 @@ func entrenadorMockTeamUserDao() *mockTeamUserDao {
 }
 
 type mockTeamDao struct {
-	createFn           func(ctx *gin.Context, t *dbs.Team) error
-	findByIDFn         func(ctx *gin.Context, id int64) (*dbs.Team, error)
-	findByIDsFn        func(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
-	getAllFn           func(ctx *gin.Context) ([]dbs.Team, error)
-	getAllByOwnerIDFn  func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
-	getAllByMemberIDFn func(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
-	updateFn           func(ctx *gin.Context, t *dbs.Team) error
-	softDeleteFn       func(ctx *gin.Context, id int64) error
-	updateIconFn       func(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
-	clearIconFn        func(ctx *gin.Context, teamID int64) error
-	searchPublicFn     func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error)
+	createFn                   func(ctx *gin.Context, t *dbs.Team) error
+	findByIDFn                 func(ctx *gin.Context, id int64) (*dbs.Team, error)
+	findByIDsFn                func(ctx *gin.Context, ids []int64) ([]dbs.Team, error)
+	getAllFn                   func(ctx *gin.Context) ([]dbs.Team, error)
+	getAllByOwnerIDFn          func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error)
+	getAllByMemberIDFn         func(ctx *gin.Context, memberID int64) ([]dbs.Team, error)
+	getAllByOwnerAndMemberIDFn func(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error)
+	updateFn                   func(ctx *gin.Context, t *dbs.Team) error
+	softDeleteFn               func(ctx *gin.Context, id int64) error
+	updateIconFn               func(ctx *gin.Context, teamID int64, key string, updatedAt time.Time) error
+	clearIconFn                func(ctx *gin.Context, teamID int64) error
+	searchPublicFn             func(ctx *gin.Context, filters daos.TeamSearchFilters, callerID int64, page, pageSize int) ([]dbs.Team, bool, error)
 }
 
 func (m *mockTeamDao) Create(ctx *gin.Context, t *dbs.Team) error {
@@ -92,6 +93,13 @@ func (m *mockTeamDao) GetAllByOwnerID(ctx *gin.Context, ownerID int64) ([]dbs.Te
 func (m *mockTeamDao) GetAllByMemberID(ctx *gin.Context, memberID int64) ([]dbs.Team, error) {
 	if m.getAllByMemberIDFn != nil {
 		return m.getAllByMemberIDFn(ctx, memberID)
+	}
+	return nil, nil
+}
+
+func (m *mockTeamDao) GetAllByOwnerAndMemberID(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error) {
+	if m.getAllByOwnerAndMemberIDFn != nil {
+		return m.getAllByOwnerAndMemberIDFn(ctx, ownerID, memberID)
 	}
 	return nil, nil
 }
@@ -940,22 +948,23 @@ func TestTeamService_GetAll_ByMemberID(t *testing.T) {
 	assert.Equal(t, "Beta", resp[0].Name)
 }
 
-func TestTeamService_GetAll_ByOwnerIDAndMemberID_ResolvesMembershipsOnceAndFiltersInMemory(t *testing.T) {
+func TestTeamService_GetAll_ByOwnerIDAndMemberID_UsesExistsQuery(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
 		getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
-			return []dbs.Team{{ID: 1, Name: "Alpha"}, {ID: 2, Name: "Beta"}, {ID: 3, Name: "Gamma"}}, nil
-		},
-	}
-	findByTeamAndUserCalls := 0
-	findByUserIDCalls := 0
-	mockTU := &mockTeamUserDao{
-		findByTeamAndUserFn: func(ctx *gin.Context, teamID, userID int64) (*dbs.TeamUser, error) {
-			findByTeamAndUserCalls++
+			t.Fatal("no debe resolver el owner por separado")
 			return nil, nil
 		},
+		getAllByOwnerAndMemberIDFn: func(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error) {
+			assert.Equal(t, int64(5), ownerID)
+			assert.Equal(t, int64(7), memberID)
+			return []dbs.Team{{ID: 1, Name: "Alpha"}, {ID: 3, Name: "Gamma"}}, nil
+		},
+	}
+	findByUserIDCalls := 0
+	mockTU := &mockTeamUserDao{
 		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
 			findByUserIDCalls++
-			return []dbs.TeamUser{{TeamID: 1, UserID: userID}, {TeamID: 3, UserID: userID}}, nil
+			return nil, nil
 		},
 	}
 
@@ -968,23 +977,17 @@ func TestTeamService_GetAll_ByOwnerIDAndMemberID_ResolvesMembershipsOnceAndFilte
 	require.Len(t, resp, 2)
 	assert.Equal(t, "Alpha", resp[0].Name)
 	assert.Equal(t, "Gamma", resp[1].Name)
-	assert.Equal(t, 1, findByUserIDCalls)
-	assert.Zero(t, findByTeamAndUserCalls)
+	assert.Zero(t, findByUserIDCalls)
 }
 
-func TestTeamService_GetAll_ByOwnerIDAndMemberID_MembershipLookupError(t *testing.T) {
+func TestTeamService_GetAll_ByOwnerIDAndMemberID_DaoError(t *testing.T) {
 	mockTeamDao := &mockTeamDao{
-		getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
-			return []dbs.Team{{ID: 1, Name: "Alpha"}}, nil
-		},
-	}
-	mockTU := &mockTeamUserDao{
-		findByUserIDFn: func(ctx *gin.Context, userID int64) ([]dbs.TeamUser, error) {
+		getAllByOwnerAndMemberIDFn: func(ctx *gin.Context, ownerID, memberID int64) ([]dbs.Team, error) {
 			return nil, errors.New("db error")
 		},
 	}
 
-	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, mockTU, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
+	svc := NewTeamService(mockTeamDao, &mockUserDaoForUserRole{}, &mockUserRoleDao{}, &mockRoleDao{}, &mockTeamUserDao{}, &mockGroupDao{}, &mockGroupUserDao{}, &mockInvitationDao{}, nil, nil)
 	ownerID := int64(5)
 	memberID := int64(7)
 	_, err := svc.GetAll(nil, &ownerID, &memberID)

@@ -186,23 +186,19 @@ func (s *calendarService) findPresencialCollisions(
 	dates []time.Time,
 	candidates []dbs.GroupCalendarDay,
 ) ([]calendar.PresencialConflict, []calendar.PresencialConflict, error) {
-	groups, err := s.groupDao.FindByOwnerID(ctx, ownerID)
+	rows, err := s.groupDao.FindByOwnerIDWithTeamName(ctx, ownerID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error al buscar grupos del owner: %w", err)
 	}
-	groupByID := make(map[int64]dbs.Group, len(groups))
-	groupIDs := make([]int64, 0, len(groups))
-	for _, g := range groups {
-		groupByID[g.ID] = g
-		groupIDs = append(groupIDs, g.ID)
-	}
-	teams, err := s.teamDao.GetAllByOwnerID(ctx, ownerID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error al buscar equipos del owner: %w", err)
-	}
-	teamNameByID := make(map[int64]string, len(teams))
-	for _, t := range teams {
-		teamNameByID[t.ID] = t.Name
+	groupByID := make(map[int64]dbs.Group, len(rows))
+	groupIDs := make([]int64, 0, len(rows))
+	teamNameByID := make(map[int64]string, len(rows))
+	for _, row := range rows {
+		groupByID[row.ID] = dbs.Group{ID: row.ID, Name: row.Name, TeamID: row.TeamID}
+		groupIDs = append(groupIDs, row.ID)
+		if row.TeamName != "" {
+			teamNameByID[row.TeamID] = row.TeamName
+		}
 	}
 
 	existing, err := daos.NewGroupCalendarDayDao(db).FindPresencialForGroupsInRange(ctx, groupIDs, dates)
@@ -359,18 +355,14 @@ func NewCalendarService(
 
 // isGroupOwner devuelve nil si callerID es el entrenador dueño del equipo del grupo.
 func (s *calendarService) isGroupOwner(ctx *gin.Context, groupID, callerID int64) error {
-	group, err := s.groupDao.FindByID(ctx, groupID)
+	group, err := s.groupDao.FindWithTeamOwnerByID(ctx, groupID)
 	if err != nil {
 		return fmt.Errorf("error al buscar grupo")
 	}
 	if group == nil {
 		return ErrCalendarGroupNotFound
 	}
-	team, err := s.teamDao.FindByID(ctx, group.TeamID)
-	if err != nil {
-		return fmt.Errorf("error al buscar equipo")
-	}
-	if team == nil || team.OwnerID != callerID {
+	if group.OwnerID == nil || *group.OwnerID != callerID {
 		return ErrCalendarForbidden
 	}
 	return nil

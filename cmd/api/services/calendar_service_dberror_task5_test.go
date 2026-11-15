@@ -51,7 +51,7 @@ func TestDBError_GetRange_ListCalendarDaoError(t *testing.T) {
 // --- isGroupOwnerOrMember / findPresencialCollisions ------------------------
 
 func TestDBError_IsGroupOwnerOrMember_RelayaErrorNoForbidden(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
 		return nil, errors.New("db exploto")
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, nil)
@@ -63,16 +63,14 @@ func TestDBError_IsGroupOwnerOrMember_RelayaErrorNoForbidden(t *testing.T) {
 }
 
 func TestDBError_IsGroupOwnerOrMember_MembershipQueryError(t *testing.T) {
-	groupDao := &mockGroupDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Group, error) {
-		return &dbs.Group{ID: id, TeamID: 1}, nil
-	}}
-	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
-		return &dbs.Team{ID: id, OwnerID: 99}, nil
+	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
+		ownerID := int64(99)
+		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	groupUserDao := &mockGroupUserDao{findByGroupAndUserFn: func(ctx *gin.Context, groupID, userID int64) (*dbs.GroupUser, error) {
 		return nil, errors.New("boom membresía")
 	}}
-	svc := NewCalendarService(nil, groupDao, teamDao, groupUserDao, nil, nil, nil, nil, nil)
+	svc := NewCalendarService(nil, groupDao, nil, groupUserDao, nil, nil, nil, nil, nil)
 
 	err := svc.(*calendarService).isGroupOwnerOrMember(nil, 1, 7)
 
@@ -80,7 +78,7 @@ func TestDBError_IsGroupOwnerOrMember_MembershipQueryError(t *testing.T) {
 }
 
 func TestDBError_findPresencialCollisions_DaoOwnerError(t *testing.T) {
-	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
+	groupDao := &mockGroupDao{findByOwnerIDWithTeamNameFn: func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
 		return nil, errors.New("boom owner")
 	}}
 	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, nil)
@@ -91,19 +89,22 @@ func TestDBError_findPresencialCollisions_DaoOwnerError(t *testing.T) {
 	assert.Contains(t, err.Error(), "error al buscar grupos del owner")
 }
 
-func TestDBError_findPresencialCollisions_DaoTeamError(t *testing.T) {
-	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1}}, nil
-	}}
+// El nombre de equipo sale de la misma query que los grupos: el TeamDao no se
+// consulta en la detección de colisiones.
+func TestDBError_findPresencialCollisions_NoConsultaTeamDao(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	owner, group := task3OwnerGroup(t, db, "dberr12")
+	groupDao := daos.NewGroupDao(db)
 	teamDao := &mockTeamDao{getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
-		return nil, errors.New("boom teams")
+		return nil, errors.New("teamDao no debe consultarse")
 	}}
-	svc := NewCalendarService(nil, groupDao, teamDao, nil, nil, nil, nil, nil, nil)
+	svc := NewCalendarService(nil, groupDao, teamDao, nil, nil, nil, nil, nil, db)
 
-	_, _, err := svc.(*calendarService).findPresencialCollisions(nil, nil, 1, nil, nil, []time.Time{time.Now()}, nil)
+	cross, same, err := svc.(*calendarService).findPresencialCollisions(nil, db, owner.ID, &group.ID, nil, []time.Time{time.Now()}, nil)
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "error al buscar equipos del owner")
+	require.NoError(t, err)
+	assert.Empty(t, cross)
+	assert.Empty(t, same)
 }
 
 // Días existentes excluidos por ID y por grupo: se saltan del cruce y el mismo
@@ -169,14 +170,11 @@ func TestDBError_findPresencialCollisions_DayGroupDesconocidoSaltea(t *testing.T
 // s.db falsificado con select-fail: la query de días presenciales falla.
 func TestDBError_findPresencialCollisions_QueryPresencialError(t *testing.T) {
 	db := testutils.SetupTestDB(t)
-	groupDao := &mockGroupDao{findByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Group, error) {
-		return []dbs.Group{{ID: 1, Name: "G1", TeamID: 10}}, nil
-	}}
-	teamDao := &mockTeamDao{getAllByOwnerIDFn: func(ctx *gin.Context, ownerID int64) ([]dbs.Team, error) {
-		return []dbs.Team{{ID: 10, Name: "T10"}}, nil
+	groupDao := &mockGroupDao{findByOwnerIDWithTeamNameFn: func(ctx *gin.Context, ownerID int64) ([]daos.GroupWithTeamName, error) {
+		return []daos.GroupWithTeamName{{ID: 1, Name: "G1", TeamID: 10, TeamName: "T10"}}, nil
 	}}
 	failing := testutils.FailingDB(t, db, nthFail("select", 1))
-	svc := NewCalendarService(nil, groupDao, teamDao, nil, nil, nil, nil, nil, failing)
+	svc := NewCalendarService(nil, groupDao, nil, nil, nil, nil, nil, nil, failing)
 
 	_, _, err := svc.(*calendarService).findPresencialCollisions(nil, failing, 1, nil, nil, []time.Time{time.Now()}, []dbs.GroupCalendarDay{{GroupID: 1, Kind: "training", IsPresencial: true}})
 
