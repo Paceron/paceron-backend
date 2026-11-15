@@ -192,6 +192,8 @@ func TestDashboardDao_RunnerSeriesQueryNoUsaGruposNiRoles(t *testing.T) {
 	assert.NotContains(t, runnerSeriesFromClause, "group_calendar_days")
 	assert.NotContains(t, runnerSeriesFromClause, "session_exercise_instances")
 	assert.NotContains(t, runnerSeriesFromClause, "role")
+	assert.Contains(t, runnerSeriesFromClause, "ei.kind IN (?)",
+		"los KPIs del Home solo consideran los tres tipos con métrica")
 	assert.NotContains(t, runnerSeriesFromClause, "SELECT *")
 	assert.Contains(t, runnerSeriesFromClause, "wf.deleted_at IS NULL")
 	assert.Contains(t, runnerSeriesFromClause, "rs.status IS NULL",
@@ -210,6 +212,7 @@ func TestDashboardDao_RunnerSeriesUsaIndiceAthleteDate(t *testing.T) {
 	require.NoError(t, db.Exec("SET LOCAL enable_seqscan = off").Error)
 	query := "EXPLAIN SELECT wf.id" + runnerSeriesFromClause + " ORDER BY wf.session_date, wf.id"
 	sqlRows, err := db.Raw(query, fixture.athleteID, fixture.from, fixture.to,
+		constants.DashboardMetricKinds(),
 		runnersession.RunnerSessionStatusFinished,
 		runnersession.RunnerSessionStatusInterrupted).Rows()
 	require.NoError(t, err)
