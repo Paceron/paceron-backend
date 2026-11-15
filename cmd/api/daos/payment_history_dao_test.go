@@ -67,13 +67,13 @@ type paymentFixture struct {
 
 func persistPayment(db *gorm.DB, f paymentFixture) *dbs.Payment {
 	p := &dbs.Payment{
-		Concept:       f.concept,
-		Amount:        f.amount,
-		CurrencyID:    "ARS",
-		Status:        f.status,
-		PaymentID:     f.mpPaymentID,
-		SellerUserID:  f.sellerID,
-		InstallmentID: &f.installmentID,
+		Concept:        f.concept,
+		Amount:         f.amount,
+		CurrencyID:     "ARS",
+		Status:         f.status,
+		PaymentID:      f.mpPaymentID,
+		SellerUserID:   f.sellerID,
+		InstallmentID:  &f.installmentID,
 		RawResponse:    f.raw,
 		CreatedAt:      f.createdAt,
 		MarketplaceFee: f.fee,
@@ -421,6 +421,28 @@ func TestPaymentHistoryDao_ListHistory_Filters(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rejected, 1)
 	assert.Equal(t, "mp-tier-rej", rejected[0].MPPaymentID)
+}
+
+func TestPaymentHistoryDao_ListHistory_Profile(t *testing.T) {
+	db := testutils.SetupTestDB(t)
+	dao := NewPaymentHistoryDao(db)
+	h := seedHistory(db)
+	now := time.Now().UTC()
+	persistPayment(db, historyPayment(h.tierInst.ID, "subscription", "mp-tier", "approved", nil, now))
+	persistPayment(db, historyPayment(h.teamInst.ID, "team_subscription", "mp-team", "approved", &h.trainer.ID, now.Add(-time.Minute)))
+
+	// El corredor no tiene tiers: solo ve su pago al entrenador.
+	corredor, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Profile: "corredor"}, 1, 20)
+	require.NoError(t, err)
+	require.Len(t, corredor, 1)
+	assert.Equal(t, "mp-team", corredor[0].MPPaymentID)
+
+	// El entrenador ve sus tiers de entrenador y las membresías que paga.
+	entrenador, _, err := dao.ListHistory(nil, h.user.ID, HistoryPaymentFilters{Profile: "entrenador"}, 1, 20)
+	require.NoError(t, err)
+	require.Len(t, entrenador, 2)
+	ids := []string{entrenador[0].MPPaymentID, entrenador[1].MPPaymentID}
+	assert.ElementsMatch(t, []string{"mp-tier", "mp-team"}, ids)
 }
 
 func TestPaymentHistoryDao_ListHistory_Pagination(t *testing.T) {

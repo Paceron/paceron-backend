@@ -38,9 +38,9 @@ var argentinaTZ = time.FixedZone("ART", -3*3600)
 // usuario autenticado (change historial-pagos-cobros-entrenador).
 type PaymentHistoryServiceInterface interface {
 	ListReceived(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error)
-	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
+	ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup, profile string, page int) (*payment.HistoryPaymentsResponse, error)
 	GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
-	GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
+	GetUpcoming(ctx *gin.Context, userID int64, profile string) (*payment.UpcomingPaymentsResponse, error)
 }
 
 type paymentHistoryService struct {
@@ -91,14 +91,17 @@ func (s *paymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, f
 
 // ListHistory lista los pagos que hizo el usuario: suscripciones de tier y
 // pagos a entrenadores. paymentType y statusGroup son filtros opcionales.
-func (s *paymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
+func (s *paymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup, profile string, page int) (*payment.HistoryPaymentsResponse, error) {
 	if page < 1 {
 		return nil, fmt.Errorf("%w: page debe ser mayor o igual a 1", ErrInvalidPaymentHistoryQuery)
 	}
 	if paymentType != "" && !constants.IsValidPaymentHistoryType(paymentType) {
 		return nil, fmt.Errorf("%w: type desconocido %q", ErrInvalidPaymentHistoryQuery, paymentType)
 	}
-	filters := daos.HistoryPaymentFilters{Type: paymentType}
+	if profile != "" && !constants.IsValidPaymentProfile(profile) {
+		return nil, fmt.Errorf("%w: profile desconocido %q", ErrInvalidPaymentHistoryQuery, profile)
+	}
+	filters := daos.HistoryPaymentFilters{Type: paymentType, Profile: profile}
 	if statusGroup != "" {
 		statuses, ok := constants.StatusesForGroup(statusGroup)
 		if !ok {

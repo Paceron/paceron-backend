@@ -17,21 +17,21 @@ import (
 
 type mockPaymentHistoryService struct {
 	listReceivedFn       func(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error)
-	listHistoryFn        func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error)
+	listHistoryFn        func(ctx *gin.Context, userID int64, paymentType, statusGroup, profile string, page int) (*payment.HistoryPaymentsResponse, error)
 	getReceivedSummaryFn func(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error)
-	getUpcomingFn        func(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error)
+	getUpcomingFn        func(ctx *gin.Context, userID int64, profile string) (*payment.UpcomingPaymentsResponse, error)
 }
 
-func (m *mockPaymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error) {
-	return m.getUpcomingFn(ctx, userID)
+func (m *mockPaymentHistoryService) GetUpcoming(ctx *gin.Context, userID int64, profile string) (*payment.UpcomingPaymentsResponse, error) {
+	return m.getUpcomingFn(ctx, userID, profile)
 }
 
 func (m *mockPaymentHistoryService) ListReceived(ctx *gin.Context, sellerID int64, filter payment.ReceivedFilter, page int) (*payment.ReceivedPaymentsResponse, error) {
 	return m.listReceivedFn(ctx, sellerID, filter, page)
 }
 
-func (m *mockPaymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
-	return m.listHistoryFn(ctx, userID, paymentType, statusGroup, page)
+func (m *mockPaymentHistoryService) ListHistory(ctx *gin.Context, userID int64, paymentType, statusGroup, profile string, page int) (*payment.HistoryPaymentsResponse, error) {
+	return m.listHistoryFn(ctx, userID, paymentType, statusGroup, profile, page)
 }
 
 func (m *mockPaymentHistoryService) GetReceivedSummary(ctx *gin.Context, sellerID int64, months int, until string) (*payment.ReceivedSummaryResponse, error) {
@@ -194,14 +194,15 @@ func TestPaymentHistoryController_GetReceivedSummary_Until(t *testing.T) {
 // --- ListHistory ---
 
 func TestPaymentHistoryController_ListHistory(t *testing.T) {
-	svc := &mockPaymentHistoryService{listHistoryFn: func(ctx *gin.Context, userID int64, paymentType, statusGroup string, page int) (*payment.HistoryPaymentsResponse, error) {
+	svc := &mockPaymentHistoryService{listHistoryFn: func(ctx *gin.Context, userID int64, paymentType, statusGroup, profile string, page int) (*payment.HistoryPaymentsResponse, error) {
 		assert.Equal(t, int64(7), userID)
 		assert.Equal(t, "trainer_payment", paymentType)
 		assert.Equal(t, "approved", statusGroup)
+		assert.Equal(t, "entrenador", profile)
 		assert.Equal(t, 2, page)
 		return &payment.HistoryPaymentsResponse{Payments: []payment.HistoryPaymentItem{}}, nil
 	}}
-	c, w := paymentHistoryRequest("/api/v1/payments/history?page=2&type=trainer_payment&status=approved", true)
+	c, w := paymentHistoryRequest("/api/v1/payments/history?page=2&type=trainer_payment&status=approved&profile=entrenador", true)
 	NewPaymentHistoryController(svc).ListHistory(c)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"payments":[]`)
@@ -216,14 +217,14 @@ func TestPaymentHistoryController_ListHistory_Errors(t *testing.T) {
 	NewPaymentHistoryController(&mockPaymentHistoryService{}).ListHistory(c)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
-	invalid := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, int) (*payment.HistoryPaymentsResponse, error) {
+	invalid := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, string, int) (*payment.HistoryPaymentsResponse, error) {
 		return nil, fmt.Errorf("%w: type", services.ErrInvalidPaymentHistoryQuery)
 	}}
 	c, w = paymentHistoryRequest("/api/v1/payments/history?type=order", true)
 	NewPaymentHistoryController(invalid).ListHistory(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
-	failing := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, int) (*payment.HistoryPaymentsResponse, error) {
+	failing := &mockPaymentHistoryService{listHistoryFn: func(*gin.Context, int64, string, string, string, int) (*payment.HistoryPaymentsResponse, error) {
 		return nil, errors.New("db caída")
 	}}
 	c, w = paymentHistoryRequest("/api/v1/payments/history", true)
@@ -234,11 +235,12 @@ func TestPaymentHistoryController_ListHistory_Errors(t *testing.T) {
 // --- GetUpcoming ---
 
 func TestPaymentHistoryController_GetUpcoming(t *testing.T) {
-	svc := &mockPaymentHistoryService{getUpcomingFn: func(ctx *gin.Context, userID int64) (*payment.UpcomingPaymentsResponse, error) {
+	svc := &mockPaymentHistoryService{getUpcomingFn: func(ctx *gin.Context, userID int64, profile string) (*payment.UpcomingPaymentsResponse, error) {
 		assert.Equal(t, int64(7), userID)
+		assert.Equal(t, "entrenador", profile)
 		return &payment.UpcomingPaymentsResponse{Items: []payment.UpcomingPaymentItem{{Type: "subscription", OverdueCount: 2}}}, nil
 	}}
-	c, w := paymentHistoryRequest("/api/v1/payments/upcoming", true)
+	c, w := paymentHistoryRequest("/api/v1/payments/upcoming?profile=entrenador", true)
 
 	NewPaymentHistoryController(svc).GetUpcoming(c)
 
@@ -251,7 +253,7 @@ func TestPaymentHistoryController_GetUpcoming_Errors(t *testing.T) {
 	NewPaymentHistoryController(&mockPaymentHistoryService{}).GetUpcoming(c)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
-	svc := &mockPaymentHistoryService{getUpcomingFn: func(*gin.Context, int64) (*payment.UpcomingPaymentsResponse, error) {
+	svc := &mockPaymentHistoryService{getUpcomingFn: func(*gin.Context, int64, string) (*payment.UpcomingPaymentsResponse, error) {
 		return nil, errors.New("db down")
 	}}
 	c, w = paymentHistoryRequest("/api/v1/payments/upcoming", true)
