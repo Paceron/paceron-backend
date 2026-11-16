@@ -34,7 +34,7 @@ func task5BaseAuthDaos() (daos.GroupDaoInterface, daos.TeamDaoInterface) {
 
 func TestCalendarService_Task5_NewDayOnClosedDateRejected(t *testing.T) {
 	groupDao, teamDao := task5BaseAuthDaos()
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	wrote := false
 	calDao := &mockGroupCalendarDao{
 		findByGroupAndDateFn: func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) { return nil, nil },
@@ -231,8 +231,8 @@ func TestCalendarService_Task5_Bulk_MockErrorBranches(t *testing.T) {
 	})
 
 	t.Run("el error lista todas las fechas cerradas", func(t *testing.T) {
-		past, pastTwo := time.Now().AddDate(0, 0, -2), time.Now().AddDate(0, 0, -1)
-		future := time.Now().AddDate(0, 0, 5)
+		past, pastTwo := calendarTestDate(-2), calendarTestDate(-1)
+		future := calendarTestDate(5)
 		calDao := &mockGroupCalendarDao{findByGroupAndDateFn: func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
 			return nil, nil // fechas nuevas: cerradas por regla de fecha si ya pasaron
 		}}
@@ -314,7 +314,7 @@ func TestCalendarService_Task5_ValidateDayFields_Direct(t *testing.T) {
 
 func TestCalendarService_Task5_IsCalendarDayClosed_Variants(t *testing.T) {
 	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	today := calendarTestDate(0)
 
 	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today.AddDate(0, 0, -1)}, now), "el pasado siempre está cerrado")
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today.AddDate(0, 0, 1)}, now), "el futuro nunca está cerrado")
@@ -383,7 +383,7 @@ func TestCalendarService_Task5_CancelClosedTrainingDayKeepsInstance(t *testing.T
 	owner, group := task3OwnerGroup(t, db, "can5b")
 	oldSession := &dbs.SessionInstance{Name: "instancia pasada"}
 	require.NoError(t, db.Create(oldSession).Error)
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	calendarDao := daos.NewGroupCalendarDayDao(db)
 	oldID := oldSession.ID
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "training", SessionInstanceID: &oldID}))
@@ -409,7 +409,7 @@ func TestCalendarService_Task5_DeleteClosedDayKeepsDayAndInstance(t *testing.T) 
 	owner, group := task3OwnerGroup(t, db, "del5c")
 	sess := &dbs.SessionInstance{Name: "instancia pasada"}
 	require.NoError(t, db.Create(sess).Error)
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	calendarDao := daos.NewGroupCalendarDayDao(db)
 	id := sess.ID
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "training", SessionInstanceID: &id}))
@@ -544,7 +544,7 @@ func TestCalendarService_Task5_BulkTrainingCreatesOneInstancePerDate(t *testing.
 func TestCalendarService_Task5_BulkClosedDatesReferencedInError(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "bult5c")
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	future := time.Now().AddDate(0, 0, 5)
 	require.NoError(t, daos.NewGroupCalendarDayDao(db).Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "rest"}))
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
@@ -589,7 +589,7 @@ func TestCalendarService_Task5_BulkClearDeletesSupersededInstances(t *testing.T)
 func TestCalendarService_Task5_ShiftClosedWithRealDBListsClosedDates(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "shif5")
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	future := time.Now().AddDate(0, 0, 6)
 	calendarDao := daos.NewGroupCalendarDayDao(db)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "rest"}))

@@ -2,7 +2,6 @@ package services
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +17,7 @@ func TestGap39_AsyncTodayAllowsAllCalendarWrites(t *testing.T) {
 	session, _ := referenciaCatalogSession(t, db, owner.ID, "gap39writes")
 	svc := presencialWiringSvc(db, true)
 	calendarDao := daos.NewGroupCalendarDayDao(db)
-	today := time.Now()
+	today := calendarTestDate(0)
 	todayStr := today.Format("2006-01-02")
 
 	day, err := svc.UpsertDay(nil, group.ID, owner.ID, today, calendar.CalendarDayRequest{Kind: "training", SessionID: &session.ID})
@@ -61,18 +60,17 @@ func TestGap39_AsyncTodayAllowsAllCalendarWrites(t *testing.T) {
 	assert.NotNil(t, tomorrow)
 }
 
-func TestGap39_PresencialTodayStartedStillClosed(t *testing.T) {
+func TestGap39_PresencialTodayStartedStillWritable(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "gap39pres")
 	session, _ := referenciaCatalogSession(t, db, owner.ID, "gap39pres")
 	svc := presencialWiringSvc(db, false)
-	today := time.Now()
+	today := calendarTestDate(0)
 
 	_, err := svc.UpsertDay(nil, group.ID, owner.ID, today, presencialRequest(0, 1, &session.ID))
 
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrCalendarDayClosed)
+	require.NoError(t, err, "el día argentino de hoy permanece escribible aunque la presencial ya haya empezado")
 	stored, findErr := daos.NewGroupCalendarDayDao(db).FindByGroupAndDate(nil, group.ID, today)
 	require.NoError(t, findErr)
-	assert.Nil(t, stored)
+	assert.NotNil(t, stored)
 }

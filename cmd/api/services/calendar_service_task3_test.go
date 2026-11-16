@@ -16,7 +16,15 @@ import (
 	"simple-arq-golang/cmd/api/domains/dbs"
 	"simple-arq-golang/cmd/api/domains/trainingplan"
 	"simple-arq-golang/cmd/api/testutils"
+	"simple-arq-golang/cmd/api/utils/gametime"
 )
+
+// calendarTestDate devuelve una fecha de calendario de Argentina, no la fecha
+// UTC del runner. Así los casos "ayer/hoy" siguen representando lo mismo tanto
+// en CI (UTC) como en una máquina local argentina.
+func calendarTestDate(dayOffset int) time.Time {
+	return gametime.Today().AddDate(0, 0, dayOffset)
+}
 
 func TestCalendarService_Task3_ClosedUpsertDoesNotWrite(t *testing.T) {
 	groupDao := &mockGroupDao{findWithTeamOwnerByIDFn: func(ctx *gin.Context, id int64) (*daos.GroupWithTeamOwner, error) {
@@ -26,7 +34,7 @@ func TestCalendarService_Task3_ClosedUpsertDoesNotWrite(t *testing.T) {
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) {
 		return &dbs.Team{ID: id, OwnerID: 7}, nil
 	}}
-	yesterday := time.Now().AddDate(0, 0, -1)
+	yesterday := calendarTestDate(-1)
 	wrote := false
 	calDao := &mockGroupCalendarDao{
 		findByGroupAndDateFn: func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
@@ -52,7 +60,7 @@ func TestCalendarService_Task3_CancelClosedDayIsAllowedAndKeepsInstance(t *testi
 		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return &dbs.Team{ID: id, OwnerID: 7}, nil }}
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	instanceID := int64(44)
 	var saved *dbs.GroupCalendarDay
 	calDao := &mockGroupCalendarDao{
@@ -120,8 +128,8 @@ func TestCalendarService_Task3_BulkClosedDateRollsBackWholeBatch(t *testing.T) {
 	group := &dbs.Group{Name: "Task3 bulk group", TeamID: team.ID, IsMain: true}
 	require.NoError(t, db.Create(group).Error)
 	calendarDao := daos.NewGroupCalendarDayDao(db)
-	past := time.Now().AddDate(0, 0, -1)
-	future := time.Now().AddDate(0, 0, 2)
+	past := calendarTestDate(-1)
+	future := calendarTestDate(2)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "rest"}))
 	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
 
@@ -231,7 +239,7 @@ func TestCalendarService_Task3_ClosedDeleteAndBulkClearAreRejected(t *testing.T)
 		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return &dbs.Team{ID: id, OwnerID: 7}, nil }}
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	deleted := false
 	calDao := &mockGroupCalendarDao{
 		findByGroupAndDateFn: func(ctx *gin.Context, groupID int64, date time.Time) (*dbs.GroupCalendarDay, error) {
@@ -257,7 +265,7 @@ func TestCalendarService_Task3_ClosedShiftIsRejectedBeforeTransaction(t *testing
 		return &daos.GroupWithTeamOwner{ID: id, TeamID: 1, OwnerID: &ownerID}, nil
 	}}
 	teamDao := &mockTeamDao{findByIDFn: func(ctx *gin.Context, id int64) (*dbs.Team, error) { return &dbs.Team{ID: id, OwnerID: 7}, nil }}
-	past := time.Now().AddDate(0, 0, -1)
+	past := calendarTestDate(-1)
 	calDao := &mockGroupCalendarDao{findByGroupAndRangeFn: func(ctx *gin.Context, groupID int64, from, to time.Time) ([]dbs.GroupCalendarDay, error) {
 		return []dbs.GroupCalendarDay{{GroupID: groupID, Date: past, Kind: "rest"}}, nil
 	}}
@@ -365,7 +373,7 @@ func TestCalendarService_Task3_StampClosedDateRollsBackFutureDays(t *testing.T) 
 	require.NoError(t, db.Create(plan).Error)
 	require.NoError(t, db.Create([]dbs.PlanDay{{PlanID: plan.ID, SequenceNo: 1, Kind: "rest"}, {PlanID: plan.ID, SequenceNo: 2, Kind: "training", SessionID: &session.ID}}).Error)
 	svc := NewCalendarService(daos.NewGroupCalendarDayDao(db), daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, daos.NewTrainingPlanDao(db), daos.NewPlanDayDao(db), nil, db)
-	start := time.Now().AddDate(0, 0, -1)
+	start := calendarTestDate(-1)
 
 	_, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{PlanID: plan.ID, StartDate: start.Format("2006-01-02")})
 
@@ -416,8 +424,8 @@ func TestCalendarService_Task3_BulkClearClosedDayRollsBackWithRealDB(t *testing.
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "bulkclear")
 	calendarDao := daos.NewGroupCalendarDayDao(db)
-	past := time.Now().AddDate(0, 0, -1)
-	future := time.Now().AddDate(0, 0, 2)
+	past := calendarTestDate(-1)
+	future := calendarTestDate(2)
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: past, Kind: "rest"}))
 	require.NoError(t, calendarDao.Upsert(nil, &dbs.GroupCalendarDay{GroupID: group.ID, Date: future, Kind: "rest"}))
 	svc := NewCalendarService(calendarDao, daos.NewGroupDao(db), daos.NewTeamDao(db), daos.NewGroupUserDao(db), nil, nil, nil, nil, db)
@@ -441,7 +449,17 @@ func TestCalendarService_Task3_CurrentDayClosureVariants(t *testing.T) {
 	futureTime := time.Date(0, 1, 1, 13, 0, 0, 0, time.UTC)
 	pastTime := time.Date(0, 1, 1, 11, 0, 0, 0, time.UTC)
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &futureTime}, now))
-	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now))
+	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now),
+		"el día de hoy sigue abierto hasta medianoche argentina, aunque la presencial ya haya empezado")
+}
+
+func TestCalendarService_Task3_CurrentDayUsesArgentinaBoundary(t *testing.T) {
+	// 02:59 UTC ya es 23:59 en Argentina: la fecha argentina sigue abierta.
+	day := dbs.GroupCalendarDay{Date: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
+	assert.False(t, isCalendarDayClosed(day, time.Date(2026, 11, 16, 2, 59, 0, 0, time.UTC)))
+
+	// Al cruzar las 03:00 UTC cambia el día argentino y el anterior se cierra.
+	assert.True(t, isCalendarDayClosed(day, time.Date(2026, 11, 16, 3, 0, 0, 0, time.UTC)))
 }
 
 func TestCalendarService_Task3_ValidationAndConflictErrorsRemainTyped(t *testing.T) {
