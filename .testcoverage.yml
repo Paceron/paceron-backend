@@ -13,8 +13,10 @@ threshold:
 
 # Paquetes sin logica real (structs/DTOs puros, constantes, codigo autogenerado,
 # wiring de arranque, helpers de test) - se excluyen del calculo por completo,
-# no cuentan ni para bien ni para mal. Un paquete CON logica real y 0% de tests
-# nunca va aca, se deja contar como deuda visible a proposito (ver CLAUDE.md).
+# no cuentan ni para bien ni para mal. Tambien entran comandos one-off de
+# scripts/ (seed_runner1, delete_training_data): son herramientas operativas,
+# no superficie de la app. Un paquete CON logica real y 0% de tests nunca va
+# aca, se deja contar como deuda visible a proposito (ver CLAUDE.md).
 exclude:
   paths:
     - ^cmd/api/main\.go$
@@ -29,3 +31,4 @@ exclude:
     - ^cmd/api/domains/exampleweather/
     - ^cmd/api/domains/workoutfeedback/
     - ^cmd/api/scripts/seed_runner1/
+    - ^cmd/api/scripts/delete_training_data/
