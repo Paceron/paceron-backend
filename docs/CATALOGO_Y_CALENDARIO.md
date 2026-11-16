@@ -250,7 +250,7 @@ La regla de cuándo un día está "cerrado" (calculada al vuelo, sin cron ni col
 
 | Condición de la fecha del día | ¿Cerrado? |
 |---|---|
-| `date < hoy` | Sí, siempre |
+| `date < hoy` | Sí, salvo `SEEDING_ENABLED` para cargar histórico |
 | `date > hoy` | No, nunca |
 | `date == hoy` (presencial o async) | No — permanece escribible hasta las 23:59 de Argentina |
 

@@ -100,7 +100,7 @@ func TestDeleteDayBatch_FeedbackSoftDeletedNoProtege(t *testing.T) {
 func TestDeleteDayBatch_DiaCerradoNoCambiaNada(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	owner, group := task3OwnerGroup(t, db, "delbatch5")
-	date := time.Now().AddDate(0, 0, -1)
+	date := calendarTestDate(-1)
 	day, inst := createDayWithInstance(t, db, group.ID, date, "e1")
 
 	err := deleteDayService(db).DeleteDay(nil, group.ID, owner.ID, date)

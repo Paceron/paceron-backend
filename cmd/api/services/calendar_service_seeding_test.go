@@ -120,7 +120,7 @@ func TestSeeding_PresencialDeHoyYaEmpezadaSePuedeEditarHastaMedianoche(t *testin
 	session, _ := referenciaCatalogSession(t, db, owner.ID, "seed3")
 	svc := presencialWiringSvc(db, false)
 
-	today := time.Now()
+	today := calendarTestDate(0)
 	_, err := svc.UpsertDay(nil, group.ID, owner.ID, today, presencialRequest(0, 1, &session.ID))
 
 	require.NoError(t, err, "una sesión de hoy se puede editar hasta medianoche argentina")

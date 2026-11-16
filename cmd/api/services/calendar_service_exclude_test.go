@@ -148,7 +148,7 @@ func TestStampExcludeDates_DiaCerradoExcluidoNoDispara422(t *testing.T) {
 	owner, group := exclOwnerGroup(t, db, "closedex")
 	plan := exclPlan(t, db, owner.ID, "plan closedex", []string{"rest", "rest", "rest"}, nil)
 	// start = ayer → día 0 ayer (cerrado), día 1 hoy async (abierto), día 2 mañana (abierto).
-	start := time.Now().AddDate(0, 0, -1)
+	start := calendarTestDate(-1)
 	startStr := start.Format("2006-01-02")
 	svc := exclSvc(db)
 
@@ -160,11 +160,11 @@ func TestStampExcludeDates_DiaCerradoExcluidoNoDispara422(t *testing.T) {
 	// Excluyendo ayer y hoy: solo se estampa mañana, sin 422.
 	resp, err := svc.Stamp(nil, group.ID, owner.ID, calendar.StampRequest{
 		PlanID: plan.ID, StartDate: startStr, Force: true,
-		ExcludeDates: []string{startStr, time.Now().Format("2006-01-02")},
+		ExcludeDates: []string{startStr, calendarTestDate(0).Format("2006-01-02")},
 	})
 	require.NoError(t, err, "los días cerrados excluidos no cuentan para el 422")
 	require.Len(t, resp.Days, 1)
-	assert.Equal(t, time.Now().AddDate(0, 0, 1).Format("2006-01-02"), resp.Days[0].Date)
+	assert.Equal(t, calendarTestDate(1).Format("2006-01-02"), resp.Days[0].Date)
 }
 
 // Task 3.3 — exclude_dates con formato inválido → ErrCalendarInvalidDate sin escribir nada.
