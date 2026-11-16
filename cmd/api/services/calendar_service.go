@@ -19,6 +19,7 @@ import (
 	"simple-arq-golang/cmd/api/domains/instance"
 	"simple-arq-golang/cmd/api/domains/trainingplan"
 	"simple-arq-golang/cmd/api/infrastructure/customlogger"
+	"simple-arq-golang/cmd/api/utils/gametime"
 )
 
 var (
@@ -390,27 +391,19 @@ func (s *calendarService) isGroupOwnerOrMember(ctx *gin.Context, groupID, caller
 // It is a write guard now; it no longer decides whether catalog content must
 // be cloned.
 //
-// La rama `date < hoy` se relaja SOLO con SEEDING_ENABLED (design.md D14): es
-// la única vía que tiene el seed para cargar histórico, porque no hay endpoint
-// que corte una fecha pasada. La presencial de hoy ya empezada sigue cerrando;
-// el async de hoy es escribible a discreción del entrenador (Gap 39).
+// Las fechas del calendario son fechas de pared argentinas, no instantes UTC.
+// Por eso "hoy" se calcula en America/Argentina/Cordoba: un request entre las
+// 21:00 y 23:59 de Argentina no puede tratar como pasado el día siguiente UTC.
+// Todo el día de hoy es escribible hasta la medianoche argentina, incluso si
+// el entrenamiento presencial ya empezó. La única excepción para fechas
+// pasadas sigue siendo SEEDING_ENABLED (design.md D14).
 func isCalendarDayClosed(day dbs.GroupCalendarDay, now time.Time) bool {
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, now.Location())
+	today := gametime.DateOnly(now)
+	dayDate := time.Date(day.Date.Year(), day.Date.Month(), day.Date.Day(), 0, 0, 0, 0, gametime.Location)
 	if dayDate.Before(today) {
 		return !config.SeedingEnabled()
 	}
-	if dayDate.After(today) {
-		return false
-	}
-	if !day.IsPresencial {
-		return false
-	}
-	if day.PresencialTimeFrom == nil {
-		return false
-	}
-	threshold := time.Date(now.Year(), now.Month(), now.Day(), day.PresencialTimeFrom.UTC().Hour(), day.PresencialTimeFrom.UTC().Minute(), 0, 0, now.Location())
-	return !now.Before(threshold)
+	return false
 }
 
 // logSeededPastWrite deja rastro de cada escritura que el flag de seeding dejó

@@ -441,7 +441,17 @@ func TestCalendarService_Task3_CurrentDayClosureVariants(t *testing.T) {
 	futureTime := time.Date(0, 1, 1, 13, 0, 0, 0, time.UTC)
 	pastTime := time.Date(0, 1, 1, 11, 0, 0, 0, time.UTC)
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &futureTime}, now))
-	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now))
+	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &pastTime}, now),
+		"el día de hoy sigue abierto hasta medianoche argentina, aunque la presencial ya haya empezado")
+}
+
+func TestCalendarService_Task3_CurrentDayUsesArgentinaBoundary(t *testing.T) {
+	// 02:59 UTC ya es 23:59 en Argentina: la fecha argentina sigue abierta.
+	day := dbs.GroupCalendarDay{Date: time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)}
+	assert.False(t, isCalendarDayClosed(day, time.Date(2026, 11, 16, 2, 59, 0, 0, time.UTC)))
+
+	// Al cruzar las 03:00 UTC cambia el día argentino y el anterior se cierra.
+	assert.True(t, isCalendarDayClosed(day, time.Date(2026, 11, 16, 3, 0, 0, 0, time.UTC)))
 }
 
 func TestCalendarService_Task3_ValidationAndConflictErrorsRemainTyped(t *testing.T) {

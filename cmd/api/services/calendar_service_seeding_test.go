@@ -47,18 +47,17 @@ func TestSeeding_ConBanderaElPasadoSeAbrie(t *testing.T) {
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: past}, today.Add(12*time.Hour)))
 }
 
-// El flag no abre el día en curso: la presencial de hoy ya empezada sigue
-// cerrando. El async de hoy, en cambio, es escribible por decisión del
-// entrenador (Gap 39).
-func TestSeeding_ConBanderaElDiaDeHoySoloCierraLaPresencialYaEmpezada(t *testing.T) {
+// Todo el día argentino actual es escribible, tanto presencial como async;
+// SEEDING_ENABLED solo cambia el tratamiento de fechas pasadas.
+func TestSeeding_ConBanderaElDiaDeHoySigueAbiertoHastaMedianocheArgentina(t *testing.T) {
 	setSeedingFlag(t, true)
 	today, _ := seedingTestNow()
 	now := today.Add(12 * time.Hour)
 	started := time.Date(0, 1, 1, 9, 0, 0, 0, time.UTC)
 	notStarted := time.Date(0, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	assert.True(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &started}, now),
-		"la presencial de hoy ya empezada sigue cerrada")
+	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &started}, now),
+		"la presencial de hoy sigue abierta hasta medianoche argentina")
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today, IsPresencial: true, PresencialTimeFrom: &notStarted}, now),
 		"la presencial de hoy que todavía no empieza sigue abierta")
 	assert.False(t, isCalendarDayClosed(dbs.GroupCalendarDay{Date: today}, now), "el async de hoy es escribible a discreción del entrenador")
@@ -114,7 +113,7 @@ func TestSeeding_StampFechaPasadaSinBanderaFalla(t *testing.T) {
 	assert.ErrorIs(t, err, ErrCalendarDayClosed)
 }
 
-func TestSeeding_PresencialDeHoyYaEmpezadaSigueRechazadaConBandera(t *testing.T) {
+func TestSeeding_PresencialDeHoyYaEmpezadaSePuedeEditarHastaMedianoche(t *testing.T) {
 	db := testutils.SetupTestDB(t)
 	setSeedingFlag(t, true)
 	owner, group := task3OwnerGroup(t, db, "seed3")
@@ -124,6 +123,5 @@ func TestSeeding_PresencialDeHoyYaEmpezadaSigueRechazadaConBandera(t *testing.T)
 	today := time.Now()
 	_, err := svc.UpsertDay(nil, group.ID, owner.ID, today, presencialRequest(0, 1, &session.ID))
 
-	require.Error(t, err, "el flag de seeding no abre la presencial que ya arrancó hoy")
-	assert.ErrorIs(t, err, ErrCalendarDayClosed)
+	require.NoError(t, err, "una sesión de hoy se puede editar hasta medianoche argentina")
 }

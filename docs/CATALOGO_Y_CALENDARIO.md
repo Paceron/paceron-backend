@@ -246,16 +246,15 @@ Cada instancia guarda además su **origen de catálogo**: `session_instances.sou
 
 ### 8.3 Guard de día cerrado — restricción de escritura, no de edición de catálogo
 
-La regla de cuándo un día está "cerrado" (calculada al vuelo contra `time.Now()`, sin cron ni columna persistida) es la misma que la del change original:
+La regla de cuándo un día está "cerrado" (calculada al vuelo, sin cron ni columna persistida) usa el día de pared de `America/Argentina/Cordoba`, independientemente del timezone del proceso:
 
 | Condición de la fecha del día | ¿Cerrado? |
 |---|---|
 | `date < hoy` | Sí, siempre |
 | `date > hoy` | No, nunca |
-| `date == hoy` y `is_presencial = true` | Sí **a partir de** `presencial_time_from` de ese día |
-| `date == hoy` y `is_presencial = false` (async) | No — el entrenador decide si opera hoy o espera a mañana (Gap 39) |
+| `date == hoy` (presencial o async) | No — permanece escribible hasta las 23:59 de Argentina |
 
-Pero su rol cambió: de "trigger de clonado" (mecanismo anterior, eliminado) pasó a **guard de escritura**. Si el día ya existe y está cerrado, no se puede asignar, reasignar ni borrar su contenido — ni siquiera reasignarlo con el mismo contenido. El día async de hoy no está cerrado (Gap 39): todas las escrituras quedan a discreción del entrenador. Aplica a todos los endpoints de escritura:
+Pero su rol cambió: de "trigger de clonado" (mecanismo anterior, eliminado) pasó a **guard de escritura**. Si el día ya existe y está cerrado, no se puede asignar, reasignar ni borrar su contenido — ni siquiera reasignarlo con el mismo contenido. Todo el día argentino actual es escribible para días presenciales y async; después de la medianoche argentina, pasa a ser una fecha pasada y cierra. Aplica a todos los endpoints de escritura:
 
 - `PUT`/`Bulk`/`Stamp`: rechaza crear o reemplazar contenido sobre un día cerrado (`422 ErrCalendarDayClosed`, `{"message": "el día de calendario está cerrado: <fecha>"}`).
 - `DeleteDay`/`BulkClear`: mismo guard, por simetría — no se puede "borrar la historia" tampoco.
@@ -263,7 +262,7 @@ Pero su rol cambió: de "trigger de clonado" (mecanismo anterior, eliminado) pas
 
 En operaciones batch (`Stamp`/`Bulk`/`BulkClear`/`Shift`) el guard es **todo-o-nada**: se validan todas las fechas afectadas antes de escribir cualquiera y si alguna está cerrada se rechaza el lote entero con la lista de fechas en conflicto (`el día de calendario está cerrado: 2026-09-19, 2026-09-20`), sin cambios parciales.
 
-**Única excepción: `cancelled`.** La transición a `kind=cancelled` (desde `training`) sigue permitida sobre un día cerrado — cancelar no reinstancia nada: marca `cancelled_reason` y conserva el `session_instance_id` existente como contexto. `is_presencial` participa solo en decidir si el día está cerrado; una vez cerrado, la única operación permitida es `cancelled`, sin excepción.
+**Única excepción: `cancelled`.** La transición a `kind=cancelled` (desde `training`) sigue permitida sobre un día cerrado — cancelar no reinstancia nada: marca `cancelled_reason` y conserva el `session_instance_id` existente como contexto.
 
 ### 8.4 Reasignación y borrado de instancia superada
 
@@ -314,7 +313,7 @@ Reasignar un día **futuro** que ya tenía instancia sí está permitido (nunca 
 El mecanismo previo de **clonado por divergencia** (`calendario-asignacion-grupos` D8/D13 + `congelar-ejercicio-en-clon`) fue eliminado por completo, no convive con la instanciación. Ya no existen:
 
 - `exclude_group_ids`/`clone_name`/`clone_description` en `PUT /sessions/{id}` (se ignoran silenciosamente si el frontend aún los manda) — la edición de catálogo jamás repuntea días.
-- El auto-clonado de días ya cerrados al editar (`isCalendarDayClosed` como trigger). La función pasó a `calendar_service.go` con el mismo cálculo de fecha/horario pero como guard de escritura (§8.3).
+- El auto-clonado de días ya cerrados al editar (`isCalendarDayClosed` como trigger). La función pasó a `calendar_service.go` como guard de escritura (§8.3), con fechas interpretadas en Argentina.
 - El congelamiento profundo en `ExerciseService.Update` (clonar sesiones/ejercicios en cascada) — sin objeto histórico que congelar, `ExerciseService.Update` volvió a ser una edición directa de catálogo.
 - `GET /sessions/{id}/assigned-groups` — no cumplía ninguna función bajo el modelo nuevo (editar la sesión ya no afecta asignaciones). Eliminado sin reemplazo.
 - Los DAOs `FindBySessionID`/`FindByExerciseID`/`RepointSessionForGroups`/`RepointDaysByID`.
@@ -684,9 +683,9 @@ Cruza lo que planificó el entrenador con lo que registró el corredor. Contrato
 
 ## 9. Detalles de implementación relevantes
 
-- **Timezone:** todo cálculo de "hoy"/"ahora" en este dominio usa `time.Date(now.Year(), now.Month(), now.Day(), 0,0,0,0, now.Location())` para obtener medianoche **local**, nunca `time.Now().Truncate(24*time.Hour)` (eso trunca a medianoche UTC, incorrecto en `America/Argentina/Cordoba`, UTC-3). Si se agrega lógica nueva de fechas en este dominio, replicar ese patrón.
+- **Timezone:** los días del calendario son fechas de pared argentinas. Para guards de escritura, calcular "hoy" con `gametime.DateOnly(now)` (`America/Argentina/Cordoba`), no con la zona horaria del host ni con `time.Now().Truncate(24*time.Hour)`. Así, por ejemplo, a las 23:30 de Argentina el backend no trata como pasado el día siguiente UTC.
 - **`default_time_from`/`default_time_to`/`presencial_time_from`/`presencial_time_to` viajan como string `"HH:MM"`** en JSON, se parsean con `time.Parse("15:04", ...)` al guardar (queda tagueado UTC, fecha `0000-01-01`) — la columna Postgres real es `timestamptz`, no `time` (GORM no aplica `type:time` para este dialecto, se mantiene timestamptz a propósito, ver el punto siguiente). `to` debe ser posterior a `from` (`422` si no).
-- **Bug real encontrado y corregido (`fix/presencial-time-from-to`, 2026-09-19): siempre leer estos campos con `.UTC()` antes de `.Hour()/.Minute()/.Format(...)`, nunca confiar en `.Location()` del valor recién leído de la DB.** Postgres devuelve `timestamptz` convertido al `TimeZone` de la sesión, y el driver lo escanea en `time.Local` — como estos valores siempre se escriben en UTC (por el default de `time.Parse`), leerlos sin normalizar corrompe la hora por el offset de `time.Local` en cada round-trip (en `America/Argentina/Cordoba` esto rompía silenciosamente el corte del guard de cierre dependiendo de la hora del día en que corriera el proceso). Los 4 puntos de lectura (`toCalendarDayResponse`, `toPlanDayResponse`, `isCalendarDayClosed`, `NextSession`) ya aplican `.UTC()` — replicar el patrón en cualquier lectura nueva de estos campos.
+- **Horarios presenciales:** `default_time_from`/`default_time_to`/`presencial_time_from`/`presencial_time_to` viajan como string `HH:MM` y se persisten como wall-clock UTC por convención. Al leerlos para exponerlos o comparar horarios de sesión, normalizar con `.UTC()` antes de `.Hour()/.Minute()/.Format(...)`; nunca confiar en `.Location()` del valor que devuelve Postgres. El guard de cierre del día ya no usa `presencial_time_from`: el día actual entero queda abierto hasta medianoche argentina.
 - **`Location{lat,lng,label?}`** (paquete `trainingplan`) es compartida entre `PlanDay.default_location` y `GroupCalendarDay.presencial_location` — se persiste como `jsonb` vía marshal/unmarshal manual en el service, no hay tipo custom de GORM.
 - **Transacciones:** siempre se instancian DAOs *nuevos* atados al `*gorm.DB` de la transacción (`daos.NewXDao(tx)`) — nunca se pasa `tx` a una instancia de DAO ya creada, este patrón de DAO no lo soporta.
 - **`Stamp`/`Bulk`/`Shift`** escriben múltiples filas dentro de una única transacción — si falla la fila N, ninguna de las N-1 anteriores queda aplicada.
